@@ -1,0 +1,24 @@
+```javascript
+const { Pool } = require('pg');
+const pool = new Pool({
+  // Database connection details (replace with your credentials)
+  user: 'your_db_user',
+  host: 'your_db_host',
+  database: 'your_db_name',
+  password: 'your_db_password',
+  port: 5432,
+});
+
+const query = async (text, params) => {
+    const start = Date.now();
+    const res = await pool.query(text, params);
+    const duration = Date.now() - start;
+    console.log('executed query', { text, duration, rows: res.rowCount });
+    return res;
+};
+
+module.exports = {
+    query,
+    connect: () => pool.connect(),
+}
+```

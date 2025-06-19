@@ -1,0 +1,36 @@
+```javascript
+const express = require('express');
+const bodyParser = require('body-parser');
+const db = require('./db'); // Database connection
+const authMiddleware = require('./middleware/auth'); // Authentication middleware
+const productRoutes = require('./routes/products');
+const userRoutes = require('./routes/users');
+const cache = require('./cache');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(bodyParser.json());
+
+// Routes
+app.use('/products', authMiddleware, productRoutes); //Protected routes
+app.use('/users', userRoutes);
+
+
+// Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+// Start the server
+db.connect()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+    });
+  })
+  .catch(err => {
+    console.error("Failed to connect to the database:", err);
+  });
+```
