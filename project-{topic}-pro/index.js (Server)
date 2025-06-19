@@ -1,0 +1,30 @@
+```javascript
+const express = require('express');
+const knex = require('knex')(require('./knexfile')[process.env.NODE_ENV || 'development']);
+const winston = require('winston');
+// ... other imports (cors, jsonwebtoken, bcrypt, etc.)
+
+const app = express();
+app.use(express.json());
+// ... add cors middleware, authentication middleware, error handling middleware, rate limiting
+
+// Example API Endpoint (GET)
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await knex('metrics').select('*');
+    res.json(metrics);
+  } catch (error) {
+    winston.error(error);
+    res.status(500).json({ error: 'Failed to fetch metrics' });
+  }
+});
+
+// ... other API endpoints (POST, PUT, DELETE) for CRUD operations on metrics
+
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});
+
+```
