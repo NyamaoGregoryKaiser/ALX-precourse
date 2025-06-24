@@ -1,0 +1,4 @@
+# You'll need to create these using Alembic:
+# alembic init migrations
+# alembic revision --autogenerate -m "Initial migration"
+# alembic upgrade head

@@ -1,7 +1,8 @@
 Flask==2.3.2
 Flask-SQLAlchemy==3.0.4
-psycopg2-binary==2.9.7  # PostgreSQL adapter
-pytest==7.4.0
-coverage==7.0.5
-requests==2.31.0 # For testing purposes
+psycopg2-binary==2.9.7  # Or your preferred PostgreSQL adapter
 python-dotenv==1.0.0
+SQLAlchemy==2.0.21
+requests==2.31.0 #for testing
+pytest==7.4.0
+coverage==7.0.1
