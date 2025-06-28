@@ -1,0 +1,44 @@
+```jsx
+//Simplified React component to fetch and display data
+
+import React, { useState, useEffect } from 'react';
+
+function App() {
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const response = await fetch('/performance');
+      const jsonData = await response.json();
+      setData(jsonData);
+    };
+    fetchData();
+  }, []);
+
+  return (
+    <div>
+      <h1>Performance Data</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>CPU Usage</th>
+            <th>Memory Usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item) => (
+            <tr key={item.id}>
+              <td>{item.timestamp}</td>
+              <td>{item.cpuUsage}</td>
+              <td>{item.memoryUsage}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default App;
+```
