@@ -1,0 +1,21 @@
+```json
+{
+  "type": "postgres",
+  "host": "localhost",
+  "port": 5432,
+  "username": "your_db_user",
+  "password": "your_db_password",
+  "database": "performance_db",
+  "entities": [
+    "src/entity/**/*.ts"
+  ],
+  "migrations": [
+    "src/migrations/**/*.ts"
+  ],
+  "cli": {
+    "entitiesDir": "src/entity",
+    "migrationsDir": "src/migrations"
+  },
+  "synchronize": true // Set to false in production
+}
+```
