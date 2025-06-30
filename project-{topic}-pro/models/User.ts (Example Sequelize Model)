@@ -1,0 +1,33 @@
+```typescript
+import { DataTypes, Model, Sequelize } from 'sequelize';
+
+interface UserAttributes {
+  id: number;
+  username: string;
+  // ... other attributes
+}
+
+export class User extends Model<UserAttributes> implements UserAttributes {
+  public id!: number;
+  public username!: string;
+  // ... other attributes
+}
+
+export const initUser = (sequelize: Sequelize) => {
+    User.init({
+        id: {
+            type: DataTypes.INTEGER,
+            autoIncrement: true,
+            primaryKey: true,
+        },
+        username: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        // ... other attributes
+    }, {
+        sequelize,
+        tableName: 'users',
+    });
+};
+```

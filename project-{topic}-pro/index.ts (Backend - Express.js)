@@ -1,0 +1,29 @@
+```typescript
+import express, { Request, Response } from 'express';
+import { Sequelize } from 'sequelize';
+import { User } from './models/User'; // Example model
+import * as winston from 'winston';
+
+const app = express();
+app.use(express.json());
+
+// Database connection (replace with your config)
+const sequelize = new Sequelize('database', 'user', 'password', {
+  dialect: 'postgres',
+});
+
+// ... (model sync, route definitions, error handling, etc.)
+
+// Example route
+app.get('/health', (req: Request, res: Response) => {
+  res.send('OK');
+});
+
+// ... (other routes using async/await and error handling)
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    winston.info(`Server started on port ${PORT}`);
+});
+
+```
