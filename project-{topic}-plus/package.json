@@ -1,0 +1,30 @@
+```json
+{
+  "name": "ecommerce-app",
+  "version": "1.0.0",
+  "description": "A simple e-commerce application",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest",
+    "migrate": "node migrations/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.0",
+    "bcrypt": "^5.1.0",
+    "pg": "^8.11.0", // PostgreSQL driver
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/jest": "^29.5.1",
+    "jest": "^29.5.0",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.3"
+  }
+}
+```
