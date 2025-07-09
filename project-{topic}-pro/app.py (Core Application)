@@ -1,0 +1,68 @@
+import os
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+import logging
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+db = SQLAlchemy(app)
+
+# Logging Configuration (Example)
+logging.basicConfig(filename='app.log', level=logging.ERROR,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+# Simple User Model (Expand with roles, permissions etc.)
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+# Authentication Decorator
+def authenticate(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not authenticate_user(auth.username, auth.password):
+            return jsonify({'message': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def authenticate_user(username, password):
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password):
+        return True
+    return False
+
+
+# Example API Endpoint (Requires error handling, input validation etc.)
+@app.route('/users', methods=['POST'])
+def create_user():
+    data = request.get_json()
+    try:
+        new_user = User(username=data['username'], )
+        new_user.set_password(data['password'])
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'message': 'User created'}), 201
+    except Exception as e:
+        db.session.rollback() #Rollback on error
+        logging.exception(f"Error creating user: {e}")
+        return jsonify({'message': 'Error creating user'}), 500
+
+#add more endpoints with authentication
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=False, host='0.0.0.0') #for docker
