@@ -1,0 +1,7 @@
+```sql
+CREATE TABLE IF NOT EXISTS houses (
+  id SERIAL PRIMARY KEY,
+  size INTEGER NOT NULL,
+  price REAL NOT NULL
+);
+```
