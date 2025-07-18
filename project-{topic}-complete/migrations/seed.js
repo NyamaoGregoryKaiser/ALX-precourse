@@ -1,0 +1,1 @@
+This file would contain scripts to populate the database with initial data.

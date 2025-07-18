@@ -1,0 +1,1 @@
+This folder would contain SQL files (or scripts using a migration library like `knex`) to define the database schema and manage schema changes across different versions.
