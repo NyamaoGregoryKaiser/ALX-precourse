@@ -1,0 +1,32 @@
+```javascript
+const express = require('express');
+const db = require('./db'); //Database connection and queries
+const authMiddleware = require('./auth'); //Authentication middleware
+const rateLimit = require('express-rate-limit');
+
+const app = express();
+app.use(express.json());
+
+//Rate limiting middleware
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+app.use(limiter);
+
+//Example API endpoint (requires authentication)
+app.get('/api/data', authMiddleware.authenticate, async (req, res) => {
+  try {
+    const data = await db.getData();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to retrieve data' });
+  }
+});
+
+
+app.listen(3000, () => console.log('Server listening on port 3000'));
+```

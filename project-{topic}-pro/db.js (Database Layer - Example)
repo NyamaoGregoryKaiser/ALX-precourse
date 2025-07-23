@@ -1,0 +1,24 @@
+```javascript
+const { Pool } = require('pg');
+const pool = new Pool({
+  // PostgreSQL connection details from environment variables
+  user: process.env.PGUSER,
+  host: process.env.PGHOST,
+  database: process.env.PGDATABASE,
+  password: process.env.PGPASSWORD,
+  port: process.env.PGPORT,
+});
+
+async function getData() {
+    const result = await pool.query('SELECT * FROM data_table'); //Example Query
+    return result.rows;
+}
+
+// Add other database functions here (CRUD operations)
+
+
+module.exports = {
+    getData,
+    // ...other functions
+};
+```
