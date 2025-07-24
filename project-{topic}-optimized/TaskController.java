@@ -30,9 +30,8 @@ public class TaskController {
     }
 
     @PostMapping
-    public ResponseEntity<Task> createTask(@RequestBody Task task) {
-        Task createdTask = taskRepository.save(task);
-        return new ResponseEntity<>(createdTask, HttpStatus.CREATED);
+    public Task createTask(@RequestBody Task task) {
+        return taskRepository.save(task);
     }
 
     @PutMapping("/{id}")
@@ -43,8 +42,8 @@ public class TaskController {
             task.setTitle(updatedTask.getTitle());
             task.setDescription(updatedTask.getDescription());
             task.setCompleted(updatedTask.isCompleted());
-            Task updated = taskRepository.save(task);
-            return ResponseEntity.ok(updated);
+            taskRepository.save(task);
+            return ResponseEntity.ok(task);
         } else {
             return ResponseEntity.notFound().build();
         }
