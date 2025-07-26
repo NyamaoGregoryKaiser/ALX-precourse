@@ -1,12 +1,10 @@
-FROM g++:latest
+FROM python:3.9-slim-buster
 
 WORKDIR /app
 
-COPY src/* .
-COPY database/* .
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN g++ src/main.cpp src/task_manager.cpp -o task_manager -lsqlite3
+COPY . .
 
-EXPOSE 8080  // Placeholder port - Adjust based on your application
-
-CMD ["./task_manager"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]

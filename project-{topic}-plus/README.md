@@ -1,23 +1,37 @@
-# Task Management System
+# Simple Task Manager API
 
-This project implements a simple task management system using C++ for the backend and a placeholder for a frontend (you'll need to implement this).
+This project implements a simple task manager API with a Python backend (Flask), PostgreSQL database, and Dockerized deployment.
 
-## Dependencies
+## Features
 
-* [List your C++ dependencies here, if any.  Example:  SQLite (for database)]
+* CRUD operations for tasks
+* User authentication
+* Basic error handling
+* Dockerized for easy deployment
+* CI/CD pipeline with GitHub Actions
 
 ## Setup
 
-1.  Clone the repository.
-2.  Install dependencies (if any).
-3.  Configure the database (see `database/schema.sql`).
-4.  Run the application.  (Instructions specific to your application setup.)
-5.  (You would add instructions for building a frontend and connecting it here.)
+1. Clone the repository: `git clone <repository_url>`
+2. Create a PostgreSQL database.
+3. Update `.env` with database credentials.
+4. Install dependencies: `pip install -r requirements.txt`
+5. Run migrations: `alembic upgrade head`
+6. Run the application: `docker-compose up`
+
 
 ## API Documentation
 
-**(To be added - this section should be populated with API endpoint documentation once the backend is developed.)**
+**(This section needs to be populated with Swagger/OpenAPI specifications or similar.)**
+
+* `/tasks`:  GET, POST
+* `/tasks/{id}`: GET, PUT, DELETE
 
 ## Architecture
 
-**(To be added -  A diagram or description of the system architecture should be included here.)**
+**(Include a diagram or description of the system architecture.)**
+
+## Deployment
+
+1. Push code changes to GitHub.
+2. GitHub Actions will build and deploy the Docker image.

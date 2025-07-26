@@ -1,0 +1,24 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Build Docker image
+        run: docker build -t task-manager-api .
+      - name: Push Docker image to registry (replace with your registry)
+        run: docker push <your-docker-registry>/task-manager-api
+      - name: Deploy (example - you'll need to adapt this to your deployment method)
+        run: echo "Deployment script would go here"
