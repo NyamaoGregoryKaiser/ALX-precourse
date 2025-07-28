@@ -1,30 +1,41 @@
 ```json
 {
-  "name": "ecommerce-app",
+  "name": "task-management",
   "version": "1.0.0",
-  "description": "A simple e-commerce application",
+  "description": "Task Management System",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "jest",
-    "migrate": "node migrations/migrate.js"
+    "migrate": "typeorm migration:run",
+    "migrate:generate": "typeorm migration:generate -n",
+    "seed": "typeorm seed:run"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
-    "bcrypt": "^5.1.0",
-    "pg": "^8.11.0", // PostgreSQL driver
-    "body-parser": "^1.20.2"
+    "pg": "^8.11.0",
+    "reflect-metadata": "^0.1.13",
+    "typeorm": "^0.3.11"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.3",
+    "@types/cors": "^2.8.12",
     "@types/express": "^4.17.17",
-    "@types/jest": "^29.5.1",
-    "jest": "^29.5.0",
-    "nodemon": "^3.0.1",
+    "@types/jsonwebtoken": "^9.0.1",
+    "@types/node": "^20.2.5",
+    "@types/pg": "^8.6.6",
+    "jest": "^29.4.3",
+    "nodemon": "^2.0.22",
+    "@types/supertest": "^2.0.12",
+    "supertest": "^6.3.3",
+    "ts-jest": "^29.0.5",
     "ts-node": "^10.9.1",
-    "typescript": "^5.1.3"
+    "typescript": "^5.0.2"
   }
 }
 ```
