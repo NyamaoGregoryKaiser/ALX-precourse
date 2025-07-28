@@ -1,0 +1,7 @@
+Flask
+psycopg2-binary
+alembic
+python-dotenv
+pytest
+coverage
+requests  # For API testing
