@@ -1,12 +1,14 @@
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(chat_server)
+project(CMS)
 
-# Find and link necessary libraries (websocketpp and your database library)
-find_package(Threads REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(WEBSOCKETPP REQUIRED websocketpp)
+# Add your include directories here if necessary
+# include_directories(${CMAKE_SOURCE_DIR}/include)
 
-add_executable(chat_server server.cpp)
-target_link_libraries(chat_server ${WEBSOCKETPP_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+add_executable(cms main.cpp)
+
+# Link against libraries here as needed
+# target_link_libraries(cms SQLite3)  //Example with SQLite
+
+
 ```

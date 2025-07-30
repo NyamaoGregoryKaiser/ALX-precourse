@@ -1,17 +1,16 @@
 ```dockerfile
-FROM python:3.9-slim-buster
+FROM ubuntu:latest
+
+# Install dependencies (replace with your actual dependencies)
+RUN apt-get update && apt-get install -y build-essential cmake g++
 
 WORKDIR /app
 
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY CMakeLists.txt .
+COPY main.cpp .
 
-COPY . .
+RUN cmake .
+RUN make
 
-ENV DATABASE_URL postgresql://user:password@db:5432/mydb
-ENV SECRET_KEY your_secret_key
-
-EXPOSE 5000
-
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["./cms"]
 ```
