@@ -1,0 +1,22 @@
+```javascript
+const db = require('./db');
+
+async function migrate() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL
+      );
+    `);
+    console.log('Migration successful!');
+  } catch (error) {
+    console.error('Migration failed:', error);
+  } finally {
+    db.end();
+  }
+}
+
+migrate();
+```
