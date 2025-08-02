@@ -1,0 +1,3 @@
+```javascript
+// ...Seed data insertion using pool.query()...
+```
