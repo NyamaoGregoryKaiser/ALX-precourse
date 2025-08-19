@@ -1,4 +1,5 @@
 ```javascript
+// knexfile.js
 module.exports = {
   development: {
     client: 'pg',
@@ -9,7 +10,6 @@ module.exports = {
     seeds: {
       directory: './seeds'
     }
-  },
-  // Add production and test configurations here
+  }
 };
 ```
