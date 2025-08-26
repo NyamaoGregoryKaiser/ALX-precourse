@@ -1,78 +1,91 @@
+```python
 import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-import pandas as pd
+from sqlalchemy import text
+from marshmallow import Schema, fields
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # Database Model
-class Sentiment(db.Model):
+class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    text = db.Column(db.Text, nullable=False)
-    sentiment = db.Column(db.String(10), nullable=False)  # Positive, Negative, Neutral
+    name = db.Column(db.String(100), nullable=False, index=True) #index for faster lookups
+    description = db.Column(db.Text)
+    price = db.Column(db.Float, nullable=False)
 
     def __repr__(self):
-        return f'<Sentiment {self.text}>'
+        return f"<Product {self.name}>"
 
 
-# Machine Learning Pipeline
-model = Pipeline([
-    ('tfidf', TfidfVectorizer()),
-    ('clf', LogisticRegression())
-])
+# Marshmallow Schema for serialization/deserialization
+class ProductSchema(Schema):
+    id = fields.Integer(dump_only=True)
+    name = fields.String(required=True)
+    description = fields.String(required=True)
+    price = fields.Float(required=True)
 
 
-# Load data and train (replace with more robust training process)
-def train_model():
-    try:
-        df = pd.read_csv('data/sentiment_data.csv') # Assume CSV with 'text' and 'sentiment' columns
-        model.fit(df['text'], df['sentiment'])
-        print("Model trained successfully")
-        return True
-    except FileNotFoundError:
-        print("Sentiment data not found. Ensure data/sentiment_data.csv exists")
-        return False
-    except Exception as e:
-        print(f"Error during model training: {e}")
-        return False
+#API Endpoints
 
+@app.route('/products', methods=['GET'])
+def get_products():
+    products = Product.query.all()
+    result = ProductSchema(many=True).dump(products)
+    return jsonify(result)
 
-# API Endpoints
+@app.route('/products/<int:product_id>', methods=['GET'])
+def get_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    result = ProductSchema().dump(product)
+    return jsonify(result)
 
-@app.route('/api/sentiment', methods=['POST'])
-def predict_sentiment():
-    try:
-        data = request.get_json()
-        text = data.get('text')
-        if not text:
-            return jsonify({'error': 'Text is required'}), 400
+@app.route('/products', methods=['POST'])
+def create_product():
+    data = request.get_json()
+    schema = ProductSchema()
+    errors = schema.validate(data)
+    if errors:
+        return jsonify(errors), 400
+    new_product = Product(**data)
+    db.session.add(new_product)
+    db.session.commit()
+    return jsonify(schema.dump(new_product)), 201
 
-        prediction = model.predict([text])[0]
-        return jsonify({'sentiment': prediction}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+@app.route('/products/<int:product_id>', methods=['PUT'])
+def update_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    data = request.get_json()
+    schema = ProductSchema()
+    errors = schema.validate(data)
+    if errors:
+        return jsonify(errors), 400
+    for key, value in data.items():
+        setattr(product, key, value)
+    db.session.commit()
+    return jsonify(schema.dump(product))
 
+@app.route('/products/<int:product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    db.session.delete(product)
+    db.session.commit()
+    return jsonify({'message': 'Product deleted'})
 
-@app.route('/api/sentiment', methods=['GET']) #Example GET endpoint for all sentiment data (consider pagination)
-def get_sentiments():
-    sentiments = Sentiment.query.all()
-    results = [{'id': s.id, 'text': s.text, 'sentiment': s.sentiment} for s in sentiments]
-    return jsonify(results)
-
+#Example of a query optimization (using raw SQL for illustration)
+@app.route('/products/optimized', methods=['GET'])
+def get_products_optimized():
+    #Simulate a complex query needing optimization - replace with your actual query
+    result = db.session.execute(text("SELECT * FROM product WHERE price > 100")).fetchall() #Add indexes as needed
+    return jsonify([dict(row) for row in result]) #Convert to jsonify-able format
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()  # Create database tables
-        if train_model():
-            app.run(debug=True, host='0.0.0.0', port=5000)
-        else:
-            print("Application failed to initialize. Check model training.")
+    db.create_all()
+    app.run(debug=True)
+```
