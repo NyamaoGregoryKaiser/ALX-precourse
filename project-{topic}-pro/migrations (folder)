@@ -1,0 +1,1 @@
+This folder would contain the migration scripts generated using `flask db migrate` and `flask db upgrade`.
