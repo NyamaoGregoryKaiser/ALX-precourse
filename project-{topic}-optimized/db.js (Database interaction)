@@ -1,0 +1,20 @@
+```javascript
+const Pool = require('pg').Pool;
+
+const pool = new Pool({
+  //Your Database connection string here (from environment variables)
+  connectionString: process.env.DATABASE_URL
+});
+
+async function getUsers() {
+  const result = await pool.query('SELECT * FROM users');
+  return result.rows;
+}
+
+// ... other database functions (CRUD operations) ...
+
+module.exports = {
+  getUsers,
+  // ... other functions ...
+};
+```

@@ -1,31 +1,30 @@
 ```json
 {
-  "name": "alx-api",
+  "name": "devops-automation-example",
   "version": "1.0.0",
-  "description": "ALX API Project",
+  "description": "Example DevOps Automation Project",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "migrate": "knex migrate:latest",
-    "seed": "knex seed:run",
-    "test": "jest"
+    "test": "jest",
+    "migrate": "node ./migrations/migrate.js" //Example migration script runner.
   },
   "dependencies": {
-    "body-parser": "^1.20.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "express-async-handler": "^1.2.0",
-    "jsonwebtoken": "^9.0.1",
-    "pg": "^8.11.2"
+    "pg": "^8.11.0",
+    "bcrypt": "^5.1.0", // For password hashing
+    "jsonwebtoken": "^9.0.0", // For JWT authentication
+    "express-rate-limit": "^6.7.0", //For rate limiting
+    "redis": "^4.6.4" //For caching (optional)
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "knex": "^2.4.2",
+    "jest": "^29.6.2",
     "nodemon": "^3.0.1",
-    "pg-hstore": "^2.3.4",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3", // For API testing
+    "@types/express": "^4.17.17",
+    "@types/jest": "^29.5.1",
+    "@types/supertest": "^2.0.12"
   }
 }
 ```

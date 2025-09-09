@@ -1,37 +1,42 @@
 ```javascript
 const express = require('express');
-const bodyParser = require('body-parser');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const morgan = require('morgan');
-require('dotenv').config();
-
-const postRoutes = require('./routes/posts');
-const userRoutes = require('./routes/users');
-
-
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
+const db = require('./db'); // Database connection
+const authMiddleware = require('./authMiddleware'); // Authentication middleware
+const rateLimit = require('express-rate-limit');
 
-// Database connection (replace with your MongoDB connection string)
-mongoose.connect(process.env.DATABASE_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('Error connecting to MongoDB:', err));
+// Rate limiting middleware
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
 
-app.use(cors());
-app.use(bodyParser.json());
-app.use(morgan('dev'));
+app.use(limiter);
+app.use(express.json());
+
+//Example Route:
+app.get('/api/users', authMiddleware, async (req, res) => {
+  try {
+    const users = await db.getUsers();
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
 
 
-app.use('/api/posts', postRoutes);
-app.use('/api/users', userRoutes);
-
+// ... other API endpoints (CRUD operations) ...
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
+
+//Error Handling Middleware (Example)
+app.use((err, req, res, next) => {
+    console.error(err.stack)
+    res.status(500).send('Something broke!')
+})
 
 ```
