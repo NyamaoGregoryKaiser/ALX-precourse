@@ -1,0 +1,5 @@
+```cpp
+#include "api.h"
+// ... (Implementation using a web framework like Crow, etc.) ...
+// This would include API endpoints for CRUD operations on scraped data.
+```
