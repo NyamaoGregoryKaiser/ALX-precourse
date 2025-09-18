@@ -1,30 +1,30 @@
 ```json
 {
-  "name": "db-optimizer",
+  "name": "mobile-app-backend",
   "version": "1.0.0",
-  "description": "Database Optimization System",
+  "description": "Backend for mobile application",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "jest",
-    "migrate": "node migrate.js",
-    "seed": "node seed.js"
+    "test": "mocha",
+    "migrate": "sequelize-cli db:migrate",
+    "seed": "sequelize-cli db:seed:all"
   },
   "dependencies": {
-    "body-parser": "^1.20.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "express-validator": "^7.0.1",
-    "jsonwebtoken": "^9.0.1",
-    "pg": "^8.11.2",
-    "pg-hstore": "^2.3.4" // For potentially storing optimized query plans
+    "sequelize": "^6.26.0",
+    "pg": "^8.11.0",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "body-parser": "^1.20.2",
+    "express-rate-limit": "^6.7.0",
+    "helmet": "^7.0.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "nodemon": "^3.0.1",
-    "supertest": "^6.3.3"
+    "mocha": "^10.2.0",
+    "chai": "^4.3.7",
+    "sequelize-cli": "^6.6.1",
+    "nodemon": "^3.0.1" //For development
   }
 }
 ```

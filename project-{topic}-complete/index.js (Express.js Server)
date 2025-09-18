@@ -1,0 +1,37 @@
+```javascript
+const express = require('express');
+const bodyParser = require('body-parser');
+const sequelize = require('./models').sequelize; // Sequelize setup (see models file)
+const routes = require('./routes'); // API routes
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+
+
+const app = express();
+app.use(helmet()); //Security Headers
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+})
+
+app.use(limiter); //Apply Rate Limiting
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use('/api', routes);
+
+sequelize.sync()
+  .then(() => {
+    console.log('Database synced successfully');
+    app.listen(process.env.PORT || 3000, () => {
+      console.log('Server started on port 3000');
+    });
+  })
+  .catch(err => {
+    console.error('Error syncing database:', err);
+  });
+
+```

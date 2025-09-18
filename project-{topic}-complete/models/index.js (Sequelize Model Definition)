@@ -1,0 +1,17 @@
+```javascript
+const Sequelize = require('sequelize');
+const config = require('../config/config.json'); //Database Config
+
+const env = process.env.NODE_ENV || 'development';
+const sequelize = new Sequelize(config[env].database, config[env].username, config[env].password, config[env]);
+
+const db = {};
+
+db.Sequelize = Sequelize;
+db.sequelize = sequelize;
+
+//Define your models here (e.g., User, Product)
+db.User = require('./user')(sequelize, Sequelize); //Example User model
+
+module.exports = db;
+```
