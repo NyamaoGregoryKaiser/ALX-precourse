@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple API Frontend</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+  <h1>Users</h1>
+  <ul id="users"></ul>
+
+  <script>
+    axios.get('/users')
+      .then(response => {
+        const usersList = document.getElementById('users');
+        response.data.forEach(user => {
+          const li = document.createElement('li');
+          li.textContent = `${user.username} - ${user.email}`;
+          usersList.appendChild(li);
+        });
+      })
+      .catch(error => console.error(error));
+  </script>
+</body>
+</html>

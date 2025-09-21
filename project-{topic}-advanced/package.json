@@ -1,27 +1,14 @@
-```json
 {
-  "name": "e-commerce-alx",
+  "name": "frontend",
   "version": "1.0.0",
-  "description": "E-commerce system built for ALX precourse",
-  "main": "index.js",
+  "description": "Frontend for simple API",
+  "main": "index.html",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "jest",
-    "migrate": "node migrations.js"
+    "start": "python -m http.server"
   },
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.0",
-    "bcrypt": "^5.1.0",
-    "pg": "^8.11.0", // PostgreSQL driver
-    "body-parser": "^1.20.2",
-    "redis": "^4.6.5" // for caching
-  },
-  "devDependencies": {
-    "jest": "^29.6.2",
-    "nodemon": "^3.0.1",
-    "supertest": "^6.3.3"
+    "axios": "^1.4.0"
   }
 }
-```
