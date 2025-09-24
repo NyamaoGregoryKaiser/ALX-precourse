@@ -1,10 +1,15 @@
-FROM python:3.9-slim-buster
+```dockerfile
+FROM node:18
 
 WORKDIR /app
 
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY package*.json ./
+
+RUN npm install
 
 COPY . .
 
-CMD ["python", "app.py"]
+EXPOSE 3001
+
+CMD ["npm", "start"]
+```
