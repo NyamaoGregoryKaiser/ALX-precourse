@@ -1,0 +1,9 @@
+```json
+{
+  "users": [
+    { "email": "test@example.com", "password": "testpassword" },
+    { "email": "user2@example.com", "password": "password123" }
+    // Add more pre-registered users here for load testing
+  ]
+}
+```

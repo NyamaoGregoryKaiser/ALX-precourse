@@ -1,0 +1,762 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: DataVizPro API
+  description: API documentation for the DataVizPro data visualization platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api
+    description: Development Server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+        username:
+          type: string
+          example: "testuser"
+        email:
+          type: string
+          format: email
+          example: "test@example.com"
+        role:
+          type: string
+          enum: [ "USER", "ADMIN" ]
+          example: "USER"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2023-10-26T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-10-26T10:00:00Z"
+    DataSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-f5a6-7890-1234-567890abcdef"
+        name:
+          type: string
+          example: "Monthly Sales Report"
+        description:
+          type: string
+          nullable: true
+          example: "CSV upload of monthly sales data."
+        type:
+          type: string
+          enum: [ "csv", "database" ]
+          example: "csv"
+        configuration:
+          type: object
+          nullable: true
+          example: { "filePath": "/app/data_uploads/user_123_sales.csv" }
+        userId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "c1d2e3f4-a5b6-7890-1234-567890abcdef"
+        name:
+          type: string
+          example: "Executive Sales Dashboard"
+        description:
+          type: string
+          nullable: true
+          example: "Overview of sales performance for executives."
+        userId:
+          type: string
+          format: uuid
+        charts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chart'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Chart:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d1e2f3a4-b5c6-7890-1234-567890abcdef"
+        name:
+          type: string
+          example: "Sales by Product Line"
+        description:
+          type: string
+          nullable: true
+          example: "Bar chart showing sales revenue by product line."
+        type:
+          type: string
+          enum: [ "bar", "line", "pie", "scatterplot" ]
+          example: "bar"
+        configuration:
+          type: object
+          example: { "xAxis": "product_line", "yAxis": "revenue" }
+        userId:
+          type: string
+          format: uuid
+        dashboardId:
+          type: string
+          format: uuid
+        dataSourceId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ "error", "fail" ]
+        message:
+          type: string
+        stack:
+          type: string
+          nullable: true
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [ "Auth" ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "username", "email", "password" ]
+              properties:
+                username: { type: string, example: "newuser" }
+                email: { type: string, format: email, example: "new@example.com" }
+                password: { type: string, example: "SecurePass123" }
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/User' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        409: { description: "Conflict: User with this email already exists" }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /auth/login:
+    post:
+      summary: Log in a user
+      tags: [ "Auth" ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "email", "password" ]
+              properties:
+                email: { type: string, format: email, example: "test@example.com" }
+                password: { type: string, example: "testpassword" }
+      responses:
+        200:
+          description: User logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: object
+                    properties:
+                      accessToken: { type: string, example: "eyJhbGciOiJIUzI1Ni..." }
+                      refreshToken: { type: string, example: "eyJhbGciOiJIUzI1Ni..." }
+                      user: { $ref: '#/components/schemas/User' }
+        401: { description: "Unauthorized: Invalid credentials" }
+        400: { $ref: '#/components/responses/BadRequest' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /auth/refresh-token:
+    post:
+      summary: Refresh an access token
+      tags: [ "Auth" ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "refreshToken" ]
+              properties:
+                refreshToken: { type: string, example: "eyJhbGciOiJIUzI1Ni..." }
+      responses:
+        200:
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: object
+                    properties:
+                      accessToken: { type: string, example: "eyJhbGciOiJIUzI1Ni..." }
+                      refreshToken: { type: string, example: "eyJhbGciOiJIUzI1Ni..." } # new refresh token (optional rotation)
+        401: { description: "Unauthorized: Invalid or expired refresh token" }
+        400: { $ref: '#/components/responses/BadRequest' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /auth/me:
+    get:
+      summary: Get authenticated user's profile
+      tags: [ "Auth" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/User' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /data-sources:
+    get:
+      summary: Get all data sources for the authenticated user
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of data sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DataSource'
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+    post:
+      summary: Create a new data source
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "name", "type" ]
+              properties:
+                name: { type: string, example: "New Data Source" }
+                type: { type: string, enum: ["csv", "database"], example: "csv" }
+                description: { type: string, nullable: true }
+                configuration: { type: object, nullable: true, example: { "connectionString": "..." } }
+      responses:
+        201:
+          description: Data source created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/DataSource' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /data-sources/upload-csv:
+    post:
+      summary: Upload a CSV file as a new data source
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [ "name", "file" ]
+              properties:
+                name: { type: string, example: "Uploaded Sales CSV" }
+                description: { type: string, nullable: true, example: "Sales data for Q4" }
+                file:
+                  type: string
+                  format: binary
+                  description: The CSV file to upload.
+      responses:
+        201:
+          description: CSV data source created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/DataSource' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /data-sources/{id}:
+    parameters:
+      - in: path
+        name: id
+        schema: { type: string, format: uuid }
+        required: true
+        description: ID of the data source
+    get:
+      summary: Get a data source by ID
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Data source details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/DataSource' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    put:
+      summary: Update a data source by ID
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, example: "Updated Sales Report" }
+                description: { type: string, nullable: true }
+                configuration: { type: object, nullable: true }
+      responses:
+        200:
+          description: Data source updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/DataSource' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    delete:
+      summary: Delete a data source by ID
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      responses:
+        204: { description: "No Content: Data source deleted" }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /data-sources/{id}/data:
+    parameters:
+      - in: path
+        name: id
+        schema: { type: string, format: uuid }
+        required: true
+        description: ID of the data source
+    get:
+      summary: Get processed raw data from a data source
+      tags: [ "Data Sources" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Raw data from the data source
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: array
+                    items:
+                      type: object # Dynamic schema based on data source content
+                      example: { "column1": "value1", "column2": 123 }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /dashboards:
+    get:
+      summary: Get all dashboards for the authenticated user
+      tags: [ "Dashboards" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of dashboards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dashboard'
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+    post:
+      summary: Create a new dashboard
+      tags: [ "Dashboards" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "name" ]
+              properties:
+                name: { type: string, example: "My New Dashboard" }
+                description: { type: string, nullable: true }
+      responses:
+        201:
+          description: Dashboard created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Dashboard' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /dashboards/{id}:
+    parameters:
+      - in: path
+        name: id
+        schema: { type: string, format: uuid }
+        required: true
+        description: ID of the dashboard
+    get:
+      summary: Get a dashboard by ID
+      tags: [ "Dashboards" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Dashboard details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Dashboard' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    put:
+      summary: Update a dashboard by ID
+      tags: [ "Dashboards" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, example: "Renamed Dashboard" }
+                description: { type: string, nullable: true }
+      responses:
+        200:
+          description: Dashboard updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Dashboard' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    delete:
+      summary: Delete a dashboard by ID
+      tags: [ "Dashboards" ]
+      security:
+        - bearerAuth: []
+      responses:
+        204: { description: "No Content: Dashboard deleted" }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /charts:
+    get:
+      summary: Get all charts for the authenticated user
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of charts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Chart'
+        401: { $ref: '#/components/responses/Unauthorized' }
+        500: { $ref: '#/components/responses/ServerError' }
+    post:
+      summary: Create a new chart
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ "name", "type", "dashboardId", "dataSourceId", "configuration" ]
+              properties:
+                name: { type: string, example: "New Bar Chart" }
+                description: { type: string, nullable: true }
+                type: { type: string, enum: ["bar", "line", "pie", "scatterplot"], example: "bar" }
+                dashboardId: { type: string, format: uuid, example: "c1d2e3f4-a5b6-7890-1234-567890abcdef" }
+                dataSourceId: { type: string, format: uuid, example: "b1c2d3e4-f5a6-7890-1234-567890abcdef" }
+                configuration:
+                  type: object
+                  example: { "xAxis": "category", "yAxis": "value" }
+      responses:
+        201:
+          description: Chart created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Chart' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        404: { description: "Not Found: Dashboard or DataSource not found or not owned by user" }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /charts/{id}:
+    parameters:
+      - in: path
+        name: id
+        schema: { type: string, format: uuid }
+        required: true
+        description: ID of the chart
+    get:
+      summary: Get a chart by ID
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Chart details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Chart' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    put:
+      summary: Update a chart by ID
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, example: "Updated Bar Chart" }
+                description: { type: string, nullable: true }
+                type: { type: string, enum: ["bar", "line", "pie", "scatterplot"], example: "line" }
+                dashboardId: { type: string, format: uuid, example: "c1d2e3f4-a5b6-7890-1234-567890abcdef" }
+                dataSourceId: { type: string, format: uuid, example: "b1c2d3e4-f5a6-7890-1234-567890abcdef" }
+                configuration:
+                  type: object
+                  example: { "xAxis": "date", "yAxis": "sales" }
+      responses:
+        200:
+          description: Chart updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data: { $ref: '#/components/schemas/Chart' }
+        400: { $ref: '#/components/responses/BadRequest' }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+    delete:
+      summary: Delete a chart by ID
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      responses:
+        204: { description: "No Content: Chart deleted" }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  /charts/{id}/data:
+    parameters:
+      - in: path
+        name: id
+        schema: { type: string, format: uuid }
+        required: true
+        description: ID of the chart
+    get:
+      summary: Get processed data for a specific chart
+      tags: [ "Charts" ]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Processed data for the chart, ready for visualization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "success" }
+                  data:
+                    type: array
+                    items:
+                      type: object # Dynamic schema based on chart type and data
+                      example: { "category": "A", "value": 100 }
+        401: { $ref: '#/components/responses/Unauthorized' }
+        403: { $ref: '#/components/responses/Forbidden' }
+        404: { $ref: '#/components/responses/NotFound' }
+        500: { $ref: '#/components/responses/ServerError' }
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Authentication required or token invalid/expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "fail", message: "Unauthorized: No token provided" }
+    Forbidden:
+      description: Forbidden - User does not have necessary permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "fail", message: "Forbidden: You do not own this resource." }
+    NotFound:
+      description: Not Found - The requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "fail", message: "Resource not found." }
+    BadRequest:
+      description: Bad Request - Invalid input data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "fail", message: "Validation error: 'email' must be a valid email" }
+    ServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "error", message: "Something went wrong!" }
+```
