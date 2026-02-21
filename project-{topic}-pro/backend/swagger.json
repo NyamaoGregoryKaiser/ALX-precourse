@@ -1,0 +1,773 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ML-Utilities-Pro Backend API",
+    "version": "1.0.0",
+    "description": "API documentation for the Machine Learning Utilities system. Provides endpoints for user management, project management, and various ML utility tasks like data preprocessing and model evaluation."
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "User authentication and registration"
+    },
+    {
+      "name": "Users",
+      "description": "User management operations"
+    },
+    {
+      "name": "Projects",
+      "description": "ML project management"
+    },
+    {
+      "name": "ML Tasks",
+      "description": "Execution and management of ML utility tasks"
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a new user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or user already exists"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get current user's profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["Projects"],
+        "summary": "Get all projects for the authenticated user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Projects"],
+        "summary": "Create a new project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{id}": {
+      "get": {
+        "tags": ["Projects"],
+        "summary": "Get a project by ID",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project to retrieve"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Projects"],
+        "summary": "Update a project by ID",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Projects"],
+        "summary": "Delete a project by ID",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project to delete"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Project deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/ml-tasks": {
+      "get": {
+        "tags": ["ML Tasks"],
+        "summary": "Get all ML tasks for a specific project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of ML tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MLTask"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "post": {
+        "tags": ["ML Tasks"],
+        "summary": "Create and execute a new ML task within a project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMLTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ML task created and executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or ML task type/parameters"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/ml-tasks/{taskId}": {
+      "get": {
+        "tags": ["ML Tasks"],
+        "summary": "Get a specific ML task by ID within a project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project"
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the ML task to retrieve"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ML task retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLTask"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project or ML task not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["ML Tasks"],
+        "summary": "Delete a specific ML task by ID within a project",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project"
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the ML task to delete"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "ML task deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden (not project owner)"
+          },
+          "404": {
+            "description": "Project or ML task not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "johndoe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john.doe@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "StrongPass123!"
+          }
+        },
+        "required": ["username", "email", "password"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john.doe@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "StrongPass123!"
+          }
+        },
+        "required": ["email", "password"]
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT authentication token"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+          },
+          "username": {
+            "type": "string",
+            "example": "johndoe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john.doe@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["user", "admin"],
+            "example": "user"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "My First ML Project"
+          },
+          "description": {
+            "type": "string",
+            "example": "A project to experiment with data preprocessing."
+          }
+        },
+        "required": ["name"]
+      },
+      "UpdateProjectRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Updated ML Project Name"
+          },
+          "description": {
+            "type": "string",
+            "example": "Revised description for the project."
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "prj-a1b2c3d4-e5f6-7890-1234-567890abcdef"
+          },
+          "name": {
+            "type": "string",
+            "example": "My First ML Project"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "example": "A project to experiment with data preprocessing."
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "usr-a1b2c3d4-e5f6-7890-1234-567890abcdef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MLTaskType": {
+        "type": "string",
+        "enum": [
+          "min_max_scaling", "standardization", "one_hot_encoding", "label_encoding",
+          "missing_value_imputation", "accuracy_score", "precision_score",
+          "recall_score", "f1_score", "mse", "rmse", "mae"
+        ],
+        "description": "Type of ML utility task to perform"
+      },
+      "CreateMLTaskRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/MLTaskType"
+          },
+          "inputData": {
+            "type": "object",
+            "description": "JSON object representing the input data. Format depends on task type. For scaling/encoding, usually an array of objects/arrays. For metrics, {y_true: [], y_pred: []}.",
+            "example": {
+              "data": [
+                { "feature1": 10, "feature2": "A" },
+                { "feature1": 20, "feature2": "B" },
+                { "feature1": 30, "feature2": "A" }
+              ]
+            }
+          },
+          "parameters": {
+            "type": "object",
+            "description": "JSON object representing parameters for the task. Format depends on task type. E.g., {column: 'feature1'} for scaling, {column: 'feature2'} for encoding.",
+            "example": {
+              "column": "feature1",
+              "strategy": "mean"
+            }
+          }
+        },
+        "required": ["type", "inputData"]
+      },
+      "MLTaskStatus": {
+        "type": "string",
+        "enum": ["pending", "completed", "failed"],
+        "example": "completed"
+      },
+      "MLTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "tsk-a1b2c3d4-e5f6-7890-1234-567890abcdef"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "prj-a1b2c3d4-e5f6-7890-1234-567890abcdef"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MLTaskType"
+          },
+          "inputData": {
+            "type": "object",
+            "description": "The input data provided for the task.",
+            "example": {
+              "data": [
+                { "feature1": 10, "feature2": "A" },
+                { "feature1": 20, "feature2": "B" },
+                { "feature1": 30, "feature2": "A" }
+              ]
+            }
+          },
+          "parameters": {
+            "type": "object",
+            "description": "The parameters used for the task.",
+            "example": {
+              "column": "feature1"
+            }
+          },
+          "outputData": {
+            "type": "object",
+            "description": "The results of the ML utility task. Format depends on task type.",
+            "example": {
+              "scaled_data": [
+                { "feature1": 0, "feature2": "A" },
+                { "feature1": 0.5, "feature2": "B" },
+                { "feature1": 1, "feature2": "A" }
+              ]
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/MLTaskStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}
