@@ -1,0 +1,90 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven and run tests
+        run: mvn clean install
+
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+
+  build-and-push-docker:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' # Only push to Docker Hub on main branch pushes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build Maven Package (JAR)
+        run: mvn clean package -DskipTests
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: your-dockerhub-username/chat-app:latest, your-dockerhub-username/chat-app:${{ github.sha }}
+          build-args: |
+            JAR_FILE=target/chat-app-0.0.1-SNAPSHOT.jar # Ensure this matches your project artifact name
+
+  deploy:
+    needs: build-and-push-docker
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest # Or a self-hosted runner on your deployment server
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /path/to/your/chat-app-deployment
+            echo "Pulling latest Docker image..."
+            docker pull your-dockerhub-username/chat-app:latest
+            echo "Stopping existing containers..."
+            docker-compose down # Stop and remove old containers
+            echo "Starting new containers with latest image..."
+            docker-compose up -d --remove-orphans # Start with new image, remove any unmanaged containers
+            echo "Deployment complete."
+```

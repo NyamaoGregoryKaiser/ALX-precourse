@@ -1,0 +1,54 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALX Chat Room</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="chat-page" class="hidden">
+        <div class="header">
+            <h1 id="welcomeUser"></h1>
+            <button id="logoutButton">Logout</button>
+        </div>
+
+        <div class="chat-container">
+            <div class="room-list">
+                <h2>Your Rooms</h2>
+                <ul id="rooms">
+                    <!-- Rooms will be loaded here -->
+                </ul>
+                <h3>Create Room</h3>
+                <form id="createRoomForm">
+                    <input type="text" id="newRoomName" placeholder="New Room Name" required>
+                    <select id="newRoomType">
+                        <option value="PUBLIC">PUBLIC</option>
+                        <option value="PRIVATE">PRIVATE</option>
+                    </select>
+                    <button type="submit">Create</button>
+                </form>
+            </div>
+
+            <div class="chat-area">
+                <h2 id="currentRoomName">Select a Room</h2>
+                <ul id="messageArea">
+                    <!-- Messages will be loaded here -->
+                </ul>
+                <form id="messageForm" name="messageForm">
+                    <div class="form-group">
+                        <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" class="form-control" disabled/>
+                        <button type="submit" class="primary" disabled>Send</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
+    <script src="js/stomp.min.js"></script> <!-- Local stomp.min.js -->
+    <script src="js/app.js"></script>
+</body>
+</html>
+```

@@ -1,0 +1,54 @@
+```yaml
+server:
+  port: 8080
+
+spring:
+  application:
+    name: chat-app
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:chatdb}
+    username: ${DB_USERNAME:chatuser}
+    password: ${DB_PASSWORD:chatpass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Set to update for dev, validate or none for prod
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false # Set to true for debugging SQL queries
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  messages:
+    basename: messages # For i18n/localization, if needed
+  cache:
+    cache-names: users, chatRooms, messages
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s # Default cache settings
+
+# JWT Configuration
+app:
+  jwtSecret: ${JWT_SECRET:supersecretjwtkeythatisatleast256bitlongforsecuritypurposes}
+  jwtExpirationMs: 86400000 # 24 hours in milliseconds
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    org.hibernate: INFO
+    com.alx.chat: DEBUG # Set to DEBUG for more detailed application logs
+
+# Actuator Endpoints (Monitoring)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, caches
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+```

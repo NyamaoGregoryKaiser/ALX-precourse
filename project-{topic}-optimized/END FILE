@@ -1,12 +1,29 @@
-This is a VERY rudimentary example. A production-ready system needs:
+**Secrets Configuration for GitHub Actions**:
 
-* **Robust Authentication and Authorization:**  Using JWTs or OAuth 2.0.
-* **Secure Payment Gateway Integration:**  Stripe, PayPal, etc.  This is critical and requires specific API calls and security protocols.
-* **Error Handling and Logging:**  Comprehensive error handling and logging to track issues and ensure data integrity.
-* **Database Transactions:**  To ensure atomicity of operations (e.g., updating payment status and deducting funds).
-* **Asynchronous Tasks:**  For processing payments and sending notifications. (Celery or similar)
-* **Extensive Testing:**  Unit, integration, and end-to-end tests to cover all aspects of the system.
-* **Deployment and Monitoring:**  Using tools like Kubernetes, Docker Swarm, or AWS for deployment and monitoring.
+You need to configure the following secrets in your GitHub repository settings (`Settings -> Secrets and variables -> Actions`):
 
+*   `DOCKER_USERNAME`: Your Docker Hub username.
+*   `DOCKER_TOKEN`: A Docker Hub Personal Access Token (PAT) with push/pull permissions.
+*   `SSH_HOST`: The IP address or hostname of your deployment server.
+*   `SSH_USERNAME`: The SSH username for your deployment server.
+*   `SSH_KEY`: The private SSH key corresponding to a public key authorized on your deployment server. Use a deploy key if possible.
 
-Remember to replace placeholder values (like database credentials and secret keys) with your own.  This is a starting point, not a complete solution. Building a full-scale payment processing system requires significant time, effort, and expertise.  Consider using existing frameworks and services to simplify the development process.
+## 5. Monitoring and Logging
+
+*   **Monitoring**: Spring Boot Actuator exposes `/actuator/health`, `/actuator/info`, `/actuator/metrics`, and `/actuator/prometheus` (if `micrometer-registry-prometheus` is added to `pom.xml`).
+    *   Set up Prometheus to scrape metrics from `/actuator/prometheus`.
+    *   Use Grafana to visualize these metrics for CPU usage, memory, request rates, error rates, cache hit ratios, etc.
+*   **Logging**: Spring Boot uses Logback by default.
+    *   Configure Logback to write logs to files, and use a log aggregation tool (e.g., ELK Stack - Elasticsearch, Logstash, Kibana; or Splunk, Datadog) to centralize and analyze logs from all instances.
+    *   In `docker-compose.yml`, you can uncomment `volumes: - ./logs:/app/logs` to persist logs to the host machine. Docker's default `json-file` log driver can also be used by log aggregators.
+
+## 6. Maintenance
+
+*   **Regular Updates**: Keep your Spring Boot, Java, PostgreSQL, and other dependencies updated to receive security patches and new features.
+*   **Database Backups**: Implement a robust database backup strategy for PostgreSQL.
+*   **Monitoring Alerts**: Set up alerts in your monitoring system for critical metrics (e.g., high error rates, low disk space, high CPU usage).
+*   **Security Audits**: Regularly review your code and configuration for security vulnerabilities.
+*   **Cache Invalidation**: Monitor cache effectiveness and implement manual or scheduled cache invalidation if necessary.
+
+---
+```
