@@ -1,59 +1,59 @@
+```javascript
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('../swagger.json');
-
-const config = require('./config/config');
-const { applyRateLimiting } = require('./middleware/rateLimit');
-const { applyCacheMiddleware } = require('./middleware/cache');
-const errorMiddleware = require('./middleware/error');
-const requestLogger = require('./middleware/logger');
-const apiRoutes = require('./routes');
-const AppError = require('./utils/appError');
+const rateLimit = require('express-rate-limit');
+const config = require('./config');
+const routes = require('./api/routes');
+const { errorHandler } = require('./middleware/error');
 const logger = require('./utils/logger');
 
 const app = express();
 
-// Security Middleware
+// Set security HTTP headers
 app.use(helmet());
 
-// CORS Configuration
+// Enable CORS for all routes
 app.use(cors({
-  origin: config.frontendUrl, // Allow requests from your frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: config.corsOrigin, // Consider making this more restrictive in production
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   credentials: true,
 }));
 
-// Request body parsing
+// Rate limiting to prevent brute-force attacks
+const apiLimiter = rateLimit({
+  windowMs: config.rateLimitWindowMs, // 1 minute
+  max: config.rateLimitMaxRequests,   // Max 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again after a minute',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
+});
+app.use(apiLimiter);
+
+// Parse JSON request bodies
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Request logging
-app.use(requestLogger);
+// Logger middleware (optional, for every request)
+// app.use((req, res, next) => {
+//   logger.http(`${req.method} ${req.originalUrl}`);
+//   next();
+// });
 
-// Apply rate limiting (before caching, so malicious requests are limited)
-app.use(applyRateLimiting());
+// API routes
+app.use('/api/v1', routes);
 
-// Apply caching for GET requests (for specific routes, example below)
-// For a full system, you might apply this selectively to read-heavy, less-frequently-changing routes.
-// For now, let's keep it simple and apply to /projects GET.
-// This is an example; actual implementation might be per-route in controllers.
-app.use('/api/projects', applyCacheMiddleware());
-
-
-// API Routes
-app.use('/api', apiRoutes);
-
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-// Handle 404 - Not Found
-app.all('*', (req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
-// Centralized Error Handling Middleware
-app.use(errorMiddleware);
+// Catch-all for undefined routes
+app.use((req, res, next) => {
+  res.status(404).json({ message: 'Not Found', path: req.originalUrl });
+});
+
+// Global error handler middleware
+app.use(errorHandler);
 
 module.exports = app;
+```

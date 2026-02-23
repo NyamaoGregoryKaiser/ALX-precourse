@@ -1,143 +1,232 @@
+```javascript
 const request = require('supertest');
 const app = require('../../src/app');
-const { sequelize, User } = require('../../src/db/sequelize');
+const User = require('../../src/models/User');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const config = require('../../src/config');
 const bcrypt = require('bcryptjs');
 
-describe('Auth API', () => {
-  beforeAll(async () => {
-    // Ensure test database is clean before running tests
-    await sequelize.sync({ force: true });
-  });
+let mongoServer;
 
-  afterEach(async () => {
-    // Clean up User table after each test
-    await User.destroy({ truncate: true, cascade: true });
+describe('Auth Integration Tests', () => {
+  beforeAll(async () => {
+    mongoServer = await MongoMemoryServer.create();
+    const uri = mongoServer.getUri();
+    await mongoose.connect(uri);
   });
 
   afterAll(async () => {
-    await sequelize.close();
+    await mongoose.disconnect();
+    await mongoServer.stop();
   });
 
-  describe('POST /api/auth/register', () => {
-    it('should register a new user successfully with 201 status', async () => {
-      const userData = {
-        username: 'testuser',
-        email: 'test@example.com',
-        password: 'Password123!',
-      };
+  beforeEach(async () => {
+    await User.deleteMany({}); // Clear users before each test
+    // Create a base user for login tests
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    await User.create({
+      username: 'testuser',
+      email: 'test@example.com',
+      password: hashedPassword,
+      role: 'developer',
+    });
+  });
 
-      const res = await request(app).post('/api/auth/register').send(userData);
+  describe('POST /api/v1/auth/register', () => {
+    test('should register a new user and return a token', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'newuser',
+          email: 'new@example.com',
+          password: 'newpassword123',
+          role: 'developer'
+        });
 
       expect(res.statusCode).toEqual(201);
-      expect(res.body.status).toBe('success');
-      expect(res.body.token).toBeDefined();
-      expect(res.body.user).toBeDefined();
-      expect(res.body.user.username).toBe(userData.username);
-      expect(res.body.user.email).toBe(userData.email);
-      expect(res.body.user.role).toBe('user');
+      expect(res.body.success).toBe(true);
+      expect(res.body).toHaveProperty('token');
+      expect(res.body.user.email).toBe('new@example.com');
+      expect(res.body.user.username).toBe('newuser');
+      expect(res.body.user.role).toBe('developer');
 
-      // Verify user in database
-      const userInDb = await User.findOne({ where: { email: userData.email } });
-      expect(userInDb).not.toBeNull();
-      expect(userInDb.username).toBe(userData.username);
-      expect(await bcrypt.compare(userData.password, userInDb.passwordHash)).toBe(true);
+      const user = await User.findOne({ email: 'new@example.com' });
+      expect(user).toBeDefined();
+      expect(user.username).toBe('newuser');
     });
 
-    it('should return 400 if email already exists', async () => {
-      const userData = {
-        username: 'existinguser',
-        email: 'exists@example.com',
-        password: 'Password123!',
-      };
-      await User.create({
-        username: userData.username,
-        email: userData.email,
-        passwordHash: await bcrypt.hash(userData.password, 10),
-      });
-
-      const res = await request(app).post('/api/auth/register').send(userData);
+    test('should return 400 if required fields are missing', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'incomplete',
+          email: 'incomplete@example.com' // Missing password
+        });
 
       expect(res.statusCode).toEqual(400);
-      expect(res.body.status).toBe('fail');
-      expect(res.body.message).toContain('User with that email already exists.');
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Password is required');
     });
 
-    it('should return 400 for invalid input (e.g., weak password)', async () => {
-      const userData = {
-        username: 'invaliduser',
-        email: 'invalid@example.com',
-        password: 'short',
-      };
-
-      const res = await request(app).post('/api/auth/register').send(userData);
+    test('should return 400 if email is already registered', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'anotheruser',
+          email: 'test@example.com', // Existing email
+          password: 'anotherpassword'
+        });
 
       expect(res.statusCode).toEqual(400);
-      expect(res.body.status).toBe('fail');
-      expect(res.body.message).toContain('Password must contain at least one uppercase letter, one lowercase letter, one digit, one special character, and be at least 8 characters long.');
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Duplicate field value: \'email\' already exists');
+    });
+
+    test('should return 400 if username is already registered', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'testuser', // Existing username
+          email: 'unique@example.com',
+          password: 'anotherpassword'
+        });
+
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Duplicate field value: \'username\' already exists');
     });
   });
 
-  describe('POST /api/auth/login', () => {
-    let testUser;
-    const userPassword = 'Password123!';
-
-    beforeEach(async () => {
-      testUser = await User.create({
-        username: 'loginuser',
-        email: 'login@example.com',
-        passwordHash: userPassword, // Hashed by hook
-      });
-    });
-
-    it('should log in an existing user successfully with 200 status', async () => {
-      const credentials = {
-        email: testUser.email,
-        password: userPassword,
-      };
-
-      const res = await request(app).post('/api/auth/login').send(credentials);
+  describe('POST /api/v1/auth/login', () => {
+    test('should login a user and return a token', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'password123'
+        });
 
       expect(res.statusCode).toEqual(200);
-      expect(res.body.status).toBe('success');
-      expect(res.body.token).toBeDefined();
-      expect(res.body.user).toBeDefined();
-      expect(res.body.user.email).toBe(testUser.email);
+      expect(res.body.success).toBe(true);
+      expect(res.body).toHaveProperty('token');
+      expect(res.body.user.email).toBe('test@example.com');
     });
 
-    it('should return 401 for incorrect password', async () => {
-      const credentials = {
-        email: testUser.email,
-        password: 'wrongpassword',
-      };
-
-      const res = await request(app).post('/api/auth/login').send(credentials);
+    test('should return 401 for invalid credentials (wrong password)', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'wrongpassword'
+        });
 
       expect(res.statusCode).toEqual(401);
-      expect(res.body.status).toBe('fail');
-      expect(res.body.message).toBe('Incorrect email or password');
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Invalid credentials');
     });
 
-    it('should return 401 for non-existent email', async () => {
-      const credentials = {
-        email: 'nonexistent@example.com',
-        password: userPassword,
-      };
-
-      const res = await request(app).post('/api/auth/login').send(credentials);
+    test('should return 401 for invalid credentials (user not found)', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'nonexistent@example.com',
+          password: 'password123'
+        });
 
       expect(res.statusCode).toEqual(401);
-      expect(res.body.status).toBe('fail');
-      expect(res.body.message).toBe('Incorrect email or password');
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Invalid credentials');
     });
 
-    it('should return 400 for missing email or password', async () => {
-      const res1 = await request(app).post('/api/auth/login').send({ password: userPassword });
-      expect(res1.statusCode).toEqual(400);
-      expect(res1.body.message).toBe('Please provide email and password!');
+    test('should return 400 if email is missing', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          password: 'password123'
+        });
 
-      const res2 = await request(app).post('/api/auth/login').send({ email: testUser.email });
-      expect(res2.statusCode).toEqual(400);
-      expect(res2.body.message).toBe('Please provide email and password!');
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Email is required');
+    });
+
+    test('should return 400 if password is missing', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'test@example.com'
+        });
+
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Password is required');
+    });
+  });
+
+  describe('GET /api/v1/auth/me', () => {
+    let token;
+
+    beforeEach(async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'password123'
+        });
+      token = res.body.token;
+    });
+
+    test('should return logged in user data if token is valid', async () => {
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.email).toBe('test@example.com');
+      expect(res.body.data.username).toBe('testuser');
+      expect(res.body.data.password).toBeUndefined(); // Should not return password
+    });
+
+    test('should return 401 if no token is provided', async () => {
+      const res = await request(app)
+        .get('/api/v1/auth/me');
+
+      expect(res.statusCode).toEqual(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Not authorized to access this route');
+    });
+
+    test('should return 401 if token is invalid', async () => {
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', 'Bearer invalidtoken');
+
+      expect(res.statusCode).toEqual(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Not authorized, token failed');
+    });
+
+    test('should return 401 if token is expired', async () => {
+      // Temporarily set a very short expiry for testing
+      const originalJwtExpiresIn = config.jwtExpiresIn;
+      config.jwtExpiresIn = '1ms'; // 1 millisecond
+      const shortLivedTokenUser = await User.create({ username: 'shortlive', email: 'short@live.com', password: await bcrypt.hash('password', 10), role: 'developer' });
+      const shortLivedToken = shortLivedTokenUser.getSignedJwtToken();
+      config.jwtExpiresIn = originalJwtExpiresIn; // Reset immediately
+
+      // Wait for token to expire
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${shortLivedToken}`);
+
+      expect(res.statusCode).toEqual(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toBe('Not authorized, token failed');
     });
   });
 });
+```

@@ -1,69 +1,55 @@
-const AppError = require('../utils/appError');
+```javascript
 const logger = require('../utils/logger');
+const { CustomError } = require('../utils/error');
+const config = require('../config');
 
-const handleCastErrorDB = (err) => {
-  const message = `Invalid ${err.path}: ${err.value}.`;
-  return new AppError(message, 400);
-};
+/**
+ * Global error handling middleware for Express.
+ * Catches errors from routes and other middleware, formats them, and sends a standardized response.
+ * @param {Error} err - The error object.
+ * @param {object} req - Express request object.
+ * @param {object} res - Express response object.
+ * @param {function} next - Express next middleware function (unused here as it's the last handler).
+ */
+exports.errorHandler = (err, req, res, next) => {
+  let error = { ...err };
+  error.message = err.message;
+  error.statusCode = err.statusCode || 500;
 
-const handleDuplicateFieldsDB = (err) => {
-  const value = err.errors[0].message.match(/(["'])(\\?.)*?\1/)[0]; // Extracting duplicate value from error
-  const message = `Duplicate field value: ${value}. Please use another value.`;
-  return new AppError(message, 400);
-};
-
-const handleValidationErrorDB = (err) => {
-  const errors = Object.values(err.errors).map((el) => el.message);
-  const message = `Invalid input data. ${errors.join('. ')}`;
-  return new AppError(message, 400);
-};
-
-const handleJWTError = () => new AppError('Invalid token. Please log in again!', 401);
-
-const handleJWTExpiredError = () => new AppError('Your token has expired! Please log in again.', 401);
-
-const sendErrorDev = (err, req, res) => {
+  // Log the error
   logger.error(err);
-  return res.status(err.statusCode).json({
-    status: err.status,
-    error: err,
-    message: err.message,
-    stack: err.stack,
+
+  // Mongoose Bad ObjectId
+  if (err.name === 'CastError') {
+    const message = `Resource not found with id of ${err.value}`;
+    error = new CustomError(message, 404);
+  }
+
+  // Mongoose duplicate key error
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue).join(', ');
+    const message = `Duplicate field value: '${field}' already exists. Please use another value.`;
+    error = new CustomError(message, 400);
+  }
+
+  // Mongoose validation error
+  if (err.name === 'ValidationError') {
+    const messages = Object.values(err.errors).map(val => val.message);
+    const message = `Validation failed: ${messages.join('. ')}`;
+    error = new CustomError(message, 400);
+  }
+
+  // Joi validation error (from request body validation)
+  if (err.isJoi) {
+    const message = err.details.map(detail => detail.message).join(', ');
+    error = new CustomError(`Validation error: ${message}`, 400);
+  }
+
+  res.status(error.statusCode).json({
+    success: false,
+    message: error.message || 'Server Error',
+    // Only send stack trace in development mode
+    stack: config.nodeEnv === 'development' ? error.stack : {},
   });
 };
-
-const sendErrorProd = (err, req, res) => {
-  // Operational, trusted error: send message to client
-  if (err.isOperational) {
-    return res.status(err.statusCode).json({
-      status: err.status,
-      message: err.message,
-    });
-  }
-  // Programming or other unknown error: don't leak error details
-  logger.error('ERROR 💥', err); // Log the original error
-  return res.status(500).json({
-    status: 'error',
-    message: 'Something went very wrong!',
-  });
-};
-
-module.exports = (err, req, res, next) => {
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || 'error';
-
-  if (process.env.NODE_ENV === 'development') {
-    sendErrorDev(err, req, res);
-  } else if (process.env.NODE_ENV === 'production') {
-    let error = { ...err };
-    error.message = err.message; // Ensure message is copied
-
-    if (error.name === 'CastError') error = handleCastErrorDB(error);
-    if (error.name === 'SequelizeUniqueConstraintError') error = handleDuplicateFieldsDB(error);
-    if (error.name === 'SequelizeValidationError') error = handleValidationErrorDB(error);
-    if (error.name === 'JsonWebTokenError') error = handleJWTError();
-    if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
-
-    sendErrorProd(error, req, res);
-  }
-};
+```

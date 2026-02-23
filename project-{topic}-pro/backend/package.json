@@ -1,21 +1,19 @@
+```json
 {
-  "name": "ml-utilities-pro-backend",
+  "name": "task-management-backend",
   "version": "1.0.0",
-  "description": "Backend API for ML-Utilities-Pro system",
+  "description": "Backend API for the Enterprise-Grade Task Management System",
   "main": "server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "NODE_ENV=development nodemon src/server.js",
-    "test": "NODE_ENV=test jest --detectOpenHandles --forceExit",
-    "test:coverage": "npm test -- --coverage",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/db/seed.js",
+    "test": "jest --detectOpenHandles --forceExit --verbose --coverage",
+    "test:unit": "jest --detectOpenHandles --forceExit --verbose tests/unit",
+    "test:integration": "jest --detectOpenHandles --forceExit --verbose tests/integration",
+    "test:api": "jest --detectOpenHandles --forceExit --verbose tests/api",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "db:create": "npx sequelize-cli db:create",
-    "db:migrate": "npx sequelize-cli db:migrate",
-    "db:rollback": "npx sequelize-cli db:migrate:undo",
-    "db:seed": "npx sequelize-cli db:seed:all",
-    "db:reset": "npx sequelize-cli db:drop && npx sequelize-cli db:create && npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all",
-    "db:test:reset": "NODE_ENV=test npx sequelize-cli db:drop && NODE_ENV=test npx sequelize-cli db:create && NODE_ENV=test npx sequelize-cli db:migrate && NODE_ENV=test npx sequelize-cli db:seed:all"
+    "lint:fix": "eslint src/ --fix"
   },
   "keywords": [],
   "author": "ALX Software Engineering Student",
@@ -29,40 +27,39 @@
     "helmet": "^7.1.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.12.0",
-    "pg-hstore": "^2.3.4",
-    "redis": "^4.6.15",
-    "sequelize": "^6.37.3",
-    "swagger-ui-express": "^5.0.1",
+    "mongoose": "^8.4.3",
     "winston": "^3.13.0"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.12",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.3",
     "jest": "^29.7.0",
+    "mongodb-memory-server": "^9.4.0",
     "nodemon": "^3.1.4",
     "prettier": "^3.3.2",
-    "sequelize-cli": "^6.6.2",
     "supertest": "^7.0.0"
   },
   "jest": {
     "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/node_modules/"
+    ],
     "coveragePathIgnorePatterns": [
       "/node_modules/",
-      "/src/db/config.js",
-      "/src/db/migrations/",
-      "/src/db/seeders/",
-      "/src/app.js",
+      "/src/db/seed.js",
       "/src/server.js",
-      "/src/utils/logger.js"
+      "/src/app.js",
+      "/src/config/index.js"
     ],
     "collectCoverageFrom": [
-      "src/**/*.js"
-    ],
-    "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.js"
+      "src/**/*.js",
+      "!src/**/index.js",
+      "!src/server.js",
+      "!src/app.js",
+      "!src/config/db.js",
+      "!src/db/seed.js"
     ]
   }
 }
+```

@@ -1,30 +1,36 @@
-# Use the official Node.js 18 LTS image as the base
-FROM node:18-alpine
+```dockerfile
+# Stage 1: Build dependencies
+FROM node:18-alpine as builder
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock) to the working directory
-# This allows caching of node_modules layer if package files don't change
-COPY package*.json ./
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package.json package-lock.json ./
 
-# Install project dependencies
+# Install dependencies (only production dependencies by default)
 RUN npm ci --only=production
 
-# Copy the rest of the application source code
+# Stage 2: Production environment
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy installed production dependencies from the builder stage
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy the rest of the application code
 COPY . .
 
-# Run migrations and seed data during the build process
-# This is suitable for development/testing environments or simple production setups
-# For more complex production deployments, migrations should be run as a separate step
-# after the database is available and the application containers are running.
-# Example: docker exec -it [container_name] npx sequelize-cli db:migrate
-# For now, we'll keep it commented out to prevent issues if DB is not ready during build
-# RUN npx sequelize-cli db:migrate
-# RUN npx sequelize-cli db:seed:all
+# Create a directory for logs
+RUN mkdir -p logs
 
 # Expose the port the app runs on
 EXPOSE 5000
 
+# Set environment variables (ensure .env is not committed to git, but used for local dev/CI/CD)
+# For production, these should be managed by your orchestrator (e.g., Kubernetes, Docker Compose .env file)
+# Example: ENV NODE_ENV=production
+
 # Command to run the application
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]
+```

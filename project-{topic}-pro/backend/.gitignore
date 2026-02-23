@@ -1,9 +1,5 @@
+```
 node_modules/
 .env
 coverage/
-build/
-dist/
-*.log
-npm-debug.log*
-.nyc_output/
-.DS_Store
+```

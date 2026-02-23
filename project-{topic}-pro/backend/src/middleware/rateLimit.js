@@ -1,33 +1,28 @@
+```javascript
+// Note: This middleware is already applied globally in app.js using 'express-rate-limit'.
+// This file is a placeholder/example if you wanted to define custom rate limiting logic
+// or apply different limits to different routes.
+
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('express-rate-limit-redis');
-const { redisClient } = require('../utils/redisClient');
-const config = require('../config/config');
-const AppError = require('../utils/appError');
-const logger = require('../utils/logger');
+const config = require('../config');
 
-const applyRateLimiting = () => {
-  const limiter = rateLimit({
-    store: new RedisStore({
-      client: redisClient,
-      expiry: config.rateLimit.windowMs / 1000, // expiry in seconds
-    }),
-    windowMs: config.rateLimit.windowMs,
-    max: config.rateLimit.max,
-    message: new AppError(
-      'Too many requests from this IP, please try again after an hour!',
-      429
-    ),
-    handler: (req, res, next, options) => {
-      logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
-      options.message.statusCode = options.statusCode; // Ensure error message has correct status
-      next(options.message);
-    },
-    keyGenerator: (req, res) => req.ip, // Use IP address to identify clients
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+/**
+ * Custom rate limiting middleware.
+ * Can be used for specific routes if different limits are needed.
+ */
+const customRateLimiter = (windowMs = config.rateLimitWindowMs, max = config.rateLimitMaxRequests, message = 'Too many requests, please try again later.') => {
+  return rateLimit({
+    windowMs: windowMs,
+    max: max,
+    message: message,
+    standardHeaders: true,
+    legacyHeaders: false,
   });
-
-  return limiter;
 };
 
-module.exports = { applyRateLimiting };
+module.exports = customRateLimiter;
+
+// Example usage in a route file:
+// const customRateLimiter = require('../../middleware/rateLimit');
+// router.post('/login', customRateLimiter(60 * 1000, 5, 'Too many login attempts, try again in a minute.'), authController.login);
+```

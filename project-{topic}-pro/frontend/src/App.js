@@ -1,49 +1,51 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-
+```javascript
+import React, { useContext } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { AuthContext } from './contexts/AuthContext';
+import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
+import Dashboard from './pages/Dashboard';
 import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetailsPage from './pages/ProjectDetailsPage';
-import MLTaskFormPage from './pages/MLTaskFormPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
+import TaskDetailPage from './pages/TaskDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
-import AppLayout from './components/AppLayout';
-
-// A private route component
-const PrivateRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <AppLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <p className="text-xl font-semibold text-gray-700">Loading...</p>
-        </div>
-      </AppLayout>
-    );
-  }
-
-  return isAuthenticated ? children : <Navigate to="/login" />;
-};
+import PrivateRoute from './components/common/PrivateRoute';
+import AdminRoute from './components/common/AdminRoute'; // For admin-specific routes
+import ManageUsersPage from './pages/ManageUsersPage';
+import Header from './components/common/Header';
+import Sidebar from './components/common/Sidebar';
 
 function App() {
+  const { user } = useContext(AuthContext);
+
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/" element={<PrivateRoute><AppLayout><DashboardPage /></AppLayout></PrivateRoute>} />
-          <Route path="/projects" element={<PrivateRoute><AppLayout><ProjectsPage /></AppLayout></PrivateRoute>} />
-          <Route path="/projects/:projectId" element={<PrivateRoute><AppLayout><ProjectDetailsPage /></AppLayout></PrivateRoute>} />
-          <Route path="/projects/:projectId/new-ml-task" element={<PrivateRoute><AppLayout><MLTaskFormPage /></AppLayout></PrivateRoute>} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <div className="flex h-screen bg-gray-100">
+      {user && <Sidebar />}
+      <div className="flex flex-col flex-1">
+        {user && <Header />}
+        <main className="flex-1 overflow-y-auto p-6">
+          <Routes>
+            <Route path="/" element={user ? <Navigate to="/dashboard" /> : <HomePage />} />
+            <Route path="/login" element={!user ? <LoginPage /> : <Navigate to="/dashboard" />} />
+            <Route path="/register" element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+
+            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/projects" element={<PrivateRoute><ProjectsPage /></PrivateRoute>} />
+            <Route path="/projects/:projectId" element={<PrivateRoute><ProjectDetailPage /></PrivateRoute>} />
+            <Route path="/tasks/:taskId" element={<PrivateRoute><TaskDetailPage /></PrivateRoute>} /> {/* Direct task link */}
+
+            {/* Admin specific routes */}
+            <Route path="/admin/users" element={<AdminRoute><ManageUsersPage /></AdminRoute>} />
+            {/* ... other admin routes */}
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
   );
 }
 
 export default App;
+```

@@ -1,52 +1,43 @@
+```javascript
 const app = require('./app');
-const config = require('./config/config');
-const { sequelize } = require('./db/sequelize');
+const mongoose = require('mongoose');
+const config = require('./config');
 const logger = require('./utils/logger');
+const seedDB = require('./db/seed');
 
-const startServer = async () => {
-  try {
-    // Test database connection and synchronize models
-    await sequelize.authenticate();
-    logger.info('Database connection has been established successfully.');
+const PORT = config.port;
+const MONGO_URI = config.mongoURI;
 
-    // In production, migrations should be handled separately
-    // For development/testing, auto-sync can be convenient
-    if (config.env !== 'production') {
-      await sequelize.sync({ alter: true }); // Use {force: true} for fresh start, {alter: true} for schema updates
-      logger.info('Database models synchronized.');
-    } else {
-      logger.info('In production, skipping automatic database synchronization. Ensure migrations are run.');
+// Connect to MongoDB
+mongoose.connect(MONGO_URI)
+  .then(() => {
+    logger.info('Connected to MongoDB Atlas');
+    // Seed database if in development and not already seeded
+    if (config.nodeEnv === 'development') {
+      seedDB();
     }
+  })
+  .catch(err => {
+    logger.error('Could not connect to MongoDB:', err.message);
+    process.exit(1); // Exit process with failure
+  });
 
-    // Start the Express server
-    const server = app.listen(config.port, () => {
-      logger.info(`Server running on port ${config.port} in ${config.env} mode.`);
-      logger.info(`Access API at http://localhost:${config.port}/api`);
-      logger.info(`Access API Docs at http://localhost:${config.port}/api-docs`);
-    });
+// Start the server
+const server = app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT} in ${config.nodeEnv} mode`);
+});
 
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (err) => {
-      logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
-      logger.error(err.name, err.message, err.stack);
-      server.close(() => {
-        process.exit(1);
-      });
-    });
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err, promise) => {
+  logger.error(`Unhandled Rejection: ${err.message}`);
+  // Close server & exit process
+  server.close(() => process.exit(1));
+});
 
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (err) => {
-      logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-      logger.error(err.name, err.message, err.stack);
-      server.close(() => {
-        process.exit(1);
-      });
-    });
-
-  } catch (error) {
-    logger.error('Unable to connect to the database or start server:', error);
-    process.exit(1); // Exit with failure code
-  }
-};
-
-startServer();
+// Handle uncaught exceptions
+process.on('uncaughtException', (err, origin) => {
+  logger.error(`Uncaught Exception: ${err.message}`);
+  // Close server & exit process
+  server.close(() => process.exit(1));
+});
+```

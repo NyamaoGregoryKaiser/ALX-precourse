@@ -1,69 +1,74 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axiosInstance from '../api/axiosConfig';
-import Cookies from 'js-cookie';
+```javascript
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const loadUserFromToken = async () => {
+  const loadUserFromStorage = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user'); // Store basic user info for quicker load
+
+    if (token && storedUser) {
       try {
-        const token = Cookies.get('jwt');
-        if (token) {
-          // Verify token by fetching user profile
-          const response = await axiosInstance.get('/users/me');
-          setUser(response.data.data.user);
-          setIsAuthenticated(true);
+        const parsedUser = JSON.parse(storedUser);
+        // Validate token by fetching user profile
+        const fetchedUser = await authService.getMe();
+        if (fetchedUser && fetchedUser.id === parsedUser.id) {
+          setUser(fetchedUser);
+        } else {
+          // Token invalid or user mismatch, clear and log out
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+          navigate('/login');
         }
       } catch (error) {
-        console.error('Failed to authenticate user from token:', error);
-        Cookies.remove('jwt'); // Remove invalid token
-        setIsAuthenticated(false);
+        console.error('Failed to load user or validate token:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setUser(null);
-      } finally {
-        setLoading(false);
+        navigate('/login');
       }
-    };
+    }
+    setLoading(false);
+  }, [navigate]);
 
-    loadUserFromToken();
-  }, []);
+  useEffect(() => {
+    loadUserFromStorage();
+  }, [loadUserFromStorage]);
 
   const login = async (email, password) => {
-    setLoading(true);
     try {
-      const response = await axiosInstance.post('/auth/login', { email, password });
-      const { token, user: userData } = response.data;
-      Cookies.set('jwt', token, { expires: 1 }); // Store token for 1 day
-      setUser(userData);
-      setIsAuthenticated(true);
-      return true;
+      setLoading(true);
+      const data = await authService.login({ email, password });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user)); // Store minimal user data
+      setUser(data.user);
+      navigate('/dashboard');
     } catch (error) {
-      console.error('Login failed:', error);
-      setIsAuthenticated(false);
-      setUser(null);
-      throw error;
+      console.error('Login failed:', error.response?.data?.message || error.message);
+      throw error; // Re-throw to be caught by the login form
     } finally {
       setLoading(false);
     }
   };
 
-  const register = async (username, email, password) => {
-    setLoading(true);
+  const register = async (username, email, password, role = 'developer') => {
     try {
-      const response = await axiosInstance.post('/auth/register', { username, email, password });
-      const { token, user: userData } = response.data;
-      Cookies.set('jwt', token, { expires: 1 }); // Store token for 1 day
-      setUser(userData);
-      setIsAuthenticated(true);
-      return true;
+      setLoading(true);
+      const data = await authService.register({ username, email, password, role });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setUser(data.user);
+      navigate('/dashboard');
     } catch (error) {
-      console.error('Registration failed:', error);
-      setIsAuthenticated(false);
-      setUser(null);
+      console.error('Registration failed:', error.response?.data?.message || error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -71,22 +76,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    Cookies.remove('jwt');
-    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
+    navigate('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+```
