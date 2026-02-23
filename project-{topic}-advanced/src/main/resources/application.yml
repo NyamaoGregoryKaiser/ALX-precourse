@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: task-management-platform
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskmanager}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Use 'update' or 'create-drop' for development, 'validate' for production with Flyway
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true # Recommended for existing databases without Flyway metadata table
+    schemas: public
+
+alx:
+  app:
+    jwtSecret: ${JWT_SECRET:superSecretKeyForALXProjectThatIsLongAndSecureEnoughToBeProductionReady} # KEEP THIS SECURE IN PROD!
+    jwtExpirationMs: 86400000 # 24 hours in milliseconds
+
+server:
+  port: 8080
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    disable-swagger-default-url: true
+    doc-expansion: none
+  
+logging:
+  level:
+    com.alx.taskmanager: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+```
+**Note:** For testing, `spring.datasource.url` will be overridden by Testcontainers to use an in-memory H2 database by default or a PostgreSQL Testcontainer explicitly.
+
+### Flyway Migration Scripts
+
+```sql

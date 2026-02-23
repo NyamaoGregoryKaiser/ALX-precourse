@@ -1,0 +1,120 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Configure Git for JaCoCo properties
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Build and run tests with Maven
+      run: mvn -B package --file pom.xml
+
+    - name: Check code coverage with JaCoCo
+      run: mvn jacoco:check -Dmaven.test.skip=false # Ensure tests are run before coverage check
+
+    - name: Upload JaCoCo report to GitHub Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: jacoco-report
+        path: target/site/jacoco/jacoco.xml
+        
+    - name: Upload test results to GitHub Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: target/surefire-reports/
+
+  docker-build-and-push:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Only push Docker image on main branch push
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/task-management-platform:latest
+        build-args: |
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+
+  deploy:
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Only deploy on main branch push
+    environment: Production
+
+    steps:
+    - name: Deploy to EC2 instance
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Create/navigate to project directory
+          mkdir -p /opt/task-management-platform
+          cd /opt/task-management-platform
+
+          # Create .env file for Docker Compose (or ensure environment variables are set)
+          echo "DB_NAME=${{ secrets.DB_NAME }}" > .env
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+
+          # Pull latest docker-compose.yml (assuming it's managed via version control)
+          # Alternatively, you might copy it from the repo. For simplicity, we'll assume it exists or is simple.
+          # For a real scenario, you'd `git clone` or `git pull` the repo to get the docker-compose.yml.
+          # For this example, let's just make sure the necessary image is pulled and restarted.
+          
+          # Stop and remove existing containers
+          docker compose -f docker-compose.yml down || true
+
+          # Pull the latest Docker image
+          docker pull ${{ secrets.DOCKER_USERNAME }}/task-management-platform:latest
+
+          # Recreate and start containers
+          docker compose -f docker-compose.yml up -d
+
+          echo "Deployment complete!"
+```
+**GitHub Secrets required:**
+*   `DOCKER_USERNAME`: Your Docker Hub username.
+*   `DOCKER_PASSWORD`: Your Docker Hub Access Token.
+*   `EC2_HOST`: IP address or hostname of your EC2 instance.
+*   `EC2_USERNAME`: SSH username for your EC2 instance (e.g., `ubuntu`, `ec2-user`).
+*   `EC2_SSH_KEY`: Your private SSH key for EC2 (use `-----BEGIN OPENSSH PRIVATE KEY-----...-----END OPENSSH PRIVATE KEY-----` format).
+*   `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`: Database credentials for the production environment.
+*   `JWT_SECRET`: A strong, randomly generated secret for JWT.
+
+**Note:** The `deploy` step is a simplified example. In a real-world scenario, you might have more sophisticated deployment strategies (e.g., Blue/Green, Canary deployments, Kubernetes manifests). This example assumes a single EC2 instance with Docker and Docker Compose installed.
