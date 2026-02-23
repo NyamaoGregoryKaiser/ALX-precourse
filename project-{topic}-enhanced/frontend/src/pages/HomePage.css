@@ -1,0 +1,64 @@
+```css
+.homepage-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 80px); /* Adjust based on navbar height */
+  text-align: center;
+  background-color: #f4f7f6;
+  color: #333;
+  padding: 2rem;
+}
+
+.homepage-title {
+  font-size: 3rem;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+.homepage-description {
+  font-size: 1.2rem;
+  max-width: 600px;
+  margin-bottom: 2rem;
+}
+
+.auth-status, .auth-actions {
+  margin-top: 2rem;
+}
+
+.auth-status p {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.homepage-button {
+  display: inline-block;
+  padding: 0.8rem 1.8rem;
+  margin: 0 0.5rem;
+  border-radius: 5px;
+  text-decoration: none;
+  font-weight: bold;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.homepage-button.primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.homepage-button.primary:hover {
+  background-color: #0056b3;
+  transform: translateY(-2px);
+}
+
+.homepage-button.secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.homepage-button.secondary:hover {
+  background-color: #5a6268;
+  transform: translateY(-2px);
+}
+```

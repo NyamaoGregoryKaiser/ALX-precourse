@@ -1,5 +1,5 @@
 ```yaml
-name: CI/CD Pipeline
+name: CI/CD Pipeline for SecureTask
 
 on:
   push:
@@ -12,104 +12,129 @@ on:
       - develop
 
 jobs:
-  build-and-test:
+  lint-test-backend:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive # Checkout submodules (Crow, nlohmann_json, jwt-cpp, cpp-bcrypt)
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install System Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          cmake \
-          libpq-dev \
-          libpqxx-dev \
-          libssl-dev \
-          git \
-          pkg-config \
-          libspdlog-dev # Install spdlog from apt if available, otherwise build manually or use vcpkg/conan
-          # For jwt-cpp if not installed via system package, might need manual build of OpenSSL or use a Docker base image with it
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
 
-    # Install spdlog and jwt-cpp manually if apt versions are too old or not available
-    - name: Install spdlog from source (if not via apt)
-      run: |
-        if ! dpkg -s libspdlog-dev >/dev/null 2>&1; then
-          echo "libspdlog-dev not found, building from source..."
-          git clone https://github.com/gabime/spdlog.git /tmp/spdlog
-          cd /tmp/spdlog && mkdir build && cd build
-          cmake .. -DCMAKE_POSITION_INDEPENDENT_CODE=ON && make -j$(nproc)
-          sudo make install
-        else
-          echo "libspdlog-dev already installed."
-        fi
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install
 
-    - name: Configure CMake
-      run: |
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - name: Run backend lint
+        run: |
+          cd backend
+          npm run lint
 
-    - name: Build Application
-      run: cmake --build build
+      - name: Set up PostgreSQL for testing
+        uses: ankane/setup-postgres@v1
+        with:
+          postgres-version: 15
+          database: securetask_test_db
+          username: testuser
+          password: testpassword
 
-    - name: Run Tests
-      # Assuming your tests executable is named 'test_runner' in the build directory
-      run: |
-        cd build
-        ./tests/test_runner
+      - name: Set up Backend .env for testing
+        run: |
+          echo "NODE_ENV=test" > backend/.env
+          echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5432/securetask_test_db?schema=public" >> backend/.env
+          echo "JWT_SECRET=test_jwt_secret" >> backend/.env
+          echo "JWT_EXPIRATION=1h" >> backend/.env
+          echo "ADMIN_EMAIL=admin@test.com" >> backend/.env
+          echo "ADMIN_PASSWORD=adminpassword" >> backend/.env
+          echo "FRONTEND_URL=http://localhost:3000" >> backend/.env
+          echo "CACHE_REDIS_URL=redis://localhost:6379" >> backend/.env
 
-    - name: Code Coverage (Optional)
-      if: success()
-      run: |
-        # Example using gcov/lcov (requires compilation with -fprofile-arcs -ftest-coverage)
-        # For full coverage, you'd integrate with Codecov/SonarQube
-        echo "Code coverage generation not fully configured in this example."
-        # lcov --capture --directory . --output-file coverage.info
-        # lcov --remove coverage.info '/usr/*' --output-file coverage.info
-        # lcov --list coverage.info
-        # bash <(curl -s https://codecov.io/bash) -f coverage.info || echo "Codecov did not collect coverage reports"
+      - name: Install Prisma CLI
+        run: |
+          cd backend
+          npm install prisma
 
-  # Optional: Dockerize and Push to Container Registry
-  # This job runs only if the build and test job succeeds AND it's a push to 'main' branch
-  docker-push:
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Generate Prisma client
+        run: |
+          cd backend
+          npx prisma generate
+
+      - name: Run backend migrations
+        run: |
+          cd backend
+          npx prisma migrate dev --name test_migration --skip-seed --skip-generate # Use dev for local testing
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          npm test
+
+  lint-test-frontend:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/performance-monitor:latest
-          ${{ secrets.DOCKER_USERNAME }}/performance-monitor:${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Run frontend lint
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false # Run tests once with coverage
+
+  build-and-deploy:
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+    runs-on: ubuntu-latest
+    needs: [lint-test-backend, lint-test-frontend] # Ensure tests pass before deployment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker images
+        run: docker-compose build
+
+      # Example: Push to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry)
+      # - name: Login to Docker Hub
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: Push images
+      #   run: |
+      #     docker tag securetask_backend your_docker_username/securetask_backend:latest
+      #     docker push your_docker_username/securetask_backend:latest
+      #     docker tag securetask_frontend your_docker_username/securetask_frontend:latest
+      #     docker push your_docker_username/securetask_frontend:latest
+
+      # Example: Deploy to a server via SSH
+      # - name: Deploy to EC2 via SSH
+      #   uses: appleboy/ssh-action@master
+      #   with:
+      #     host: ${{ secrets.SSH_HOST }}
+      #     username: ${{ secrets.SSH_USERNAME }}
+      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+      #     script: |
+      #       cd /path/to/your/app
+      #       git pull origin main
+      #       docker-compose down
+      #       docker-compose pull # Pull new images if pushed to registry
+      #       docker-compose up -d --build # Rebuild if not pulling
+      #       docker system prune -f # Clean up old images
+
 ```
-
----
-
-### 4. Testing & Quality
-
-Tests are implemented using **Catch2**. The `CMakeLists.txt` in the `tests/` directory will compile and link the tests.
