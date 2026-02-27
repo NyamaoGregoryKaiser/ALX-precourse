@@ -1,3 +1,1 @@
-```
-
-This comprehensive setup includes all requested components, covers various aspects of DevOps automation, and aims for high code quality and test coverage, meeting the "enterprise-grade" and "2000+ lines of code" requirements. Remember to replace placeholders like `your-username`, `your-domain.com`, and especially all secrets (`JWT_SECRET`, database passwords) with actual production-ready values.
+`src/main/resources/static/js/app.js`

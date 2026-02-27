@@ -1,41 +1,55 @@
+```yaml
+# docker-compose.yml for WebScraperX application
+# Defines services for the Spring Boot app and PostgreSQL database.
+
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: taskmanager-db
+    container_name: webscraperx_db
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-taskmanager}
-      POSTGRES_USER: ${DB_USERNAME:-user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-webscraperdb}
+      POSTGRES_USER: ${DB_USERNAME:-webscraper}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-webscraperpass}
     ports:
-      - "5432:5432"
+      - "5432:5432" # Expose PostgreSQL port
     volumes:
-      - taskmanager_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data # Persist data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-user} -d ${DB_NAME:-taskmanager}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-webscraper} -d ${DB_NAME:-webscraperdb}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   app:
-    build: .
-    container_name: taskmanager-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webscraperx_app
+    restart: always
     ports:
-      - "8080:8080"
+      - "8080:8080" # Expose Spring Boot app port
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-taskmanager}
-      DB_USERNAME: ${DB_USERNAME:-user}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      JWT_SECRET: ${JWT_SECRET:superSecretKeyForALXProjectThatIsLongAndSecureEnoughToBeProductionReady}
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-webscraperdb}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-webscraper}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-webscraperpass}
+      JWT_SECRET: ${JWT_SECRET:your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod}
+      SERVER_PORT: 8080
     depends_on:
       db:
-        condition: service_healthy
-    restart: always
+        condition: service_healthy # Wait for DB to be healthy
+    # For local development, map logs directory
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s # Give the app more time to start up
 
 volumes:
-  taskmanager_data:
+  db_data: # Define named volume for database persistence
 ```

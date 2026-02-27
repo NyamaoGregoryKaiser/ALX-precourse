@@ -1,51 +1,77 @@
+```yaml
+# application.yml
+# Spring Boot configuration for WebScraperX application
+
 spring:
   application:
-    name: task-management-platform
+    name: web-scraper-x
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskmanager}
-    username: ${DB_USERNAME:user}
-    password: ${DB_PASSWORD:password}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:webscraperdb}
+    username: ${DB_USERNAME:webscraper}
+    password: ${DB_PASSWORD:webscraperpass}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate # Use 'update' or 'create-drop' for development, 'validate' for production with Flyway
+      ddl-auto: validate # Use 'validate' with Flyway, 'update' for dev, 'none' for production
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+    open-in-view: false # Prevents n+1 issues by closing session after controller
   flyway:
     enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true # Recommended for existing databases without Flyway metadata table
-    schemas: public
+    locations: classpath:db/migration # Directory where migration scripts are located
+  security:
+    user:
+      name: ${SECURITY_DEFAULT_USER:admin}
+      password: ${SECURITY_DEFAULT_PASSWORD:admin} # Default password (should be strong in production)
+  # Cache Configuration using Caffeine
+  cache:
+    cache-names: scrapingTasks
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s # Cache tasks for 60 seconds
 
-alx:
-  app:
-    jwtSecret: ${JWT_SECRET:superSecretKeyForALXProjectThatIsLongAndSecureEnoughToBeProductionReady} # KEEP THIS SECURE IN PROD!
-    jwtExpirationMs: 86400000 # 24 hours in milliseconds
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod}
+  expiration: ${JWT_EXPIRATION:3600000} # 1 hour in milliseconds
 
+# Server Configuration
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
 
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-    tags-sorter: alpha
-    operations-sorter: alpha
-    disable-swagger-default-url: true
-    doc-expansion: none
-  
+# Logging Configuration
 logging:
   level:
-    com.alx.taskmanager: DEBUG
-    org.springframework.security: INFO
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE
+    root: INFO
+    com.alx.webscraper: DEBUG # Detailed logging for our application package
+    org.springframework: INFO
+    org.hibernate: INFO
+    org.flywaydb: INFO
+    org.jsoup: INFO # Jsoup logging
+  file:
+    name: logs/webscraperx.log # Log to a file
+
+# Springdoc OpenAPI (Swagger UI) Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs # Endpoint for OpenAPI JSON
+  swagger-ui:
+    path: /swagger-ui.html # Endpoint for Swagger UI
+    disable-swagger-default-url: true
+    display-request-duration: true
+    operations-sorter: method
+    tags-sorter: alpha
+
+# Actuator Endpoints (for monitoring and management)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers,caches # Expose useful endpoints
+  endpoint:
+    health:
+      show-details: always # Show full details on health checks
 ```
-**Note:** For testing, `spring.datasource.url` will be overridden by Testcontainers to use an in-memory H2 database by default or a PostgreSQL Testcontainer explicitly.
-
-### Flyway Migration Scripts
-
-```sql

@@ -1,0 +1,70 @@
+```yaml
+# .github/workflows/ci.yml
+# GitHub Actions CI/CD pipeline for WebScraperX
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Maven modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Set up PostgreSQL for integration tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          sudo /etc/init.d/postgresql start
+          sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'testpass';"
+          sudo -u postgres psql -c "CREATE DATABASE testdb OWNER testuser;"
+          echo "SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/testdb" >> $GITHUB_ENV
+          echo "SPRING_DATASOURCE_USERNAME=testuser" >> $GITHUB_ENV
+          echo "SPRING_DATASOURCE_PASSWORD=testpass" >> $GITHUB_ENV
+          echo "FLYWAY_CLEAN_DISABLED=false" >> $GITHUB_ENV # Allow Flyway clean for tests if needed
+
+      - name: Build with Maven
+        run: mvn clean install -DskipTests
+
+      - name: Run Unit and Integration Tests
+        run: mvn test
+
+      - name: Generate JaCoCo coverage report
+        run: mvn jacoco:report
+
+      - name: Upload JaCoCo report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # Set CODECOV_TOKEN in GitHub secrets
+          files: target/site/jacoco/jacoco.xml
+          flags: unittests
+          name: codecov-webscraperx
+          fail_ci_if_error: true # Keep CI running even if there's a Codecov error
+```

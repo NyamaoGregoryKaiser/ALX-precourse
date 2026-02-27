@@ -1,40 +1,49 @@
-# Use a slimmed-down OpenJDK 17 as the base image
-FROM openjdk:17-jdk-slim as builder
+```dockerfile
+# Dockerfile for WebScraperX Spring Boot application
 
-# Set working directory inside the container
+# Stage 1: Build the application
+FROM eclipse-temurin:17-jdk-jammy AS build
+
 WORKDIR /app
 
-# Copy the Maven build files (pom.xml) to download dependencies
+# Copy the Maven wrapper and pom.xml to download dependencies
+COPY mvnw .
+COPY .mvn .mvn
 COPY pom.xml .
 
-# Copy the source code
-COPY src ./src
+# Download dependencies (only if pom.xml changes)
+RUN ./mvnw dependency:go-offline -B
 
-# Build the application using Maven
-# The `mvn dependency:go-offline` command helps pre-download dependencies
-# The `mvn clean install -DskipTests` command builds the JAR without running tests
-# Using `-DskipTests` here because tests will be run in the CI pipeline.
-RUN mvn clean install -DskipTests
+# Copy the rest of the source code
+COPY src src
 
-# Stage 2: Create a smaller runtime image
-FROM openjdk:17-jre-slim
+# Build the Spring Boot application
+RUN ./mvnw package -Dmaven.test.skip=true
 
-# Set working directory
+# Stage 2: Create the final image
+FROM eclipse-temurin:17-jre-jammy
+
 WORKDIR /app
 
-# Copy the built JAR file from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
+# Copy the built JAR from the build stage
+COPY --from=build /app/target/*.jar app.jar
 
 # Expose the port the application runs on
 EXPOSE 8080
 
-# Set environment variables for database connection (default values for local dev)
-ENV DB_HOST=localhost
+# Set environment variables for database connection (defaults for local docker-compose)
+ENV DB_HOST=db
 ENV DB_PORT=5432
-ENV DB_NAME=taskmanager
-ENV DB_USERNAME=user
-ENV DB_PASSWORD=password
-ENV JWT_SECRET=superSecretKeyForALXProjectThatIsLongAndSecureEnoughToBeProductionReady
+ENV DB_NAME=webscraperdb
+ENV DB_USERNAME=webscraper
+ENV DB_PASSWORD=webscraperpass
+ENV JWT_SECRET=your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod
 
-# Command to run the application
+# Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# Healthcheck for Docker (optional but recommended for production)
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 \
+  CMD curl --fail http://localhost:8080/actuator/health || exit 1
+
+```

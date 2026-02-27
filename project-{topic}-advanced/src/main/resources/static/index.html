@@ -1,0 +1,128 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebScraperX</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>WebScraperX</h1>
+        <nav>
+            <a href="#login" class="nav-link active" id="nav-login">Login</a>
+            <a href="#register" class="nav-link" id="nav-register">Register</a>
+            <a href="#tasks" class="nav-link hidden" id="nav-tasks">Tasks</a>
+            <button id="logout-btn" class="hidden">Logout</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Login Form -->
+        <section id="login-section" class="form-section">
+            <h2>Login</h2>
+            <form id="login-form">
+                <label for="login-username">Username:</label>
+                <input type="text" id="login-username" name="username" required>
+                <label for="login-password">Password:</label>
+                <input type="password" id="login-password" name="password" required>
+                <button type="submit">Login</button>
+            </form>
+            <p id="login-error" class="error-message"></p>
+        </section>
+
+        <!-- Register Form -->
+        <section id="register-section" class="form-section hidden">
+            <h2>Register</h2>
+            <form id="register-form">
+                <label for="register-username">Username:</label>
+                <input type="text" id="register-username" name="username" required>
+                <label for="register-email">Email:</label>
+                <input type="email" id="register-email" name="email" required>
+                <label for="register-password">Password:</label>
+                <input type="password" id="register-password" name="password" required>
+                <button type="submit">Register</button>
+            </form>
+            <p id="register-error" class="error-message"></p>
+        </section>
+
+        <!-- Tasks List -->
+        <section id="tasks-section" class="hidden">
+            <h2>Your Scraping Tasks</h2>
+            <button id="create-task-btn" class="primary-btn">Create New Task</button>
+            <div id="tasks-list">
+                <!-- Tasks will be loaded here -->
+                <p>No tasks found. Create one!</p>
+            </div>
+            <p id="tasks-error" class="error-message"></p>
+        </section>
+
+        <!-- Task Form (Create/Edit) -->
+        <section id="task-form-section" class="form-section hidden">
+            <h2 id="task-form-title">Create New Task</h2>
+            <form id="task-form">
+                <input type="hidden" id="task-id">
+                <label for="task-name">Task Name:</label>
+                <input type="text" id="task-name" name="name" required>
+
+                <label for="task-url">Target URL:</label>
+                <input type="url" id="task-url" name="targetUrl" placeholder="https://example.com" required>
+
+                <label for="task-cron">Cron Expression (Optional):</label>
+                <input type="text" id="task-cron" name="cronExpression" placeholder="0 0 12 * * ? (daily at noon)">
+                <small>e.g., "0 */5 * * * ?" for every 5 minutes, or leave blank for manual trigger.</small>
+
+                <label for="task-status">Status (Optional for update):</label>
+                <select id="task-status" name="status">
+                    <option value="">Do Not Change</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="SCHEDULED">SCHEDULED</option>
+                    <option value="RUNNING">RUNNING</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="FAILED">FAILED</option>
+                    <option value="STOPPED">STOPPED</option>
+                    <option value="DISABLED">DISABLED</option>
+                </select>
+
+                <h3>Data Fields:</h3>
+                <div id="data-fields-container">
+                    <div class="data-field-item">
+                        <input type="text" class="field-name" placeholder="Field Name (e.g., productName)" required>
+                        <input type="text" class="css-selector" placeholder="CSS Selector (e.g., .product h2)" required>
+                        <input type="text" class="attribute" placeholder="Attribute (optional, e.g., href)">
+                        <button type="button" class="remove-field-btn">Remove</button>
+                    </div>
+                </div>
+                <button type="button" id="add-field-btn" class="secondary-btn">Add Data Field</button>
+
+                <button type="submit" class="primary-btn">Save Task</button>
+                <button type="button" id="cancel-task-form-btn" class="secondary-btn">Cancel</button>
+            </form>
+            <p id="task-form-error" class="error-message"></p>
+        </section>
+
+        <!-- Scraped Data View -->
+        <section id="scraped-data-section" class="hidden">
+            <h2 id="scraped-data-title">Scraped Data for Task: <span id="scraped-task-name"></span></h2>
+            <div id="scraped-data-list">
+                <!-- Scraped data will be loaded here -->
+            </div>
+            <div class="pagination">
+                <button id="prev-page-btn" disabled>Previous</button>
+                <span id="current-page-info">Page 1 of 1</span>
+                <button id="next-page-btn" disabled>Next</button>
+            </div>
+            <p id="scraped-data-error" class="error-message"></p>
+            <button id="back-to-tasks-btn" class="secondary-btn">Back to Tasks</button>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 WebScraperX by ALX Software Engineering</p>
+    </footer>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
+```
