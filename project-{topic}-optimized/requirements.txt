@@ -1,8 +1,22 @@
-Flask==2.3.2
-SQLAlchemy==2.0.21
-psycopg2-binary==2.9.7
+Flask==2.3.3
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.23
+psycopg2-binary==2.9.9
+Flask-JWT-Extended==4.4.4
+Flask-Bcrypt==1.0.1
+Flask-Marshmallow==0.15.0
+marshmallow==3.20.1
+webargs==8.2.0
 python-dotenv==1.0.0
-pytest==7.4.0
-coverage==6.5.0
-requests==2.31.0  # For testing purposes
-# Add other dependencies as needed (e.g., for caching, logging, etc.)
+gunicorn==21.2.0
+alembic==1.13.0
+Flask-Caching==2.0.2
+redis==5.0.1
+Flask-Limiter==3.5.0
+Flask-Cors==4.0.0
+pytest==7.4.3
+pytest-cov==4.1.0
+Faker==20.0.0
+Locust==2.19.0
+marshmallow-enum==1.5.1
+Flask-Smorest==0.4.0

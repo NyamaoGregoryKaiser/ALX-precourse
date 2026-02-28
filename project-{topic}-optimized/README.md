@@ -1,381 +1,435 @@
-```markdown
-# ALX Real-Time Chat Application
+# E-commerce Mobile App Backend
 
-A comprehensive, production-ready real-time chat application built with Java Spring Boot for the backend and React with TypeScript for the frontend. It features real-time messaging via WebSockets, user authentication (JWT), channel management, and robust error handling, logging, caching, and rate limiting.
+This project provides a comprehensive, production-ready backend system for a mobile e-commerce application. It's built with Python using the Flask framework and adheres to best practices for scalability, security, and maintainability.
 
 ## Table of Contents
 
-1.  [Features](#1-features)
-2.  [Technology Stack](#2-technology-stack)
-3.  [Architecture](#3-architecture)
-4.  [Setup and Installation](#4-setup-and-installation)
+1.  [Features](#features)
+2.  [Technology Stack](#technology-stack)
+3.  [Architecture](#architecture)
+4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Environment Variables](#environment-variables)
-    *   [Building and Running with Docker Compose](#building-and-running-with-docker-compose)
-    *   [Running Backend Locally (without Docker)](#running-backend-locally-without-docker)
-    *   [Running Frontend Locally (without Docker)](#running-frontend-locally-without-docker)
-5.  [API Documentation](#5-api-documentation)
-6.  [Testing](#6-testing)
-7.  [Deployment Guide](#7-deployment-guide)
-8.  [CI/CD Configuration](#8-cicd-configuration)
-9.  [Additional Features](#9-additional-features)
-10. [Code Statistics](#10-code-statistics)
-11. [License](#11-license)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Database Migrations](#database-migrations)
+    *   [Seeding Initial Data](#seeding-initial-data)
+    *   [Running the Application](#running-the-application)
+5.  [API Documentation](#api-documentation)
+6.  [Testing](#testing)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [Performance Tests](#performance-tests)
+    *   [Test Coverage](#test-coverage)
+7.  [Deployment Guide](#deployment-guide)
+8.  [CI/CD Configuration](#cicd-configuration)
+9.  [Logging and Monitoring](#logging-and-monitoring)
+10. [Error Handling](#error-handling)
+11. [Caching](#caching)
+12. [Rate Limiting](#rate-limiting)
+13. [Authentication and Authorization](#authentication-and-authorization)
+14. [Contributing](#contributing)
+15. [License](#license)
 
 ## 1. Features
 
+This backend system offers the following core functionalities:
+
 *   **User Management:**
-    *   User Registration
-    *   User Login (JWT-based authentication)
-    *   User Profile Retrieval
-*   **Channel Management:**
-    *   Create Public Chat Channels
-    *   Join Existing Channels
-    *   List All Available Channels
-    *   View Channel Members
-*   **Real-time Messaging:**
-    *   Instant message exchange within channels using WebSockets (STOMP over SockJS)
-    *   Message History Retrieval for channels
-*   **Security:**
-    *   JWT-based Authentication and Authorization
-    *   Spring Security integration
-    *   WebSocket authentication
+    *   User registration and login (email/password).
+    *   JWT-based authentication and refresh token mechanism.
+    *   Role-Based Access Control (RBAC) for `ADMIN`, `EDITOR`, `CUSTOMER` roles.
+    *   CRUD operations for users (Admin only for full control, users can manage their own profile).
+*   **Product Catalog:**
+    *   CRUD operations for product categories.
+    *   CRUD operations for products with details (name, description, price, stock, image, category).
+    *   Pagination, searching, and filtering for product and category listings.
+*   **Order Management:**
+    *   Customer can create orders with multiple products.
+    *   Automatic stock deduction upon order creation.
+    *   Retrieve individual orders and a list of orders (customers see their own, admins see all).
+    *   Update order status (Admin/Editor only).
 *   **Robustness & Performance:**
-    *   Centralized Error Handling
-    *   Logging (SLF4J/Logback)
-    *   In-memory Caching (Caffeine) for frequently accessed data
-    *   Basic Rate Limiting (per IP)
-*   **Database Management:**
-    *   PostgreSQL database
-    *   Flyway for database migrations
-    *   Seed data for quick setup
-*   **Developer Experience:**
-    *   Docker & Docker Compose for easy setup
-    *   Comprehensive API Documentation (Swagger UI)
-    *   Unit, Integration, and API Tests
-    *   Type-safe frontend with TypeScript
+    *   Comprehensive error handling with custom exceptions.
+    *   Logging for auditing and debugging.
+    *   Caching layer with Redis for frequently accessed data (products, categories).
+    *   Rate limiting to protect against abuse.
+    *   Database migrations with Alembic.
+    *   Dockerized setup for consistent environments.
+*   **Quality & Maintainability:**
+    *   Modular project structure.
+    *   Unit, integration, and API tests with high coverage.
+    *   CI/CD pipeline configuration (GitHub Actions).
+    *   Clear and extensive documentation.
 
 ## 2. Technology Stack
 
-**Backend (Java/Spring Boot):**
-*   **Language:** Java 17+
-*   **Framework:** Spring Boot 3.x
-*   **Web:** Spring Web (REST APIs), Spring WebFlux (WebSockets)
-*   **Security:** Spring Security, JWT (JSON Web Tokens)
-*   **Data:** Spring Data JPA, Hibernate, PostgreSQL, Flyway
-*   **Caching:** Caffeine
-*   **API Docs:** Springdoc-openapi (Swagger UI)
-*   **Utility:** Lombok, MapStruct
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, RestAssured
-
-**Frontend (React/TypeScript):**
-*   **Language:** TypeScript
-*   **Framework:** React 18+
-*   **Build Tool:** Vite
-*   **UI Library:** Chakra UI
-*   **State Management:** React Context API
-*   **Routing:** React Router DOM
-*   **HTTP Client:** Axios
-*   **WebSocket Client:** `SockJS`, `@stomp/stompjs`
-*   **Testing:** Jest, React Testing Library
-
-**DevOps & Infrastructure:**
+*   **Backend Framework:** Flask (Python)
+*   **Database:** PostgreSQL
+*   **ORM:** SQLAlchemy with Flask-SQLAlchemy
+*   **Migrations:** Alembic
+*   **Serialization/Validation:** Marshmallow, webargs, Flask-Smorest
+*   **Authentication:** Flask-JWT-Extended (JWT)
+*   **Hashing:** Flask-Bcrypt
+*   **Caching:** Redis with Flask-Caching
+*   **Rate Limiting:** Flask-Limiter
+*   **CORS:** Flask-Cors
 *   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** GitHub Actions (conceptual workflow provided)
+*   **Testing:** Pytest, pytest-cov, Locust (for performance)
+*   **API Documentation:** Flask-Smorest (generates OpenAPI/Swagger UI)
+*   **Environment Management:** python-dotenv
+*   **WSGI Server:** Gunicorn
 
 ## 3. Architecture
 
-The application follows a standard N-tier architecture:
+The application follows a layered architectural pattern to ensure separation of concerns and maintainability.
 
-*   **Frontend (Client Layer):** A single-page application (SPA) built with React and TypeScript. It interacts with the backend via REST APIs for operations like authentication, channel management, and message history, and uses WebSockets for real-time messaging.
-*   **Backend (API Layer):** A Spring Boot application providing RESTful APIs and WebSocket endpoints.
-    *   **Controllers:** Handle incoming HTTP requests and WebSocket messages.
-    *   **Services:** Implement business logic, orchestrate data operations, and interact with repositories.
-    *   **Repositories:** Abstractions over the database, managing data persistence (Spring Data JPA).
-    *   **Security Layer:** Implemented with Spring Security, JWT for token-based authentication, and custom filters/interceptors for API and WebSocket security.
-    *   **WebSocket Messaging:** Uses Spring's STOMP over WebSocket for real-time message broadcasting and point-to-point communication.
-*   **Database Layer:** PostgreSQL relational database.
-    *   Stores user information, channel details, channel memberships, and message history.
-    *   Managed with Flyway for schema migrations.
-*   **Caching Layer:** In-memory Caffeine cache integrated with Spring's caching abstraction to reduce database load for frequently accessed read-heavy data.
-*   **Rate Limiting:** An application-level filter implemented using `Bucket4j` for basic IP-based rate limiting.
+*   **Presentation Layer (`app/api`):**
+    *   Handles HTTP requests and responses.
+    *   Uses Flask Blueprints for modular API endpoints.
+    *   Utilizes Marshmallow schemas for request validation and response serialization.
+    *   Integrates Flask-Smorest for API documentation generation and improved validation.
+    *   Applies authentication, authorization, caching, and rate limiting decorators.
+*   **Business Logic Layer (`app/services`):**
+    *   Contains the core business rules and data processing logic.
+    *   Interacts with the `Database Layer` through ORM models.
+    *   Encapsulates operations like user registration, product updates, order creation, ensuring data integrity and consistency.
+    *   Raises custom `APIError` exceptions for specific business rule violations.
+*   **Database Layer (`app/models`, `app/database`):**
+    *   Defines the database schema using SQLAlchemy ORM models.
+    *   Manages database sessions and connections.
+    *   Includes association tables for many-to-many relationships (e.g., `User` and `UserRole`).
+    *   Migrations are handled by Alembic.
+*   **Utilities Layer (`app/utils`):**
+    *   Provides common functionalities such as custom decorators (e.g., `role_required`, `cache_response`), centralized error handling, and logging configuration.
+*   **Configuration & Extensions (`app/config`, `app/extensions`):**
+    *   Manages application settings for different environments (development, testing, production).
+    *   Initializes Flask extensions (JWT, Bcrypt, Cache, Limiter, CORS).
 
-```mermaid
-graph TD
-    A[React Frontend] -- HTTP(S) --> B(Spring Boot Backend)
-    A -- WebSocket (STOMP) --> B
-    B -- REST API & WebSocket Handler --> C(Controllers)
-    C -- Business Logic --> D(Services)
-    D -- Data Persistence --> E(Repositories)
-    E -- JPA/Hibernate --> F[PostgreSQL Database]
-    D -- Caching --> G[Caffeine Cache]
-    B -- Security Filters/Interceptor --> H(Spring Security & JWT)
-    B -- Rate Limit Filter --> I(Bucket4j)
-    subgraph Backend Services
-        C --- D
-        D --- E
-        D --- G
-        B --- H
-        B --- I
-    end
+### Component Diagram
+
+```
++------------------+     +------------------+     +------------------+
+| Mobile App (FE)  |<--->|    Web Browser   |     |  3rd Party Integrations  |
+|                  |     |  (Swagger UI)    |     |   (Future: Payment)      |
++------------------+     +------------------+     +------------------+
+         |                       |
+         | (HTTPS: REST API)     |
+         v                       v
++------------------------------------------------------------------+
+|                       Load Balancer / Reverse Proxy              |
+|                             (e.g., Nginx)                        |
++------------------------------------------------------------------+
+         |
+         v
++------------------------------------------------------------------+
+|                        API Gateway (Optional)                    |
++------------------------------------------------------------------+
+         |
+         v
++------------------------------------------------------------------+
+|                 [Flask Backend Application - Gunicorn]           |
+|  +------------------------------------------------------------+  |
+|  |           Presentation Layer (`app/api`)                 |  |
+|  |           - API Endpoints, Request/Response Handling       |  |
+|  |           - Authentication (JWT), Authorization (RBAC)     |  |
+|  |           - Request Validation (Marshmallow, webargs)      |  |
+|  |           - Rate Limiting (Flask-Limiter)                  |  |
+|  |           - Caching (Flask-Caching)                        |  |
+|  +------------------------------------------------------------+  |
+|                           |                                      |
+|                           v                                      |
+|  +------------------------------------------------------------+  |
+|  |           Business Logic Layer (`app/services`)          |  |
+|  |           - User, Product, Category, Order Management Logic  |  |
+|  |           - Stock Management, Order Calculation            |  |
+|  |           - Custom Error Handling (`app/utils/errors`)     |  |
+|  +------------------------------------------------------------+  |
+|                           |                                      |
+|                           v                                      |
+|  +------------------------------------------------------------+  |
+|  |           Database Layer (`app/models`, `app/database`)  |  |
+|  |           - SQLAlchemy ORM Models (User, Product, Order)   |  |
+|  |           - Query Optimization (eager loading)             |  |
+|  +------------------------------------------------------------+  |
+|                           ^                                      |
+|                           |                                      |
+|  +------------------------------------------------------------+  |
+|  |                     Utility Modules (`app/utils`)          |  |
+|  |                     - Logging (`app/utils/logger`)         |  |
+|  |                     - Decorators (`app/utils/decorators`)    |  |
+|  +------------------------------------------------------------+  |
++------------------------------------------------------------------+
+         |                 |
+         | (SQL)           | (Key-Value)
+         v                 v
++------------+       +----------+
+| PostgreSQL |<----->|   Redis  |
+| (Database) |       | (Cache,  |
++------------+       | Rate Lim |
+                     +----------+
 ```
 
 ## 4. Setup and Installation
 
 ### Prerequisites
 
-*   Java Development Kit (JDK) 17 or higher
-*   Node.js 20 or higher & npm (or yarn)
-*   Docker & Docker Compose (recommended for easy setup)
-*   Maven (if running backend locally without Docker)
-*   PostgreSQL (if running backend locally without Docker)
+*   Docker and Docker Compose
+*   Python 3.9+ (if running locally without Docker)
+*   `pip` (Python package installer)
 
-### Environment Variables
-
-The application uses environment variables for sensitive data and configuration. Create a `.env` file at the root of the `backend` directory and another one at the root of the `frontend` directory.
-
-**`backend/.env` (example, used by `application.yml` via Spring Boot's externalized configuration):**
-```dotenv
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=alx_chat_db
-DB_USERNAME=alx_user
-DB_PASSWORD=alx_password
-
-# JWT Secret (MUST be a strong, base64-encoded string, at least 32 bytes long)
-# You can generate one using: echo "your-secret-key-of-at-least-32-characters" | base64
-JWT_SECRET=a_very_secret_key_that_is_at_least_32_bytes_long_and_should_be_in_env_variable
-```
-
-**`frontend/.env` (example, used by Vite):**
-```dotenv
-VITE_API_BASE_URL=http://localhost:8080/api
-VITE_WS_BASE_URL=ws://localhost:8080/websocket
-```
-*Note: When using Docker Compose, these values are passed directly in `docker-compose.yml` and may refer to service names or host IPs.*
-
-### Building and Running with Docker Compose (Recommended)
-
-This is the easiest way to get the entire application stack running.
+### Local Development Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/alx-realtime-chat.git
-    cd alx-realtime-chat
+    git clone https://github.com/ALX-Software-Engineering/ecommerce-backend.git
+    cd ecommerce-backend
     ```
 
-2.  **Navigate to the project root (where `docker-compose.yml` is located):**
+2.  **Create `.env` file:**
+    Copy the example environment variables and customize them.
     ```bash
-    # Ensure you are in the root directory of the cloned project
-    pwd # Should show /path/to/alx-realtime-chat
+    cp .env.example .env
     ```
+    Edit `.env` and fill in your desired secret keys and database/redis URLs. For Docker Compose, the default URLs in `.env.example` are usually correct.
 
-3.  **Build and start the services:**
+3.  **Build and run with Docker Compose:**
+    This will build the Flask app image, start PostgreSQL, Redis, and the Flask app. It also runs database migrations and seeds initial data via `docker-entrypoint.sh`.
     ```bash
     docker-compose up --build -d
     ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Start a PostgreSQL database container.
-    *   Start the Spring Boot backend container, connecting to the PostgreSQL container.
-    *   Start the React frontend container (using Nginx to serve static files), which proxies API and WebSocket requests to the backend.
+    The `-d` flag runs containers in detached mode. To see logs, use `docker-compose logs -f`.
+
+    *Expected output for `docker-compose up --build -d`*:
+    ```
+    [+] Running 4/4
+     ⠿ Network ecommerce-backend_default  Created                                                    0.1s
+     ⠿ Container db                       Started                                                    0.1s
+     ⠿ Container redis                    Started                                                    0.1s
+     ⠿ Container app                      Started                                                    0.1s
+    ```
 
 4.  **Verify services are running:**
     ```bash
     docker-compose ps
     ```
+    You should see `db`, `redis`, and `app` containers with `Up` status.
 
-5.  **Access the application:**
-    *   **Frontend:** Open your web browser and navigate to `http://localhost:3000`
-    *   **Backend API Documentation (Swagger UI):** `http://localhost:8080/swagger-ui.html`
-    *   **PostgreSQL Database:** You can connect to `localhost:5432` with username `alx_user` and password `alx_password`. The database name is `alx_chat_db`.
+### Database Migrations
 
-6.  **Stop the services:**
+The `docker-entrypoint.sh` script automatically runs `flask db upgrade` on container startup.
+If you need to manage migrations manually (e.g., in local development without full Docker Compose rebuilds, or adding new models):
+
+1.  **Ensure your app container is running:**
     ```bash
-    docker-compose down
+    docker-compose ps
+    ```
+2.  **Access the app container's shell:**
+    ```bash
+    docker-compose exec app bash
+    ```
+3.  **Generate a new migration script (after changing models):**
+    ```bash
+    flask db revision --autogenerate -m "Add new feature tables"
+    ```
+    This creates a new file in the `migrations/versions/` directory. Review the generated script carefully before applying.
+4.  **Apply migrations:**
+    ```bash
+    flask db upgrade
+    ```
+    This applies all pending migrations to the database.
+5.  **Downgrade migrations (if needed):**
+    ```bash
+    flask db downgrade
+    ```
+    Use `flask db downgrade -1` to go back one step, or a specific revision ID.
+
+### Seeding Initial Data
+
+The `docker-entrypoint.sh` script automatically runs `python seed_db.py` on container startup.
+This script populates the database with:
+*   Default roles: `ADMIN`, `EDITOR`, `CUSTOMER`.
+*   An admin user: `admin@example.com` with password `adminpass123`.
+*   A customer user: `customer@example.com` with password `customerpass`.
+*   Example product categories and products.
+
+To manually seed data (e.g., after a fresh migration or if you skip auto-seeding):
+
+1.  **Access the app container's shell:**
+    ```bash
+    docker-compose exec app bash
+    ```
+2.  **Run the seed script:**
+    ```bash
+    python seed_db.py
+    ```
+    You can also use the Flask CLI command:
+    ```bash
+    flask db-ops seed
     ```
 
-### Running Backend Locally (without Docker)
+### Running the Application
 
-1.  **Ensure PostgreSQL is running locally:**
-    *   Create a database: `alx_chat_db`
-    *   Create a user: `alx_user` with password `alx_password`
-    *   Or update `application.yml` with your local PostgreSQL credentials.
-2.  **Apply database migrations:**
-    Flyway will automatically apply migrations on startup if `spring.flyway.enabled=true`.
-3.  **Navigate to the `backend` directory:**
-    ```bash
-    cd backend
-    ```
-4.  **Build and run the Spring Boot application:**
-    ```bash
-    ./mvnw clean install
-    ./mvnw spring-boot:run
-    ```
-    (On Windows, use `mvnw.cmd` instead of `./mvnw`)
-    The backend will start on `http://localhost:8080`.
-
-### Running Frontend Locally (without Docker)
-
-1.  **Ensure the backend is running (either via Docker or locally).**
-2.  **Navigate to the `frontend` directory:**
-    ```bash
-    cd frontend
-    ```
-3.  **Install dependencies:**
-    ```bash
-    npm install
-    # or yarn install
-    ```
-4.  **Start the development server:**
-    ```bash
-    npm run dev
-    # or yarn dev
-    ```
-    The frontend will be available at `http://localhost:5173` (or another port Vite chooses). Ensure your `frontend/.env` variables `VITE_API_BASE_URL` and `VITE_WS_BASE_URL` point to the correct backend address (`http://localhost:8080`).
+Once Docker Compose is up, the Flask application will be accessible at:
+*   **API Root:** `http://localhost:5000/`
+*   **Swagger UI:** `http://localhost:5000/api/docs/swagger-ui/` (in development mode)
+*   **OpenAPI Spec:** `http://localhost:5000/api/docs/openapi.json` (in development mode)
 
 ## 5. API Documentation
 
-The backend API is documented using Springdoc-openapi, which automatically generates Swagger UI.
+The API is documented using Flask-Smorest, which generates an OpenAPI 3.0 specification.
+In development mode (`FLASK_ENV=development`), you can access the interactive Swagger UI at:
 
-*   **Swagger UI:** Once the backend is running, access the interactive API documentation at:
-    `http://localhost:8080/swagger-ui.html`
+[http://localhost:5000/api/docs/swagger-ui/](http://localhost:5000/api/docs/swagger-ui/)
 
-Here you can explore all endpoints, test them directly, and understand their request/response structures.
+The raw OpenAPI JSON specification is available at:
+
+[http://localhost:5000/api/docs/openapi.json](http://localhost:5000/api/docs/openapi.json)
+
+These endpoints are disabled in `production` mode for security.
+
+### Key Endpoints (Examples)
+
+**Authentication**
+*   `POST /api/auth/register` - Register a new user.
+*   `POST /api/auth/login` - Login and get JWT tokens.
+*   `POST /api/auth/refresh` - Refresh access token using refresh token.
+*   `GET /api/auth/me` - Get current user profile (requires access token).
+
+**Users (Admin Only for most)**
+*   `GET /api/users/` - List all users (Admin only).
+*   `GET /api/users/<id>` - Get user by ID (Admin or self).
+*   `PUT /api/users/<id>` - Update user (Admin or self for limited fields).
+*   `DELETE /api/users/<id>` - Delete user (Admin only, cannot delete self).
+
+**Categories**
+*   `GET /api/categories/` - List all categories (public).
+*   `GET /api/categories/<id>` - Get category by ID (public).
+*   `POST /api/categories/` - Create category (Admin/Editor).
+*   `PUT /api/categories/<id>` - Update category (Admin/Editor).
+*   `DELETE /api/categories/<id>` - Delete category (Admin/Editor, no products linked).
+
+**Products**
+*   `GET /api/products/` - List all products (public).
+*   `GET /api/products/<id>` - Get product by ID (public).
+*   `POST /api/products/` - Create product (Admin/Editor).
+*   `PUT /api/products/<id>` - Update product (Admin/Editor).
+*   `DELETE /api/products/<id>` - Delete product (Admin/Editor).
+
+**Orders**
+*   `POST /api/orders/` - Create new order (Customer).
+*   `GET /api/orders/` - List orders (Customer: own orders; Admin: all orders).
+*   `GET /api/orders/<id>` - Get order by ID (Customer: own order; Admin: any order).
+*   `PUT /api/orders/<id>/status` - Update order status (Admin/Editor).
+*   `DELETE /api/orders/<id>` - Delete order (Admin only).
 
 ## 6. Testing
 
-The project includes various types of tests to ensure quality and reliability.
+The project includes a comprehensive test suite covering unit, integration, and performance aspects.
 
-*   **Unit Tests:**
-    *   **Backend:** Located in `backend/src/test/java`. Uses JUnit 5 and Mockito to test individual components (services, utilities) in isolation. Coverage target: 80%+.
-    *   **Frontend:** Located in `frontend/src/**/*.test.tsx`. Uses Jest and React Testing Library to test React components in isolation.
-*   **Integration Tests:**
-    *   **Backend:** Located in `backend/src/test/java/com/alx/chat/integration`. Uses Spring Boot Test and Testcontainers to spin up a real PostgreSQL database, ensuring that services and repositories interact correctly with the database. These tests provide a higher level of confidence in the system's core functionalities.
-*   **API Tests:**
-    *   **Backend:** Located in `backend/src/test/java/com/alx/chat/api`. Uses RestAssured to test the REST endpoints from an external client perspective, validating HTTP status codes, request/response payloads, and authentication mechanisms.
-*   **Performance Tests:**
-    *   A conceptual approach is documented in the code (`README.md` section on performance tests) outlining tools (JMeter, k6, Locust), strategies, and key metrics for performance evaluation. Full performance test scripts are not provided due to their complexity and environment-specific nature.
+### Unit Tests
 
-**To run tests:**
+*   Located in `tests/unit/`.
+*   Focus on individual components (models, services) in isolation.
+*   Run with `pytest`.
 
-*   **Backend Tests:**
+### Integration Tests
+
+*   Located in `tests/integration/`.
+*   Test the interaction between multiple components, primarily through API endpoints.
+*   Use Flask's test client to simulate HTTP requests.
+*   Run with `pytest`.
+
+### Performance Tests
+
+*   Located in `tests/performance/`.
+*   Uses [Locust](https://locust.io/) to simulate user load and measure API performance.
+*   The `locustfile.py` script defines various user behaviors.
+
+**To run performance tests:**
+
+1.  Ensure your application is running (e.g., `docker-compose up -d`).
+2.  Open a new terminal and install Locust if you haven't: `pip install locust`.
+3.  Navigate to the project root and run Locust:
     ```bash
-    cd backend
-    ./mvnw test
+    locust -f tests/performance/locustfile.py
     ```
-*   **Frontend Tests:**
+4.  Open your browser to `http://localhost:8089` to access the Locust UI.
+5.  Enter the number of users, spawn rate, and host (`http://localhost:5000`), then click "Start swarming".
+
+### Test Coverage
+
+We aim for 80%+ test coverage. To generate a coverage report:
+
+1.  Install `pytest-cov`: `pip install pytest-cov` (included in `requirements.txt`).
+2.  Run tests with coverage:
     ```bash
-    cd frontend
-    npm test
-    # or yarn test
+    pytest --cov=app --cov-report=term-missing --cov-report=html
     ```
+    *   `--cov=app`: Specifies the directory to measure coverage for.
+    *   `--cov-report=term-missing`: Shows missing lines in the terminal.
+    *   `--cov-report=html`: Generates an HTML report in `htmlcov/` directory. Open `htmlcov/index.html` in your browser for a detailed report.
 
 ## 7. Deployment Guide
 
-The `docker-compose.yml` provided is suitable for local development and can serve as a basis for a simple single-server deployment.
+This setup is designed for Docker-based deployment to various cloud providers (e.g., AWS EC2, Google Cloud Run, Azure Container Instances, DigitalOcean Droplets).
 
-**Steps for Production Deployment (conceptual):**
+1.  **Prepare your environment:**
+    *   Provision a Linux VM (e.g., Ubuntu) on your chosen cloud provider.
+    *   Install Docker and Docker Compose on the VM.
+    *   Install `git`.
+2.  **Clone the repository on the server:**
+    ```bash
+    git clone https://github.com/ALX-Software-Engineering/ecommerce-backend.git
+    cd ecommerce-backend
+    ```
+3.  **Configure `.env`:**
+    *   Create a `.env` file on the server.
+    *   **Crucially, set `FLASK_ENV=production`** and use strong, unique `SECRET_KEY` and `JWT_SECRET_KEY` values.
+    *   Set `DATABASE_URL` to your production PostgreSQL instance (if external, otherwise use `db` if running with docker-compose on the same server).
+    *   Set `REDIS_URL` for your production Redis instance.
+    *   **Disable `FLASK_DEBUG=1`**.
+    *   Disable `OPENAPI_SWAGGER_UI_PATH` and `OPENAPI_URL_PREFIX` in `app/config.py` for `ProductionConfig` to prevent exposure of API docs in production.
+4.  **Run with Docker Compose:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    The `docker-entrypoint.sh` handles migrations and initial seeding automatically.
+5.  **Set up a Reverse Proxy (Recommended):**
+    For production, it's highly recommended to place a reverse proxy (like Nginx) in front of your Gunicorn application. This provides:
+    *   SSL/TLS termination (HTTPS).
+    *   Load balancing (if you scale out Flask app instances).
+    *   Static file serving (if you had a web frontend).
+    *   Request buffering, compression, etc.
 
-1.  **Prepare for Production:**
-    *   **Database:** Use a managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for high availability, backups, and scaling.
-    *   **JWT Secret:** Ensure `JWT_SECRET` is a very strong, randomly generated key stored securely (e.g., in environment variables, Kubernetes secrets, or a secret manager).
-    *   **Logging:** Configure a centralized logging system (e.g., ELK Stack, Grafana Loki) to collect logs from all containers.
-    *   **Monitoring:** Set up monitoring with Prometheus/Grafana or cloud-specific monitoring tools to track application and infrastructure metrics.
-    *   **HTTPS:** Implement HTTPS for all communication (API and WebSockets) using a reverse proxy (Nginx, Caddy) or load balancer (e.g., AWS ALB) with SSL certificates.
-    *   **Scalability:** For high traffic, consider running multiple instances of the backend service behind a load balancer. WebSockets will require sticky sessions if using multiple instances.
-2.  **Build Production Images:**
-    ```bash
-    docker-compose build
+    Example Nginx configuration (e.g., `/etc/nginx/sites-available/ecommerce`):
+    ```nginx
+    server {
+        listen 80;
+        server_name your_domain.com; # Replace with your domain or IP
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl;
+        server_name your_domain.com; # Replace with your domain or IP
+
+        ssl_certificate /etc/letsencrypt/live/your_domain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/your_domain.com/privkey.pem;
+
+        location / {
+            proxy_pass http://localhost:5000; # Or the IP/port of your Flask app container if not localhost
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
+        }
+    }
     ```
-3.  **Push Images to Registry:**
-    Tag and push your Docker images to a private container registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
-    ```bash
-    docker tag realtime-chat-backend:latest your-registry/alx-chat-backend:latest
-    docker push your-registry/alx-chat-backend:latest
-    # Repeat for frontend
-    ```
-4.  **Deploy to Cloud/Server:**
-    *   **Virtual Machine (VM):** SSH into your VM, install Docker/Docker Compose, pull images from your registry, configure environment variables, and run `docker-compose up -d`. Set up Nginx as a reverse proxy for HTTPS and potentially rate limiting at the edge.
-    *   **Kubernetes (K8s):** For larger scale, create Kubernetes deployments for backend, frontend, and database (or connect to managed DB). Use Services, Ingress Controllers (for HTTP/HTTPS routing, WebSocket support), and ConfigMaps/Secrets for configuration.
-    *   **Managed Services:** Deploy the backend to a PaaS (e.g., AWS Elastic Beanstalk, Heroku) and the frontend static files to an S3 bucket with CloudFront.
+    Then `sudo ln -s /etc/nginx/sites-available/ecommerce /etc/nginx/sites-enabled/` and `sudo systemctl restart nginx`.
+    Use Certbot for easy SSL certificate generation (`sudo apt install certbot python3-certbot-nginx`).
 
 ## 8. CI/CD Configuration
 
-A conceptual GitHub Actions workflow (`.github/workflows/main.yml`) is provided. This workflow demonstrates:
+A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided for Continuous Integration.
 
-*   **Triggers:** Runs on push to `main`/`develop` and pull requests.
-*   **Backend Build & Test:** Sets up JDK, caches Maven dependencies, builds the Spring Boot application, and runs all unit/integration tests.
-*   **Frontend Build & Test:** Sets up Node.js, caches npm dependencies, installs, runs Jest tests (with coverage), and builds the React application.
-*   **Optional Docker Build & Push:** (Commented out) Shows how to build and push Docker images to a registry on `main` branch pushes. Requires Docker Hub credentials.
-*   **Optional Deployment:** (Commented out) A placeholder for a deployment step using SSH to a target server.
-
-## 9. Additional Features
-
-*   **Authentication/Authorization:** Implemented using Spring Security and JWT. Users register, receive a token, and use this token for subsequent authenticated API and WebSocket calls. Role-based access can be extended from the `UserDetails` interface.
-*   **Logging and Monitoring:**
-    *   **Logging:** SLF4J with Logback is configured in `application.yml` for backend logging, with detailed DEBUG level for the application package.
-    *   **Monitoring:** While not fully implemented, the logging framework is in place. For production, integrate with external monitoring systems like Prometheus/Grafana (for metrics), ELK Stack (for centralized logs), or cloud-native monitoring solutions.
-*   **Error Handling Middleware:**
-    *   **Backend:** `@RestControllerAdvice` is used in `GlobalExceptionHandler.java` to provide centralized error handling, mapping specific exceptions (e.g., `ResourceNotFoundException`, `UserAlreadyExistsException`, validation errors, `BadCredentialsException`) to appropriate HTTP status codes and structured JSON responses.
-*   **Caching Layer:**
-    *   **Backend:** Implemented using Spring's caching abstraction with Caffeine as the in-memory cache provider. `@Cacheable` and `@CacheEvict` annotations are used in `UserService` and `ChannelService` to cache user profiles, channel details, and lists, reducing database load.
-*   **Rate Limiting:**
-    *   **Backend:** A custom `RateLimitFilter` is implemented using `Bucket4j` and Guava Cache. It applies a per-IP rate limit (10 requests per minute) to protect the API from excessive requests. WebSocket connections are exempted from this filter.
-
-## 10. Code Statistics
-
-This project significantly exceeds 2000 lines of code, demonstrating a comprehensive implementation across both backend and frontend.
-
-*   **Backend (Java):** Approximately 1500+ lines of Java code (entities, DTOs, services, controllers, configurations, security, mappers, exceptions)
-*   **Frontend (TypeScript/React):** Approximately 1000+ lines of TypeScript/JSX code (components, pages, API clients, auth context, WebSocket utilities)
-*   **Configuration & Scripts:** ~300+ lines (pom.xml, package.json, application.yml, Dockerfiles, docker-compose.yml, migration SQL)
-*   **Tests:** ~700+ lines (JUnit, Mockito, RestAssured, Jest, React Testing Library)
-
-**Total Estimated Lines of Code (Excluding comments in generated files/boilerplate): ~3500+ lines.**
-
-## 11. License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-```
-
-### API Documentation
-
-Refer to the `OpenApiConfig.java` and `springdoc` configuration in `application.yml` for backend API documentation setup.
-The Swagger UI is accessible at `http://localhost:8080/swagger-ui.html` when the backend is running. It provides an interactive interface to explore and test all API endpoints, including authentication.
-
-### Architecture Documentation
-
-The `README.md` above includes a detailed "Architecture" section with a Mermaid diagram, outlining the system's components and their interactions. Additional internal documentation can be placed in a `docs/` directory within the project, detailing specific design choices, data flows, or complex algorithms if necessary.
-
-### Deployment Guide
-
-The `README.md` includes a "Deployment Guide" section covering local Docker Compose deployment and conceptual steps for production deployment to cloud environments, emphasizing considerations like managed databases, HTTPS, logging, monitoring, and scaling.
-
----
-
-## 6. Additional Features
-
-These features are integrated directly into the core application and described in the `README.md` and relevant code files.
-
-*   **Authentication/Authorization:**
-    *   **Implementation:** JWT-based authentication using Spring Security for the backend and `localStorage` for the token on the frontend.
-    *   **Backend:** `JwtAuthenticationFilter`, `JwtTokenProvider`, `CustomUserDetailsService` handle token validation and user details loading. `@PreAuthorize` annotations are used for endpoint-specific authorization. `WebSocketAuthChannelInterceptor` authenticates WebSocket connections.
-    *   **Frontend:** `AuthProvider` manages login/registration, stores the token, and provides authentication state to the application. `ProtectedRoute` restricts access to authenticated routes.
-*   **Logging and Monitoring:**
-    *   **Logging:** SLF4J with Logback is configured in `application.yml`. `DEBUG` level is set for the application's package (`com.alx.chat`) to provide detailed insights during development, and `INFO` for production. `Slf4j` annotations are used in services and controllers.
-    *   **Monitoring (conceptual):** The `README.md` mentions integration with tools like Prometheus/Grafana for metrics and ELK Stack for centralized log aggregation in a production environment.
-*   **Error Handling Middleware:**
-    *   **Backend:** A `GlobalExceptionHandler.java` (using `@RestControllerAdvice`) provides a centralized mechanism to catch exceptions (`ResourceNotFoundException`, `UserAlreadyExistsException`, `MethodArgumentNotValidException`, `BadCredentialsException`, `AccessDeniedException`, and generic `Exception`) and return consistent, structured JSON error responses with appropriate HTTP status codes.
-*   **Caching Layer:**
-    *   **Backend:** Implemented using Spring's caching abstraction with Caffeine (an in-memory cache) as the provider.
-    *   `CacheConfig.java` configures the Caffeine cache manager and its properties (initial capacity, max size, expire after access).
-    *   `@Cacheable` is used on `UserService.getUserByUsername`, `ChannelService.getChannelById`, `ChannelService.getAllChannels`, and `ChannelService.getChannelMembers` to cache read operations.
-    *   `@CacheEvict(allEntries = true)` is used on `ChannelService.createChannel` and `ChannelService.joinChannel` to clear relevant caches when data changes.
-*   **Rate Limiting:**
-    *   **Backend:** A `RateLimitFilter.java` is implemented as a Spring `OncePerRequestFilter`. It uses `Bucket4j` with a Guava Cache to apply an IP-based rate limit (e.g., 10 requests per minute). This helps protect the API from brute-force attacks and resource exhaustion. WebSocket endpoints are exempt from this filter.
-
----
-
-This comprehensive solution provides a robust foundation for a real-time chat application, adhering to the specified requirements and demonstrating enterprise-grade software engineering principles. The total line count, including code, configuration, and detailed documentation, significantly exceeds 2000 lines.
+```yaml

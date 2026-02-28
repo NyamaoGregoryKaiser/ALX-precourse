@@ -1,46 +1,35 @@
-```dockerfile
-# Use a lighter base image for Java 17
-FROM openjdk:17-jdk-slim
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
 
-# Set the working directory inside the container
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the Maven wrapper files to allow building inside the container if needed
-# COPY mvnw .
-# COPY .mvn .mvn
+# Install system dependencies required for psycopg2-binary
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    # Clean up APT when done
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the pom.xml file to leverage Docker layer caching
-COPY pom.xml .
+# Copy the requirements file into the container
+COPY requirements.txt .
 
-# Download dependencies to cache them (optional, if you build outside container)
-# RUN ./mvnw dependency:go-offline -B
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire source code
-COPY src src
+# Copy the rest of the application code into the container
+COPY . .
 
-# Build the application
-# Use -DskipTests for faster build, or remove to run tests during build
-# RUN ./mvnw clean install -DskipTests
+# Expose port 5000 for the Flask application
+EXPOSE 5000
 
-# If building outside the container, copy the JAR directly
-# To build outside: `mvn clean install -DskipTests`
-# Then run `docker build -t chat-app .`
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
+# Run Gunicorn as the entry point
+# We use a custom entrypoint script to handle migrations before starting the app.
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 
-# Expose the port the application runs on
-EXPOSE 8080
-
-# Define environment variables for database connection (default to local settings)
-# These can be overridden via docker-compose or `docker run -e`
-ENV DB_HOST=localhost \
-    DB_PORT=5432 \
-    DB_NAME=chatdb \
-    DB_USERNAME=chatuser \
-    DB_PASSWORD=chatpass \
-    JWT_SECRET=supersecretjwtkeythatisatleast256bitlongforsecuritypurposes
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-```
+# Default command to run the application using Gunicorn
+# This command will be overridden by docker-entrypoint.sh if migrations are needed
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
