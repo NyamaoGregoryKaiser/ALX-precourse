@@ -1,0 +1,132 @@
+```html
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Processor Dashboard (Mock)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1, h2 { color: #2c3e50; }
+        .merchant-section, .transaction-section { margin-bottom: 30px; padding: 20px; border: 1px solid #eee; border-radius: 5px; background-color: #fcfcfc; }
+        form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+            padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;
+        }
+        button { padding: 10px 15px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+        button:hover { background-color: #2980b9; }
+        .message { margin-top: 10px; padding: 10px; border-radius: 4px; }
+        .message.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .message.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #ecf0f1; color: #333; }
+        #api-key-display { background-color: #e8e8e8; padding: 10px; border-radius: 4px; font-family: monospace; overflow-wrap: break-word;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Payment Processor Dashboard (Mock Frontend)</h1>
+        <p>This is a simplified mock frontend to demonstrate basic interactions with the backend API.</p>
+
+        <div class="message" id="global-message"></div>
+
+        <div class="auth-section">
+            <h2>Internal User Authentication</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Admin Email" value="admin@example.com" required>
+                <input type="password" id="login-password" placeholder="Admin Password" value="Password123!" required>
+                <button type="submit">Login (Admin)</button>
+            </form>
+            <div id="auth-status"></div>
+            <button id="logout-btn" style="display: none;">Logout</button>
+        </div>
+
+        <hr>
+
+        <div class="merchant-section">
+            <h2>Merchant Management (Admin Only)</h2>
+            <h3>Create Merchant</h3>
+            <form id="create-merchant-form">
+                <input type="text" id="merchant-name" placeholder="Merchant Name" required>
+                <input type="email" id="merchant-email" placeholder="Merchant Email" required>
+                <input type="text" id="merchant-category" placeholder="Business Category" required>
+                <button type="submit">Create Merchant</button>
+            </form>
+            <div id="merchant-creation-status"></div>
+            <div id="api-key-display" style="display: none;">
+                <strong>API Key:</strong> <span id="new-merchant-api-key"></span>
+            </div>
+
+            <h3>All Merchants</h3>
+            <button id="load-merchants-btn">Load All Merchants</button>
+            <table id="merchants-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Category</th>
+                        <th>API Key (for demo)</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Merchants will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <hr>
+
+        <div class="transaction-section">
+            <h2>Transaction Processing (Merchant via API Key)</h2>
+            <p><strong>Note:</strong> For this demo, we'll manually use an API Key from a created merchant.</p>
+            <label for="merchant-api-key">Merchant API Key:</label>
+            <input type="text" id="merchant-api-key" placeholder="Enter Merchant API Key here" size="50" required>
+            <button id="fetch-merchant-transactions-btn">Fetch My Transactions</button>
+            <div id="transaction-status"></div>
+
+            <h3>Process New Transaction</h3>
+            <form id="process-transaction-form">
+                <input type="number" id="transaction-amount" placeholder="Amount (cents, e.g., 1000 for $10.00)" required min="1">
+                <input type="text" id="transaction-currency" placeholder="Currency (e.g., USD)" value="USD" required maxlength="3">
+                <select id="payment-method-type" required>
+                    <option value="">Select Payment Method</option>
+                    <option value="card">Card</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="mobile_money">Mobile Money</option>
+                </select>
+                <input type="text" id="payment-method-token" placeholder="Payment Method Token (e.g., test_card_token)" value="test_card_token_123" required>
+                <input type="text" id="customer-id" placeholder="Customer ID (optional UUID)">
+                <input type="text" id="transaction-description" placeholder="Description (optional)">
+                <button type="submit">Process Transaction</button>
+            </form>
+            <div id="process-transaction-result"></div>
+
+            <h3>My Transactions</h3>
+            <table id="transactions-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Merchant ID</th>
+                        <th>Amount</th>
+                        <th>Currency</th>
+                        <th>Status</th>
+                        <th>Gateway Ref</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Transactions will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+```

@@ -1,55 +1,62 @@
 ```yaml
-# docker-compose.yml for WebScraperX application
-# Defines services for the Spring Boot app and PostgreSQL database.
+# docker-compose.yml
+# ALX Principle: Multi-Service Orchestration
+# Define and run multi-container Docker applications.
 
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: webscraperx_db
-    restart: always
-    environment:
-      POSTGRES_DB: ${DB_NAME:-webscraperdb}
-      POSTGRES_USER: ${DB_USERNAME:-webscraper}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-webscraperpass}
-    ports:
-      - "5432:5432" # Expose PostgreSQL port
-    volumes:
-      - db_data:/var/lib/postgresql/data # Persist data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-webscraper} -d ${DB_NAME:-webscraperdb}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: webscraperx_app
-    restart: always
+    # image: my-payment-processor:latest # Uncomment and build if you want to push to a registry
+    container_name: payment_processor_app
     ports:
-      - "8080:8080" # Expose Spring Boot app port
+      - "3000:3000"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-webscraperdb}
-      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-webscraper}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-webscraperpass}
-      JWT_SECRET: ${JWT_SECRET:your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod}
-      SERVER_PORT: 8080
+      # Inject environment variables from .env file
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+      - DB_HOST=database # This matches the service name of the database container
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ACCESS_EXPIRATION_MINUTES=${JWT_ACCESS_EXPIRATION_MINUTES}
+      - JWT_REFRESH_EXPIRATION_DAYS=${JWT_REFRESH_EXPIRATION_DAYS}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
+      # - GATEWAY_WEBHOOK_SECRET=${GATEWAY_WEBHOOK_SECRET}
     depends_on:
-      db:
-        condition: service_healthy # Wait for DB to be healthy
-    # For local development, map logs directory
+      - database
+    # Add restart policy for resilience
+    restart: unless-stopped
     volumes:
-      - ./logs:/app/logs
+      # For development, you might want to mount source code:
+      # - .:/app
+      # - /app/node_modules # Exclude node_modules from host mount
+      # For production, volumes for logs or persistent data only if needed
+
+  database:
+    image: postgres:13-alpine # Use a specific PostgreSQL version
+    container_name: payment_processor_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432" # Expose DB port only if you need to access it from outside docker
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persist database data
+    restart: unless-stopped
+    # Define health check for the database
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:8080/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 40s # Give the app more time to start up
 
 volumes:
-  db_data: # Define named volume for database persistence
+  db_data: # Declared volume for database persistence
 ```

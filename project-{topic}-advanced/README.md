@@ -1,466 +1,339 @@
 ```markdown
-# WebScraperX - Comprehensive Web Scraping Tools System
+# Payment Processing System
 
-![Java](https://img.shields.io/badge/Java-17-blue.svg)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-lightgrey.svg)
-![Jsoup](https://img.shields.io/badge/Jsoup-orange.svg)
-![JWT](https://img.shields.io/badge/JWT-black.svg)
-![Docker](https://img.shields.io/badge/Docker-blue.svg)
-![CI/CD](https://img.shields.io/badge/CI/CD-GitHub%20Actions-blueviolet.svg)
-![Code Coverage](https://codecov.io/gh/your-username/web-scraper-x/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)
-
-WebScraperX is an enterprise-grade, full-stack web scraping application built with Java (Spring Boot) backend, PostgreSQL database, and a simple vanilla JavaScript frontend. It provides a robust and extensible platform for defining, scheduling, executing, and managing web scraping tasks.
-
-This project emphasizes clean architecture, comprehensive testing, security, and scalability, following best practices for production-ready software.
+This project is a comprehensive, production-ready payment processing system designed to handle various transaction lifecycle events, merchant management, and integrations with external payment gateways. It's built with Node.js, Express, and PostgreSQL, focusing on robust architecture, security, scalability, and maintainability, adhering to best practices in software engineering.
 
 ## Table of Contents
 
-1.  [Features](#1-features)
-2.  [Architecture Overview](#2-architecture-overview)
-3.  [Technology Stack](#3-technology-stack)
-4.  [Prerequisites](#4-prerequisites)
-5.  [Setup and Installation](#5-setup-and-installation)
-    *   [Local Setup (without Docker)](#51-local-setup-without-docker)
-    *   [Docker Compose Setup](#52-docker-compose-setup)
-6.  [Running the Application](#6-running-the-application)
-7.  [API Documentation (Swagger UI)](#7-api-documentation-swagger-ui)
-8.  [Frontend Usage](#8-frontend-usage)
-9.  [Authentication & Authorization](#9-authentication--authorization)
-10. [Scheduled Tasks](#10-scheduled-tasks)
-11. [Caching](#11-caching)
-12. [Rate Limiting](#12-rate-limiting)
-13. [Error Handling](#13-error-handling)
-14. [Logging & Monitoring](#14-logging--monitoring)
-15. [Testing](#15-testing)
-16. [CI/CD](#16-cicd)
-17. [Deployment Guide](#17-deployment-guide)
-18. [ALX Software Engineering Principles](#18-alx-software-engineering-principles)
-19. [Future Enhancements](#19-future-enhancements)
-20. [Contributing](#20-contributing)
-21. [License](#21-license)
+1.  [Features](#features)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup & Installation](#setup--installation)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Docker Setup](#docker-setup)
+5.  [Running the Application](#running-the-application)
+6.  [Database Management](#database-management)
+7.  [API Documentation](#api-documentation)
+8.  [Architecture](#architecture)
+9.  [Testing](#testing)
+10. [CI/CD (Conceptual)](#cicd-conceptual)
+11. [Deployment Guide](#deployment-guide)
+12. [Further Enhancements](#further-enhancements)
+13. [ALX Principles & Best Practices](#alx-principles--best-practices)
+14. [License](#license)
 
-## 1. Features
+---
 
-*   **Scraping Task Management (CRUD):** Define web pages to scrape, specify data fields using CSS selectors, and manage tasks.
-*   **Scheduled Scraping:** Use cron expressions to schedule tasks for automatic execution.
-*   **Manual Trigger:** Manually initiate a scraping task execution.
-*   **Data Storage:** Persist scraped data in a PostgreSQL database.
-*   **User Authentication & Authorization (JWT):** Secure API endpoints, allowing only authenticated and authorized users to manage their tasks.
-*   **Role-Based Access Control:** Differentiate between `USER` and `ADMIN` roles (though `ADMIN` features are not fully exposed in this frontend, the backend supports it).
-*   **Global Error Handling:** Consistent and informative error responses.
-*   **Caching Layer:** Improve API performance for frequently accessed task details.
-*   **Rate Limiting:** Protect the backend from abuse and ensure fair usage.
-*   **Comprehensive Logging:** Detailed logs for debugging and operational insights.
-*   **Health & Metrics Monitoring:** Spring Boot Actuator endpoints for application health, metrics (Prometheus format supported).
-*   **Database Migrations:** Manage schema changes with Flyway.
-*   **Docker Support:** Containerized setup for easy deployment and development.
-*   **CI/CD Pipeline:** Basic GitHub Actions workflow for automated build and test.
-*   **API Documentation:** Interactive API documentation using Swagger UI (Springdoc OpenAPI).
-*   **Frontend:** A basic HTML/JS frontend to demonstrate core functionalities.
+### 1. Features
 
-## 2. Architecture Overview
+*   **Core Payment Logic:**
+    *   Simulated `authorize`, `capture`, `refund` operations.
+    *   Transaction status lifecycle management.
+    *   Idempotency for reliable transaction processing.
+*   **Merchant Management:**
+    *   CRUD operations for merchant accounts.
+    *   Automatic API key generation for merchants.
+*   **Transaction Management:**
+    *   Detailed transaction records with various attributes.
+    *   Filtering, sorting, and pagination for transaction queries.
+*   **Webhooks:**
+    *   Configurable outbound webhooks for merchants to receive transaction status updates.
+    *   Inbound webhooks for receiving events from external payment gateways.
+*   **Security:**
+    *   JWT-based authentication for internal admin users.
+    *   API Key authentication for merchant-facing APIs.
+    *   Password hashing (bcrypt).
+    *   Input validation (Joi).
+    *   Helmet for HTTP security headers, XSS cleaning, HPP protection.
+*   **Observability:**
+    *   Structured logging with Winston.
+    *   Centralized error handling.
+*   **Performance & Resilience:**
+    *   Rate limiting.
+    *   Compression (gzip).
+    *   Asynchronous event handling (e.g., webhook dispatch).
+*   **Database:**
+    *   PostgreSQL with Sequelize ORM.
+    *   Database migrations for schema evolution.
+    *   Seed data for initial setup.
+*   **Development & Operations:**
+    *   Docker and Docker Compose for easy setup and local development.
+    *   Comprehensive testing suite (Unit, Integration).
+    *   Pre-commit hooks for linting and formatting.
 
-The application follows a standard layered architecture for a Spring Boot application:
+### 2. Technology Stack
 
-*   **Presentation Layer (Frontend/Controllers):**
-    *   **Frontend:** Simple HTML/CSS/JS client consuming the REST API.
-    *   **Controllers (`com.alx.webscraper.controller`):** REST endpoints exposing the application's functionality. They receive HTTP requests, validate input, and delegate to the service layer.
-*   **Service Layer (`com.alx.webscraper.service`):**
-    *   Contains the core business logic. It orchestrates operations, interacts with multiple repositories, and manages transactions. This layer includes `ScrapingTaskService`.
-*   **Scraper Layer (`com.alx.webscraper.scraper`):**
-    *   Dedicated module for web scraping logic.
-    *   `ScraperStrategy`: Interface for different scraping methods (currently `HtmlScraper` using Jsoup).
-    *   `ScraperService`: High-level service to execute a scraping task using a chosen strategy and persist results.
-    *   `ScraperScheduler`: Manages the scheduling and execution of cron-based tasks.
-*   **Data Access Layer (Repositories):**
-    *   **Repositories (`com.alx.webscraper.repository`):** Spring Data JPA interfaces for interacting with the database. They abstract away the details of persistence.
-*   **Domain Model Layer (`com.alx.webscraper.model`):**
-    *   **Entities:** JPA entities representing the database schema (`ScrapingTask`, `ScrapedData`, `User`).
-    *   **DTOs:** Data Transfer Objects for request/response bodies, ensuring data validation and controlled exposure of entity data.
-*   **Infrastructure/Cross-Cutting Concerns:**
-    *   **Configuration (`com.alx.webscraper.config`):** Spring Security, caching, rate limiting, OpenAPI.
-    *   **Auth (`com.alx.webscraper.auth`):** JWT-based authentication and authorization.
-    *   **Exception Handling (`com.alx.webscraper.exception`):** Global exception handling using `@ControllerAdvice`.
-    *   **Logging:** Configured with SLF4J and Logback.
+*   **Backend:** Node.js, Express.js
+*   **Database:** PostgreSQL
+*   **ORM:** Sequelize
+*   **Authentication:** JWT, Passport.js, API Keys
+*   **Validation:** Joi
+*   **Logging:** Winston
+*   **Testing:** Jest, Supertest
+*   **Containerization:** Docker, Docker Compose
 
-```mermaid
-graph TD
-    A[Frontend/API Client] -- HTTP Requests --> B(Spring Boot Backend)
+### 3. Project Structure
 
-    subgraph "Spring Boot Backend"
-        B --> C[Controller Layer]
-        C --> D[Service Layer]
-        D --> E[Scraper Layer]
-        D -- Persists --> F[Repository Layer]
-        E -- Persists --> F
-        F -- Interacts With --> G((PostgreSQL Database))
-        B -- Security/Auth --> H[Spring Security/JWT]
-        B -- Rate Limiting --> I[Rate Limiting Interceptor]
-        B -- Caching --> J[Caffeine Cache]
-        B -- Error Handling --> K[Global Exception Handler]
-        B -- Scheduling --> L[Spring Scheduler]
-        L -- Triggers --> E
-        L -- Updates --> F
-    end
+The project follows a modular and layered architecture to ensure separation of concerns and maintainability.
 
-    subgraph "Scraper Layer"
-        E1[ScraperService] --> E2[ScraperStrategy (e.g., Jsoup)]
-    end
-
-    subgraph "Data Access Layer"
-        F1[ScrapingTaskRepository]
-        F2[ScrapedDataRepository]
-        F3[UserRepository]
-        F --> F1 & F2 & F3
-    end
+```
+payment-processor/
+├── src/
+│   ├── config/              # Application-wide configurations
+│   ├── controllers/         # Handles incoming requests, orchestrates services
+│   ├── services/            # Business logic layer
+│   ├── models/              # Sequelize model definitions and plugins
+│   ├── middlewares/         # Express middleware (auth, error handling, rate limiting, validation)
+│   ├── utils/               # Utility functions (logger, jwt, api errors, helpers)
+│   ├── routes/              # API route definitions
+│   ├── app.js               # Express application setup
+│   ├── server.js            # Entry point for the application
+│   └── database.js          # Database connection and ORM initialization
+├── migrations/              # Database migration files (managed by Sequelize CLI)
+├── seeders/                 # Database seed files (managed by Sequelize CLI)
+├── tests/
+│   ├── unit/                # Unit tests for services and utils
+│   ├── integration/         # Integration tests for controllers and routes
+│   └── api/                 # E2E API tests (uses integration test setup)
+├── public/                  # Static files for a conceptual frontend (e.g., dashboard)
+├── .env.example             # Environment variables example
+├── package.json             # Project dependencies and scripts
+├── Dockerfile               # Docker build instructions for the application
+├── docker-compose.yml       # Docker Compose for multi-service setup (app + db)
+├── README.md                # Comprehensive project documentation (this file)
+├── API.md                   # API documentation (OpenAPI style)
+├── ARCHITECTURE.md          # System architecture documentation
+├── DEPLOYMENT.md            # Deployment guide
+├── CI_CD.yml                # GitHub Actions workflow configuration (conceptual)
+└── .gitignore               # Files to ignore in Git
 ```
 
-## 3. Technology Stack
+### 4. Setup & Installation
 
-*   **Backend:**
-    *   Java 17
-    *   Spring Boot 3.2.5
-    *   Spring Data JPA
-    *   Spring Security (JWT)
-    *   Jsoup 1.17.2 (Web Scraping)
-    *   Lombok
-    *   Caffeine (Local Cache)
-    *   Springdoc OpenAPI (Swagger UI)
-*   **Database:**
-    *   PostgreSQL
-    *   Flyway (Database Migrations)
-*   **Build Tool:**
-    *   Maven
-*   **Containerization:**
-    *   Docker, Docker Compose
-*   **Testing:**
-    *   JUnit 5
-    *   Mockito
-    *   Spring Boot Test
-    *   Testcontainers (for integration tests with real DB)
-    *   WireMock (for HTTP mocking in scraper tests)
-*   **Frontend:**
-    *   HTML, CSS, Vanilla JavaScript (fetch API)
-*   **CI/CD:**
-    *   GitHub Actions
+#### Prerequisites
 
-## 4. Prerequisites
+*   Node.js (v18 or higher) & npm
+*   PostgreSQL (optional, if not using Docker for DB)
+*   Docker & Docker Compose (recommended)
 
-*   Java 17 JDK
-*   Maven 3.6+
-*   Docker & Docker Compose (optional, but highly recommended)
-*   PostgreSQL (if running locally without Docker)
-*   A text editor or IDE (IntelliJ IDEA, VS Code, Eclipse)
-
-## 5. Setup and Installation
-
-You can run the application either directly on your machine or using Docker Compose.
-
-### 5.1. Local Setup (without Docker)
+#### Local Development Setup (without Docker for DB)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/web-scraper-x.git
-    cd web-scraper-x
+    git clone https://github.com/your-username/payment-processor.git
+    cd payment-processor
     ```
 
-2.  **Set up PostgreSQL:**
-    *   Install PostgreSQL (if not already installed).
-    *   Create a database: `webscraperdb`
-    *   Create a user: `webscraper` with password `webscraperpass`
-    ```sql
-    CREATE USER webscraper WITH PASSWORD 'webscraperpass';
-    CREATE DATABASE webscraperdb OWNER webscraper;
-    ```
-    *   (Optional) Update `src/main/resources/application.yml` if your database credentials are different.
-
-3.  **Run Flyway migrations:**
+2.  **Install dependencies:**
     ```bash
-    mvn flyway:migrate
+    npm install
     ```
-    This will apply `V1__Initial_schema.sql` and `V2__Add_users_roles_data.sql`.
 
-4.  **Build the project:**
+3.  **Set up environment variables:**
+    *   Create a `.env` file in the root directory.
+    *   Copy the contents of `.env.example` into your `.env` file.
+    *   Update the `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `JWT_SECRET` variables.
+    *   Ensure a PostgreSQL server is running locally and reachable by `DB_HOST` and `DB_PORT`.
+
     ```bash
-    mvn clean install -DskipTests
-    ```
+    # .env
+    NODE_ENV=development
+    PORT=3000
 
-5.  **Run the application:**
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_USER=your_db_user
+    DB_PASSWORD=your_db_password
+    DB_NAME=payment_processor_db
+
+    JWT_SECRET=your_super_secret_jwt_key_replace_me_with_a_strong_one
+    JWT_ACCESS_EXPIRATION_MINUTES=30
+    JWT_REFRESH_EXPIRATION_DAYS=30
+    RATE_LIMIT_MAX_REQUESTS=100
+    ```
+    *Hint:* To generate a strong `JWT_SECRET`, run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` in your terminal.
+
+4.  **Run database migrations:**
     ```bash
-    mvn spring-boot:run
+    npm run migrate
     ```
-    or
+
+5.  **Seed initial data:** (Creates an admin user: `admin@example.com` / `Password123!`)
     ```bash
-    java -jar target/web-scraper-x-0.0.1-SNAPSHOT.jar
+    npm run seed
     ```
 
-### 5.2. Docker Compose Setup (Recommended)
-
-This is the easiest way to get the entire system (backend + database) up and running.
+#### Docker Setup (Recommended for consistency)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/web-scraper-x.git
-    cd web-scraper-x
+    git clone https://github.com/your-username/payment-processor.git
+    cd payment-processor
     ```
 
-2.  **Build and run with Docker Compose:**
+2.  **Set up environment variables:**
+    *   Create a `.env` file in the root directory.
+    *   Copy the contents of `.env.example` into your `.env` file.
+    *   Update `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `JWT_SECRET`.
+    *   For `DB_HOST`, ensure it's set to `database` as defined in `docker-compose.yml` if running both app and DB in Docker.
+
     ```bash
-    docker-compose up --build
+    # .env
+    NODE_ENV=development
+    PORT=3000
+
+    DB_HOST=database # Important: 'database' is the service name in docker-compose.yml
+    DB_PORT=5432
+    DB_USER=myuser
+    DB_PASSWORD=mypassword
+    DB_NAME=payment_processor_db
+
+    JWT_SECRET=your_super_secret_jwt_key_replace_me_with_a_strong_one
+    JWT_ACCESS_EXPIRATION_MINUTES=30
+    JWT_REFRESH_EXPIRATION_DAYS=30
+    RATE_LIMIT_MAX_REQUESTS=100
     ```
-    *   `--build` ensures the Docker image for the Spring Boot app is built from the `Dockerfile`.
-    *   This will start both the PostgreSQL database and the Spring Boot application.
-    *   The database migrations will run automatically on application startup (managed by Spring Boot and Flyway).
 
-## 6. Running the Application
-
-Once the application is running (either locally or via Docker Compose), the backend will be accessible at `http://localhost:8080`.
-
-The frontend `index.html` will also be served from `http://localhost:8080/`.
-
-## 7. API Documentation (Swagger UI)
-
-Access the interactive API documentation at:
-**`http://localhost:8080/swagger-ui.html`**
-
-This documentation provides details on all API endpoints, request/response models, and allows you to test the APIs directly.
-
-**Authentication in Swagger UI:**
-To test secured endpoints (almost all of them):
-1.  Click the "Authorize" button (usually a lock icon) in the top right.
-2.  Enter a valid JWT token in the "Value" field (prefix with `Bearer `).
-    *   You can obtain a token by using the `/api/v1/auth/login` endpoint with credentials (e.g., `username: testuser`, `password: testpass`).
-    *   Example: `Bearer eyJhbGciOiJIUzI1NiJ9...`
-3.  Click "Authorize" and then "Close".
-Now you can try out the secured endpoints.
-
-## 8. Frontend Usage
-
-The frontend is a simple HTML/CSS/JS application served by the Spring Boot backend at `http://localhost:8080/`.
-
-1.  **Open your browser:** Navigate to `http://localhost:8080/`.
-2.  **Register/Login:**
-    *   Use the "Register" tab to create a new user.
-    *   Use the "Login" tab to log in with existing users (e.g., `testuser` / `testpass` from seed data or a newly registered user).
-    *   Upon successful login, a JWT token is stored in local storage, and you'll be redirected to the "Tasks" page.
-3.  **Tasks Page:**
-    *   View your existing scraping tasks.
-    *   Click "Create New Task" to define a new task:
-        *   **Name:** A descriptive name for your task.
-        *   **Target URL:** The URL to scrape (e.g., `https://example.com/products`).
-        *   **Cron Expression (Optional):** A standard cron expression for scheduling (e.g., `0 0 12 * * ?` for daily at 12 PM). If empty, the task is pending and can be triggered manually.
-        *   **Data Fields:** Define what to extract:
-            *   **Field Name:** Logical name for the data (e.g., `productName`, `price`).
-            *   **CSS Selector:** Jsoup-compatible CSS selector to find the element (e.g., `.product-item h2.name`).
-            *   **Attribute (Optional):** If you want to extract an attribute instead of text (e.g., `href`, `src`). Leave empty for text.
-    *   **Actions:**
-        *   **👁️ View Data:** See the scraped data for a task (paginated).
-        *   **▶️ Trigger Now:** Manually run the scraping task once.
-        *   **✏️ Edit:** Modify task details, including cron and status.
-        *   **🗑️ Delete:** Remove a task and all its scraped data.
-
-## 9. Authentication & Authorization
-
-*   **Mechanism:** JSON Web Tokens (JWT) are used for stateless authentication.
-*   **Flow:**
-    1.  User registers (`/api/v1/auth/register`) or logs in (`/api/v1/auth/login`).
-    2.  Upon successful authentication, the server returns a JWT.
-    3.  The client stores this token (e.g., in `localStorage`).
-    4.  For subsequent requests to protected API endpoints, the client includes the JWT in the `Authorization` header as `Bearer <token>`.
-    5.  Spring Security intercepts the request, validates the JWT, and authenticates the user.
-*   **Roles:** Users are assigned `USER` or `ADMIN` roles. All task-related operations are authorized based on task ownership (a user can only manage their own tasks). The `/api/v1/admin/**` endpoints (if any) would be restricted to `ADMIN` users.
-
-## 10. Scheduled Tasks
-
-*   Tasks can be scheduled by providing a valid cron expression during creation or update.
-*   The `ScraperScheduler` component monitors tasks with `SCHEDULED` status and valid cron expressions, using Spring's `@Scheduled` and `TaskScheduler` to execute them.
-*   Tasks can be stopped/disabled by changing their status via the `PUT /api/v1/tasks/{id}` endpoint.
-*   A task can also be manually triggered at any time using `POST /api/v1/tasks/{id}/trigger`.
-
-**Example Cron Expressions:**
-*   `0 0 12 * * ?` : Every day at 12:00 PM (noon).
-*   `0 */5 * * * ?` : Every 5 minutes.
-*   `0 0 0 L * ?` : Last day of every month at midnight.
-
-## 11. Caching
-
-*   **Mechanism:** Caffeine (a high-performance caching library) integrated with Spring's `@Cacheable`, `@CachePut`, and `@CacheEvict` annotations.
-*   **Configuration:** See `src/main/java/com/alx/webscraper/config/CacheConfig.java` and `application.yml`.
-*   **Usage:**
-    *   `ScrapingTaskService.getTaskById(id, user)`: Results are cached. Subsequent requests for the same task ID by the same user will hit the cache, improving response time and reducing database load.
-    *   `ScrapingTaskService.updateTask(id, ...)`: Updates the cached entry.
-    *   `ScrapingTaskService.deleteTask(id, ...)`: Evicts the task from the cache.
-
-## 12. Rate Limiting
-
-*   **Mechanism:** A custom Spring `HandlerInterceptor` (`RateLimitingInterceptor`) applies a rate limit based on the client's IP address.
-*   **Configuration:** The rate limit is hardcoded for this demo (e.g., 5 requests per 10 seconds). In a real application, this would be configurable via `application.yml` or a dedicated service.
-*   **Behavior:** If a client exceeds the rate limit, they receive an HTTP 429 (Too Many Requests) response.
-*   **Applicability:** Applied globally to all API endpoints by `WebConfig`.
-
-## 13. Error Handling
-
-*   **Mechanism:** A global exception handler (`GlobalExceptionHandler`) using Spring's `@ControllerAdvice`.
-*   **Benefits:** Ensures consistent JSON error responses across the API, regardless of the underlying exception.
-*   **Handled Exceptions:**
-    *   `ResourceNotFoundException` (404 Not Found)
-    *   `MethodArgumentNotValidException` (400 Bad Request - for `@Valid` DTOs)
-    *   `HttpMessageNotReadableException` (400 Bad Request - for malformed JSON)
-    *   `BadCredentialsException` (401 Unauthorized - for login failures)
-    *   `AccessDeniedException` (403 Forbidden - for unauthorized access)
-    *   `CustomRateLimitException` (429 Too Many Requests)
-    *   `IOException` (500 Internal Server Error - specific to scraping failures)
-    *   Generic `Exception` (500 Internal Server Error)
-
-## 14. Logging & Monitoring
-
-*   **Logging:**
-    *   Uses SLF4J with Logback.
-    *   Configured via `src/main/resources/logback-spring.xml` and `application.yml`.
-    *   Logs are written to console and a file (`logs/webscraperx.log`).
-    *   Detailed logging levels (`INFO`, `DEBUG`) are configured for different packages.
-*   **Monitoring:**
-    *   Spring Boot Actuator provides production-ready features for monitoring and managing the application.
-    *   Access Actuator endpoints (e.g., health, info, metrics) at `http://localhost:8080/actuator`.
-    *   `health`: Check application health (`http://localhost:8080/actuator/health`).
-    *   `metrics`: View various application metrics (`http://localhost:8080/actuator/metrics`).
-    *   `prometheus`: Metrics exposed in Prometheus format (`http://localhost:8080/actuator/prometheus`).
-    *   These endpoints are crucial for integration with external monitoring systems like Prometheus and Grafana.
-
-## 15. Testing
-
-The project includes a comprehensive suite of tests to ensure quality and reliability:
-
-*   **Unit Tests:**
-    *   Focus on individual components (services, repositories, scraper logic) in isolation.
-    *   Use Mockito for mocking dependencies.
-    *   Aim for high code coverage (target: 80%+).
-    *   Example: `ScrapingTaskServiceTest`, `HtmlScraperTest`.
-*   **Integration Tests:**
-    *   Verify interactions between multiple components (e.g., controller to service to repository).
-    *   Uses `@SpringBootTest` to load a partial or full application context.
-    *   Uses `Testcontainers` to provide a real PostgreSQL database instance for repository tests, ensuring database interactions are tested against an actual database environment.
-    *   Uses `MockMvc` for simulating HTTP requests to controllers without starting a full HTTP server.
-    *   Example: `ScrapingTaskControllerTest`, `ScrapingTaskRepositoryTest`.
-*   **API Tests:**
-    *   Part of integration tests (using `MockMvc`) to verify API endpoint behavior, request/response formats, and status codes.
-    *   Swagger UI also acts as an interactive API testing tool.
-*   **Performance Tests:**
-    *   While full-fledged performance test scripts (e.g., JMeter, Gatling) are beyond the scope of this single response, the system is designed with performance considerations:
-        *   Caching layer.
-        *   Efficient database queries (JPA, indexing).
-        *   Asynchronous processing for scraping (though not fully implemented as a separate thread pool for simplicity in this example, it's an easy extension).
-        *   Rate limiting for protection.
-    *   **To perform manually:** Use tools like Apache JMeter, Gatling, or k6 to send concurrent requests to the API and monitor response times, throughput, and error rates.
-
-## 16. CI/CD
-
-A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided for Continuous Integration:
-
-*   **Trigger:** Runs on `push` to `main` or `develop` branches, and on `pull_request`.
-*   **Steps:**
-    1.  **Checkout Code:** Clones the repository.
-    2.  **Set up JDK 17:** Configures the Java environment.
-    3.  **Cache Maven dependencies:** Speeds up builds.
-    4.  **Set up PostgreSQL:** Starts a temporary PostgreSQL instance for integration tests.
-    5.  **Build with Maven:** Compiles the project and runs `mvn clean install -DskipTests`.
-    6.  **Run Tests:** Executes unit and integration tests (`mvn test`).
-    7.  **Generate JaCoCo Coverage Report:** Generates a code coverage report.
-    8.  **Upload Codecov Report:** Publishes the coverage report to Codecov (requires `CODECOV_TOKEN` secret).
-
-This pipeline ensures that every code change is automatically built and tested, maintaining code quality. For Continuous Deployment, additional steps would be added to build and push Docker images to a registry, and then deploy to a cloud provider (e.g., Kubernetes, AWS ECS, Azure Container Apps).
-
-## 17. Deployment Guide
-
-This project is designed for containerized deployment, making it highly portable.
-
-1.  **Container Registry:**
-    *   After the CI pipeline, you would typically add a step to build the Docker image and push it to a container registry (e.g., Docker Hub, GitHub Container Registry, AWS ECR, Google Container Registry).
+3.  **Build and run Docker containers:**
     ```bash
-    # Example for pushing to Docker Hub
-    docker build -t your-docker-hub-username/web-scraper-x:latest .
-    docker login
-    docker push your-docker-hub-username/web-scraper-x:latest
+    docker-compose up --build -d
+    ```
+    This command builds the Docker image for the Node.js application, creates a PostgreSQL container, sets up networking, runs database migrations (as part of the Dockerfile build step), and starts both services in detached mode.
+
+    *   `--build`: Builds the images before starting containers.
+    *   `-d`: Runs containers in detached mode (in the background).
+
+4.  **Access the application:**
+    The application will be accessible at `http://localhost:3000`.
+
+### 5. Running the Application
+
+*   **Development Mode (without Docker for app):**
+    ```bash
+    npm run dev
+    ```
+    This uses `nodemon` to restart the server automatically on code changes.
+
+*   **Production Mode (without Docker for app):**
+    ```bash
+    npm start
     ```
 
-2.  **Environment Variables:**
-    *   In a production environment, never hardcode sensitive information. Use environment variables.
-    *   `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`: For database connection.
-    *   `JWT_SECRET`: A strong, randomly generated secret for JWT signing.
-    *   `SERVER_PORT`: The port the application listens on.
-    *   `SECURITY_DEFAULT_USER`, `SECURITY_DEFAULT_PASSWORD`: Consider disabling default Spring Security user in production or ensuring strong credentials are set.
+*   **With Docker Compose:**
+    ```bash
+    docker-compose up
+    # or to run in background:
+    docker-compose up -d
+    ```
+    The `Dockerfile` handles `npm install` and `npm start`. Migrations are run during the Docker build process.
 
-3.  **Orchestration (Kubernetes/ECS/Container Apps):**
-    *   **Kubernetes:** Define `Deployment`, `Service`, and `Ingress` resources. Use `Secrets` for sensitive data and `ConfigMaps` for non-sensitive configurations.
-    *   **AWS ECS/Fargate:** Define a `Task Definition` for your Docker image and deploy it as a `Service` in an ECS cluster.
-    *   **Azure Container Apps/App Service:** Deploy your Docker image directly and configure environment variables.
+### 6. Database Management
 
-4.  **Database Management:**
-    *   Ensure your PostgreSQL database is a managed service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for high availability, backups, and scaling.
-    *   Flyway will handle migrations on application startup. Ensure your database user has sufficient permissions for `ALTER TABLE` operations during migration.
+This project uses `sequelize-cli` for database migrations and seeding.
 
-5.  **Monitoring & Logging:**
-    *   Integrate Actuator metrics with Prometheus and Grafana.
-    *   Centralize logs from Docker containers using a logging solution like ELK stack (Elasticsearch, Logstash, Kibana) or cloud-native services (CloudWatch Logs, Azure Monitor, Google Cloud Logging).
+*   **Apply all pending migrations:**
+    ```bash
+    npm run migrate
+    ```
+*   **Undo the last migration:**
+    ```bash
+    npm run migrate:undo
+    ```
+*   **Undo all migrations:** (Use with caution, will drop all tables)
+    ```bash
+    npm run migrate:undo:all
+    ```
+*   **Run all seeders:** (Populates initial data like an admin user)
+    ```bash
+    npm run seed
+    ```
+*   **Undo all seeders:**
+    ```bash
+    npm run seed:undo
+    ```
 
-6.  **Scalability:**
-    *   The application can be scaled horizontally by running multiple instances behind a load balancer.
-    *   The `ScraperScheduler` currently runs on a single instance. For high-availability scheduling, consider externalizing cron jobs to a dedicated scheduler (e.g., AWS EventBridge, Kubernetes CronJobs) or using distributed locking mechanisms (e.g., Redis, Zookeeper) to ensure only one instance of `ScraperScheduler` is active at any time.
+### 7. API Documentation
 
-## 18. ALX Software Engineering Principles
+Comprehensive API documentation is available in [API.md](API.md) and can be generated with Swagger/OpenAPI.
 
-This project has been developed with strong adherence to ALX Software Engineering principles:
+### 8. Architecture
 
-*   **Programming Logic:** Clear, modular code with well-defined functions and methods. Business logic in services, scraping logic in a dedicated module.
-*   **Algorithm Design:**
-    *   **Scraping Logic:** The `HtmlScraper` uses Jsoup's efficient DOM traversal and CSS selector matching algorithms. The logic for handling multiple elements per selector is a simple iteration, which scales linearly with the number of elements.
-    *   **Scheduling:** The `ScraperScheduler` utilizes Spring's built-in `CronTrigger` for efficient calculation of next execution times, avoiding busy-waiting.
-*   **Technical Problem Solving:**
-    *   **Concurrency:** Spring's `@Scheduled` tasks run in a thread pool, allowing concurrent task execution. The `ScraperScheduler` carefully manages `ScheduledFuture` objects for cancellation.
-    *   **Data Consistency:** `@Transactional` annotations ensure atomic database operations.
-    *   **Robustness:** Global error handling, input validation (`@Valid`), and explicit exception management (e.g., `IOException` for scraping failures).
-    *   **Security:** JWT-based authentication, password hashing (`BCrypt`), and authorization checks protect the API.
-    *   **Scalability:** Layered architecture, caching, and rate limiting prepare the application for horizontal scaling.
-    *   **Maintainability:** Clean code, DTOs, `MappingUtil`, clear naming conventions, and extensive documentation contribute to high maintainability.
-    *   **Extensibility:** The `ScraperStrategy` interface allows easy addition of new scraping methods (e.g., Selenium for JavaScript-rendered content) without modifying core logic.
+A detailed overview of the system's architecture, including components, data flow, and design patterns, is provided in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## 19. Future Enhancements
+### 9. Testing
 
-*   **Advanced Scraping:**
-    *   Integrate Selenium for JavaScript-rendered websites.
-    *   Proxy rotation for avoiding IP bans.
-    *   CAPTCHA solving integration.
-    *   More advanced data parsing (e.g., JSON extraction from script tags).
-*   **Frontend Improvements:**
-    *   Migrate to a modern JavaScript framework (React, Vue, Angular) for a more interactive and robust UI.
-    *   Real-time updates using WebSockets for task status/scraped data.
-    *   User-friendly cron expression builder.
-*   **Backend Enhancements:**
-    *   Asynchronous task execution with dedicated thread pools and message queues (e.g., Kafka, RabbitMQ) for higher throughput and resilience.
-    *   Distributed Caching (e.g., Redis) for multi-instance deployments.
-    *   Externalize scheduler (e.g., using Quartz, Apache Airflow) for distributed, highly available scheduling.
-    *   Webhooks for task completion notifications.
-    *   More granular authorization (e.g., sharing tasks between users).
-    *   Support for multiple scraping strategies per task (e.g., fallback from Jsoup to Selenium).
-*   **Monitoring & Alerting:**
-    *   Integrate with an alerting system (e.g., PagerDuty, Opsgenie) for task failures.
-    *   Dashboard with Grafana for visualizing metrics and task statuses.
+The project emphasizes test-driven development and quality assurance.
 
-## 20. Contributing
+*   **Run all tests (unit and integration):**
+    ```bash
+    npm test
+    ```
+    This command runs tests in watch mode, automatically rerunning on file changes.
 
-Contributions are welcome! If you have suggestions or improvements, please:
+*   **Run tests with coverage report:**
+    ```bash
+    npm run test:coverage
+    ```
+    A `coverage` directory will be generated with detailed reports (aim for 80%+ coverage).
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes.
-4.  Write tests for your changes.
-5.  Ensure all tests pass.
-6.  Commit your changes (`git commit -am 'Add new feature'`).
-7.  Push to the branch (`git push origin feature/your-feature`).
-8.  Create a new Pull Request.
+**Types of Tests Implemented:**
 
-## 21. License
+*   **Unit Tests:** Located in `tests/unit/`. Focus on individual functions, services, and utilities, mocking external dependencies.
+*   **Integration Tests:** Located in `tests/integration/`. Test the interaction between multiple modules (e.g., routes, controllers, services, database models). They typically hit actual API endpoints and interact with the database (a test database, not production).
+*   **API Tests (E2E):** Covered by the integration tests using `supertest` to simulate HTTP requests.
 
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+### 10. CI/CD (Conceptual)
+
+A conceptual GitHub Actions workflow is provided in [CI_CD.yml](CI_CD.yml). This workflow typically includes:
+
+*   **Linting:** Checks code style and potential errors.
+*   **Testing:** Runs unit and integration tests.
+*   **Build:** Creates a Docker image of the application.
+*   **Deployment:** (Staging/Production) Pushes the Docker image to a registry and deploys to a cloud provider (e.g., AWS, GCP, Azure, DigitalOcean).
+
+### 11. Deployment Guide
+
+A detailed guide on deploying this application to a production environment is available in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### 12. Further Enhancements
+
+*   **Real Payment Gateway Integrations:** Replace `simulatePaymentGateway` with actual SDKs (Stripe, PayPal, Paystack, Flutterwave).
+*   **Asynchronous Job Queue:** Implement a message queue (RabbitMQ, Kafka) and workers (BullMQ, Celery) for background tasks like webhook dispatch, reporting, and long-running payment processing.
+*   **Advanced Webhook Management:** Add retry logic with exponential backoff, dead-letter queues, and a UI for merchants to manage webhook configurations and view logs.
+*   **PCI DSS Compliance:** Crucial for handling actual card data. This example is *not* PCI compliant. Requires tokenization, secure storage, strict network controls, regular audits, etc.
+*   **API Key Rotation:** Implement a mechanism for merchants to securely rotate their API keys.
+*   **Dashboard UI:** A full-fledged frontend application (React, Angular, Vue) for merchants to view transactions, manage webhooks, and for internal administrators to manage merchants.
+*   **Caching Layer:** Integrate Redis for caching frequently accessed data (e.g., merchant configurations).
+*   **Monitoring & Alerting:** Integrate with Prometheus/Grafana, ELK stack, or cloud-native monitoring services.
+*   **Dispute Management:** Implement a workflow for handling payment disputes (chargebacks).
+*   **Refund/Void Policies:** Enforce business rules around partial refunds, max refund amount, and voiding authorized vs. captured transactions.
+*   **Multi-currency & Exchange Rates:** Support for more complex currency handling if processing in multiple currencies.
+
+### 13. ALX Principles & Best Practices
+
+Throughout this project, several ALX Software Engineering principles and best practices have been applied:
+
+*   **Modularity:** Breaking down the system into distinct, manageable components (controllers, services, models, middlewares).
+*   **Separation of Concerns:** Each module/layer has a single responsibility.
+*   **Input Validation:** Using Joi middleware to validate all incoming API requests.
+*   **Error Handling:** Centralized error handling middleware and custom `ApiError` class for consistent responses.
+*   **Authentication & Authorization:** Secure JWT for internal users and API keys for merchants, with role-based access control.
+*   **Database Migrations:** Managing schema changes in a controlled and versioned manner.
+*   **Data Integrity:** Enforcing unique constraints, foreign keys, and validation rules at the database and application level.
+*   **Password Hashing:** Using `bcrypt` for secure password storage.
+*   **Cryptographic Security:** Generating secure API keys and JWTs, with an emphasis on signature verification for webhooks.
+*   **Testing:** Comprehensive unit and integration tests to ensure correctness and prevent regressions.
+*   **Structured Logging:** Using Winston to provide detailed and organized logs.
+*   **Configuration Management:** Centralizing environment-specific settings in `src/config/`.
+*   **Asynchronous Programming:** Utilizing async/await for non-blocking I/O operations and `setImmediate` for decoupled event dispatch.
+*   **Idempotency:** Implementing a mechanism to ensure API calls can be safely retried without unintended side effects.
+*   **State Machine Management:** Explicitly handling transaction status transitions to maintain business logic correctness.
+*   **Pagination & Filtering:** Efficient data retrieval for large datasets.
+*   **Containerization:** Using Docker for consistent development and deployment environments.
+*   **Scalability Considerations:** Designing services to be stateless (where possible) and considering asynchronous patterns.
+
+### 14. License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 ```

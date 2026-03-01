@@ -1,49 +1,42 @@
-```dockerfile
-# Dockerfile for WebScraperX Spring Boot application
+```Dockerfile
+# Dockerfile
+# ALX Principle: Containerization
+# Package application and dependencies into a portable image.
 
-# Stage 1: Build the application
-FROM eclipse-temurin:17-jdk-jammy AS build
+# Use a specific Node.js version for stability
+FROM node:18-alpine
 
+# Set working directory in the container
 WORKDIR /app
 
-# Copy the Maven wrapper and pom.xml to download dependencies
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
+# Copy package.json and package-lock.json first to leverage Docker cache
+# if dependencies haven't changed
+COPY package*.json ./
 
-# Download dependencies (only if pom.xml changes)
-RUN ./mvnw dependency:go-offline -B
+# Install dependencies. Use `npm ci` for clean installs in CI/CD and production.
+# This ensures deterministic builds.
+RUN npm ci --only=production
 
-# Copy the rest of the source code
-COPY src src
+# Copy the rest of the application source code
+COPY . .
 
-# Build the Spring Boot application
-RUN ./mvnw package -Dmaven.test.skip=true
+# Expose the port the app runs on
+EXPOSE 3000
 
-# Stage 2: Create the final image
-FROM eclipse-temurin:17-jre-jammy
+# Define environment variables (can be overridden at runtime)
+ENV NODE_ENV=production
+# ENV DB_HOST=database # Example if DB is another service named 'database' in docker-compose
 
-WORKDIR /app
+# Run database migrations before starting the application.
+# This ensures the database schema is up-to-date.
+# For production, you might run this as a separate step or init container.
+RUN npx sequelize-cli db:migrate
 
-# Copy the built JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Command to run the application
+CMD ["npm", "start"]
 
-# Expose the port the application runs on
-EXPOSE 8080
-
-# Set environment variables for database connection (defaults for local docker-compose)
-ENV DB_HOST=db
-ENV DB_PORT=5432
-ENV DB_NAME=webscraperdb
-ENV DB_USERNAME=webscraper
-ENV DB_PASSWORD=webscraperpass
-ENV JWT_SECRET=your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-# Healthcheck for Docker (optional but recommended for production)
-HEALTHCHECK --interval=30s --timeout=10s --retries=5 \
-  CMD curl --fail http://localhost:8080/actuator/health || exit 1
-
+# Best practices:
+# - Use multi-stage builds for smaller images (e.g., separate build stage for dev dependencies)
+# - Do not include .env files in the image; manage environment variables via Docker secrets or Compose.
+# - Implement health checks.
 ```

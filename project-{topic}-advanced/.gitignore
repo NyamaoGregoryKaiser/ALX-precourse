@@ -1,0 +1,44 @@
+```
+# .gitignore
+
+# Node
+node_modules/
+.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+.yarn/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS
+.DS_Store
+.vscode/
+
+# Docker
+.dockerignore
+Dockerfile.dev
+docker-compose.dev.yml
+
+# Production-specific
+/dist
+
+# Test coverage
+/coverage
+.nyc_output
+
+# IDE files
+.idea/
+*.iml
+
+# Swagger files
+swagger.json
+```
