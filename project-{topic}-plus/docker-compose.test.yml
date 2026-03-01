@@ -1,0 +1,29 @@
+```yaml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ecommerce_test_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432" # Expose for CI environment
+    # Do not use persistent volumes for testing DB, ensures clean state
+    # volumes:
+    #   - postgres_test_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    ports:
+      - "6379:6379" # Expose for CI environment
+    # volumes:
+    #   - redis_test_data:/data
+
+# volumes:
+#   postgres_test_data:
+#   redis_test_data:
+```

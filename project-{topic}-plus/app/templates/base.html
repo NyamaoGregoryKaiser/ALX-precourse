@@ -1,0 +1,52 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShopSwift - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.css">
+    <style>
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
+        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+        header { background: #333; color: #fff; padding: 10px 0; text-align: center; }
+        header a { color: #fff; text-decoration: none; margin: 0 15px; }
+        footer { background: #eee; padding: 10px 0; text-align: center; margin-top: auto; }
+        h1, h2, h3, h4, h5, h6 { margin-top: 0; }
+        form { margin-top: 20px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        form label { font-weight: bold; }
+        .error-message { color: red; margin-top: 10px; }
+        .success-message { color: green; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="/">ShopSwift Home</a>
+            <a href="/products">Products</a>
+            <a href="/cart">Cart</a>
+            <a href="/orders">Orders</a>
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+        </div>
+    </header>
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                    {% for category, message in messages %}
+                        <li class="{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 ShopSwift. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+```

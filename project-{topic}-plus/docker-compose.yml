@@ -3,79 +3,47 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:14-alpine
+    image: postgres:13-alpine
     restart: always
     environment:
+      POSTGRES_DB: ecommerce_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: datavizpro_db
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d datavizpro_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:6-alpine
     restart: always
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes
     volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - redis_data:/data
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+  app:
+    build: .
     restart: always
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/ecommerce_db
+      JWT_SECRET_KEY: super-secret-jwt-key-replace-me-in-production # Keep in .env or secrets manager in prod
+      REDIS_URL: redis://redis:6379/0
+      RATELIMIT_STORAGE_URL: redis://redis:6379/1
+      FLASK_ENV: development
     ports:
       - "5000:5000"
-    environment:
-      # These environment variables are loaded from the root .env file by docker-compose
-      # Ensure DATABASE_URL and REDIS_HOST match service names
-      DATABASE_URL: postgres://user:password@db:5432/datavizpro_db
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION_TIME: ${JWT_EXPIRATION_TIME}
-      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
-      REFRESH_TOKEN_EXPIRATION_TIME: ${REFRESH_TOKEN_EXPIRATION_TIME}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
-      LOG_LEVEL: ${LOG_LEVEL}
-      NODE_ENV: development # or production
     volumes:
-      - ./backend/data_uploads:/app/data_uploads # Persistent storage for uploaded CSVs
+      - .:/app
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "yarn migration:run && yarn seed && yarn start" # Run migrations & seed, then start. In production, migrations should be separate.
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (Nginx)
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api # This will be built into the JS bundle
-    depends_on:
-      backend:
-        condition: service_started
+      - db
+      - redis
+    # Command to run Gunicorn after database is ready
+    command: >
+      sh -c "flask db upgrade && flask seed-db && gunicorn --bind 0.0.0.0:5000 --workers 4 manage:app"
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+  redis_data:
 ```
