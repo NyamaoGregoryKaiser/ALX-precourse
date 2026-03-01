@@ -1,0 +1,117 @@
+name: Build and Test Authentication System
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: true # If you use submodules for any libraries
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Cache Conan packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.conan/data
+        key: ${{ runner.os }}-conan-${{ hashFiles('conanfile.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-conan-
+
+    - name: Install Conan
+      run: pip install conan==1.* # Or conan==2.* depending on project needs
+
+    - name: Create .env file for secrets
+      run: |
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" > config/.env
+        echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> config/.env
+        echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> config/.env
+        echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> config/.env
+      env:
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        POSTGRES_USER: postgres_ci
+        POSTGRES_PASSWORD: ci_password
+        POSTGRES_DB: auth_db_ci
+
+    - name: Build Docker image
+      run: docker build -t auth-system:latest .
+
+    - name: Start services with Docker Compose
+      run: docker-compose -f docker-compose.yml up -d db
+      env:
+        # Use CI-specific DB credentials
+        POSTGRES_USER: postgres_ci
+        POSTGRES_PASSWORD: ci_password
+        POSTGRES_DB: auth_db_ci
+
+    - name: Wait for PostgreSQL to be ready
+      # Short wait, adjust as necessary for larger DBs
+      run: |
+        echo "Waiting for PostgreSQL to start..."
+        sleep 10
+        docker-compose -f docker-compose.yml run --rm app /bin/bash -c "pg_isready -h db -p 5432 -U postgres_ci"
+
+    - name: Run Migrations and Seed Data
+      run: |
+        docker-compose -f docker-compose.yml run --rm app /app/auth_system --skip-orm-sync --no-autocreate-tables --migration-dir /app/db/migrations --run-migration-up --db-connection-string "host=db port=5432 user=postgres_ci password=ci_password dbname=auth_db_ci"
+        docker-compose -f docker-compose.yml run --rm app /app/auth_system --skip-orm-sync --no-autocreate-tables --seed-dir /app/db/seed --run-seed --db-connection-string "host=db port=5432 user=postgres_ci password=ci_password dbname=auth_db_ci"
+      env:
+        JWT_SECRET: ${{ secrets.JWT_SECRET }} # Needed if seed logic uses app code
+        POSTGRES_USER: postgres_ci
+        POSTGRES_PASSWORD: ci_password
+        POSTGRES_DB: auth_db_ci
+
+    - name: Start Application Container
+      run: docker-compose -f docker-compose.yml up -d app
+      env:
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        POSTGRES_USER: postgres_ci
+        POSTGRES_PASSWORD: ci_password
+        POSTGRES_DB: auth_db_ci
+
+    - name: Wait for app to be ready
+      run: sleep 10 # Adjust as needed
+
+    - name: Run Tests
+      # This assumes tests can be run as a separate executable built by CMake.
+      # Or, if tests make HTTP requests, they run against the running Docker container.
+      # For C++, a separate test runner executable is typical.
+      run: |
+        # Mount the built tests from the builder stage if needed, or build tests on current machine
+        # For simplicity, if tests are part of the `auth_system` executable, we run it.
+        # If separate, ensure they are built and available.
+        # Example: docker exec <app_container_id> /app/tests/run_tests_executable
+        # For this example, we assume `build/tests/run_tests` is created.
+        docker exec $(docker-compose ps -q app) ./build/tests/run_tests
+      env:
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        # Pass DB connection string for integration tests if they need to connect
+        DATABASE_URL: "postgresql://postgres_ci:ci_password@db:5432/auth_db_ci"
+
+
+    - name: Stop services
+      if: always()
+      run: docker-compose -f docker-compose.yml down
+```
+*(Note: You need to set `JWT_SECRET` as a repository secret in GitHub for this CI/CD to work securely.)*
+
+---
+
+### Testing & Quality
+
+Tests will use Google Test. For integration and API tests, the Drogon `drogon::app().run()` function needs to be started in a separate thread or process for HTTP requests. I'll demonstrate with a simple approach.
+
+#### `CMakeLists.txt` (for tests)
+
+```cmake

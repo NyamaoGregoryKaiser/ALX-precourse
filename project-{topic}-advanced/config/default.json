@@ -1,0 +1,38 @@
+{
+    "listeners": [
+        {
+            "port": 8080,
+            "ip": "0.0.0.0",
+            "https": false
+        }
+    ],
+    "log": {
+        "level": "debug",
+        "log_path": "./logs/",
+        "enable_console": true,
+        "max_size": 10000000,
+        "max_files": 5
+    },
+    "db_clients": [
+        {
+            "db_type": "postgresql",
+            "host": "db",
+            "port": 5432,
+            "user": "postgres",
+            "password": "mysecretpassword",
+            "db_name": "auth_db",
+            "auto_commit": true,
+            "connections_number": 10,
+            "is_fast": false
+        }
+    ],
+    "orm_auto_create_tables": false,
+    "idle_connection_timeout": 60,
+    "keepalive_requests": 0,
+    "app_name": "AuthSystem",
+    "document_root": "client/views",
+    "static_files_dir": [
+        "client/public"
+    ]
+}
+```

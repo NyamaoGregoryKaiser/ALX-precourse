@@ -1,208 +1,221 @@
-# Deployment Guide: Task Management Platform
+# Deployment Guide for the Authentication System
 
-This document provides instructions for deploying the Task Management Platform. It covers local deployment using Docker Compose and conceptual steps for a production deployment on a cloud VM (e.g., AWS EC2).
+This document outlines the steps to deploy the C++ Authentication System to a production environment using Docker and Docker Compose. For more complex deployments (e.g., Kubernetes), these steps can be adapted.
 
-## 1. Local Deployment with Docker Compose (Recommended for Dev/Test)
+## 1. Prerequisites for Production Server
 
-This is the easiest way to get the entire application stack (application + PostgreSQL database) up and running on your local machine.
+*   **Docker Engine:** Version 20.10+
+*   **Docker Compose:** Version 2.0+
+*   **Git:** For cloning the repository.
+*   **HTTPS/SSL Certificate:** Crucial for production. We recommend using a reverse proxy like Nginx or a load balancer to handle SSL termination. The Drogon app itself will run on HTTP (port 8080 by default) behind the proxy.
+*   **Secrets Management:** A secure way to manage `JWT_SECRET` and database credentials (e.g., environment variables, Docker Secrets, HashiCorp Vault, Kubernetes Secrets).
 
-### Prerequisites (Local)
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running.
-*   **Git** for cloning the repository.
-
-### Steps
+## 2. Prepare the Environment
 
 1.  **Clone the repository:**
+    On your production server, clone the project:
     ```bash
-    git clone https://github.com/your-username/task-management-platform.git
-    cd task-management-platform
+    git clone --recursive https://github.com/your-username/auth-system.git
+    cd auth-system
     ```
 
-2.  **Create a `.env` file:**
-    In the root directory of the project, create a file named `.env` and add the following environment variables. These will be used by `docker-compose.yml`.
-
+2.  **Create `.env` file for secrets:**
+    Copy the example environment file and fill in your actual production secrets. **Never commit this file to Git.**
     ```bash
-    # .env
-    DB_NAME=taskmanager
-    DB_USERNAME=user
-    DB_PASSWORD=password
-    JWT_SECRET=your_super_secret_jwt_key_that_is_at_least_32_chars_long_and_random # CHANGE THIS!
+    cp config/.env.example .env
     ```
+    Edit the `.env` file:
+    ```
+    # config/.env.example
+    JWT_SECRET="YOUR_VERY_LONG_RANDOM_SECURE_JWT_SECRET" # !!! CRITICAL for security
+    POSTGRES_USER="production_user"
+    POSTGRES_PASSWORD="your_strong_db_password"
+    POSTGRES_DB="auth_db_prod"
+    ```
+    *   **`JWT_SECRET`**: Generate a strong, random string (e.g., 32+ characters). This is used to sign and verify JWTs. Keep it highly confidential.
+    *   **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`**, **`POSTGRES_DB`**: Set strong, dedicated credentials for your production PostgreSQL instance.
 
-3.  **Build and run the containers:**
-    The `docker-compose.yml` orchestrates both the `db` (PostgreSQL) and `app` (Spring Boot) services.
+3.  **Ensure `config/default.json` matches:**
+    Verify that the `db_clients` section in `config/default.json` matches the values set in your `.env` file (especially `user`, `password`, `db_name`). The `host` should be `db` if you are using the provided `docker-compose.yml`.
 
+## 3. Database Setup
+
+The `docker-compose.yml` includes a PostgreSQL service. When you run `docker-compose up`, it will automatically:
+*   Create the `postgres_data` volume for persistent database storage.
+*   Initialize the database with the user and database name from your `.env` file.
+*   The application container's `CMD` automatically runs migrations and seed data on startup.
+
+**Important Considerations:**
+*   **Separate Database:** For large-scale production, it's often better to use a managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) rather than running PostgreSQL in Docker Compose on the same host as the application. If you use an external DB, remove the `db` service from `docker-compose.yml` and update the `db_clients` in `config/default.json` with the external database's host, port, and credentials.
+*   **Database Backups:** Implement a robust backup strategy for your PostgreSQL data.
+
+## 4. Deploy with Docker Compose
+
+1.  **Build and Deploy:**
+    From the project root directory, run:
     ```bash
-    docker compose up --build -d
+    docker-compose up --build -d
     ```
-    *   `--build`: This command ensures your Docker image is built from the `Dockerfile` if there are any changes or if it's the first time running.
-    *   `-d`: Runs the containers in detached mode (in the background).
+    *   `--build`: Forces rebuilding of the application image, ensuring you have the latest code.
+    *   `-d`: Runs the services in detached mode (in the background).
 
-4.  **Verify services are running:**
+2.  **Verify Deployment:**
+    Check if containers are running:
     ```bash
-    docker compose ps
+    docker-compose ps
     ```
-    You should see both `taskmanager-db` and `taskmanager-app` with a `healthy` status (for the DB) and `Up` status.
-
-5.  **View logs (optional):**
+    You should see `app` and `db` services running.
+    Check application logs:
     ```bash
-    docker compose logs -f
+    docker-compose logs -f app
     ```
-    This will show the combined logs from both services.
+    Look for messages indicating successful startup, e.g., "Auth System started on port 8080."
 
-6.  **Access the application:**
-    *   **API Base URL:** `http://localhost:8080/api`
-    *   **Swagger UI (API Documentation):** `http://localhost:8080/swagger-ui.html`
+## 5. Configure a Reverse Proxy (Recommended for Production)
 
-7.  **Stop and remove containers:**
-    When you're done, you can stop and remove the containers and their associated networks:
-    ```bash
-    docker compose down
+For production, you *must* run the application behind a reverse proxy (like Nginx) to handle:
+*   **SSL/TLS Termination (HTTPS):** Encrypts traffic between clients and your server.
+*   **Load Balancing:** Distributes requests across multiple application instances (for horizontal scaling).
+*   **Static File Serving:** Nginx is highly efficient at serving static files (CSS, JS, images).
+*   **Rate Limiting:** Nginx can provide additional layers of rate limiting if needed.
+
+**Example Nginx Configuration (`/etc/nginx/sites-available/auth-system`):**
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name auth.yourdomain.com; # Replace with your domain
+
+    # Redirect all HTTP traffic to HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name auth.yourdomain.com; # Replace with your domain
+
+    # SSL certificates
+    ssl_certificate /etc/letsencrypt/live/auth.yourdomain.com/fullchain.pem; # Use your actual path
+    ssl_certificate_key /etc/letsencrypt/live/auth.yourdomain.com/privkey.pem; # Use your actual path
+    ssl_trusted_certificate /etc/letsencrypt/live/auth.yourdomain.com/chain.pem;
+
+    # Basic security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;" always;
+
+    # Nginx cache for static files
+    location /static/ {
+        # Assuming Drogon serves static files from client/public/static/
+        # Or, ideally, Nginx serves them directly from a host volume mount
+        # In this setup, Drogon serves them, so proxy pass them
+        proxy_pass http://localhost:8080/static/;
+        proxy_cache_valid 200 302 10m;
+        proxy_cache_valid 404 1m;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+
+    location / {
+        proxy_pass http://localhost:8080; # Proxy to your Drogon application
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+
+        # WebSocket support (if your application uses WebSockets)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Error pages (optional)
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+```
+*   **Install Nginx:** `sudo apt-get install nginx`
+*   **Configure SSL:** Use Certbot (Let's Encrypt) for free SSL certificates: `sudo apt-get install certbot python3-certbot-nginx` then `sudo certbot --nginx -d auth.yourdomain.com`.
+*   **Enable Nginx config:** `sudo ln -s /etc/nginx/sites-available/auth-system /etc/nginx/sites-enabled/`
+*   **Test and restart Nginx:** `sudo nginx -t && sudo systemctl restart nginx`
+
+## 6. Monitoring and Logging
+
+*   **Logging:** Drogon writes logs to `stdout` (which Docker captures) and to files within the container's `/app/logs` directory.
+    *   **Docker:** Use `docker-compose logs -f app` to view live logs.
+    *   **Centralized Logging:** For production, forward Docker logs to a centralized logging system (e.g., ELK stack, Grafana Loki, Datadog, Splunk). This is typically done by configuring Docker's logging driver.
+*   **Monitoring:**
+    *   Monitor CPU, memory, and network usage of your Docker containers and the host server.
+    *   Monitor PostgreSQL performance (CPU, memory, disk I/O, active connections, query times).
+    *   Consider integrating application-specific metrics (e.g., request latency, error rates) using a library that exports to Prometheus or similar systems. (Not directly implemented in this project).
+
+## 7. Health Checks
+
+Docker Compose doesn't have built-in health checks for dependent services in `depends_on`. The `CMD` in the `Dockerfile` for the app container will implicitly wait for the database by trying to run migrations/seed.
+
+For robust health checks:
+*   **Add `HEALTHCHECK` instructions to your `Dockerfile`**:
+    ```dockerfile
+    # In Dockerfile, after EXPOSE 8080
+    HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+      CMD curl -f http://localhost:8080/health || exit 1
     ```
-    To also remove volumes (which store database data), use:
-    ```bash
-    docker compose down --volumes
-    ```
-
-## 2. Production Deployment on a Cloud VM (e.g., AWS EC2)
-
-This section outlines the steps for deploying the application to a single cloud virtual machine (VM). This is a common starting point for production deployments, often referred to as a "single-server deployment" or "monolithic deployment on VM".
-
-### Prerequisites (Production VM)
-
-*   **A Cloud VM:** (e.g., AWS EC2, GCP Compute Engine, Azure Virtual Machines) running a Linux distribution (e.g., Ubuntu, CentOS).
-*   **SSH Access:** Configured SSH key pair for secure access to the VM.
-*   **Essential Software Installed on VM:**
-    *   **Docker Engine:** `sudo apt update && sudo apt install docker.io -y && sudo systemctl start docker && sudo systemctl enable docker`
-    *   **Docker Compose:** `sudo apt install docker-compose -y`
-    *   **Git:** `sudo apt install git -y`
-*   **Firewall Configuration:** Ensure ports `80` (for web server/proxy if used) and `8080` (for direct access to app, or from proxy) are open to necessary IP ranges.
-*   **Database:** While you can run PostgreSQL in Docker on the same VM, for production, it's highly recommended to use a managed database service (e.g., AWS RDS, GCP Cloud SQL) for better scalability, reliability, and automated backups. For this guide, we'll assume a managed PostgreSQL or a local Dockerized PostgreSQL.
-
-### Steps for Manual Deployment (initial setup)
-
-1.  **SSH into your VM:**
-    ```bash
-    ssh -i /path/to/your/key.pem <username>@<your-vm-ip>
-    ```
-
-2.  **Create deployment directory:**
-    ```bash
-    sudo mkdir -p /opt/task-management-platform
-    sudo chown -R $USER:$USER /opt/task-management-platform
-    cd /opt/task-management-platform
-    ```
-
-3.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/task-management-platform.git . # Clones into current directory
-    ```
-
-4.  **Configure Environment Variables (Production Secrets):**
-    Create a `.env` file in the `/opt/task-management-platform` directory. **These should be your production-grade secrets, NOT development ones.**
-
-    ```bash
-    # .env
-    DB_HOST=your_production_db_host # e.g., your-rds-endpoint.amazonaws.com
-    DB_PORT=5432
-    DB_NAME=taskmanager_prod
-    DB_USERNAME=prod_user
-    DB_PASSWORD=prod_password
-    JWT_SECRET=YOUR_SUPER_SECURE_RANDOM_PRODUCTION_JWT_SECRET_THAT_IS_LONG_AND_UNIQUE
-    ```
-    **Security Note:** For true production, environment variables are better managed via cloud secret managers (e.g., AWS Secrets Manager, GCP Secret Manager) rather than static `.env` files directly on the VM.
-
-5.  **Login to Docker Hub (or your chosen container registry):**
-    This allows your VM to pull the application's Docker image that was pushed by the CI/CD pipeline.
-
-    ```bash
-    docker login -u <your-docker-username> -p <your-docker-access-token>
-    ```
-    Replace `<your-docker-username>` and `<your-docker-access-token>` with your actual Docker Hub credentials or tokens.
-
-6.  **Pull the latest Docker image and run with Docker Compose:**
-    ```bash
-    docker compose up --build -d
-    ```
-    *   The `build` step is usually skipped in CD if using a pre-built image, but here it ensures the image is created if needed. In CD, `docker pull` followed by `docker compose up -d` (without `--build`) is more common.
-
-7.  **Set up reverse proxy (Recommended for Production - e.g., Nginx):**
-    For production, it's best to run your application behind a reverse proxy like Nginx. This allows for:
-    *   SSL/TLS termination (HTTPS).
-    *   Load balancing (if you scale to multiple app instances).
-    *   Static file serving (if you had a separate frontend).
-    *   Caching, Gzip compression, etc.
-
-    **Example Nginx Configuration (`/etc/nginx/sites-available/taskmanager`):**
-    ```nginx
-    server {
-        listen 80;
-        listen [::]:80;
-        server_name your_domain.com your_vm_ip; # Replace with your domain or IP
-
-        location / {
-            proxy_pass http://localhost:8080;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # For API documentation
-        location /swagger-ui/ {
-            proxy_pass http://localhost:8080/swagger-ui/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # For Actuator endpoints (Admin only)
-        location /actuator/ {
-            proxy_pass http://localhost:8080/actuator/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            # Restrict access further with Nginx basic auth or IP whitelisting
-        }
+    (You'd need to implement a `/health` endpoint in Drogon that returns 200 OK.)
+*   **Drogon Health Endpoint Example:**
+    ```cpp
+    // In a new controller or existing one
+    // Add METHOD_ADD(HealthController::check, "/health", drogon::Get);
+    void HealthController::check(const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+        // Optional: Check database connectivity here
+        auto resp = drogon::HttpResponse::newHttpResponse();
+        resp->setStatusCode(drogon::k200OK);
+        resp->setBody("OK");
+        callback(resp);
     }
     ```
-    *   Enable the Nginx config:
-        ```bash
-        sudo ln -s /etc/nginx/sites-available/taskmanager /etc/nginx/sites-enabled/
-        sudo nginx -t # Test Nginx configuration
-        sudo systemctl restart nginx
-        ```
-    *   Install Certbot to enable HTTPS: `sudo apt install certbot python3-certbot-nginx -y`
-    *   Obtain SSL certificate: `sudo certbot --nginx -d your_domain.com`
 
-### Steps for Automated CI/CD Deployment (after initial setup)
+## 8. Scaling
 
-Once the initial setup is done on your VM (Docker, Docker Compose, Git, Nginx, etc.), and your GitHub Actions secrets are configured, the deployment process becomes automated:
+*   **Horizontal Scaling (Application):**
+    To scale the Drogon application (assuming a reverse proxy is set up):
+    ```bash
+    docker-compose up --scale app=3 -d # Run 3 instances of the 'app' service
+    ```
+    Your reverse proxy (e.g., Nginx) needs to be configured to load balance requests across these instances.
+*   **Vertical Scaling (Application & Database):**
+    Upgrade server resources (CPU, RAM) for the application or database.
+*   **Database Scaling:**
+    PostgreSQL can be scaled vertically (more powerful server) or horizontally using techniques like replication (read replicas) or sharding for very high loads. This is beyond the scope of a basic Docker Compose setup.
 
-1.  **Develop features** and push changes to a feature branch.
-2.  **Create a Pull Request** to `main`. The CI job runs tests.
-3.  **Merge the Pull Request** into `main`.
-4.  The **CI/CD workflow (`.github/workflows/ci-cd.yml`)** is triggered:
-    *   It builds, tests, and pushes the new Docker image to your container registry.
-    *   It then connects to your production VM via SSH.
-    *   On the VM, it executes a script:
-        *   Stops the running containers.
-        *   Pulls the **latest** Docker image from the registry.
-        *   Starts new containers with the updated image using `docker compose up -d`.
+## 9. Updating the Application
 
-This automated process ensures that every validated change on your `main` branch is quickly and reliably deployed to production.
+1.  **Pull latest code:**
+    ```bash
+    git pull
+    ```
+2.  **Stop current services:**
+    ```bash
+    docker-compose down
+    ```
+3.  **Build and deploy new images:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    This will build a new image with the latest code, apply any new migrations, and restart the containers.
+    *(Consider a zero-downtime deployment strategy for critical applications, which would involve rolling updates, blue/green deployments, etc., often managed by orchestrators like Kubernetes.)*
 
-## 3. Post-Deployment Checks
+## 10. Security Best Practices
 
-After any deployment, always perform these checks:
-
-*   **Application Health:**
-    *   Check `docker compose ps` on the VM.
-    *   Access `http://your_domain.com/actuator/health` (or `http://your_vm_ip:8080/actuator/health` if no proxy).
-*   **API Functionality:** Perform basic CRUD operations using Swagger UI or cURL to verify the API is working as expected.
-*   **Logs:** Check application logs for any errors or warnings: `docker compose logs taskmanager-app`.
-*   **Performance:** Monitor response times and resource utilization if under load.
-
-By following these guidelines, you can ensure a smooth and reliable deployment of your Task Management Platform.
+*   **Secrets Management:** Never hardcode secrets. Use environment variables, Docker Secrets, or a dedicated secrets manager.
+*   **Firewall Rules:** Restrict network access to only necessary ports (e.g., 80/443 for Nginx, internal network for DB access).
+*   **Regular Updates:** Keep Docker, Docker Compose, operating system, and all dependencies updated to patch security vulnerabilities.
+*   **Least Privilege:** Run containers with the minimum necessary privileges.
+*   **Security Scanning:** Use Docker image scanners (e.g., Clair, Trivy) to detect vulnerabilities in your base images and dependencies.
+*   **Input Validation:** Ensure all user inputs are validated on the server-side to prevent injection attacks.
+```

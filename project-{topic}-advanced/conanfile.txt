@@ -1,0 +1,14 @@
+[requires]
+drogon/1.8.0
+jsoncpp/1.9.5
+jwt-cpp/0.7.0 # Header-only JWT library
+libpq/15.3    # PostgreSQL client library (if drogon doesn't pull it fully)
+# For bcrypt: on Linux systems, crypt() from glibc might be enough.
+# For cross-platform or specific bcrypt, you might need:
+# bcrypt-cpp/x.y.z  (example, if available on Conan)
+# open_ssl/3.0.12   (if using OpenSSL's crypto directly, often pulled by Drogon)
+
+[generators]
+CMakeDeps
+CMakeToolchain
+```

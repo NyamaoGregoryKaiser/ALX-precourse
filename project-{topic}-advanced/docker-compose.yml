@@ -1,8 +1,3 @@
-```yaml
-# docker-compose.yml
-# ALX Principle: Multi-Service Orchestration
-# Define and run multi-container Docker applications.
-
 version: '3.8'
 
 services:
@@ -10,53 +5,34 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # image: my-payment-processor:latest # Uncomment and build if you want to push to a registry
-    container_name: payment_processor_app
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
-      # Inject environment variables from .env file
-      - NODE_ENV=${NODE_ENV}
-      - PORT=${PORT}
-      - DB_HOST=database # This matches the service name of the database container
-      - DB_PORT=${DB_PORT}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_ACCESS_EXPIRATION_MINUTES=${JWT_ACCESS_EXPIRATION_MINUTES}
-      - JWT_REFRESH_EXPIRATION_DAYS=${JWT_REFRESH_EXPIRATION_DAYS}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
-      # - GATEWAY_WEBHOOK_SECRET=${GATEWAY_WEBHOOK_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-that-is-long-and-random-and-kept-secret-in-production-environment}
+      # Database environment variables are read by Drogon from config/default.json
+      # For a more robust setup, you'd pass these directly to the app or Drogon's config.
+      # Ensure config/default.json matches these values.
     depends_on:
-      - database
-    # Add restart policy for resilience
-    restart: unless-stopped
-    volumes:
-      # For development, you might want to mount source code:
-      # - .:/app
-      # - /app/node_modules # Exclude node_modules from host mount
-      # For production, volumes for logs or persistent data only if needed
+      - db
+    networks:
+      - auth-network
 
-  database:
-    image: postgres:13-alpine # Use a specific PostgreSQL version
-    container_name: payment_processor_db
+  db:
+    image: postgres:15-alpine
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "5432:5432" # Expose DB port only if you need to access it from outside docker
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
     volumes:
-      - db_data:/var/lib/postgresql/data # Persist database data
-    restart: unless-stopped
-    # Define health check for the database
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
+      # No need to mount migrations/seed here if the app handles it from its own image
+    networks:
+      - auth-network
 
 volumes:
-  db_data: # Declared volume for database persistence
+  postgres_data:
+
+networks:
+  auth-network:
+    driver: bridge
 ```

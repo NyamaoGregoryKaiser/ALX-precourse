@@ -1,100 +1,137 @@
-```markdown
-# Payment Processing System Architecture
+# Authentication System Architecture
 
-This document outlines the high-level architecture, core components, data flow, and design considerations for the Payment Processing System.
+This document outlines the high-level architecture and key components of the C++-based Authentication System.
 
 ## 1. High-Level Overview
 
-The Payment Processing System is designed as a service-oriented backend application, primarily exposing a RESTful API. It acts as an intermediary between merchants and various external payment gateways, managing the full lifecycle of payment transactions.
+The system is a monolithic web application built with the Drogon C++ framework. It provides RESTful APIs for authentication and user management, along with basic server-rendered HTML pages. It interacts with a PostgreSQL database for data persistence and leverages Docker for containerization.
 
 ```mermaid
 graph TD
-    User[Internal Admin/Operator] --> |Manage Merchants, View Reports| AdminUI(Admin Dashboard - Mock Frontend)
-    AdminUI --> |JWT Auth, REST API| Backend[Payment Processing Backend Service]
+    A[Client: Web Browser / API Consumer] -->|HTTP/HTTPS| B(Load Balancer / Reverse Proxy - Nginx)
+    B --> C(Auth System Application - Drogon C++)
+    C -->|Database Connection| D[PostgreSQL Database]
 
-    Merchant[External Merchant Application] --> |API Key Auth, REST API| Backend
-    Backend --> |SDK/API calls| PaymentGatewayA[External Payment Gateway A]
-    Backend --> |SDK/API calls| PaymentGatewayB[External Payment Gateway B]
+    subgraph Auth System Application
+        C1[HTTP Server] --&gt; C2(Middleware Chain)
+        C2 --&gt; C3(Controllers)
+        C3 --&gt; C4(Services)
+        C4 --&gt; C5[Models (ORM)]
+        C2 --&gt; C6(Error Handler)
+        C4 --&gt; C7[Cache Layer]
+        C2 --&gt; C8[Rate Limiter]
+        C1 --&gt; C9(Static File Server)
+        C1 --&gt; C10(DView Template Engine)
+    end
 
-    PaymentGatewayA --> |Webhook Notifications| Backend
-    PaymentGatewayB --> |Webhook Notifications| Backend
-
-    Backend --> PostgreSQL(PostgreSQL Database)
-    Backend --> Redis(Redis Cache/Queue - Conceptual)
-    Backend --> Monitoring[Logging & Monitoring]
+    subgraph External Components
+        D --&gt; E[Persistent Storage: Docker Volume / EBS]
+        C --&gt; F[Logging System: stdout/files]
+        C --&gt; G[Monitoring (e.g., Prometheus Exporter, not implemented)]
+        C --> H[Secrets Management (e.g., K8s Secrets, Env Vars)]
+    end
 ```
 
 ## 2. Core Components
 
-### 2.1. Backend Service (Node.js/Express)
+### 2.1. Drogon Web Framework
 
-This is the heart of the system, responsible for handling all API requests, business logic, and interactions with other services.
+*   **HTTP Server:** Handles incoming HTTP requests and routes them to appropriate controllers.
+*   **Asynchronous I/O:** Drogon is built on an event-driven, non-blocking I/O model, allowing for high concurrency.
+*   **ORM (Object-Relational Mapping):** Simplifies database interactions by mapping C++ objects to database tables.
+*   **Templating Engine (DView):** Used for server-side rendering of HTML pages for the basic "frontend."
+*   **HTTP Client:** Used within integration tests to simulate client requests.
 
-*   **API Layer (Controllers/Routes):**
-    *   **Auth Routes:** Handles internal user registration and login (JWT generation).
-    *   **Merchant Routes:** CRUD operations for merchant accounts, API key generation (internal admin access).
-    *   **Transaction Routes:** Merchant-facing endpoints for processing payments (authorize, capture, refund), requiring API key authentication.
-    *   **Webhook Routes:** Endpoints to receive asynchronous event notifications from external payment gateways.
-*   **Business Logic Layer (Services):**
-    *   **Auth Service:** User authentication, token management.
-    *   **User Service:** CRUD for internal users.
-    *   **Merchant Service:** Merchant creation, API key management, validation.
-    *   **Transaction Service:**
-        *   Core payment orchestration: Initiates calls to external payment gateways, handles responses.
-        *   Manages transaction state transitions (pending, authorized, captured, refunded, failed, disputed).
-        *   Ensures data consistency using database transactions.
-    *   **Idempotency Service:** Manages `IdempotencyKey` records to ensure that repeated identical requests are processed only once.
-    *   **Webhook Service:** Dispatches outbound webhook notifications to merchants about transaction events.
-*   **Data Access Layer (Models/ORM):**
-    *   Sequelize ORM for interacting with PostgreSQL.
-    *   Models for `User`, `Merchant`, `Transaction`, `Token`, `WebhookConfig`, `WebhookEvent`, `IdempotencyKey`.
-    *   Includes plugins for pagination and JSON serialization (`toJSON`) to filter sensitive data.
-*   **Middleware:**
-    *   **Authentication Middleware:** JWT verification for internal users, API Key verification for merchants.
-    *   **Authorization Middleware:** Role-based access control (RBAC) for internal users.
-    *   **Validation Middleware:** Joi-based schema validation for incoming request payloads.
-    *   **Error Handling Middleware:** Centralized error catching and standardized error responses.
-    *   **Security Middleware:** `helmet`, `cors`, `xss-clean`, `hpp` for robust API security.
-    *   **Rate Limiting Middleware:** Protects against abuse and DDoS attacks.
-*   **Utilities:**
-    *   **Logger:** Winston for structured logging.
-    *   **ApiError:** Custom error class for consistent error messaging.
-    *   **catchAsync:** Wrapper for async Express route handlers.
-*   **Configuration:** Centralized `config` module for environment-dependent settings.
+### 2.2. Layers
 
-### 2.2. Database (PostgreSQL)
+#### a. Controllers (`src/controllers/`)
 
-*   **Data Persistence:** Stores all core business data including users, merchants, transactions, tokens, webhook configurations, and idempotency keys.
-*   **Schema:** Defined via Sequelize models and managed with migration scripts.
-*   **Data Integrity:** Enforced through foreign keys, unique constraints, and validation.
-*   **Performance:** Indexed columns for frequently queried fields (e.g., `merchantId`, `status`, `email`, `apiKey`).
+*   Act as the entry points for API requests and web pages.
+*   Responsible for parsing request data, delegating business logic to services, and formatting responses.
+*   Handle HTTP-specific concerns (e.g., request/response objects, status codes).
 
-### 2.3. External Payment Gateways
+#### b. Services (`src/services/`)
 
-*   The system integrates with abstract "Payment Gateways" (simulated in this project).
-*   Interaction involves outbound API calls (e.g., for `authorize`, `capture`) and inbound webhook notifications (e.g., for transaction status changes).
+*   Encapsulate the core business logic of the application.
+*   `AuthService`: Handles user registration, login, logout, and token blacklisting.
+*   `UserService`: Manages CRUD operations for users and role assignments.
+*   `JWTHelper`: Utility for generating and validating JWT tokens.
+*   `PasswordHasher`: Handles secure password hashing (BCrypt).
+*   `CacheService`: In-memory caching for performance optimization.
+*   `RateLimiter`: Implements IP-based rate limiting.
+*   Designed to be independent of HTTP context.
 
-### 2.4. Frontend (Conceptual/Mock)
+#### c. Models (`src/models/`)
 
-*   A simple static HTML/JS frontend (`public/`) is provided for demonstration purposes.
-*   In a real-world scenario, this would be a full-fledged Single Page Application (SPA) dashboard for merchants and/or internal operators.
+*   Represent the data structures (e.g., `User`, `Role`, `Session`).
+*   Generated by Drogon's ORM (partially hand-tuned for custom methods like `User::getRoles`).
+*   Handle basic data validation and persistence logic via ORM mappers.
 
-### 2.5. Caching Layer (Conceptual - Redis)
+#### d. Middleware (`src/middleware/`)
 
-*   While not fully implemented, a Redis instance (`docker-compose.yml`) is included conceptually.
-*   **Purpose:** Could be used for:
-    *   Caching frequently accessed, non-critical data (e.g., merchant configurations).
-    *   Storing rate limit counters.
-    *   Implementing an asynchronous job queue.
+*   Interceptors that process requests before they reach controllers or after controller logic.
+*   **`LoggingMiddleware`**: Logs incoming request details.
+*   **`RateLimiterFilter`**: Checks and enforces rate limits based on client IP.
+*   **`AuthMiddleware`**: Validates JWT tokens and enforces Role-Based Access Control (RBAC). Injects user details (ID, roles) into the request context.
+*   **`ErrorHandler`**: A global custom error handler for consistent error responses.
 
-### 2.6. Logging and Monitoring
+#### e. Utilities (`src/utils/`)
 
-*   **Winston:** Used for structured logging of application events, errors, and debugging information.
-*   **Morgan:** Integrates with Express to log HTTP requests.
-*   **Conceptual Monitoring:** In a production environment, logs would be aggregated (e.g., ELK stack, Splunk, cloud-native services), and metrics (Prometheus/Grafana) would be collected to monitor system health and performance.
+*   Helper functions for common tasks (e.g., `JsonUtil` for consistent JSON responses, `StringUtil` for string manipulation).
 
-## 3. Data Flow Example: Processing a New Transaction
+#### f. Constants (`src/constants/`)
 
-1.  **Merchant Request:** An external merchant application sends a `POST /api/v1/transactions/process` request to the backend.
-    *   Request includes `X-Api-Key` (for authentication) and `X-Idempotency-Key` (for idempotency).
-    *   Request body contains `amount`, `currency`, `paymentMethodType`, `
+*   Centralized location for application-wide constants, such as JWT settings, role names, and error messages.
+
+### 2.3. Database Layer
+
+*   **PostgreSQL:** Chosen for its robustness, reliability, and rich feature set.
+*   **Drogon ORM:** Used for seamless interaction with the database, simplifying data operations and preventing SQL injection.
+*   **Migrations:** SQL scripts (`db/migrations`) manage schema evolution.
+*   **Seed Data:** `db/seed` provides initial data for development and testing environments.
+
+### 2.4. Frontend ("C++ Frontend")
+
+*   The "frontend" aspect in C++ is handled by Drogon's DView template engine.
+*   `WebController` serves `client/views/*.html` templates (e.g., `login.html`, `register.html`).
+*   Static assets (CSS, JS) are served from `client/public`.
+*   This approach keeps the entire core application within C++, fulfilling the prompt's requirement without resorting to complex WebAssembly or an external JavaScript framework.
+
+## 3. Security Considerations
+
+*   **Password Hashing:** Uses `bcrypt` (or a strong fallback hash for demonstration) via `PasswordHasher`.
+*   **JWT Security:**
+    *   `JWT_SECRET` stored as an environment variable (not in source control).
+    *   Tokens are signed with HS256 algorithm.
+    *   Expiration times are enforced.
+    *   `sessions` table acts as a simple JWT invalidation/blacklist mechanism for logout.
+*   **Rate Limiting:** Protects authentication endpoints from brute-force attacks.
+*   **HTTPS:** Recommended in production (handled by load balancer/reverse proxy, not directly in the Drogon app in this setup).
+*   **Input Validation:** Handled in controllers and services.
+*   **Role-Based Access Control (RBAC):** `AuthMiddleware` enforces permissions based on user roles.
+
+## 4. Environment & Deployment
+
+*   **Configuration:** `config/default.json` for app settings, `.env` for secrets.
+*   **Docker:** `Dockerfile` for building the C++ application image, `docker-compose.yml` for orchestrating the application and PostgreSQL database.
+*   **CI/CD:** GitHub Actions workflow (`.github/workflows/main.yml`) automates building, testing, and potentially deployment.
+
+## 5. Scalability and Performance
+
+*   **Asynchronous Processing:** Drogon's non-blocking nature allows high concurrency on a single server.
+*   **Database Connection Pooling:** Managed by Drogon's DbClient.
+*   **Caching:** In-memory `CacheService` reduces database reads for frequently accessed, relatively static data.
+*   **Load Balancing:** The architecture supports horizontal scaling by running multiple Drogon instances behind a load balancer.
+*   **Stateless JWTs:** Primarily stateless, making horizontal scaling easier (session invalidation with `sessions` table adds a small state dependency, which can be scaled with a distributed cache like Redis if needed).
+
+## 6. Future Enhancements
+
+*   **Distributed Caching:** Integrate Redis for a shared cache layer for `CacheService` and JWT blacklisting.
+*   **Asynchronous Task Queues:** For long-running operations (e.g., email notifications).
+*   **Observability:** Integrate with Prometheus for metrics, ELK stack for centralized logging, and Jaeger for distributed tracing.
+*   **OAuth2/OIDC:** Implement external identity provider integration.
+*   **Password Reset/Forgot Password Flows.**
+*   **MFA (Multi-Factor Authentication).**
+*   **More Granular Permissions:** Beyond simple roles to individual permissions.
+*   **Full-fledged Frontend:** Replace server-rendered HTML with a modern SPA (React, Vue, Angular) interacting with the C++ backend APIs.
+```
