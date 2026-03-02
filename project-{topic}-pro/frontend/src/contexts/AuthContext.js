@@ -1,91 +1,123 @@
 ```javascript
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import authService from '../services/authService';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import { jwtDecode } from 'jwt-decode'; // Note: jwt-decode typically needs to be imported like this
+import authService from '../api/authService';
 
-export const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
-  const loadUserFromStorage = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user'); // Store basic user info for quicker load
-
-    if (token && storedUser) {
+  const checkTokenValidity = useCallback(() => {
+    if (token) {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        // Validate token by fetching user profile
-        const fetchedUser = await authService.getMe();
-        if (fetchedUser && fetchedUser.id === parsedUser.id) {
-          setUser(fetchedUser);
-        } else {
-          // Token invalid or user mismatch, clear and log out
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setUser(null);
-          navigate('/login');
+        const decodedToken = jwtDecode(token);
+        const currentTime = Date.now() / 1000; // in seconds
+        if (decodedToken.exp < currentTime) {
+          // Token expired
+          console.log('Token expired. Logging out.');
+          logout();
+          return false;
         }
-      } catch (error) {
-        console.error('Failed to load user or validate token:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-        navigate('/login');
+        return true;
+      } catch (e) {
+        console.error('Invalid token format:', e);
+        logout();
+        return false;
       }
     }
-    setLoading(false);
-  }, [navigate]);
+    return false;
+  }, [token]);
 
   useEffect(() => {
-    loadUserFromStorage();
-  }, [loadUserFromStorage]);
+    const initializeAuth = async () => {
+      setLoading(true);
+      if (token && checkTokenValidity()) {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+        } else {
+          try {
+            // Fetch user profile if not in localStorage (or refresh it)
+            const profile = await authService.getProfile();
+            setUser(profile);
+            localStorage.setItem('user', JSON.stringify(profile));
+          } catch (error) {
+            console.error('Failed to fetch user profile:', error);
+            logout();
+          }
+        }
+      } else {
+        // No token, or token invalid/expired
+        setUser(null);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+      setLoading(false);
+    };
+
+    initializeAuth();
+  }, [token, checkTokenValidity]);
 
   const login = async (email, password) => {
     try {
-      setLoading(true);
-      const data = await authService.login({ email, password });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user)); // Store minimal user data
-      setUser(data.user);
-      navigate('/dashboard');
+      const { user: userData, token: jwtToken } = await authService.login(email, password);
+      setToken(jwtToken);
+      setUser(userData);
+      return true;
     } catch (error) {
-      console.error('Login failed:', error.response?.data?.message || error.message);
-      throw error; // Re-throw to be caught by the login form
-    } finally {
-      setLoading(false);
+      console.error('Login error:', error);
+      throw error;
     }
   };
 
-  const register = async (username, email, password, role = 'developer') => {
+  const register = async (userData) => {
     try {
-      setLoading(true);
-      const data = await authService.register({ username, email, password, role });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      setUser(data.user);
-      navigate('/dashboard');
+      const { user: registeredUser, token: jwtToken } = await authService.register(userData);
+      setToken(jwtToken);
+      setUser(registeredUser);
+      return true;
     } catch (error) {
-      console.error('Registration failed:', error.response?.data?.message || error.message);
+      console.error('Registration error:', error);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    authService.logout();
+    setToken(null);
     setUser(null);
-    navigate('/login');
+    setLoading(false); // Ensure loading is false after logout
   };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const isAuthenticated = !!user && !!token && checkTokenValidity();
+  const isAdmin = isAuthenticated && user?.role === 'admin';
+  const isEditor = isAuthenticated && user?.role === 'editor';
+  const isAuthor = isAuthenticated && user?.role === 'author';
+
+  const value = {
+    user,
+    token,
+    isAuthenticated,
+    isAdmin,
+    isEditor,
+    isAuthor,
+    loading,
+    login,
+    register,
+    logout,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };
 ```

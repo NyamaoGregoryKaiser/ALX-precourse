@@ -1,49 +1,74 @@
 ```javascript
-import React, { useContext } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthContext } from './contexts/AuthContext';
-import HomePage from './pages/HomePage';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import Dashboard from './pages/Dashboard';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetailPage from './pages/ProjectDetailPage';
-import TaskDetailPage from './pages/TaskDetailPage';
+import DashboardPage from './pages/DashboardPage';
+import PostListPage from './pages/PostListPage';
+import PostEditorPage from './pages/PostEditorPage';
 import NotFoundPage from './pages/NotFoundPage';
-import PrivateRoute from './components/common/PrivateRoute';
-import AdminRoute from './components/common/AdminRoute'; // For admin-specific routes
-import ManageUsersPage from './pages/ManageUsersPage';
-import Header from './components/common/Header';
-import Sidebar from './components/common/Sidebar';
+import Layout from './components/Layout';
+import LoadingSpinner from './components/LoadingSpinner'; // Simple loading component
+
+// Protected Route Component
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { isAuthenticated, user, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingSpinner />; // Show a loading spinner while auth state is being determined
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />; // Redirect unauthorized users
+  }
+
+  return children;
+};
 
 function App() {
-  const { user } = useContext(AuthContext);
+  return (
+    <Router>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </Router>
+  );
+}
+
+function AppRoutes() {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {user && <Sidebar />}
-      <div className="flex flex-col flex-1">
-        {user && <Header />}
-        <main className="flex-1 overflow-y-auto p-6">
-          <Routes>
-            <Route path="/" element={user ? <Navigate to="/dashboard" /> : <HomePage />} />
-            <Route path="/login" element={!user ? <LoginPage /> : <Navigate to="/dashboard" />} />
-            <Route path="/register" element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+    <Routes>
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+      <Route path="/register" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />} />
 
-            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-            <Route path="/projects" element={<PrivateRoute><ProjectsPage /></PrivateRoute>} />
-            <Route path="/projects/:projectId" element={<PrivateRoute><ProjectDetailPage /></PrivateRoute>} />
-            <Route path="/tasks/:taskId" element={<PrivateRoute><TaskDetailPage /></PrivateRoute>} /> {/* Direct task link */}
+      <Route path="/" element={<Layout />}>
+        <Route index element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
 
-            {/* Admin specific routes */}
-            <Route path="/admin/users" element={<AdminRoute><ManageUsersPage /></AdminRoute>} />
-            {/* ... other admin routes */}
+        {/* Posts routes */}
+        <Route path="posts" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostListPage /></ProtectedRoute>} />
+        <Route path="posts/new" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostEditorPage /></ProtectedRoute>} />
+        <Route path="posts/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostEditorPage /></ProtectedRoute>} />
+        {/*
+        <Route path="pages" element={<ProtectedRoute allowedRoles={['admin', 'editor']}><PageListPage /></ProtectedRoute>} />
+        <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagementPage /></ProtectedRoute>} />
+        <Route path="media" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><MediaLibraryPage /></ProtectedRoute>} />
+        */}
+      </Route>
 
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </main>
-      </div>
-    </div>
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   );
 }
 
