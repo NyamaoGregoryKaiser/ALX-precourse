@@ -1,0 +1,547 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Web Scraper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Dashboard</h1>
+        <p class="lead">Welcome back, {{ session.get('username', 'User') }}!</p>
+        <p>Manage your scraper configurations, initiate scraping jobs, and view results here.</p>
+        <div class="alert alert-info">
+            <strong>Your JWT Token:</strong> <code id="jwt-token">{{ token }}</code>
+            <button class="btn btn-sm btn-outline-info ms-2" onclick="copyToken()">Copy Token</button>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="scrapers-tab" data-bs-toggle="tab" data-bs-target="#scrapers" type="button" role="tab" aria-controls="scrapers" aria-selected="true">Scrapers</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="jobs-tab" data-bs-toggle="tab" data-bs-target="#jobs" type="button" role="tab" aria-controls="jobs" aria-selected="false">Scraping Jobs</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="results-tab" data-bs-toggle="tab" data-bs-target="#results" type="button" role="tab" aria-controls="results" aria-selected="false">Results</button>
+            </li>
+        </ul>
+        <div class="tab-content" id="myTabContent">
+            <!-- Scrapers Tab -->
+            <div class="tab-pane fade show active" id="scrapers" role="tabpanel" aria-labelledby="scrapers-tab">
+                <h3 class="mt-4">My Scraper Configurations</h3>
+                <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#createScraperModal">Create New Scraper</button>
+                <div id="scrapers-list">Loading scrapers...</div>
+            </div>
+
+            <!-- Jobs Tab -->
+            <div class="tab-pane fade" id="jobs" role="tabpanel" aria-labelledby="jobs-tab">
+                <h3 class="mt-4">My Scraping Jobs</h3>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createJobModal">Initiate New Job</button>
+                    <div>
+                        Filter by Status:
+                        <select id="job-status-filter" class="form-select form-select-sm d-inline-block w-auto ms-2" onchange="fetchJobs()">
+                            <option value="">All</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="RUNNING">Running</option>
+                            <option value="COMPLETED">Completed</option>
+                            <option value="FAILED">Failed</option>
+                            <option value="CANCELLED">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="jobs-list">Loading jobs...</div>
+            </div>
+
+            <!-- Results Tab -->
+            <div class="tab-pane fade" id="results" role="tabpanel" aria-labelledby="results-tab">
+                <h3 class="mt-4">Scraping Results</h3>
+                <div id="results-list">Select a job from the "Scraping Jobs" tab to view its results.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+
+<!-- Create Scraper Modal -->
+<div class="modal fade" id="createScraperModal" tabindex="-1" aria-labelledby="createScraperModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createScraperModalLabel">Create New Scraper Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="create-scraper-form">
+                    <div class="mb-3">
+                        <label for="scraperName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="scraperName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="scraperUrl" class="form-label">Start URL</label>
+                        <input type="url" class="form-control" id="scraperUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="scraperDescription" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="scraperDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cssSelectors" class="form-label">CSS Selectors (JSON)</label>
+                        <textarea class="form-control" id="cssSelectors" rows="5" placeholder='{"title": "h1", "price": "span.price", "description": "div.description"}' required></textarea>
+                        <div class="form-text">Provide as a JSON object, e.g., <code>{"field_name": "css_selector"}</code></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Create Scraper</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Scraper Modal -->
+<div class="modal fade" id="editScraperModal" tabindex="-1" aria-labelledby="editScraperModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editScraperModalLabel">Edit Scraper Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-scraper-form">
+                    <input type="hidden" id="editScraperId">
+                    <div class="mb-3">
+                        <label for="editScraperName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="editScraperName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editScraperUrl" class="form-label">Start URL</label>
+                        <input type="url" class="form-control" id="editScraperUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editScraperDescription" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="editScraperDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCssSelectors" class="form-label">CSS Selectors (JSON)</label>
+                        <textarea class="form-control" id="editCssSelectors" rows="5" required></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="editIsActive">
+                        <label class="form-check-label" for="editIsActive">Is Active</label>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Job Modal -->
+<div class="modal fade" id="createJobModal" tabindex="-1" aria-labelledby="createJobModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createJobModalLabel">Initiate New Scraping Job</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="create-job-form">
+                    <div class="mb-3">
+                        <label for="jobScraperConfig" class="form-label">Select Scraper Configuration</label>
+                        <select class="form-select" id="jobScraperConfig" required>
+                            <!-- Options will be loaded dynamically -->
+                        </select>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-success">Initiate Job</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Results Modal -->
+<div class="modal fade" id="viewResultsModal" tabindex="-1" aria-labelledby="viewResultsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewResultsModalLabel">Scraping Results for Job <span id="resultsJobId"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="job-results-content">Loading results...</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const API_BASE_URL = "/proxy"; // Using Flask proxy endpoint
+    const JWT_TOKEN = "{{ token }}";
+
+    function showAlert(message, type) {
+        const alertHtml = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                            ${message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                           </div>`;
+        document.querySelector('.container.mt-4').insertAdjacentHTML('afterbegin', alertHtml);
+    }
+
+    async function makeApiRequest(method, url, data = null) {
+        const headers = {
+            'Authorization': `Bearer ${JWT_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+
+        const options = {
+            method: method,
+            headers: headers,
+        };
+
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        try {
+            const response = await fetch(API_BASE_URL + url, options);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `API Error: ${response.status}`);
+            }
+            if (response.status === 204) return {}; // No content for DELETE
+            return await response.json();
+        } catch (error) {
+            console.error("API Request Failed:", error);
+            showAlert(error.message || "An error occurred.", "danger");
+            throw error; // Re-throw to allow specific error handling in calling functions
+        }
+    }
+
+    function copyToken() {
+        const tokenElement = document.getElementById('jwt-token');
+        const range = document.createRange();
+        range.selectNode(tokenElement);
+        window.getSelection().removeAllRanges(); // Clear current selection
+        window.getSelection().addRange(range);   // Select the text
+        document.execCommand('copy');            // Copy to clipboard
+        window.getSelection().removeAllRanges(); // Clear selection again
+        showAlert('JWT Token copied to clipboard!', 'info');
+    }
+
+    // --- Scrapers Tab Functions ---
+
+    async function fetchScrapers() {
+        try {
+            const scrapers = await makeApiRequest('GET', '/scrapers');
+            const scrapersListDiv = document.getElementById('scrapers-list');
+            if (scrapers.length === 0) {
+                scrapersListDiv.innerHTML = '<p>No scraper configurations found. Create one!</p>';
+                return;
+            }
+            let html = '<table class="table table-striped table-hover"><thead><tr><th>ID</th><th>Name</th><th>URL</th><th>Active</th><th>Actions</th></tr></thead><tbody>';
+            scrapers.forEach(scraper => {
+                html += `
+                    <tr>
+                        <td>${scraper.id}</td>
+                        <td>${scraper.name}</td>
+                        <td><a href="${scraper.start_url}" target="_blank">${scraper.start_url}</a></td>
+                        <td>${scraper.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info me-2" onclick="editScraper(${scraper.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteScraper(${scraper.id}, '${scraper.name}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            scrapersListDiv.innerHTML = html;
+        } catch (error) {
+            document.getElementById('scrapers-list').innerHTML = `<p class="text-danger">Failed to load scrapers: ${error.message}</p>`;
+        }
+    }
+
+    document.getElementById('create-scraper-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('scraperName').value;
+        const start_url = document.getElementById('scraperUrl').value;
+        const description = document.getElementById('scraperDescription').value;
+        let css_selectors;
+        try {
+            css_selectors = JSON.parse(document.getElementById('cssSelectors').value);
+        } catch (error) {
+            showAlert('Invalid CSS Selectors JSON.', 'danger');
+            return;
+        }
+
+        const payload = { name, start_url, description, css_selectors };
+        try {
+            await makeApiRequest('POST', '/scrapers', payload);
+            showAlert('Scraper created successfully!', 'success');
+            const createScraperModal = bootstrap.Modal.getInstance(document.getElementById('createScraperModal'));
+            createScraperModal.hide();
+            document.getElementById('create-scraper-form').reset();
+            fetchScrapers();
+            populateJobScraperConfigSelect(); // Update job select options
+        } catch (error) {
+            // Error handled by makeApiRequest
+        }
+    });
+
+    async function editScraper(id) {
+        try {
+            const scraper = await makeApiRequest('GET', `/scrapers/${id}`);
+            document.getElementById('editScraperId').value = scraper.id;
+            document.getElementById('editScraperName').value = scraper.name;
+            document.getElementById('editScraperUrl').value = scraper.start_url;
+            document.getElementById('editScraperDescription').value = scraper.description;
+            document.getElementById('editCssSelectors').value = JSON.stringify(scraper.css_selectors, null, 2);
+            document.getElementById('editIsActive').checked = scraper.is_active;
+
+            const editScraperModal = new bootstrap.Modal(document.getElementById('editScraperModal'));
+            editScraperModal.show();
+        } catch (error) {
+            // Error handled by makeApiRequest
+        }
+    }
+
+    document.getElementById('edit-scraper-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('editScraperId').value;
+        const name = document.getElementById('editScraperName').value;
+        const start_url = document.getElementById('editScraperUrl').value;
+        const description = document.getElementById('editScraperDescription').value;
+        const is_active = document.getElementById('editIsActive').checked;
+        let css_selectors;
+        try {
+            css_selectors = JSON.parse(document.getElementById('editCssSelectors').value);
+        } catch (error) {
+            showAlert('Invalid CSS Selectors JSON.', 'danger');
+            return;
+        }
+
+        const payload = { name, start_url, description, css_selectors, is_active };
+        try {
+            await makeApiRequest('PUT', `/scrapers/${id}`, payload);
+            showAlert('Scraper updated successfully!', 'success');
+            const editScraperModal = bootstrap.Modal.getInstance(document.getElementById('editScraperModal'));
+            editScraperModal.hide();
+            fetchScrapers();
+            populateJobScraperConfigSelect();
+        } catch (error) {
+            // Error handled by makeApiRequest
+        }
+    });
+
+    async function deleteScraper(id, name) {
+        if (confirm(`Are you sure you want to delete scraper "${name}" (ID: ${id})? This will also delete all associated jobs and results.`)) {
+            try {
+                await makeApiRequest('DELETE', `/scrapers/${id}`);
+                showAlert(`Scraper "${name}" deleted successfully!`, 'success');
+                fetchScrapers();
+                fetchJobs(); // Jobs might be affected
+                populateJobScraperConfigSelect();
+            } catch (error) {
+                // Error handled by makeApiRequest
+            }
+        }
+    }
+
+    // --- Jobs Tab Functions ---
+
+    async function fetchJobs() {
+        const statusFilter = document.getElementById('job-status-filter').value;
+        try {
+            const jobs = await makeApiRequest('GET', `/jobs${statusFilter ? `?status=${statusFilter}` : ''}`);
+            const jobsListDiv = document.getElementById('jobs-list');
+            if (jobs.length === 0) {
+                jobsListDiv.innerHTML = '<p>No scraping jobs found. Initiate one!</p>';
+                return;
+            }
+            let html = '<table class="table table-striped table-hover"><thead><tr><th>ID</th><th>Config ID</th><th>Status</th><th>Started At</th><th>Finished At</th><th>Actions</th></tr></thead><tbody>';
+            jobs.forEach(job => {
+                const statusBadge = {
+                    'PENDING': 'bg-secondary',
+                    'RUNNING': 'bg-info',
+                    'COMPLETED': 'bg-success',
+                    'FAILED': 'bg-danger',
+                    'CANCELLED': 'bg-warning text-dark'
+                }[job.status] || 'bg-light text-dark';
+                html += `
+                    <tr>
+                        <td>${job.id}</td>
+                        <td>${job.scraper_config_id}</td>
+                        <td><span class="badge ${statusBadge}">${job.status}</span></td>
+                        <td>${job.started_at ? new Date(job.started_at).toLocaleString() : 'N/A'}</td>
+                        <td>${job.finished_at ? new Date(job.finished_at).toLocaleString() : 'N/A'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary me-2" onclick="viewJobResults(${job.id})" ${job.status !== 'COMPLETED' ? 'disabled' : ''}>View Results</button>
+                            <button class="btn btn-sm btn-warning me-2" onclick="cancelJob(${job.id})" ${job.status === 'COMPLETED' || job.status === 'FAILED' || job.status === 'CANCELLED' ? 'disabled' : ''}>Cancel</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteJob(${job.id}, '${job.status}')" ${job.status === 'PENDING' || job.status === 'RUNNING' ? 'disabled' : ''}>Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            jobsListDiv.innerHTML = html;
+        } catch (error) {
+            document.getElementById('jobs-list').innerHTML = `<p class="text-danger">Failed to load jobs: ${error.message}</p>`;
+        }
+    }
+
+    async function populateJobScraperConfigSelect() {
+        const selectElement = document.getElementById('jobScraperConfig');
+        selectElement.innerHTML = ''; // Clear existing options
+        try {
+            const scrapers = await makeApiRequest('GET', '/scrapers');
+            if (scrapers.length === 0) {
+                selectElement.innerHTML = '<option value="">No active scrapers available</option>';
+                selectElement.disabled = true;
+                return;
+            }
+            selectElement.disabled = false;
+            scrapers.forEach(scraper => {
+                if (scraper.is_active) {
+                    const option = document.createElement('option');
+                    option.value = scraper.id;
+                    option.textContent = `${scraper.name} (ID: ${scraper.id})`;
+                    selectElement.appendChild(option);
+                }
+            });
+            if (selectElement.options.length === 0) {
+                selectElement.innerHTML = '<option value="">No active scrapers available</option>';
+                selectElement.disabled = true;
+            }
+        } catch (error) {
+            selectElement.innerHTML = '<option value="">Error loading scrapers</option>';
+            selectElement.disabled = true;
+        }
+    }
+
+    document.getElementById('create-job-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const scraper_config_id = document.getElementById('jobScraperConfig').value;
+        if (!scraper_config_id) {
+            showAlert('Please select a scraper configuration.', 'warning');
+            return;
+        }
+
+        try {
+            await makeApiRequest('POST', '/jobs', { scraper_config_id: parseInt(scraper_config_id) });
+            showAlert('Scraping job initiated successfully!', 'success');
+            const createJobModal = bootstrap.Modal.getInstance(document.getElementById('createJobModal'));
+            createJobModal.hide();
+            fetchJobs();
+        } catch (error) {
+            // Error handled by makeApiRequest
+        }
+    });
+
+    async function cancelJob(jobId) {
+        if (confirm(`Are you sure you want to cancel Job ${jobId}?`)) {
+            try {
+                await makeApiRequest('POST', `/jobs/${jobId}/cancel`);
+                showAlert(`Job ${jobId} cancelled successfully!`, 'success');
+                fetchJobs();
+            } catch (error) {
+                // Error handled by makeApiRequest
+            }
+        }
+    }
+
+    async function deleteJob(jobId, status) {
+        if (status === 'PENDING' || status === 'RUNNING') {
+            showAlert(`Job ${jobId} is currently ${status}. Please cancel it first before deleting.`, 'warning');
+            return;
+        }
+        if (confirm(`Are you sure you want to delete Job ${jobId}? This will also delete all associated results.`)) {
+            try {
+                await makeApiRequest('DELETE', `/jobs/${jobId}`);
+                showAlert(`Job ${jobId} deleted successfully!`, 'success');
+                fetchJobs();
+                if (document.getElementById('resultsJobId').textContent == jobId) {
+                    document.getElementById('job-results-content').innerHTML = "Job results deleted.";
+                }
+            } catch (error) {
+                // Error handled by makeApiRequest
+            }
+        }
+    }
+
+    // --- Results Tab Functions ---
+
+    async function viewJobResults(jobId) {
+        document.getElementById('resultsJobId').textContent = jobId;
+        const resultsContentDiv = document.getElementById('job-results-content');
+        resultsContentDiv.innerHTML = 'Loading results...';
+
+        try {
+            const results = await makeApiRequest('GET', `/jobs/${jobId}/results`);
+            if (results.length === 0) {
+                resultsContentDiv.innerHTML = '<p>No results found for this job yet.</p>';
+            } else {
+                let html = '<table class="table table-bordered table-sm table-hover"><thead><tr><th>ID</th><th>URL</th><th>Data</th><th>Created At</th></tr></thead><tbody>';
+                results.forEach(result => {
+                    html += `
+                        <tr>
+                            <td>${result.id}</td>
+                            <td><a href="${result.url}" target="_blank">${result.url || 'N/A'}</a></td>
+                            <td><pre>${JSON.stringify(result.data, null, 2)}</pre></td>
+                            <td>${new Date(result.created_at).toLocaleString()}</td>
+                        </tr>
+                    `;
+                });
+                html += '</tbody></table>';
+                resultsContentDiv.innerHTML = html;
+            }
+            const viewResultsModal = new bootstrap.Modal(document.getElementById('viewResultsModal'));
+            viewResultsModal.show();
+        } catch (error) {
+            resultsContentDiv.innerHTML = `<p class="text-danger">Failed to load results: ${error.message}</p>`;
+        }
+    }
+
+
+    // Initial fetches when dashboard is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+        if (JWT_TOKEN) {
+            fetchScrapers();
+            fetchJobs();
+            populateJobScraperConfigSelect();
+
+            // Auto-refresh jobs list every 30 seconds for active jobs
+            setInterval(fetchJobs, 30000);
+
+            // Activate tab switching
+            var myTabs = document.querySelectorAll('#myTab button');
+            myTabs.forEach(function(tab) {
+                tab.addEventListener('shown.bs.tab', function (event) {
+                    if (event.target.id === 'scrapers-tab') {
+                        fetchScrapers();
+                    } else if (event.target.id === 'jobs-tab') {
+                        fetchJobs();
+                    }
+                });
+            });
+        }
+    });
+
+</script>
+{% endblock %}
+```

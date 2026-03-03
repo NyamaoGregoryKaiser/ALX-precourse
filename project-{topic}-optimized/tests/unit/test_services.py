@@ -1,189 +1,223 @@
 import pytest
-from app.services.user_service import UserService
-from app.services.category_service import CategoryService
-from app.services.product_service import ProductService
-from app.services.order_service import OrderService
-from app.services.auth_service import AuthService
-from app.models.user import User, UserRole
-from app.models.category import Category
-from app.models.product import Product
-from app.models.order import Order, OrderItem, OrderStatus
-from app.utils.errors import NotFoundError, BadRequestError, ConflictError, ForbiddenError, InternalServerError
-from app.extensions import bcrypt
+from unittest.mock import patch, MagicMock
+from app.services.scraper_service import ScraperConfigService
+from app.services.job_service import ScrapingJobService
+from app.services.result_service import ScrapingResultService
+from app.auth.services import AuthService
+from app.utils.errors import NotFoundError, BadRequestError, UnauthorizedError, ForbiddenError
+from app.models.user import User
+from app.models.scraper_config import ScraperConfig
+from app.models.scraping_job import ScrapingJob, JobStatus
+from app.models.scraping_result import ScrapingResult
+from datetime import datetime
 
 # --- AuthService Tests ---
-def test_auth_register_user_success(db_session, app):
+def test_register_user_success(app):
     with app.app_context():
-        # Ensure CUSTOMER role exists for new users
-        if not UserRole.query.filter_by(name='CUSTOMER').first():
-            db_session.add(UserRole(name='CUSTOMER'))
-            db_session.commit()
-
-        user = AuthService.register_user('newuser', 'new@example.com', 'testpass')
-        assert user.id is not None
+        user = AuthService.register_user('newuser', 'new@example.com', 'password123')
         assert user.username == 'newuser'
-        assert user.email == 'new@example.com'
-        assert user.check_password('testpass')
-        assert user.has_role('CUSTOMER')
+        assert user.check_password('password123')
+        assert User.get_by_username('newuser') is not None
 
-def test_auth_register_user_duplicate_email(db_session, app, customer_user):
+def test_register_user_exists(app, test_user):
     with app.app_context():
-        with pytest.raises(ConflictError):
-            AuthService.register_user('anotheruser', customer_user.email, 'testpass')
+        with pytest.raises(BadRequestError, match="Username 'test_u' already exists."):
+            AuthService.register_user('test_u', 'another@example.com', 'password123')
+        with pytest.raises(BadRequestError, match="Email 'test_u@example.com' already exists."):
+            AuthService.register_user('another', 'test_u@example.com', 'password123')
 
-def test_auth_authenticate_user_success(app, customer_user):
+def test_authenticate_user_success(app, test_user):
     with app.app_context():
-        tokens = AuthService.authenticate_user(customer_user.email, 'customerpass')
-        assert 'access_token' in tokens
-        assert 'refresh_token' in tokens
+        token = AuthService.authenticate_user(test_user.username, 'password')
+        assert token is not None
+        assert isinstance(token, str)
 
-def test_auth_authenticate_user_invalid_credentials(app, customer_user):
+def test_authenticate_user_invalid_credentials(app, test_user):
     with app.app_context():
-        with pytest.raises(UnauthorizedError):
-            AuthService.authenticate_user(customer_user.email, 'wrongpass')
-        with pytest.raises(UnauthorizedError):
-            AuthService.authenticate_user('nonexistent@example.com', 'anypass')
+        with pytest.raises(UnauthorizedError, match="Invalid username or password."):
+            AuthService.authenticate_user(test_user.username, 'wrong_password')
+        with pytest.raises(UnauthorizedError, match="Invalid username or password."):
+            AuthService.authenticate_user('nonexistent', 'password')
 
-# --- UserService Tests ---
-def test_user_service_get_user_by_id_success(customer_user):
-    user = UserService.get_user_by_id(customer_user.id)
-    assert user.id == customer_user.id
+# --- ScraperConfigService Tests ---
+def test_create_scraper_config_success(app, test_user):
+    with app.app_context():
+        config = ScraperConfigService.create_scraper_config(
+            test_user.id, 'My New Scraper', 'http://example.com/new', {'item': '.new-item'}
+        )
+        assert config.name == 'My New Scraper'
+        assert config.user_id == test_user.id
+        assert ScraperConfig.get_by_id(config.id, test_user.id) is not None
 
-def test_user_service_get_user_by_id_not_found():
-    with pytest.raises(NotFoundError):
-        UserService.get_user_by_id(9999)
+def test_create_scraper_config_duplicate_name(app, test_scraper_config):
+    with app.app_context():
+        with pytest.raises(BadRequestError, match="Scraper config with name 'Test Scraper' already exists for this user."):
+            ScraperConfigService.create_scraper_config(
+                test_scraper_config.user_id, 'Test Scraper', 'http://example.com/dup', {'item': '.dup-item'}
+            )
 
-def test_user_service_update_user_by_admin(db_session, admin_user, customer_user):
-    updated_data = {'username': 'updated_customer', 'is_active': False, 'roles': ['EDITOR']}
-    user = UserService.update_user(customer_user.id, updated_data, admin_user.id, ['ADMIN'])
-    assert user.username == 'updated_customer'
-    assert user.is_active is False
-    assert user.has_role('EDITOR')
-    assert not user.has_role('CUSTOMER')
+def test_get_all_scraper_configs(app, test_user, test_scraper_config):
+    with app.app_context():
+        configs = ScraperConfigService.get_all_scraper_configs(test_user.id)
+        assert len(configs) == 1
+        assert configs[0].id == test_scraper_config.id
 
-def test_user_service_update_user_by_self_success(customer_user):
-    updated_data = {'username': 'self_updated_customer'}
-    user = UserService.update_user(customer_user.id, updated_data, customer_user.id, ['CUSTOMER'])
-    assert user.username == 'self_updated_customer'
+def test_get_scraper_config_by_id_success(app, test_scraper_config):
+    with app.app_context():
+        config = ScraperConfigService.get_scraper_config_by_id(test_scraper_config.id, test_scraper_config.user_id)
+        assert config.id == test_scraper_config.id
 
-def test_user_service_update_user_by_non_admin_forbidden_role_change(db_session, customer_user):
-    updated_data = {'roles': ['ADMIN']}
-    with pytest.raises(ForbiddenError):
-        UserService.update_user(customer_user.id, updated_data, customer_user.id, ['CUSTOMER'])
+def test_get_scraper_config_by_id_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError, match="Scraper config with ID 999 not found."):
+            ScraperConfigService.get_scraper_config_by_id(999, test_user.id)
 
-def test_user_service_delete_user_by_admin_success(db_session, admin_user, customer_user):
-    UserService.delete_user(customer_user.id, admin_user.id, ['ADMIN'])
-    with pytest.raises(NotFoundError):
-        UserService.get_user_by_id(customer_user.id)
+def test_get_scraper_config_by_id_unauthorized_user(app, test_scraper_config):
+    with app.app_context():
+        # Create another user
+        another_user = User(username='another', email='another@example.com')
+        another_user.set_password('pass')
+        another_user.save()
+        with pytest.raises(NotFoundError, match="Scraper config with ID .* not found."): # It's NotFound because get_by_id filters by user_id
+            ScraperConfigService.get_scraper_config_by_id(test_scraper_config.id, another_user.id)
+        another_user.delete()
 
-def test_user_service_delete_user_by_self_forbidden(db_session, customer_user):
-    with pytest.raises(BadRequestError): # Admin cannot delete self. User cannot delete self via this API.
-        UserService.delete_user(customer_user.id, customer_user.id, ['CUSTOMER'])
 
-# --- CategoryService Tests ---
-def test_category_service_create_category_success(db_session):
-    category = CategoryService.create_category('New Category', 'Description')
-    assert category.id is not None
-    assert category.name == 'New Category'
-    assert category.slug == 'new-category'
+def test_update_scraper_config_success(app, test_scraper_config):
+    with app.app_context():
+        updated_config = ScraperConfigService.update_scraper_config(
+            test_scraper_config.id, test_scraper_config.user_id,
+            name='Updated Name', is_active=False
+        )
+        assert updated_config.name == 'Updated Name'
+        assert updated_config.is_active is False
 
-def test_category_service_create_category_duplicate(db_session):
-    CategoryService.create_category('Duplicate Category', 'Description')
-    with pytest.raises(ConflictError):
-        CategoryService.create_category('Duplicate Category', 'Another description')
+def test_update_scraper_config_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError):
+            ScraperConfigService.update_scraper_config(999, test_user.id, name='Non Existent')
 
-def test_category_service_get_category_by_id_success(test_category):
-    category = CategoryService.get_category_by_id(test_category.id)
-    assert category.id == test_category.id
+def test_delete_scraper_config_success(app, test_scraper_config):
+    with app.app_context():
+        ScraperConfigService.delete_scraper_config(test_scraper_config.id, test_scraper_config.user_id)
+        with pytest.raises(NotFoundError):
+            ScraperConfigService.get_scraper_config_by_id(test_scraper_config.id, test_scraper_config.user_id)
 
-def test_category_service_update_category_success(test_category):
-    updated_category = CategoryService.update_category(test_category.id, {'name': 'Updated Category', 'is_active': False})
-    assert updated_category.name == 'Updated Category'
-    assert updated_category.slug == 'updated-category'
-    assert updated_category.is_active is False
+# --- ScrapingJobService Tests ---
+@patch('app.tasks.scraping_tasks.run_scraping_job.apply_async')
+def test_create_scraping_job_success(mock_apply_async, app, test_scraper_config):
+    with app.app_context():
+        mock_apply_async.return_value = MagicMock(id='test_task_id')
+        job = ScrapingJobService.create_scraping_job(test_scraper_config.user_id, test_scraper_config.id)
+        assert job.scraper_config_id == test_scraper_config.id
+        assert job.status == JobStatus.PENDING
+        assert job.celery_task_id == 'test_task_id'
+        mock_apply_async.assert_called_once_with(args=[job.id])
 
-def test_category_service_delete_category_success(db_session):
-    category = CategoryService.create_category('To Delete', 'Temp')
-    UserService.delete_category(category.id)
-    with pytest.raises(NotFoundError):
-        CategoryService.get_category_by_id(category.id)
+def test_create_scraping_job_config_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError, match="Scraper config with ID 999 not found or not owned by user."):
+            ScrapingJobService.create_scraping_job(test_user.id, 999)
 
-def test_category_service_delete_category_with_products(db_session, test_category, test_product):
-    # test_product is linked to test_category
-    with pytest.raises(BadRequestError):
-        CategoryService.delete_category(test_category.id)
+def test_create_scraping_job_config_inactive(app, test_user):
+    with app.app_context():
+        inactive_config = ScraperConfig(
+            user_id=test_user.id,
+            name='Inactive Scraper',
+            start_url='http://inactive.com',
+            css_selectors={},
+            is_active=False
+        )
+        inactive_config.save()
+        with pytest.raises(BadRequestError, match="Scraper config with ID .* is not active and cannot be run."):
+            ScrapingJobService.create_scraping_job(test_user.id, inactive_config.id)
+        inactive_config.delete()
 
-# --- ProductService Tests ---
-def test_product_service_create_product_success(db_session, test_category):
-    product = ProductService.create_product(
-        'New Product', 'Desc', 10.00, 5, test_category.id
-    )
-    assert product.id is not None
-    assert product.name == 'New Product'
-    assert product.category_id == test_category.id
+def test_get_all_scraping_jobs(app, test_scraping_job):
+    with app.app_context():
+        jobs = ScrapingJobService.get_all_scraping_jobs(test_scraping_job.user_id)
+        assert len(jobs) == 1
+        assert jobs[0].id == test_scraping_job.id
 
-def test_product_service_create_product_invalid_category(db_session):
-    with pytest.raises(BadRequestError):
-        ProductService.create_product('Bad Product', 'Desc', 10.00, 5, 9999)
+        # Test filtering by status
+        test_scraping_job.update(status=JobStatus.COMPLETED)
+        completed_jobs = ScrapingJobService.get_all_scraping_jobs(test_scraping_job.user_id, status='COMPLETED')
+        assert len(completed_jobs) == 1
+        assert completed_jobs[0].id == test_scraping_job.id
+        pending_jobs = ScrapingJobService.get_all_scraping_jobs(test_scraping_job.user_id, status='PENDING')
+        assert len(pending_jobs) == 0
 
-def test_product_service_get_product_by_id_success(test_product):
-    product = ProductService.get_product_by_id(test_product.id)
-    assert product.id == test_product.id
-    assert product.category is not None # Eager loaded
 
-def test_product_service_update_product_success(db_session, test_product):
-    updated_product = ProductService.update_product(test_product.id, {'price': 150.00, 'stock_quantity': 20})
-    assert updated_product.price == 150.00
-    assert updated_product.stock_quantity == 20
+def test_get_scraping_job_by_id_success(app, test_scraping_job):
+    with app.app_context():
+        job = ScrapingJobService.get_scraping_job_by_id(test_scraping_job.id, test_scraping_job.user_id)
+        assert job.id == test_scraping_job.id
 
-def test_product_service_delete_product_success(db_session, test_product):
-    ProductService.delete_product(test_product.id)
-    with pytest.raises(NotFoundError):
-        ProductService.get_product_by_id(test_product.id)
+def test_get_scraping_job_by_id_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError):
+            ScrapingJobService.get_scraping_job_by_id(999, test_user.id)
 
-# --- OrderService Tests ---
-def test_order_service_create_order_success(db_session, customer_user, test_product):
-    initial_stock = test_product.stock_quantity
-    items = [{'product_id': test_product.id, 'quantity': 1}]
-    order = OrderService.create_order(customer_user.id, '123 Test', items)
-    assert order.id is not None
-    assert order.user_id == customer_user.id
-    assert order.total_amount == test_product.price
-    assert test_product.stock_quantity == initial_stock - 1
+@patch('app.celery_app.control.revoke')
+def test_cancel_scraping_job_success(mock_revoke, app, test_scraping_job):
+    with app.app_context():
+        test_scraping_job.celery_task_id = 'mock_task_id'
+        test_scraping_job.save() # Persist task_id
+        cancelled_job = ScrapingJobService.cancel_scraping_job(test_scraping_job.id, test_scraping_job.user_id)
+        assert cancelled_job.status == JobStatus.CANCELLED
+        assert cancelled_job.finished_at is not None
+        mock_revoke.assert_called_once_with('mock_task_id', terminate=True, signal='SIGTERM')
 
-def test_order_service_create_order_insufficient_stock(db_session, customer_user, test_product):
-    items = [{'product_id': test_product.id, 'quantity': test_product.stock_quantity + 1}]
-    with pytest.raises(BadRequestError):
-        OrderService.create_order(customer_user.id, '123 Test', items)
+def test_cancel_scraping_job_invalid_status(app, test_scraping_job):
+    with app.app_context():
+        test_scraping_job.update(status=JobStatus.COMPLETED)
+        with pytest.raises(BadRequestError, match="Job .* is in status COMPLETED and cannot be cancelled."):
+            ScrapingJobService.cancel_scraping_job(test_scraping_job.id, test_scraping_job.user_id)
 
-def test_order_service_get_order_by_id_success(test_order):
-    order = OrderService.get_order_by_id(test_order.id, user_id=test_order.user_id)
-    assert order.id == test_order.id
-    assert len(order.items) == 1
-    assert order.items[0].product is not None # Eager loaded
+def test_delete_scraping_job_success(app, test_scraping_job):
+    with app.app_context():
+        test_scraping_job.update(status=JobStatus.COMPLETED) # Must be non-running
+        ScrapingJobService.delete_scraping_job(test_scraping_job.id, test_scraping_job.user_id)
+        with pytest.raises(NotFoundError):
+            ScrapingJobService.get_scraping_job_by_id(test_scraping_job.id, test_scraping_job.user_id)
 
-def test_order_service_get_order_by_id_forbidden(test_order, customer_user):
-    # Another user trying to view
-    another_user = User(username='another', email='another@example.com')
-    another_user.set_password('pass')
-    db_session.add(another_user)
-    db_session.commit()
-    with pytest.raises(ForbiddenError):
-        OrderService.get_order_by_id(test_order.id, user_id=another_user.id)
+def test_delete_scraping_job_running_status(app, test_scraping_job):
+    with app.app_context():
+        test_scraping_job.update(status=JobStatus.RUNNING)
+        with pytest.raises(BadRequestError, match="Job .* is currently RUNNING. Please cancel it first before deleting."):
+            ScrapingJobService.delete_scraping_job(test_scraping_job.id, test_scraping_job.user_id)
 
-def test_order_service_get_order_by_id_admin_access(test_order, admin_user):
-    order = OrderService.get_order_by_id(test_order.id, user_id=admin_user.id, is_admin=True)
-    assert order.id == test_order.id
 
-def test_order_service_update_order_status_success(test_order, admin_user):
-    order = OrderService.update_order_status(test_order.id, 'SHIPPED', is_admin=True)
-    assert order.status == OrderStatus.SHIPPED
+# --- ScrapingResultService Tests ---
+def test_get_results_for_job_success(app, test_scraping_job, test_scraping_result):
+    with app.app_context():
+        results = ScrapingResultService.get_results_for_job(test_scraping_job.id, test_scraping_job.user_id)
+        assert len(results) == 1
+        assert results[0].id == test_scraping_result.id
 
-def test_order_service_update_order_status_forbidden(test_order, customer_user):
-    with pytest.raises(ForbiddenError):
-        OrderService.update_order_status(test_order.id, 'SHIPPED', is_admin=False)
+def test_get_results_for_job_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError, match="Scraping job with ID 999 not found or not owned by user."):
+            ScrapingResultService.get_results_for_job(999, test_user.id)
 
-def test_order_service_delete_order_by_admin_success(db_session, test_order, admin_user):
-    OrderService.delete_order(test_order.id, is_admin=True)
-    with pytest.raises(NotFoundError):
-        OrderService.get_order_by_id(test_order.id, is_admin=True)
+def test_get_result_by_id_success(app, test_scraping_job, test_scraping_result):
+    with app.app_context():
+        result = ScrapingResultService.get_result_by_id(test_scraping_result.id, test_scraping_job.user_id)
+        assert result.id == test_scraping_result.id
+
+def test_get_result_by_id_not_found(app, test_user):
+    with app.app_context():
+        with pytest.raises(NotFoundError, match="Scraping result with ID 999 not found."):
+            ScrapingResultService.get_result_by_id(999, test_user.id)
+
+def test_get_result_by_id_forbidden(app, test_scraping_result):
+    with app.app_context():
+        # Create another user
+        another_user = User(username='another_user_for_results', email='another_result@example.com')
+        another_user.set_password('pass')
+        another_user.save()
+        with pytest.raises(ForbiddenError, match="Access to result .* is forbidden."):
+            ScrapingResultService.get_result_by_id(test_scraping_result.id, another_user.id)
+        another_user.delete()
+
+```

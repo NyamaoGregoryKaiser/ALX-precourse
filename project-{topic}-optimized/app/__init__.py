@@ -1,106 +1,97 @@
 import os
+import logging
 from flask import Flask, jsonify
-from flask.cli import with_appcontext
-from dotenv import load_dotenv
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from cachelib.redis import RedisCache
+from celery import Celery
 
-from .config import config_by_name
-from .database import db
-from .extensions import jwt, bcrypt, ma, cache, limiter, cors, smorest_api
-from .utils.errors import register_error_handlers, APIError
-from .utils.logger import setup_logging
-from .commands import register_commands
+from config import Config, DevelopmentConfig, TestingConfig, ProductionConfig
+from app.utils.logging_config import setup_logging
+from app.utils.errors import APIError, handle_api_error
+from app.utils.rate_limiter import configure_rate_limits
 
-# Import blueprints
-from .api.auth import auth_bp
-from .api.users import users_bp
-from .api.products import products_bp
-from .api.categories import categories_bp
-from .api.orders import orders_bp
+db = SQLAlchemy()
+migrate = Migrate()
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"], # Default for all endpoints
+    storage_uri="redis://redis:6379/2", # Separate DB for rate limiter
+    strategy="fixed-window"
+)
+cache = RedisCache(host=Config.CACHE_REDIS_HOST, port=Config.CACHE_REDIS_PORT, db=Config.CACHE_REDIS_DB)
+celery_app = Celery(__name__)
 
-
-def create_app(config_name):
-    """
-    Creates and configures the Flask application.
-    """
-    app = Flask(__name__)
-
-    # Load environment variables if not already loaded (e.g., when not running via wsgi.py)
-    if not os.getenv('FLASK_ENV'):
-        load_dotenv()
+def create_app():
+    app = Flask(__name__, instance_relative_config=True)
 
     # Load configuration
-    app.config.from_object(config_by_name[config_name])
+    env = os.environ.get('FLASK_ENV', 'development')
+    if env == 'production':
+        app.config.from_object(ProductionConfig)
+    elif env == 'testing':
+        app.config.from_object(TestingConfig)
+    else:
+        app.config.from_object(DevelopmentConfig)
 
     # Initialize extensions
     db.init_app(app)
-    jwt.init_app(app)
-    bcrypt.init_app(app)
-    ma.init_app(app)
-    cache.init_app(app)
+    migrate.init_app(app, db)
     limiter.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}}) # Allow all origins for API
-    smorest_api.init_app(app)
+    cache.init_app(app)
 
-    # Setup logging
+    # Configure logging
     setup_logging(app)
+    app.logger.info(f"Application starting with environment: {app.config['FLASK_ENV']}")
 
-    # Register error handlers
-    register_error_handlers(app)
+    # Configure Celery
+    app.config.from_mapping(
+        CELERY_BROKER_URL=app.config['CELERY_BROKER_URL'],
+        CELERY_RESULT_BACKEND=app.config['CELERY_RESULT_BACKEND'],
+        CELERY_TASK_SERIALIZER='json',
+        CELERY_ACCEPT_CONTENT=['json'],
+        CELERY_RESULT_SERIALIZER='json',
+        CELERY_TIMEZONE='UTC',
+        CELERY_ENABLE_UTC=True,
+    )
+    celery_app.conf.update(app.config)
+    # Ensure tasks can access app context if needed
+    class ContextTask(celery_app.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+    celery_app.Task = ContextTask
 
-    # Register blueprints
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(users_bp, url_prefix='/api/users')
-    app.register_blueprint(products_bp, url_prefix='/api/products')
-    app.register_blueprint(categories_bp, url_prefix='/api/categories')
-    app.register_blueprint(orders_bp, url_prefix='/api/orders')
+    # Register Blueprints
+    from app.api import bp as api_bp
+    app.register_blueprint(api_bp, url_prefix='/api')
 
-    # Register Smorest API views
-    smorest_api.register_blueprint(auth_bp)
-    smorest_api.register_blueprint(users_bp)
-    smorest_api.register_blueprint(products_bp)
-    smorest_api.register_blueprint(categories_bp)
-    smorest_api.register_blueprint(orders_bp)
+    from app.views import bp as main_bp
+    app.register_blueprint(main_bp)
 
-    # Register CLI commands
-    register_commands(app)
+    # Register error handler
+    app.register_error_handler(APIError, handle_api_error)
 
-    # Basic route for health check or root access
-    @app.route('/')
-    def hello_world():
-        return jsonify({"message": "Welcome to the E-commerce Backend API!", "status": "running"}), 200
+    # Configure global rate limits
+    configure_rate_limits(app, limiter)
 
-    @app.errorhandler(404)
-    def page_not_found(e):
-        return jsonify(error="Resource not found", message=str(e)), 404
+    with app.app_context():
+        # Import models and services to ensure they are registered with SQLAlchemy and Celery
+        import app.models
+        import app.services
+        import app.tasks.scraping_tasks # noqa: F401 for celery to discover tasks
 
-    @app.errorhandler(405)
-    def method_not_allowed(e):
-        return jsonify(error="Method not allowed", message=str(e)), 405
+        # Optional: create tables for the first time if using `flask run` directly without `flask db upgrade`
+        # In production, `flask db upgrade` should be run explicitly
+        # db.create_all()
 
-    @app.errorhandler(500)
-    def internal_server_error(e):
-        app.logger.exception("An unhandled error occurred: %s", e)
-        return jsonify(error="Internal server error", message="Something went wrong on the server."), 500
-
-    # JWT error handlers
-    @jwt.unauthorized_loader
-    def unauthorized_response(callback):
-        return jsonify({"message": "Missing or invalid token"}), 401
-
-    @jwt.invalid_token_loader
-    def invalid_token_response(callback):
-        return jsonify({"message": "Signature verification failed or malformed token"}), 401
-
-    @jwt.expired_token_loader
-    def expired_token_response(callback):
-        return jsonify({"message": "Token has expired"}), 401
-
-    @jwt.needs_fresh_token_loader
-    def needs_fresh_token_response(callback):
-        return jsonify({"message": "Fresh token required"}), 401
-
-    @jwt.revoked_token_loader
-    def revoked_token_response(jwt_header, jwt_payload):
-        return jsonify({"message": "Token has been revoked"}), 401
+    @app.route('/health')
+    def health_check():
+        """Basic health check endpoint."""
+        return jsonify({"status": "healthy", "message": "Scraping service is up and running!"}), 200
 
     return app
+
+```

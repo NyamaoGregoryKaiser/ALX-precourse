@@ -1,112 +1,138 @@
 import pytest
-import datetime
-from app.models.user import User, UserRole
-from app.models.category import Category
-from app.models.product import Product
-from app.models.order import Order, OrderItem, OrderStatus
-from app.extensions import bcrypt
+from datetime import datetime, timedelta
+from app import db
+from app.models.user import User
+from app.models.scraper_config import ScraperConfig
+from app.models.scraping_job import ScrapingJob, JobStatus
+from app.models.scraping_result import ScrapingResult
 
-def test_user_creation(db_session):
-    role = UserRole(name='CUSTOMER')
-    db_session.add(role)
-    db_session.commit()
+def test_user_model(app):
+    with app.app_context():
+        user = User(username='test_user', email='test@example.com')
+        user.set_password('password')
+        db.session.add(user)
+        db.session.commit()
 
-    user = User(username='testuser', email='test@example.com')
-    user.set_password('password123')
-    user.roles.append(role)
-    db_session.add(user)
-    db_session.commit()
+        assert user.id is not None
+        assert user.username == 'test_user'
+        assert user.email == 'test@example.com'
+        assert user.check_password('password')
+        assert not user.check_password('wrong_password')
+        assert user.created_at is not None
+        assert user.updated_at is not None
+        assert not user.is_admin
 
-    assert user.id is not None
-    assert user.username == 'testuser'
-    assert user.email == 'test@example.com'
-    assert user.check_password('password123')
-    assert user.is_active is True
-    assert user.created_at is not None
-    assert user.updated_at is not None
-    assert user.has_role('CUSTOMER')
-    assert not user.has_role('ADMIN')
+        retrieved_user = User.get_by_username('test_user')
+        assert retrieved_user.id == user.id
 
-def test_user_password_hashing():
-    user = User(username='hashuser', email='hash@example.com')
-    user.set_password('securepassword')
-    assert bcrypt.check_password_hash(user.password_hash, 'securepassword')
-    assert not bcrypt.check_password_hash(user.password_hash, 'wrongpassword')
+        retrieved_user_by_email = User.get_by_email('test@example.com')
+        assert retrieved_user_by_email.id == user.id
 
-def test_unique_user_constraints(db_session):
-    user1 = User(username='uniqueuser', email='unique@example.com')
-    user1.set_password('pass')
-    db_session.add(user1)
-    db_session.commit()
+        user.update(username='updated_user')
+        assert user.username == 'updated_user'
+        assert user.updated_at > user.created_at
 
-    with pytest.raises(Exception): # Expecting IntegrityError or similar
-        user2 = User(username='uniqueuser', email='another@example.com')
-        user2.set_password('pass')
-        db_session.add(user2)
-        db_session.commit() # This will fail
-    db_session.rollback() # Rollback the failed transaction
+        user.delete()
+        assert User.get_by_username('updated_user') is None
 
-    with pytest.raises(Exception): # Expecting IntegrityError or similar
-        user3 = User(username='another', email='unique@example.com')
-        user3.set_password('pass')
-        db_session.add(user3)
-        db_session.commit() # This will fail
-    db_session.rollback()
+def test_scraper_config_model(app, test_user):
+    with app.app_context():
+        config = ScraperConfig(
+            user_id=test_user.id,
+            name='Test Scraper Config',
+            start_url='http://test.com',
+            css_selectors={'title': 'h1'}
+        )
+        db.session.add(config)
+        db.session.commit()
 
-def test_category_creation(db_session):
-    category = Category(name='Electronics', slug='electronics', description='Electronic devices')
-    db_session.add(category)
-    db_session.commit()
+        assert config.id is not None
+        assert config.name == 'Test Scraper Config'
+        assert config.start_url == 'http://test.com'
+        assert config.css_selectors == {'title': 'h1'}
+        assert config.user_id == test_user.id
+        assert config.is_active is True
 
-    assert category.id is not None
-    assert category.name == 'Electronics'
-    assert category.slug == 'electronics'
-    assert category.is_active is True
-    assert category.created_at is not None
+        configs = ScraperConfig.get_all(user_id=test_user.id)
+        assert len(configs) == 1
+        assert configs[0].id == config.id
 
-def test_product_creation(db_session, test_category):
-    product = Product(
-        name='Laptop',
-        slug='laptop-pro-1',
-        description='Powerful laptop',
-        price=1200.00,
-        stock_quantity=10,
-        category_id=test_category.id
-    )
-    db_session.add(product)
-    db_session.commit()
+        retrieved_config = ScraperConfig.get_by_id(config.id, user_id=test_user.id)
+        assert retrieved_config.id == config.id
 
-    assert product.id is not None
-    assert product.name == 'Laptop'
-    assert product.price == 1200.00
-    assert product.stock_quantity == 10
-    assert product.category_id == test_category.id
-    assert product.category.name == 'Test Category'
+        config.update(name='Updated Scraper Config')
+        assert config.name == 'Updated Scraper Config'
 
-def test_order_creation(db_session, customer_user, test_product):
-    order = Order(
-        user_id=customer_user.id,
-        shipping_address='123 Main St',
-        total_amount=test_product.price * 2
-    )
-    db_session.add(order)
-    db_session.flush() # Assign ID
+        config.delete()
+        assert ScraperConfig.get_by_id(config.id, user_id=test_user.id) is None
 
-    order_item = OrderItem(
-        order_id=order.id,
-        product_id=test_product.id,
-        quantity=2,
-        price_at_purchase=test_product.price
-    )
-    db_session.add(order_item)
-    db_session.commit()
+def test_scraping_job_model(app, test_scraper_config):
+    with app.app_context():
+        job = ScrapingJob(
+            scraper_config_id=test_scraper_config.id,
+            user_id=test_scraper_config.user_id,
+            status=JobStatus.PENDING
+        )
+        db.session.add(job)
+        db.session.commit()
 
-    assert order.id is not None
-    assert order.user_id == customer_user.id
-    assert order.shipping_address == '123 Main St'
-    assert order.status == OrderStatus.PENDING
-    assert order.total_amount == 199.98
-    assert len(order.items) == 1
-    assert order.items[0].product_id == test_product.id
-    assert order.items[0].quantity == 2
-    assert order.items[0].price_at_purchase == test_product.price
+        assert job.id is not None
+        assert job.scraper_config_id == test_scraper_config.id
+        assert job.user_id == test_scraper_config.user_id
+        assert job.status == JobStatus.PENDING
+        assert job.started_at is None
+        assert job.finished_at is None
+
+        job.update(status=JobStatus.RUNNING, started_at=datetime.utcnow())
+        assert job.status == JobStatus.RUNNING
+        assert job.started_at is not None
+
+        jobs = ScrapingJob.get_all(user_id=test_scraper_config.user_id, status='RUNNING')
+        assert len(jobs) == 1
+        assert jobs[0].id == job.id
+
+        retrieved_job = ScrapingJob.get_by_id(job.id, user_id=test_scraper_config.user_id)
+        assert retrieved_job.id == job.id
+
+        job.delete()
+        assert ScrapingJob.get_by_id(job.id, user_id=test_scraper_config.user_id) is None
+
+def test_scraping_result_model(app, test_scraping_job):
+    with app.app_context():
+        result_data = {'field1': 'value1', 'field2': 'value2'}
+        result = ScrapingResult(
+            job_id=test_scraping_job.id,
+            data=result_data,
+            url='http://example.com/data'
+        )
+        db.session.add(result)
+        db.session.commit()
+
+        assert result.id is not None
+        assert result.job_id == test_scraping_job.id
+        assert result.data == result_data
+        assert result.url == 'http://example.com/data'
+
+        results = ScrapingResult.get_by_job_id(test_scraping_job.id, user_id=test_scraping_job.user_id)
+        assert len(results) == 1
+        assert results[0].id == result.id
+
+        result.update(data={'field3': 'value3'})
+        assert result.data == {'field3': 'value3'}
+
+        result.delete()
+        assert ScrapingResult.query.get(result.id) is None
+
+def test_model_relationships(app, test_user, test_scraper_config, test_scraping_job, test_scraping_result):
+    with app.app_context():
+        # User -> ScraperConfig
+        assert test_user.scraper_configs[0].id == test_scraper_config.id
+
+        # ScraperConfig -> Job
+        assert test_scraper_config.jobs[0].id == test_scraping_job.id
+        assert test_scraping_job.config.id == test_scraper_config.id
+
+        # Job -> Result
+        assert test_scraping_job.results[0].id == test_scraping_result.id
+        assert test_scraping_result.job.id == test_scraping_job.id
+```

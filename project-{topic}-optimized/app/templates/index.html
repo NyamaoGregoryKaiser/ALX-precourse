@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Web Scraper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2 text-center">
+        <h1 class="display-4">Welcome to the Enterprise Web Scraping System</h1>
+        <p class="lead">Your go-to solution for automated data extraction, built with robustness and scalability in mind.</p>
+        <hr class="my-4">
+        <p>This full-scale project demonstrates a comprehensive web scraping platform with a Python backend (Flask), PostgreSQL database, Celery for background tasks, Docker for deployment, and a suite of testing and documentation.</p>
+        <p>
+            <a class="btn btn-primary btn-lg" href="{{ url_for('main.login') }}" role="button">Login</a>
+            <a class="btn btn-secondary btn-lg" href="{{ url_for('main.register') }}" role="button">Register</a>
+        </p>
+        <div class="mt-5">
+            <h3>Key Features:</h3>
+            <ul class="list-unstyled">
+                <li><i class="bi bi-gear-fill"></i> Define and manage scraper configurations</li>
+                <li><i class="bi bi-arrow-clockwise"></i> Run scraping jobs asynchronously</li>
+                <li><i class="bi bi-database-fill-gear"></i> Store and retrieve scraped data</li>
+                <li><i class="bi bi-person-check-fill"></i> Secure user authentication and authorization (JWT)</li>
+                <li><i class="bi bi-speedometer2"></i> Rate limiting and caching for performance</li>
+                <li><i class="bi bi-bug-fill"></i> Robust error handling and logging</li>
+                <li><i class="bi bi-file-earmark-code-fill"></i> Dockerized deployment and CI/CD integration</li>
+                <li><i class="bi bi-shield-fill-check"></i> Comprehensive testing suite</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```

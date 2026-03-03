@@ -1,167 +1,145 @@
 import pytest
 import os
-from dotenv import load_dotenv
-
-# Load environment variables from .env.example for testing purposes
-load_dotenv('.env.example')
-os.environ['FLASK_ENV'] = 'testing' # Ensure testing config is loaded
-
-from app import create_app
-from app.database import db
-from app.models.user import User, UserRole
-from app.models.category import Category
-from app.models.product import Product
-from app.models.order import Order, OrderItem, OrderStatus
-from app.extensions import bcrypt, jwt
-import datetime
-from flask_jwt_extended import create_access_token
+from app import create_app, db
+from app.models.user import User
+from app.models.scraper_config import ScraperConfig
+from app.models.scraping_job import ScrapingJob, JobStatus
+from app.models.scraping_result import ScrapingResult
+from app.auth.services import AuthService
+import json
 
 @pytest.fixture(scope='session')
 def app():
-    """Fixture for the Flask application."""
-    app = create_app('testing')
+    """Create and configure a new app instance for each test session."""
+    os.environ['FLASK_ENV'] = 'testing'
+    app = create_app()
     with app.app_context():
-        # Ensure that the database is clean before tests begin
+        # Ensure test database exists and is clean
         db.create_all()
-        # Create default roles for tests
-        roles_to_create = ['ADMIN', 'EDITOR', 'CUSTOMER']
-        for role_name in roles_to_create:
-            if not UserRole.query.filter_by(name=role_name).first():
-                role = UserRole(name=role_name, description=f"{role_name} role")
-                db.session.add(role)
-        db.session.commit()
-    yield app
-    with app.app_context():
+        yield app
         db.session.remove()
         db.drop_all()
 
 @pytest.fixture(scope='function')
 def client(app):
-    """Fixture for the Flask test client."""
-    with app.test_client() as client:
-        yield client
+    """A test client for the app."""
+    return app.test_client()
 
 @pytest.fixture(scope='function')
-def db_session(app):
-    """Fixture for a database session, rolling back after each test."""
+def runner(app):
+    """A test runner for the app's Click commands."""
+    return app.test_cli_runner()
+
+@pytest.fixture(scope='function')
+def auth_tokens(app):
+    """
+    Fixture to create test users and return their JWT tokens.
+    Cleans up users after the test.
+    """
     with app.app_context():
-        connection = db.engine.connect()
-        transaction = connection.begin()
-        db.session.begin_nested() # Start a nested transaction
-        yield db.session
-        db.session.remove() # Remove session from current thread
-        transaction.rollback() # Rollback the entire transaction
-        connection.close()
+        # Create users
+        admin_user = User(username='testadmin', email='testadmin@example.com', is_admin=True)
+        admin_user.set_password('testadminpass')
+        user = User(username='testuser', email='testuser@example.com', is_admin=False)
+        user.set_password('testuserpass')
+        db.session.add_all([admin_user, user])
+        db.session.commit()
 
-@pytest.fixture(scope='function')
-def admin_user(db_session):
-    """Fixture for an admin user."""
-    admin_role = UserRole.query.filter_by(name='ADMIN').first()
-    user = User(
-        username='admin_test',
-        email='admin_test@example.com',
-        password_hash=bcrypt.generate_password_hash('adminpass').decode('utf-8'),
-        roles=[admin_role]
-    )
-    db_session.add(user)
-    db_session.commit()
-    return user
+        # Generate tokens
+        admin_token = AuthService._generate_jwt_token(admin_user.id)
+        user_token = AuthService._generate_jwt_token(user.id)
 
-@pytest.fixture(scope='function')
-def editor_user(db_session):
-    """Fixture for an editor user."""
-    editor_role = UserRole.query.filter_by(name='EDITOR').first()
-    user = User(
-        username='editor_test',
-        email='editor_test@example.com',
-        password_hash=bcrypt.generate_password_hash('editorpass').decode('utf-8'),
-        roles=[editor_role]
-    )
-    db_session.add(user)
-    db_session.commit()
-    return user
-
-@pytest.fixture(scope='function')
-def customer_user(db_session):
-    """Fixture for a customer user."""
-    customer_role = UserRole.query.filter_by(name='CUSTOMER').first()
-    user = User(
-        username='customer_test',
-        email='customer_test@example.com',
-        password_hash=bcrypt.generate_password_hash('customerpass').decode('utf-8'),
-        roles=[customer_role]
-    )
-    db_session.add(user)
-    db_session.commit()
-    return user
-
-@pytest.fixture(scope='function')
-def auth_tokens(app, customer_user):
-    """Fixture for customer user authentication tokens."""
-    with app.app_context():
-        claims = {
-            "roles": [role.name for role in customer_user.roles],
-            "email": customer_user.email
+        yield {
+            'admin_id': admin_user.id,
+            'admin_token': admin_token,
+            'user_id': user.id,
+            'user_token': user_token
         }
-        access_token = create_access_token(identity=customer_user.id, additional_claims=claims)
-        refresh_token = create_refresh_token(identity=customer_user.id, additional_claims=claims)
-        return {'access_token': access_token, 'refresh_token': refresh_token}
+
+        # Clean up
+        db.session.delete(admin_user)
+        db.session.delete(user)
+        db.session.commit()
 
 @pytest.fixture(scope='function')
-def admin_auth_tokens(app, admin_user):
-    """Fixture for admin user authentication tokens."""
+def authenticated_client(client, auth_tokens):
+    """A test client authenticated as a regular user."""
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {auth_tokens["user_token"]}'
+    return client
+
+@pytest.fixture(scope='function')
+def admin_client(client, auth_tokens):
+    """A test client authenticated as an admin user."""
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {auth_tokens["admin_token"]}'
+    return client
+
+@pytest.fixture(scope='function')
+def test_user(app):
+    """Creates and yields a test user, then cleans up."""
     with app.app_context():
-        claims = {
-            "roles": [role.name for role in admin_user.roles],
-            "email": admin_user.email
-        }
-        access_token = create_access_token(identity=admin_user.id, additional_claims=claims)
-        refresh_token = create_refresh_token(identity=admin_user.id, additional_claims=claims)
-        return {'access_token': access_token, 'refresh_token': refresh_token}
+        user = User(username='test_u', email='test_u@example.com')
+        user.set_password('password')
+        db.session.add(user)
+        db.session.commit()
+        yield user
+        db.session.delete(user)
+        db.session.commit()
 
 @pytest.fixture(scope='function')
-def test_category(db_session):
-    category = Category(name="Test Category", slug="test-category", description="A category for testing")
-    db_session.add(category)
-    db_session.commit()
-    return category
+def test_admin_user(app):
+    """Creates and yields a test admin user, then cleans up."""
+    with app.app_context():
+        admin_user = User(username='test_admin', email='test_admin@example.com', is_admin=True)
+        admin_user.set_password('adminpassword')
+        db.session.add(admin_user)
+        db.session.commit()
+        yield admin_user
+        db.session.delete(admin_user)
+        db.session.commit()
 
 @pytest.fixture(scope='function')
-def test_product(db_session, test_category):
-    product = Product(
-        name="Test Product",
-        slug="test-product-123",
-        description="A product for testing purposes",
-        price=99.99,
-        stock_quantity=10,
-        category_id=test_category.id
-    )
-    db_session.add(product)
-    db_session.commit()
-    return product
+def test_scraper_config(app, test_user):
+    """Creates and yields a test scraper config, then cleans up."""
+    with app.app_context():
+        config = ScraperConfig(
+            user_id=test_user.id,
+            name='Test Scraper',
+            start_url='http://example.com',
+            css_selectors={"title": "h1", "body": "p.main"}
+        )
+        db.session.add(config)
+        db.session.commit()
+        yield config
+        db.session.delete(config)
+        db.session.commit()
 
 @pytest.fixture(scope='function')
-def test_order(db_session, customer_user, test_product):
-    order = Order(
-        user_id=customer_user.id,
-        shipping_address="123 Test St, Test City",
-        billing_address="123 Test St, Test City",
-        status=OrderStatus.PENDING,
-        total_amount=test_product.price * 2,
-        order_date=datetime.datetime.utcnow()
-    )
-    db_session.add(order)
-    db_session.flush() # To get order.id
+def test_scraping_job(app, test_scraper_config):
+    """Creates and yields a test scraping job, then cleans up."""
+    with app.app_context():
+        job = ScrapingJob(
+            scraper_config_id=test_scraper_config.id,
+            user_id=test_scraper_config.user_id,
+            status=JobStatus.PENDING
+        )
+        db.session.add(job)
+        db.session.commit()
+        yield job
+        db.session.delete(job)
+        db.session.commit()
 
-    order_item = OrderItem(
-        order_id=order.id,
-        product_id=test_product.id,
-        quantity=2,
-        price_at_purchase=test_product.price
-    )
-    db_session.add(order_item)
-    db_session.commit()
-    order.items.append(order_item) # Add to relationship
-    db_session.add(order)
-    db_session.commit()
-    return order
+@pytest.fixture(scope='function')
+def test_scraping_result(app, test_scraping_job):
+    """Creates and yields a test scraping result, then cleans up."""
+    with app.app_context():
+        result = ScrapingResult(
+            job_id=test_scraping_job.id,
+            data={"title": "Example Domain", "body": "This domain is for use in illustrative examples in documents."},
+            url=test_scraping_job.config.start_url
+        )
+        db.session.add(result)
+        db.session.commit()
+        yield result
+        db.session.delete(result)
+        db.session.commit()
+```

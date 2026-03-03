@@ -2,34 +2,22 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:13
+    image: postgres:13-alpine
     restart: always
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: ecommerce_db
+      POSTGRES_DB: scraper_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d ecommerce_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:6-alpine
     restart: always
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   app:
     build: .
@@ -38,25 +26,51 @@ services:
       - "5000:5000"
     environment:
       FLASK_ENV: development
-      SECRET_KEY: your_super_secret_key_here_for_jwt_and_session
-      DATABASE_URL: postgresql://user:password@db:5432/ecommerce_db
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: another_super_secret_key_for_jwt
+      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt" # Replace with a strong key in production
+      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
       LOG_LEVEL: INFO
-      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      LOG_FILE: /app/app.log
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
     volumes:
-      - .:/app # Mount the current directory to /app for development purposes (live code changes)
-      - logs:/app/logs # Persistent storage for logs
-    # Override the default command to ensure entrypoint script runs
-    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
-    command: ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:app"]
+      - .:/app # Mount the current directory into the container for development
+    command: ["./entrypoint.sh", "flask_run"] # Use entrypoint with specific command
+
+  celery_worker:
+    build: .
+    restart: always
+    environment:
+      FLASK_ENV: development
+      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt"
+      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOG_LEVEL: INFO
+    depends_on:
+      - db
+      - redis
+      - app # Ensure app container is up to run initial migrations if needed
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "-P", "gevent"] # Using gevent for concurrent I/O
+
+  celery_beat:
+    build: .
+    restart: always
+    environment:
+      FLASK_ENV: development
+      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt"
+      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LOG_LEVEL: INFO
+    depends_on:
+      - db
+      - redis
+      - app
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
 
 volumes:
   postgres_data:
-  redis_data:
-  logs:
+```
