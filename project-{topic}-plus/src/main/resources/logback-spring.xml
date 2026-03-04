@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Define standard console appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!-- Pattern for console output: timestamp, log level, thread, logger name, message, new line -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </pattern>
+        <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Define a file appender for INFO level logs, rotating daily -->
+    <appender name="FILE-INFO" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/application-info.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Daily rollover -->
+            <fileNamePattern>logs/application-info.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- Keep 7 days worth of history -->
+            <maxHistory>7</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <!-- Pattern for file output, similar to console -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>INFO</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- Define a file appender for ERROR level logs, rotating daily -->
+    <appender name="FILE-ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/application-error.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Daily rollover -->
+            <fileNamePattern>logs/application-error.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- Keep 30 days worth of history -->
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <!-- Pattern for file output, including stack trace for errors -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- Root logger configuration -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+        <appender-ref ref="FILE-ERROR" />
+    </root>
+
+    <!-- Specific logger for our application packages (can be set to DEBUG for development) -->
+    <logger name="com.authsystem" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+        <appender-ref ref="FILE-ERROR" />
+    </logger>
+
+    <!-- Detailed logging for Spring Security, useful for debugging authentication/authorization issues -->
+    <logger name="org.springframework.security" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+        <appender-ref ref="FILE-ERROR" />
+    </logger>
+
+    <!-- Detailed logging for Hibernate SQL statements and parameter binding (can be verbose) -->
+    <logger name="org.hibernate.SQL" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+    </logger>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+    </logger>
+
+    <!-- Log Flyway migrations -->
+    <logger name="org.flywaydb" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE-INFO" />
+    </logger>
+
+</configuration>

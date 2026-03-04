@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database Service
+  db:
+    image: postgres:15-alpine # Use a lightweight PostgreSQL image
+    container_name: auth-postgres-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-auth_db}       # Database name
+      POSTGRES_USER: ${DB_USERNAME:-admin}   # Database user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password} # Database password
+    ports:
+      - "5432:5432" # Map container port 5432 to host port 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persistent volume for data
+    healthcheck: # Health check to ensure DB is ready before app starts
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-admin} -d ${DB_NAME:-auth_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # Spring Boot Application Service
+  app:
+    build:
+      context: ../. # Build from the parent directory where pom.xml is
+      dockerfile: Dockerfile
+    container_name: secure-auth-app
+    ports:
+      - "8080:8080" # Map container port 8080 to host port 8080
+    environment:
+      # Pass database connection details to the Spring Boot app
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-auth_db}
+      DB_USERNAME: ${DB_USERNAME:-admin}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      # Pass JWT secret key (important for security, use a strong random key in production)
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    depends_on:
+      db:
+        condition: service_healthy # Ensure database is healthy before starting the app
+    networks:
+      - auth-network
+
+# Define a custom network for inter-service communication
+networks:
+  auth-network:
+    driver: bridge
+
+# Define named volumes for data persistence
+volumes:
+  postgres_data:
+```
+
+#### `Dockerfile`
+
+```dockerfile

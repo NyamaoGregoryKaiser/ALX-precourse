@@ -1,0 +1,78 @@
+# Spring Boot application configuration
+spring:
+  application:
+    name: secure-auth-system
+  # Database configuration (PostgreSQL)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth_db}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10 # Max pool size for HikariCP, adjust based on load
+      minimum-idle: 2       # Min idle connections
+      connection-timeout: 30000 # Max wait for a connection (30 seconds)
+      idle-timeout: 600000    # Max lifetime of idle connections (10 minutes)
+      max-lifetime: 1800000   # Max lifetime of a connection in the pool (30 minutes)
+
+  # JPA (Hibernate) configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate # Do not auto-create/update schema in production. Validate against existing.
+    show-sql: false      # Disable verbose SQL logging in console
+    properties:
+      hibernate:
+        format_sql: true # Format SQL logs nicely if show-sql is true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false # Avoid N+1 issues and keep sessions open, better to handle in service layer
+
+  # Flyway database migration configuration
+  flyway:
+    enabled: true
+    baseline-on-migrate: true # Baselines an existing database, useful for initial setup
+    locations: classpath:db/migration # Directory for SQL migration scripts
+
+  # Cache configuration (Caffeine)
+  cache:
+    caffeine:
+      spec: expireAfterAccess=5m,maximumSize=1000 # Default cache settings
+
+# Application-specific security properties for JWT
+application:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Base64 encoded 32-byte (256-bit) secret key
+      expiration: 3600000 # 1 hour (in milliseconds) - adjust as needed
+
+# Server port
+server:
+  port: 8080
+
+# Management endpoints (Actuator) configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus # Expose useful actuator endpoints
+  endpoint:
+    health:
+      show-details: always # Show full health details
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+
+# Logging configuration (managed by logback-spring.xml)
+logging:
+  config: classpath:logback-spring.xml
+  level:
+    com.authsystem: INFO # Default log level for our application packages
+    org.springframework.security: DEBUG # Detailed Spring Security logs
+    org.hibernate.SQL: INFO # Log executed SQL statements
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE # Log bound parameters for SQL
+    org.flywaydb: INFO # Flyway logging
+```
+
+#### `src/main/resources/logback-spring.xml`
+
+```xml

@@ -1,295 +1,297 @@
-```markdown
-# ShopSwift E-commerce Solution
+# Secure Auth System
 
-ShopSwift is a comprehensive, production-ready e-commerce platform built with Flask, SQLAlchemy, and PostgreSQL. It features a robust backend API, user management, product catalog, shopping cart, order processing, and various enterprise-grade functionalities.
+A comprehensive, production-ready authentication and authorization system built with Spring Boot, JWT, and PostgreSQL. It features robust user management, role-based access control, caching, rate limiting, and extensive testing, packaged with Docker and configured for CI/CD.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Project Structure](#project-structure)
-4.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
-    *   [Local Development without Docker (Python Virtual Environment)](#local-development-without-docker-python-virtual-environment)
-5.  [Running the Application](#running-the-application)
-6.  [Database Management](#database-management)
-    *   [Migrations](#migrations)
-    *   [Seeding Data](#seeding-data)
+2.  [Architecture](#architecture)
+3.  [Prerequisites](#prerequisites)
+4.  [Getting Started](#getting-started)
+    *   [Local Setup with Docker Compose](#local-setup-with-docker-compose)
+    *   [Manual Local Setup (without Docker for App)](#manual-local-setup-without-docker-for-app)
+5.  [API Documentation](#api-documentation)
+6.  [Authentication & Authorization](#authentication--authorization)
 7.  [Testing](#testing)
-    *   [Unit and Integration Tests](#unit-and-integration-tests)
-    *   [Performance Tests](#performance-tests)
-8.  [API Documentation](#api-documentation)
-9.  [Architecture Documentation](#architecture-documentation)
-10. [Deployment Guide](#deployment-guide)
-11. [Contributing](#contributing)
-12. [License](#license)
+8.  [CI/CD](#cicd)
+9.  [Configuration](#configuration)
+10. [Database](#database)
+11. [Logging & Monitoring](#logging--monitoring)
+12. [Contributing](#contributing)
+13. [License](#license)
 
-## Features
+---
 
-*   **User Management**: Register, login, manage profiles, role-based access control (customer, admin).
-*   **Authentication & Authorization**: JWT-based authentication for secure API access.
-*   **Product Catalog**: Create, view, update, delete products and categories. Search and filter products.
-*   **Shopping Cart**: Add, update, remove items, clear cart.
-*   **Order Processing**: Create orders from cart, view order history, update order status (admin).
-*   **Database Layer**: PostgreSQL database with SQLAlchemy ORM and Alembic migrations.
-*   **Configuration**: Environment-specific configurations (development, testing, production).
-*   **Dockerization**: Docker Compose setup for easy local development and deployment.
-*   **CI/CD**: GitHub Actions workflow for automated testing and deployment to staging/production.
-*   **Caching**: Redis-backed caching for improved API response times.
-*   **Rate Limiting**: Protects API endpoints from abuse.
-*   **Logging & Error Handling**: Centralized logging and robust error handling middleware.
-*   **Testing**: Comprehensive suite of unit, integration, and performance tests.
+## 1. Features
 
-## Technology Stack
+*   **User Management:** Register, login, retrieve, update, and delete users.
+*   **Role Management:** Create, assign, and manage roles for users (ADMIN only).
+*   **JWT Authentication:** Secure token-based authentication for API access.
+*   **Role-Based Authorization:** Granular access control based on user roles (`ROLE_USER`, `ROLE_ADMIN`).
+*   **Password Hashing:** Secure storage of passwords using BCrypt.
+*   **Data Validation:** Input validation using Jakarta Bean Validation.
+*   **Database Management:** PostgreSQL with Flyway for schema migrations and seed data.
+*   **Caching:** In-memory caching (Caffeine) for frequently accessed data (e.g., user details).
+*   **Rate Limiting:** Basic in-memory rate limiting for authentication endpoints to prevent brute-force attacks.
+*   **Centralized Error Handling:** Global exception handling for consistent API responses.
+*   **Logging & Monitoring:** Structured logging with Logback and Spring Boot Actuator.
+*   **API Documentation:** OpenAPI (Swagger UI) for interactive API exploration.
+*   **Dockerization:** Containerized application and database for easy setup and deployment.
+*   **CI/CD:** GitHub Actions workflow for automated build, test, and deployment.
+*   **Comprehensive Testing:** Unit, integration, and API tests with high coverage goals.
 
-*   **Backend**: Python 3.10+
-*   **Web Framework**: Flask
-*   **Database**: PostgreSQL (production), SQLite (testing/local dev option)
-*   **ORM**: SQLAlchemy
-*   **Database Migrations**: Alembic (Flask-Migrate)
-*   **Authentication**: Flask-JWT-Extended, Flask-Bcrypt
-*   **Serialization/Validation**: Marshmallow
-*   **Caching**: Flask-Caching, Redis
-*   **Rate Limiting**: Flask-Limiter, Redis
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-*   **Testing**: Pytest, Pytest-Cov, Locust
-*   **Web Server**: Gunicorn
+## 2. Architecture
 
-## Project Structure
+The application follows a layered architecture typical of Spring Boot applications:
 
-The project is structured into logical modules to promote maintainability and scalability.
+*   **Presentation Layer (Controllers):** Handles HTTP requests, maps them to service methods, and returns API responses. Uses Spring MVC.
+*   **Service Layer (Services):** Contains the core business logic, orchestrates interactions with repositories, and applies domain-specific rules.
+*   **Persistence Layer (Repositories):** Interacts with the database using Spring Data JPA.
+*   **Domain Layer (Models):** JPA entities representing the core data structures (User, Role).
+*   **Security Layer:** Spring Security for authentication and authorization, JWT for stateless token management.
+*   **Infrastructure Layer:** Configuration, utilities, global exception handling, caching, rate limiting.
 
-```
-ecommerce_system/
-├── app/                      # Core Flask application
-│   ├── __init__.py           # App factory, extensions initialization
-│   ├── config.py             # Configuration classes
-│   ├── models.py             # SQLAlchemy ORM models
-│   ├── schemas.py            # Marshmallow schemas for data validation/serialization
-│   ├── api/                  # API blueprints
-│   │   ├── auth.py           # Auth endpoints (register, login, refresh)
-│   │   ├── users.py          # User management endpoints
-│   │   ├── categories.py     # Category CRUD endpoints
-│   │   ├── products.py       # Product CRUD endpoints
-│   │   ├── cart.py           # Shopping cart endpoints
-│   │   └── orders.py         # Order processing endpoints
-│   ├── services/             # Business logic services
-│   │   ├── product_service.py
-│   │   ├── user_service.py
-│   │   └── order_service.py
-│   ├── utils/                # Utility functions and decorators
-│   │   ├── decorators.py     # Custom decorators (e.g., role_required)
-│   │   └── error_handlers.py # Global error handlers
-│   └── templates/            # Basic Jinja2 templates (minimal frontend for demo)
-├── migrations/               # Alembic database migration scripts
-├── tests/                    # Test suite
-│   ├── unit/                 # Unit tests for models and services
-│   ├── integration/          # Integration tests for API endpoints
-│   └── performance/          # Performance tests with Locust
-├── scripts/
-│   └── seed_db.py            # Script to populate database with initial data
-├── .env.example              # Example environment variables file
-├── Dockerfile                # Docker image definition
-├── docker-compose.yml        # Docker Compose for local development
-├── requirements.txt          # Python dependencies
-├── manage.py                 # Flask CLI commands (migrations, seeding)
-├── README.md                 # Project README
-├── ARCHITECTURE.md           # System architecture documentation
-├── API.md                    # API endpoint documentation
-├── DEPLOYMENT.md             # Deployment guide
-└── .github/                  # GitHub Actions CI/CD workflows
-```
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview.
 
-## Setup and Installation
+## 3. Prerequisites
 
-### Prerequisites
+Before you begin, ensure you have met the following requirements:
 
-*   **Git**: For cloning the repository.
-*   **Python 3.10+**: If not using Docker for local dev.
-*   **Docker & Docker Compose**: Recommended for local development and deployment.
+*   **Java 17 or higher:** [Download & Install Java JDK 17](https://www.oracle.com/java/technologies/downloads/)
+*   **Maven 3.6.3 or higher:** [Download & Install Maven](https://maven.apache.org/download.cgi)
+*   **Docker & Docker Compose:** [Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop)
+*   (Optional for manual setup) **PostgreSQL 15 or higher:** [Download & Install PostgreSQL](https://www.postgresql.org/download/)
 
-### Local Development with Docker Compose (Recommended)
+## 4. Getting Started
 
-1.  **Clone the repository**:
+Choose your preferred setup method:
+
+### Local Setup with Docker Compose
+
+This is the recommended way to get the entire application (app + database) running quickly.
+
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/shopsift.git
-    cd shopsift
+    git clone https://github.com/alx-examples/secure-auth-system.git
+    cd secure-auth-system
     ```
 
-2.  **Create `.env` file**:
-    Copy the example environment variables and fill in your details.
+2.  **Build and run with Docker Compose:**
     ```bash
-    cp .env.example .env
+    # Navigate to the directory containing docker-compose.yml
+    cd docker 
+    docker-compose up --build -d
     ```
-    You can keep the default values for `DATABASE_URL`, `REDIS_URL`, `RATELIMIT_STORAGE_URL` as they match the `docker-compose.yml` setup. **Change `JWT_SECRET_KEY` for production.**
+    *   `--build`: Builds the Docker image for the application from the `Dockerfile`.
+    *   `-d`: Runs the containers in detached mode (in the background).
 
-3.  **Build and run services**:
-    This will build the `app` image, set up PostgreSQL and Redis containers, run database migrations, seed initial data, and start the Flask application.
+3.  **Verify services are running:**
     ```bash
-    docker-compose up --build
+    docker-compose ps
     ```
-    The `--build` flag is important the first time you run it, or after any changes to `Dockerfile` or `requirements.txt`.
+    You should see `secure-auth-app` and `auth-postgres-db` containers in `Up` status.
 
-4.  **Access the application**:
-    Once started, the Flask application will be available at `http://localhost:5000`.
-    *   API endpoints: `http://localhost:5000/api/...`
-    *   Basic frontend: `http://localhost:5000/`, `http://localhost:5000/login`, `http://localhost:5000/register`
+4.  **Application is ready!**
+    The Spring Boot application will be accessible at `http://localhost:8080`.
 
-### Local Development without Docker (Python Virtual Environment)
+    *   **Swagger UI (API Docs):** `http://localhost:8080/swagger-ui.html`
+    *   **Actuator Health:** `http://localhost:8080/actuator/health`
 
-1.  **Clone the repository**:
+5.  **Stop services:**
     ```bash
-    git clone https://github.com/your-username/shopsift.git
-    cd shopsift
+    docker-compose down
     ```
+    This will stop and remove the containers and network. To also remove volumes: `docker-compose down --volumes`.
 
-2.  **Create and activate a virtual environment**:
+### Manual Local Setup (without Docker for App)
+
+This method runs the Spring Boot application directly on your machine, but still uses Docker for the PostgreSQL database.
+
+1.  **Start the PostgreSQL database with Docker Compose:**
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate # On Windows: .\venv\Scripts\activate
+    # Navigate to the directory containing docker-compose.yml
+    cd docker
+    docker-compose up db -d
     ```
+    Verify it's running: `docker-compose ps`.
 
-3.  **Install dependencies**:
+2.  **Build the Spring Boot application:**
     ```bash
-    pip install -r requirements.txt
-    ```
-    *   **Note for `psycopg2-binary`**: If you encounter issues, you might need to install `libpq-dev` (Linux) or `postgresql-devel` (Fedora/CentOS) system packages, or use `pip install psycopg2-binary`.
-
-4.  **Set up environment variables**:
-    Create a `.env` file in the project root based on `.env.example`.
-    For `DATABASE_URL`, you'll need a running PostgreSQL instance (e.g., installed locally or via Docker directly) or you can switch to SQLite for development in `app/config.py`.
-    Example for `.env` using local PostgreSQL:
-    ```
-    FLASK_APP=manage.py
-    FLASK_ENV=development
-    DATABASE_URL=postgresql://user:password@localhost:5432/ecommerce_db
-    JWT_SECRET_KEY=dev-jwt-secret
-    # Set REDIS_URL if you have a local Redis instance
-    REDIS_URL=redis://localhost:6379/0
-    RATELIMIT_STORAGE_URL=redis://localhost:6379/1
+    # Navigate back to the project root
+    cd ..
+    mvn clean install -DskipTests
     ```
 
-5.  **Initialize Database**:
-    *   Create the database in PostgreSQL if it doesn't exist (e.g., `CREATE DATABASE ecommerce_db;`).
-    *   Run migrations:
-        ```bash
-        flask db upgrade
-        ```
-    *   Seed initial data:
-        ```bash
-        flask seed-db
-        ```
-    *   (Optional) Create an admin user:
-        ```bash
-        flask create-admin admin@example.com adminpass
-        ```
+3.  **Run the Spring Boot application:**
+    You need to set environment variables for the database connection.
 
-6.  **Run the application**:
     ```bash
-    flask run
-    ```
-    The application will run on `http://127.0.0.1:5000`.
+    # On Linux/macOS
+    export DB_HOST=localhost
+    export DB_PORT=5432
+    export DB_NAME=auth_db
+    export DB_USERNAME=admin
+    export DB_PASSWORD=password
+    export JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
 
-## Running the Application
+    # On Windows (Command Prompt)
+    set DB_HOST=localhost
+    set DB_PORT=5432
+    set DB_NAME=auth_db
+    set DB_USERNAME=admin
+    set DB_PASSWORD=password
+    set JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
 
-### With Docker Compose
-After `docker-compose up --build`, the application will be running.
-Access `http://localhost:5000` in your browser.
-
-### Without Docker
-After setting up the virtual environment and database:
-```bash
-flask run
-```
-Access `http://127.0.0.1:5000` in your browser.
-
-## Database Management
-
-### Migrations (Alembic)
-
-*   **Initialize migrations (first time setup)**:
-    ```bash
-    flask db init
-    ```
-    This creates the `migrations/` folder.
-*   **Generate a migration script (after model changes)**:
-    ```bash
-    flask db migrate -m "Description of changes"
-    ```
-*   **Apply migrations to the database**:
-    ```bash
-    flask db upgrade
-    ```
-*   **Revert migrations**:
-    ```bash
-    flask db downgrade
+    # On Windows (PowerShell)
+    $env:DB_HOST="localhost"
+    $env:DB_PORT="5432"
+    $env:DB_NAME="auth_db"
+    $env:DB_USERNAME="admin"
+    $env:DB_PASSWORD="password"
+    $env:JWT_SECRET_KEY="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
     ```
 
-### Seeding Data
+4.  **Application is ready!**
+    The Spring Boot application will be accessible at `http://localhost:8080`.
 
-To populate your database with initial test data (e.g., users, categories, products):
+    *   **Swagger UI (API Docs):** `http://localhost:8080/swagger-ui.html`
+    *   **Actuator Health:** `http://localhost:8080/actuator/health`
+
+5.  **Stop services:**
+    *   Stop the Java application (Ctrl+C).
+    *   Stop the PostgreSQL container: Navigate to `docker` directory and run `docker-compose down db`.
+
+## 5. API Documentation
+
+Interactive API documentation is available via Swagger UI.
+
+*   **Swagger UI:** `http://localhost:8080/swagger-ui.html`
+*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
+
+See [API.md](API.md) for a detailed list of endpoints and their usage.
+
+## 6. Authentication & Authorization
+
+The system uses **JWT (JSON Web Tokens)** for stateless authentication and **Spring Security** for authorization.
+
+### Default Users (seeded by Flyway)
+
+*   **Admin User:**
+    *   **Username:** `admin`
+    *   **Password:** `password123!A`
+    *   **Roles:** `ROLE_USER`, `ROLE_ADMIN`
+*   **Regular User:**
+    *   **Username:** `testuser`
+    *   **Password:** `Userpass1!`
+    *   **Roles:** `ROLE_USER`
+
+### Flow
+
+1.  **Register (`/api/auth/register`):** Create a new user account. Returns a JWT.
+2.  **Login (`/api/auth/login`):** Authenticate with username/password. Returns a JWT.
+3.  **Access Secured Endpoints:** Include the JWT in the `Authorization` header of subsequent requests: `Authorization: Bearer <YOUR_JWT_TOKEN>`.
+
+### Authorization
+
+*   **Role-Based Access Control (RBAC):**
+    *   Endpoints are protected using `@PreAuthorize` annotations and Spring Security configuration.
+    *   `ROLE_ADMIN` has full access to user and role management endpoints.
+    *   `ROLE_USER` can access their own user profile data.
+*   **Rate Limiting:** Login and registration endpoints are rate-limited per IP address to prevent brute-force attacks (default: 5 requests per second).
+
+## 7. Testing
+
+The project emphasizes high-quality testing:
+
+*   **Unit Tests:** Focus on individual components (services, utilities) in isolation using Mockito (aiming for 80%+ coverage).
+*   **Integration Tests:** Verify interactions between multiple layers (controller, service, repository) using Spring Boot's testing utilities and Testcontainers for a real database environment.
+*   **API Tests:** Covered conceptually and can be implemented with tools like Postman or RestAssured (see [API.md](API.md) for scenarios).
+*   **Performance Tests:** Described conceptually, suggesting tools like JMeter or Gatling for load, stress, and scalability testing.
+
+To run tests:
 
 ```bash
-flask seed-db
+mvn test
 ```
-**Note**: The `docker-compose.yml` file is configured to run `flask db upgrade` and `flask seed-db` automatically on container startup in development, ensuring your DB is always ready.
 
-## Testing
+To run tests and generate a JaCoCo coverage report:
 
-### Unit and Integration Tests
-
-The project uses `pytest` for unit and integration testing. Test files are located in the `tests/` directory.
-
-To run all tests:
 ```bash
-pytest
+mvn clean test jacoco:report
+```
+The coverage report will be generated in `target/site/jacoco/index.html`.
+
+## 8. CI/CD
+
+A GitHub Actions workflow (`.github/workflows/ci-cd.yml`) is configured for Continuous Integration and Continuous Deployment.
+
+*   **Build & Test:** On every `push` or `pull_request` to `main` or `develop` branches:
+    *   Builds the project with Maven.
+    *   Runs all unit and integration tests.
+    *   Generates JaCoCo test coverage reports.
+    *   (Optional) Integrates with SonarCloud for static code analysis.
+*   **Docker Image Build & Push:** On `push` to `main` or `develop`:
+    *   Builds a Docker image of the application.
+    *   Pushes the image to Docker Hub (or any configured registry).
+*   **Deployment (Conceptual):** The workflow includes a commented-out section for a simple SSH-based deployment to a server. In a production scenario, this would involve deploying to Kubernetes, AWS ECS, Azure App Service, etc.
+
+**Required GitHub Secrets for CI/CD:**
+
+*   `DOCKER_USERNAME`: Your Docker Hub username.
+*   `DOCKER_PASSWORD`: Your Docker Hub access token or password.
+*   `SONAR_TOKEN`: (Optional, for SonarCloud) SonarCloud token.
+*   `SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY`: (Optional, for deployment) SSH credentials for your deployment server.
+*   `PROD_DB_HOST`, `PROD_DB_USERNAME`, `PROD_DB_PASSWORD`, `PROD_JWT_SECRET_KEY`: (Optional, for deployment) Production database/JWT configuration.
+
+## 9. Configuration
+
+Application configuration is managed via `src/main/resources/application.yml` and environment variables.
+
+Key configurable aspects:
+
+*   **Database:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
+*   **JWT:** `JWT_SECRET_KEY` (critical for security, **must be a strong, random 256-bit base64-encoded string in production**), `jwt.expiration`
+*   **Caching:** Caffeine cache specifications (e.g., `expireAfterAccess`, `maximumSize`).
+*   **Rate Limiting:** Requests per second for auth endpoints.
+*   **Logging:** Configured in `logback-spring.xml` for console and file output, with different levels for various packages.
+
+## 10. Database
+
+*   **Type:** PostgreSQL
+*   **Migration:** [Flyway](https://flywaydb.org/) is used for database schema evolution. Migration scripts are located in `src/main/resources/db/migration/`.
+    *   `V1__initial_schema.sql`: Creates `users`, `roles`, and `user_roles` tables.
+    *   `V2__seed_data.sql`: Inserts default roles (`ROLE_USER`, `ROLE_ADMIN`) and initial `admin` and `testuser` accounts.
+
+## 11. Logging & Monitoring
+
+*   **Logging:** Configured using `logback-spring.xml` for structured logging to console and files (info and error logs).
+    *   Logs can be found in the `logs/` directory (created at runtime).
+*   **Monitoring:** Spring Boot Actuator endpoints are exposed for basic monitoring and health checks:
+    *   `/actuator/health`: Application health status.
+    *   `/actuator/info`: Application info.
+    *   `/actuator/metrics`: Various application metrics.
+    *   `/actuator/prometheus`: Prometheus-compatible metrics endpoint.
+
+## 12. Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1.  Fork the repository.
+2.  Create a new branch for your feature or bug fix (`git checkout -b feature/your-feature-name`).
+3.  Make your changes and write tests.
+4.  Ensure all tests pass and code coverage is maintained.
+5.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+6.  Push to your fork (`git push origin feature/your-feature-name`).
+7.  Create a Pull Request to the `develop` branch of the original repository.
+
+## 13. License
+
+This project is licensed under the [MIT License](LICENSE).
 ```
 
-To run tests with coverage reporting (requires `pytest-cov`):
-```bash
-pytest --cov=app --cov-report=term-missing
-```
-This will show a summary of code coverage in your terminal. For a full HTML report, use `--cov-report=html`.
+#### `ARCHITECTURE.md`
 
-### Performance Tests
-
-Performance testing is done using `Locust`. A sample `locustfile.py` is provided in `tests/performance/`.
-
-1.  **Install Locust**:
-    ```bash
-    pip install locust
-    ```
-2.  **Navigate to the performance tests directory**:
-    ```bash
-    cd tests/performance
-    ```
-3.  **Run Locust**:
-    ```bash
-    locust -f locustfile.py
-    ```
-4.  **Access the Locust UI**:
-    Open your web browser and navigate to `http://localhost:8089` (or the address shown in your terminal).
-    Enter the host of your running ShopSwift application (e.g., `http://localhost:5000`) and configure your load test.
-
-## API Documentation
-
-The API endpoints are documented in `API.md` using an OpenAPI/Swagger-like format.
-
-## Architecture Documentation
-
-A high-level overview of the system's architecture, including components and data flow, is available in `ARCHITECTURE.md`.
-
-## Deployment Guide
-
-Detailed deployment instructions for various environments (e.g., cloud providers like AWS, GCP, Azure, or bare-metal servers) are in `DEPLOYMENT.md`. This includes setting up Gunicorn, Nginx, and proper environment variable management.
-
-## Contributing
-
-Contributions are welcome! Please refer to `CONTRIBUTING.md` (if exists, otherwise follow standard open-source contribution guidelines).
-
-## License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
-```
+```markdown

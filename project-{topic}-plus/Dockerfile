@@ -1,35 +1,51 @@
-```dockerfile
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
+# Stage 1: Build the Spring Boot application
+FROM maven:3.9.6-amazoncorretto-17 AS build
+LABEL authors="ALX Software Engineering"
+LABEL maintainer="ALX Developers <dev@alxafrica.com>"
+LABEL project="Secure Auth System"
 
-# Set the working directory in the container
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies required for psycopg2
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+# Copy the pom.xml file first to cache dependencies
+COPY pom.xml .
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Download dependencies - only if pom.xml changes
+RUN mvn dependency:go-offline
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the rest of the application source code
+COPY src ./src
 
-# Copy the rest of the application code into the container
-COPY . .
+# Package the application into a JAR file
+RUN mvn clean install -DskipTests
 
-# Set environment variables (these can be overridden by docker-compose or Kubernetes)
-ENV FLASK_APP=manage.py
-ENV FLASK_ENV=production
+# Stage 2: Create the final Docker image
+FROM amazoncorretto:17-alpine-jdk
+LABEL authors="ALX Software Engineering"
+LABEL maintainer="ALX Developers <dev@alxafrica.com>"
+LABEL project="Secure Auth System"
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Set the working directory
+WORKDIR /app
 
-# Run Gunicorn to serve the Flask application
-# Using a custom manage.py entry point (which handles app creation)
-# Ensure manage.py has a callable 'create_app' or similar if not directly using 'flask run'
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "manage:app"]
+# Copy the built JAR file from the build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Expose the port the Spring Boot application runs on
+EXPOSE 8080
+
+# Define environment variables with default values
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=auth_db
+ENV DB_USERNAME=admin
+ENV DB_PASSWORD=password
+ENV JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+
+# Command to run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
+
+#### `.github/workflows/ci-cd.yml`
+
+```yaml
