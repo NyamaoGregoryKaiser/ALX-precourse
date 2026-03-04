@@ -1,200 +1,289 @@
-```markdown
-# SecureTask Deployment Guide
+# Deployment Guide: Data Visualization Tools System
 
-This document outlines the steps to deploy the SecureTask application to a production environment. The recommended approach leverages Docker and Docker Compose for containerization and Nginx as a reverse proxy for serving static files and routing API requests.
+This document provides a guide for deploying the Data Visualization Tools System to a production environment. We will focus on a Docker-based deployment, which is highly portable and scalable.
 
-## 1. Production Environment Setup
+## 1. Deployment Environment Considerations
 
-### 1.1. Server Requirements
-*   A Linux server (e.g., Ubuntu, CentOS) with at least 2GB RAM and 2 CPU cores (adjust based on expected load).
-*   Docker and Docker Compose installed.
-*   Git installed.
-*   Domain name configured to point to your server's IP address.
-*   SSH access to the server.
+Before deployment, consider the following:
 
-### 1.2. Firewall Configuration
-Ensure that your server's firewall (e.g., `ufw` on Ubuntu) allows traffic on ports 80 (HTTP) and 443 (HTTPS).
+*   **Cloud Provider**: AWS, GCP, Azure, DigitalOcean, etc.
+*   **Container Orchestration**: Kubernetes (EKS, GKE, AKS), Docker Swarm, AWS ECS. Docker Compose is suitable for smaller deployments or single-server setups.
+*   **Load Balancing**: Essential for distributing traffic across multiple backend instances and providing high availability.
+*   **Database Management**: Use a managed database service (e.g., AWS RDS, GCP Cloud SQL) for easier scaling, backups, and maintenance.
+*   **Secret Management**: Securely manage database credentials, API keys, JWT secrets.
+*   **Domain and SSL/TLS**: A custom domain with HTTPS is critical for production.
+
+## 2. Prerequisites
+
+*   **Deployed Docker Compose or Kubernetes Cluster**: This guide assumes you have a target environment ready.
+*   **Docker Images**: Your backend and (if applicable) frontend Docker images pushed to a container registry (e.g., Docker Hub, AWS ECR, GCP Container Registry). The CI/CD pipeline automates this.
+*   **Database Instance**: A managed PostgreSQL database instance or a self-hosted PostgreSQL server.
+*   **Environment Variables**: All required environment variables (e.g., `DATABASE_URL`, `JWT_SECRET`) configured for your production environment.
+*   **SSH Access**: To your deployment server(s) if using a VM-based approach.
+
+## 3. Production Environment Setup (Example: Docker Compose on a VM)
+
+This section details a common deployment scenario using Docker Compose on a single (or multiple with manual orchestration) Linux VM.
+
+### 3.1. Server Setup
+
+1.  **Provision a VM**: Create a Linux VM (e.g., Ubuntu 20.04+) with sufficient CPU, RAM, and disk space for your expected load.
+2.  **Install Docker and Docker Compose**:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y docker.io docker-compose
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -aG docker $USER # Add your user to the docker group
+    # Log out and log back in for group changes to take effect
+    ```
+3.  **Install Nginx (or similar reverse proxy)**:
+    ```bash
+    sudo apt-get install -y nginx
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+    ```
+
+### 3.2. Configure Environment Variables
+
+Create a `.env` file on your production server. **Do NOT commit this file to your repository.**
+
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow OpenSSH # Ensure SSH access is allowed
-sudo ufw enable
+# /path/to/your/app/.env
+DATABASE_URL="postgresql://<prod_user>:<prod_password>@<your_managed_db_host>:5432/datavizdb"
+HTTP_ADDRESS="0.0.0.0" # Bind to all interfaces inside the container
+HTTP_PORT="8080"
+JWT_SECRET="YOUR_SUPER_LONG_AND_COMPLEX_PRODUCTION_JWT_SECRET" # Generate a truly random string
+LOG_LEVEL="INFO" # Or WARN/ERROR for less verbose production logging
 ```
+**Important Security Note**: For even higher security, consider using your cloud provider's secret manager (e.g., AWS Secrets Manager, GCP Secret Manager) and retrieve these secrets at runtime, rather than storing them in a `.env` file on the server.
 
-### 1.3. Environment Variables
-On your production server, create a `.env` file at the root of your `securetask` project directory. This file will contain sensitive environment variables for Docker Compose. **DO NOT commit this file to your repository.**
+### 3.3. Update `docker-compose.yml` for Production
 
-**`securetask/.env` (on server)**
-```dotenv
-# Backend Configuration
-NODE_ENV=production
-PORT=5000
-DATABASE_URL="postgresql://user:YOUR_DB_PASSWORD@db:5432/securetask_prod_db?schema=public" # Replace with strong password
-JWT_SECRET="A_VERY_LONG_AND_COMPLEX_RANDOM_STRING_FOR_JWT_SECRET" # GENERATE A STRONG, UNIQUE SECRET
-JWT_EXPIRATION="1h" # Access token expiration
-ADMIN_EMAIL="your-admin-email@yourdomain.com"
-ADMIN_PASSWORD="A_VERY_STRONG_ADMIN_PASSWORD" # GENERATE A STRONG, UNIQUE PASSWORD
-FRONTEND_URL="https://yourdomain.com" # Your actual domain
-CACHE_REDIS_URL="redis://redis:6379"
+Adjust `docker-compose.yml` for production-specific needs:
 
-# Frontend Configuration
-REACT_APP_API_BASE_URL="https://yourdomain.com/api/v1"
-
-# Database Credentials (used by docker-compose for PostgreSQL service)
-POSTGRES_DB=securetask_prod_db
-POSTGRES_USER=user
-POSTGRES_PASSWORD=YOUR_DB_PASSWORD # Must match DATABASE_URL password
-```
-**Recommendations for `JWT_SECRET` and `ADMIN_PASSWORD`:**
-*   Use a strong password generator (e.g., `openssl rand -base64 32` for JWT_SECRET).
-*   Change default passwords from development settings.
-
-## 2. Deployment Steps
-
-### 2.1. Clone the Application
-Log in to your server via SSH and clone your application repository.
-```bash
-git clone https://github.com/your-username/securetask.git
-cd securetask
-```
-
-### 2.2. Place Nginx Configuration
-Ensure you have the `nginx.conf` file in the root of your `securetask` directory. Update `server_name` to your actual domain.
-```nginx
-# nginx.conf
-server {
-    listen 80;
-    listen [::]:80;
-    server_name yourdomain.com www.yourdomain.com; # IMPORTANT: Update your domain here
-
-    # ... other configurations as in the example ...
-}
-
-# For HTTPS, you will add another server block later
-```
-
-### 2.3. Build and Start Services with Docker Compose
-```bash
-docker-compose -f docker-compose.yml build --no-cache
-docker-compose -f docker-compose.yml up -d
-```
-*   `--no-cache`: Ensures that new images are built from scratch, picking up any changes in your Dockerfiles or application code.
-*   `-d`: Runs the containers in detached mode (in the background).
-
-### 2.4. Initial Database Migration and Seeding
-The `backend` service in `docker-compose.yml` is configured to run `npx prisma migrate deploy` on startup, which applies all pending database migrations.
-The `src/server.js` within the backend also includes logic to seed an admin user if `NODE_ENV` is `development` or `test` and no admin user exists. For production, it's generally recommended to provision initial admin accounts securely through a separate script or manual process rather than auto-seeding on every deploy, or to ensure seeding only happens once. Our current setup checks for an existing admin user, making it safe for production deployments.
-
-### 2.5. Verify Deployment
-*   **Check container status:** `docker-compose ps` - ensure all services are `Up` and `healthy`.
-*   **View logs:** `docker-compose logs -f` - check for any startup errors.
-*   **Access your application:** Open your browser and navigate to `http://yourdomain.com`. You should see the frontend.
-*   **Test API:** Try accessing an API endpoint (e.g., `http://yourdomain.com/api/v1/auth/login` via Postman) to ensure backend is reachable.
-
-## 3. Enable HTTPS with Certbot (Recommended for Production)
-
-Using HTTPS is critical for security. Certbot can automate the process of obtaining and renewing SSL certificates from Let's Encrypt.
-
-### 3.1. Modify `nginx.conf` for Certbot
-Update your `nginx.conf` to include a temporary HTTP server block for Certbot's challenge and an empty HTTPS block.
-
-```nginx
-# nginx.conf (initial for Certbot)
-server {
-    listen 80;
-    listen [::]:80;
-    server_name yourdomain.com www.yourdomain.com;
-
-    location / {
-        root   /usr/share/nginx/html; # Serve frontend build
-        index  index.html index.htm;
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/v1/ {
-        proxy_pass http://backend:5000/api/v1/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # Certbot HTTP challenge
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-}
-# Empty HTTPS block for Certbot to configure
-# server {
-#     listen 443 ssl;
-#     server_name yourdomain.com www.yourdomain.com;
-# }
-```
-
-### 3.2. Stop Nginx (if running) and Run Certbot
-You might need to stop the Nginx container temporarily or adjust `docker-compose.yml` to use `certbot` within the compose setup. A common approach for initial cert generation is to stop Nginx and run Certbot directly on the host or use a dedicated `certbot` container that shares volumes.
-
-**Using `certbot` directly on host (easiest for initial setup):**
-```bash
-sudo docker-compose stop nginx # Stop Nginx container
-sudo apt update
-sudo apt install certbot python3-certbot-nginx -y # Install Certbot if not already
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com --email your-email@example.com --agree-tos --no-eff-email --redirect
-```
-Follow Certbot's prompts. It will automatically configure Nginx to use HTTPS.
-
-### 3.3. Update `nginx.conf` for HTTPS
-After Certbot, `nginx.conf` will be updated with the SSL configurations. Ensure the `nginx` service in `docker-compose.yml` mounts the correct Certbot volumes.
+*   **Image Pull**: Use pre-built images from your container registry.
+*   **Logging**: Configure log drivers (e.g., `json-file` with `max-size`/`max-file` or `syslog`).
+*   **Resource Limits**: Define CPU and memory limits for containers.
+*   **Network**: Ensure containers are on an isolated bridge network.
+*   **Frontend**: Include your frontend service if it's also containerized.
 
 ```yaml
-# docker-compose.yml (excerpt for nginx service with Certbot)
-  nginx:
-    # ... other configurations ...
-    ports:
-      - "80:80"
-      - "443:443"
+# /path/to/your/app/docker-compose.prod.yml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13 # Or use your managed DB endpoint directly in backend
+    # If using a managed DB, this service would be removed, and DATABASE_URL updated.
+    container_name: dataviz_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER} # Get from .env or secret manager
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: datavizdb
+    # Do NOT expose DB port to public internet in production unless necessary and secured
+    # ports:
+    #   - "5432:5432"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt # Mount Certbot config
-      - /var/www/certbot:/var/www/certbot # Mount Certbot webroot
-    # ... depends_on ...
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d datavizdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: your_docker_username/dataviztool:latest # Use your pushed image
+    container_name: dataviz_backend_prod
+    restart: always
+    # Map to an internal port, Nginx will proxy to it
+    # Do NOT expose 8080 directly to the public internet
+    # ports:
+    #   - "127.0.0.1:8080:8080" # Bind to localhost only
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      HTTP_ADDRESS: "0.0.0.0"
+      HTTP_PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL}
+    volumes:
+      - data_uploads:/app/data_uploads # Persist uploaded files
+      - ./database/migrations:/app/database/migrations # For DBManager::initializeSchema
+    depends_on:
+      db:
+        condition: service_healthy
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1.0'
+    #       memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # frontend:
+  #   image: your_docker_username/dataviz-frontend:latest
+  #   container_name: dataviz_frontend_prod
+  #   restart: always
+  #   # Map to an internal port, Nginx will proxy to it
+  #   # ports:
+  #   #   - "127.0.0.1:3000:80" # Assuming React build serves on port 80
+  #   environment:
+  #     REACT_APP_API_BASE_URL: "https://yourdomain.com/api/v1" # Public facing URL
+  #   depends_on:
+  #     - backend
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "5"
+
+volumes:
+  db_data: # Only needed if running DB in Docker
+  data_uploads:
 ```
-Restart your services to apply the new Nginx configuration:
-```bash
-docker-compose -f docker-compose.yml restart nginx
-```
-Now, navigate to `https://yourdomain.com`. Your site should be secure.
 
-## 4. Continuous Deployment (Optional, using GitHub Actions)
+### 3.4. Nginx Reverse Proxy and SSL/TLS
 
-If you've configured GitHub Actions (as shown in `.github/workflows/ci-cd.yml`), subsequent pushes to `main` branch will trigger the deployment process:
+Nginx will serve as the entry point for all external traffic. It handles SSL termination and proxies requests to the appropriate Docker containers.
 
-1.  **Code Commit & Push:** Push changes to your `main` branch.
-2.  **CI/CD Trigger:** GitHub Actions will start the CI/CD pipeline.
-3.  **Tests & Build:**
-    *   Linting and unit/integration tests run for backend and frontend.
-    *   Docker images are built.
-4.  **Deployment (SSH to Server):**
-    *   The workflow will SSH into your production server.
-    *   It pulls the latest code.
-    *   It brings down existing containers (`docker-compose down`).
-    *   It pulls new Docker images (or rebuilds them if not pushed to a registry).
-    *   It starts new containers (`docker-compose up -d`).
-    *   It cleans up old Docker images.
+1.  **Configure Nginx**: Create a new Nginx configuration file (e.g., `/etc/nginx/sites-available/dataviz.conf`).
 
-**Important:** Ensure your GitHub Actions secrets (`SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY`, `DOCKER_USERNAME`, `DOCKER_PASSWORD`) are correctly configured in your GitHub repository settings.
+    ```nginx
+    # /etc/nginx/sites-available/dataviz.conf
+    server {
+        listen 80;
+        server_name yourdomain.com www.yourdomain.com;
+        return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
+    }
 
-## 5. Maintenance and Monitoring
+    server {
+        listen 443 ssl;
+        server_name yourdomain.com www.yourdomain.com;
 
-*   **Logs:** Regularly monitor application logs (`docker-compose logs -f backend`) for errors and anomalies. Integrate with a log aggregation service (e.g., ELK stack, Datadog) for enterprise monitoring.
-*   **Resource Usage:** Monitor CPU, memory, and disk usage of your server and Docker containers.
-*   **Database Backups:** Implement a robust backup strategy for your PostgreSQL database.
-*   **Security Updates:** Keep Node.js, Docker, Nginx, and all npm dependencies updated to their latest stable versions to mitigate security vulnerabilities.
-*   **Certbot Renewal:** Certbot automatically handles certificate renewals (usually via a cron job setup by Certbot, or configured in `docker-compose.yml`).
-*   **Scheduled Tasks:** For cleanup or background jobs, consider using Docker cron jobs or dedicated worker services.
+        # SSL Configuration (obtain from Certbot/Let's Encrypt)
+        ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
+        ssl_prefer_server_ciphers on;
 
-By following these steps, you can confidently deploy and manage the SecureTask application in a production environment.
-```
+        # Frontend (if served by Nginx)
+        root /var/www/dataviz-frontend/build; # Path to your frontend static files
+        index index.html index.htm;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Backend API Proxy
+        location /api/v1/ {
+            proxy_pass http://localhost:8080; # Points to the backend container's exposed port (internal to VM)
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 90;
+            proxy_connect_timeout 90;
+            proxy_send_timeout 90;
+        }
+
+        # Optionally, for static assets not covered by frontend root or API
+        # location /static/ {
+        #     alias /var/www/dataviz-static/;
+        # }
+
+        # Error pages
+        error_page 404 /404.html;
+        location = /404.html {
+            internal;
+        }
+
+        # Rate Limiting (example)
+        # limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=100r/s;
+        # location /api/v1/ {
+        #     limit_req zone=req_limit_per_ip burst=20 nodelay;
+        #     proxy_pass http://localhost:8080;
+        #     # ... other proxy headers
+        # }
+    }
+    ```
+2.  **Enable Configuration**:
+    ```bash
+    sudo ln -s /etc/nginx/sites-available/dataviz.conf /etc/nginx/sites-enabled/
+    sudo nginx -t # Test Nginx configuration
+    sudo systemctl reload nginx
+    ```
+3.  **Obtain SSL Certificate (Certbot/Let's Encrypt)**:
+    ```bash
+    sudo snap install core; sudo snap refresh core
+    sudo snap install --classic certbot
+    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+    sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+    ```
+    Follow the prompts to configure HTTPS. Certbot will automatically update your Nginx configuration and set up renewals.
+
+### 3.5. Deploy Application
+
+1.  **Clone Repository**: On your server, clone the repository.
+    ```bash
+    git clone https://github.com/your-org/data-viz-tool.git /path/to/your/app
+    cd /path/to/your/app
+    ```
+2.  **Place `.env`**: Ensure your production `.env` file is in `/path/to/your/app`.
+3.  **Start Services**:
+    ```bash
+    docker compose -f docker-compose.prod.yml pull # Pull latest images
+    docker compose -f docker-compose.prod.yml up -d --remove-orphans
+    ```
+    The `--remove-orphans` flag will remove containers that are no longer defined in the `docker-compose.prod.yml` but were created by a previous run.
+
+### 3.6. Database Initialization and Seeding
+
+On initial deployment:
+
+1.  **Connect to Managed DB (if applicable)**: If using a managed PostgreSQL, connect using `psql` from a machine that has network access.
+2.  **Run Migrations**: The C++ backend `DBManager::initializeSchema()` is designed to run migrations on startup. Ensure your `database/migrations` directory is mounted correctly.
+3.  **Seed Data (Optional, for initial content)**:
+    ```bash
+    docker compose -f docker-compose.prod.yml exec db psql -U user -d datavizdb -f /path/to/your/app/database/seed_data.sql
+    ```
+    **Warning**: Do not run seed data in production unless it's strictly for initial setup of non-sensitive data.
+
+## 4. CI/CD for Production Deployment
+
+The `ci_cd.yml` file already provides a foundation for CI/CD:
+
+*   **Build**: Compiles C++ code, runs tests.
+*   **Docker Build & Push**: Builds and pushes Docker images to a registry. Includes a Trivy vulnerability scan.
+*   **Deploy**: On `main` branch push, connects to the server via SSH and executes commands to pull the latest images and restart containers.
+
+**Enhancements for Production CI/CD**:
+
+*   **Blue/Green or Canary Deployments**: For zero-downtime updates, especially with Kubernetes.
+*   **Rollback Strategy**: Automate rollback to previous stable versions if a new deployment fails.
+*   **Approval Gates**: Manual approval steps for deployments to production.
+*   **Integration with Monitoring**: Trigger alerts if post-deployment health checks fail.
+
+## 5. Monitoring and Logging
+
+*   **Backend Logs**: Configure your C++ `Logger` to output to `stdout`/`stderr` within Docker. Docker will capture these logs.
+*   **Log Aggregation**: Use a centralized log management system (ELK stack, Splunk, Loki, DataDog) to collect, store, and analyze logs from all containers and Nginx.
+*   **Metrics**: Expose Prometheus-compatible metrics from your C++ backend (e.g., via a library like `Prometheus-cpp` or custom implementation).
+*   **Monitoring Tools**: Use Prometheus for metrics collection and Grafana for dashboarding and alerting. Set up alerts for high error rates, low disk space, high CPU/memory usage, etc.
+*   **Uptime Monitoring**: Use external services (UptimeRobot, Pingdom) to monitor the availability of your public endpoints.
+
+## 6. Scaling
+
+*   **Backend**: Horizontally scale the `backend` service by increasing the number of replicas in your `docker-compose.prod.yml` (if using Docker Swarm or Kubernetes) or by running multiple Docker Compose instances on different VMs behind a load balancer.
+*   **Database**: Utilize PostgreSQL read replicas for read-heavy workloads. Consider connection pooling (PgBouncer) for efficient connection management.
+*   **Caching**: Scale Redis independently if caching becomes a bottleneck. Use a Redis cluster for high availability and sharding.
+*   **Data Processing**: For very large datasets or complex, long-running processing tasks, offload them to dedicated worker services and message queues (e.g., RabbitMQ, Kafka) to prevent the API server from blocking.
+
+By following this guide, you can establish a robust and scalable deployment pipeline for your Data Visualization Tools System.

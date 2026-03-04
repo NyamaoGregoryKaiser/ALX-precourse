@@ -1,12 +1,5 @@
-Flask
-Flask-SQLAlchemy
-psycopg2-binary
-alembic
-redis
-python-dotenv
-Flask-Caching
-Flask-Limiter
-pytest
-pytest-cov
-requests  # For API testing
-# Add other dependencies as needed
+# Example: If you use Python for local tooling or CI/CD scripts
+# black==23.7.0
+# flake8==6.0.0
+# requests==2.31.0
+# locust==2.15.1 # For performance testing

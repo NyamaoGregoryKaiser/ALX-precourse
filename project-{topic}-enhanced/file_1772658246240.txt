@@ -1,0 +1,26 @@
+graph TD
+    A[User/Browser] -->|HTTP/S| B[Frontend Application (React/Vue)]
+    B -->|API Requests (REST/HTTP/S)| C[C++ Backend Server]
+
+    subgraph C++ Backend
+        C --> D{API Gateway/Router}
+        D --> E[Authentication/Authorization]
+        E --> F[API Controllers]
+        F --> G[Data Processing Engine]
+        G --> H[Caching Layer (Redis)]
+        G --> I[Database Layer (PostgreSQL)]
+    end
+
+    I --> J[PostgreSQL Database]
+    H --> J
+    G --> K[External Data Sources]
+
+    subgraph Shared Services
+        L[Logging & Monitoring]
+        M[Error Handling Middleware]
+        N[Rate Limiting Middleware]
+    end
+
+    C --> L
+    C --> M
+    C --> N
