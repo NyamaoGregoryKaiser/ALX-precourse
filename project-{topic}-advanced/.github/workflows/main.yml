@@ -1,117 +1,116 @@
-name: Build and Test Authentication System
+```yaml
+name: CI/CD Pipeline for VisGenius
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
+    name: Build & Test C++ Backend
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Create data directory
+      run: mkdir -p data
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libsqlite3-dev
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Debug # Build with debug info for testing
+
+    - name: Build C++ application
+      run: cmake --build build --config Debug
+
+    - name: Run Unit Tests
+      # Assuming your test executable is named 'VisGenius_Tests' and located in 'build/bin' or directly 'build'
+      # We'll create a dedicated test executable for this
+      run: |
+        # Generate sales_data.csv for tests
+        echo "Year,Category,Value,Region" > data/sales_data.csv
+        echo "2020,Electronics,1000,North" >> data/sales_data.csv
+        echo "2020,Clothing,500,South" >> data/sales_data.csv
+        echo "2021,Electronics,1200,North" >> data/sales_data.csv
+        echo "2021,Clothing,600,West" >> data/sales_data.csv
+        echo "2021,Food,300,East" >> data/sales_data.csv
+        echo "2022,Electronics,1500,South" >> data/sales_data.csv
+        echo "2022,Clothing,700,North" >> data/sales_data.csv
+        # Run tests (assuming tests are built into a separate executable)
+        cd build
+        ./tests/VisGenius_Tests --gtest_output=xml:test_results.xml
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v3
+      if: always()
       with:
-        submodules: true # If you use submodules for any libraries
+        name: test-results
+        path: build/test_results.xml
+
+    - name: Generate Coverage Report
+      # This requires gcov/lcov, usually added with specific compiler flags in CMake
+      # e.g., add_compile_options(--coverage) and add_link_options(--coverage)
+      # For a basic setup, we'll skip the actual generation here, but show the step.
+      run: |
+        echo "Generating coverage report..."
+        # lcov --capture --directory build --output-file coverage.info
+        # genhtml coverage.info --output-directory coverage_report
+        # echo "Coverage report generated in build/coverage_report"
+
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: coverage-report
+        path: build/coverage_report/ # Path to your generated HTML coverage report
+
+  docker_build_and_push:
+    name: Build & Push Docker Image
+    needs: build_and_test # Only proceed if tests pass
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only for pushes to main/develop
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
-    - name: Cache Conan packages
-      uses: actions/cache@v3
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
       with:
-        path: ~/.conan/data
-        key: ${{ runner.os }}-conan-${{ hashFiles('conanfile.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-conan-
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
 
-    - name: Install Conan
-      run: pip install conan==1.* # Or conan==2.* depending on project needs
+    - name: Extract Docker metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: yourdockerhubusername/visgenius
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=ref,event=branch
+          type=sha,prefix=,suffix=,format=short
 
-    - name: Create .env file for secrets
-      run: |
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" > config/.env
-        echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> config/.env
-        echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> config/.env
-        echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> config/.env
-      env:
-        JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        POSTGRES_USER: postgres_ci
-        POSTGRES_PASSWORD: ci_password
-        POSTGRES_DB: auth_db_ci
-
-    - name: Build Docker image
-      run: docker build -t auth-system:latest .
-
-    - name: Start services with Docker Compose
-      run: docker-compose -f docker-compose.yml up -d db
-      env:
-        # Use CI-specific DB credentials
-        POSTGRES_USER: postgres_ci
-        POSTGRES_PASSWORD: ci_password
-        POSTGRES_DB: auth_db_ci
-
-    - name: Wait for PostgreSQL to be ready
-      # Short wait, adjust as necessary for larger DBs
-      run: |
-        echo "Waiting for PostgreSQL to start..."
-        sleep 10
-        docker-compose -f docker-compose.yml run --rm app /bin/bash -c "pg_isready -h db -p 5432 -U postgres_ci"
-
-    - name: Run Migrations and Seed Data
-      run: |
-        docker-compose -f docker-compose.yml run --rm app /app/auth_system --skip-orm-sync --no-autocreate-tables --migration-dir /app/db/migrations --run-migration-up --db-connection-string "host=db port=5432 user=postgres_ci password=ci_password dbname=auth_db_ci"
-        docker-compose -f docker-compose.yml run --rm app /app/auth_system --skip-orm-sync --no-autocreate-tables --seed-dir /app/db/seed --run-seed --db-connection-string "host=db port=5432 user=postgres_ci password=ci_password dbname=auth_db_ci"
-      env:
-        JWT_SECRET: ${{ secrets.JWT_SECRET }} # Needed if seed logic uses app code
-        POSTGRES_USER: postgres_ci
-        POSTGRES_PASSWORD: ci_password
-        POSTGRES_DB: auth_db_ci
-
-    - name: Start Application Container
-      run: docker-compose -f docker-compose.yml up -d app
-      env:
-        JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        POSTGRES_USER: postgres_ci
-        POSTGRES_PASSWORD: ci_password
-        POSTGRES_DB: auth_db_ci
-
-    - name: Wait for app to be ready
-      run: sleep 10 # Adjust as needed
-
-    - name: Run Tests
-      # This assumes tests can be run as a separate executable built by CMake.
-      # Or, if tests make HTTP requests, they run against the running Docker container.
-      # For C++, a separate test runner executable is typical.
-      run: |
-        # Mount the built tests from the builder stage if needed, or build tests on current machine
-        # For simplicity, if tests are part of the `auth_system` executable, we run it.
-        # If separate, ensure they are built and available.
-        # Example: docker exec <app_container_id> /app/tests/run_tests_executable
-        # For this example, we assume `build/tests/run_tests` is created.
-        docker exec $(docker-compose ps -q app) ./build/tests/run_tests
-      env:
-        JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        # Pass DB connection string for integration tests if they need to connect
-        DATABASE_URL: "postgresql://postgres_ci:ci_password@db:5432/auth_db_ci"
-
-
-    - name: Stop services
-      if: always()
-      run: docker-compose -f docker-compose.yml down
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 ```
-*(Note: You need to set `JWT_SECRET` as a repository secret in GitHub for this CI/CD to work securely.)*
-
----
-
-### Testing & Quality
-
-Tests will use Google Test. For integration and API tests, the Drogon `drogon::app().run()` function needs to be started in a separate thread or process for HTTP requests. I'll demonstrate with a simple approach.
-
-#### `CMakeLists.txt` (for tests)
-
-```cmake
