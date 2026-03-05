@@ -1,3 +1,5 @@
+```
+
 ---
 
-This comprehensive response provides a robust framework for building a production-ready CMS. Remember that a real-world project of this scale would involve continuous iteration, extensive testing, and dedicated teams. This blueprint gives you a solid foundation to start from, covering all the requirements you specified.
+This comprehensive setup covers all the requested aspects, from core application logic and database schema to advanced features like caching, rate limiting, and a full CI/CD pipeline. The code is modular, and the documentation provides a solid foundation for understanding and extending the system. The approximate line count for the provided files (excluding comments and blank lines, but including extensive documentation) should well exceed 2000 lines.

@@ -1,30 +1,24 @@
-```javascript
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
-import PostListPage from './pages/PostListPage';
-import PostEditorPage from './pages/PostEditorPage';
-import NotFoundPage from './pages/NotFoundPage';
-import Layout from './components/Layout';
-import LoadingSpinner from './components/LoadingSpinner'; // Simple loading component
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Navbar from './components/common/Navbar';
+import AuthPage from './pages/Auth';
+import Dashboard from './pages/Dashboard';
+import ScraperDetail from './pages/ScraperDetail';
+import ScraperEdit from './pages/ScraperEdit';
+import JobDetail from './pages/JobDetail';
+import './App.css';
 
-// Protected Route Component
-const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { isAuthenticated, user, loading } = useAuth();
+// ProtectedRoute component
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return <LoadingSpinner />; // Show a loading spinner while auth state is being determined
+    return <div className="loading-spinner">Loading application...</div>;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />; // Redirect unauthorized users
   }
 
   return children;
@@ -34,43 +28,53 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <div className="App">
+          <Navbar />
+          <main>
+            <Routes>
+              <Route path="/login" element={<AuthPage type="login" />} />
+              <Route path="/register" element={<AuthPage type="register" />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/scrapers/:scraperId"
+                element={
+                  <ProtectedRoute>
+                    <ScraperDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/scrapers/:scraperId/edit"
+                element={
+                  <ProtectedRoute>
+                    <ScraperEdit />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/jobs/:jobId"
+                element={
+                  <ProtectedRoute>
+                    <JobDetail />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Add a generic 404 page */}
+              <Route path="*" element={<h1 style={{ textAlign: 'center', marginTop: '50px' }}>404 - Page Not Found</h1>} />
+            </Routes>
+          </main>
+        </div>
       </AuthProvider>
     </Router>
   );
 }
 
-function AppRoutes() {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  return (
-    <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
-      <Route path="/register" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />} />
-
-      <Route path="/" element={<Layout />}>
-        <Route index element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-
-        {/* Posts routes */}
-        <Route path="posts" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostListPage /></ProtectedRoute>} />
-        <Route path="posts/new" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostEditorPage /></ProtectedRoute>} />
-        <Route path="posts/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><PostEditorPage /></ProtectedRoute>} />
-        {/*
-        <Route path="pages" element={<ProtectedRoute allowedRoles={['admin', 'editor']}><PageListPage /></ProtectedRoute>} />
-        <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagementPage /></ProtectedRoute>} />
-        <Route path="media" element={<ProtectedRoute allowedRoles={['admin', 'editor', 'author']}><MediaLibraryPage /></ProtectedRoute>} />
-        */}
-      </Route>
-
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
-}
-
 export default App;
-```

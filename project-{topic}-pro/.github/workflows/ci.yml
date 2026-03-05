@@ -1,0 +1,125 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test-backend:
+    name: Build & Test Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: scraper_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Install Backend Dependencies
+        run: npm install
+        working-directory: ./backend
+
+      - name: Run Backend Tests
+        run: npm test -- --coverage # --coverage for coverage report
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/scraper_test_db
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret
+          NODE_ENV: test
+          CACHE_ENABLED: "false" # Disable cache for tests
+          PUPPETEER_HEADLESS: "true" # Ensure headless for CI
+
+  build-and-test-frontend:
+    name: Build & Test Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Install Frontend Dependencies
+        run: npm install
+        working-directory: ./frontend
+
+      - name: Run Frontend Tests
+        run: npm test -- --watchAll=false
+        working-directory: ./frontend
+        env:
+          CI: true # Required for React scripts test in CI environments
+
+      - name: Build Frontend
+        run: npm run build
+        working-directory: ./frontend
+        env:
+          REACT_APP_API_BASE_URL: /api # Set for production build
+
+
+  # Optional: Deployment job (e.g., to a VM using SSH, or to a cloud provider)
+  # deploy:
+  #   name: Deploy to Production
+  #   needs: [build-and-test-backend, build-and-test-frontend]
+  #   if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
+  #   runs-on: ubuntu-latest
+  #
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Copy Docker Compose files and .env to server
+  #       uses: appleboy/scp-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         source: "docker-compose.yml,backend/.env,frontend/.env.production,frontend/nginx.conf"
+  #         target: "/home/${{ secrets.SSH_USERNAME }}/web-scraper-system"
+  #
+  #     - name: Deploy Docker Compose stack
+  #       uses: appleboy/ssh-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         script: |
+  #           cd /home/${{ secrets.SSH_USERNAME }}/web-scraper-system
+  #           docker-compose pull # Pull latest images
+  #           docker-compose up --build -d --remove-orphans # Recreate services, remove old ones
+  #           docker system prune -f # Clean up unused Docker objects
+```

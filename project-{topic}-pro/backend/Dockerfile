@@ -1,36 +1,29 @@
-```dockerfile
-# Stage 1: Build dependencies
-FROM node:18-alpine as builder
-
-WORKDIR /app
-
-# Copy package.json and package-lock.json first to leverage Docker cache
-COPY package.json package-lock.json ./
-
-# Install dependencies (only production dependencies by default)
-RUN npm ci --only=production
-
-# Stage 2: Production environment
+# Use a Node.js LTS image as the base
 FROM node:18-alpine
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy installed production dependencies from the builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Copy package.json and package-lock.json (or yarn.lock) to the working directory
+# This allows caching of node_modules layer
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install --production
+# For development, you might use `npm install`
+# If you need puppeteer to work inside Alpine, you might need additional dependencies:
+# RUN apk add --no-cache udev chromium
 
 # Copy the rest of the application code
 COPY . .
 
-# Create a directory for logs
-RUN mkdir -p logs
+# Ensure Knexfile is present for migrations/seeds
+COPY knexfile.js ./knexfile.js
 
 # Expose the port the app runs on
 EXPOSE 5000
 
-# Set environment variables (ensure .env is not committed to git, but used for local dev/CI/CD)
-# For production, these should be managed by your orchestrator (e.g., Kubernetes, Docker Compose .env file)
-# Example: ENV NODE_ENV=production
-
 # Command to run the application
-CMD ["node", "src/server.js"]
-```
+# This command will first run migrations and seeds, then start the server.
+# It assumes your database and Redis are already healthy and accessible.
+CMD sh -c "npx knex migrate:latest && npx knex seed:run && npm start"

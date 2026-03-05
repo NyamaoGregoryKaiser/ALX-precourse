@@ -1,59 +1,46 @@
-```javascript
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const config = require('./config');
-const routes = require('./api/routes');
-const { errorHandler } = require('./middleware/error');
-const logger = require('./utils/logger');
+const cors = require('cors');
+const httpStatus = require('http-status');
+const xss = require('xss-clean'); // Typically used for sanitizing HTML inputs. Can be integrated with Joi if needed.
+const { ApiError, errorConverter, errorHandler } = require('./middlewares/errorMiddleware');
+const routes = require('./api');
+const { cacheMiddleware } = require('./middlewares/cacheMiddleware');
+const logger = require('./utils/logger'); // Import logger
 
 const app = express();
 
 // Set security HTTP headers
 app.use(helmet());
 
-// Enable CORS for all routes
-app.use(cors({
-  origin: config.corsOrigin, // Consider making this more restrictive in production
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  credentials: true,
-}));
-
-// Rate limiting to prevent brute-force attacks
-const apiLimiter = rateLimit({
-  windowMs: config.rateLimitWindowMs, // 1 minute
-  max: config.rateLimitMaxRequests,   // Max 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again after a minute',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
-});
-app.use(apiLimiter);
-
-// Parse JSON request bodies
+// Parse json request body
 app.use(express.json());
 
-// Logger middleware (optional, for every request)
-// app.use((req, res, next) => {
-//   logger.http(`${req.method} ${req.originalUrl}`);
-//   next();
-// });
+// Parse urlencoded request body
+app.use(express.urlencoded({ extended: true }));
+
+// Sanitize request data
+app.use(xss());
+
+// Enable cors
+app.use(cors());
+app.options('*', cors()); // pre-flight OPTIONS requests
+
+// Cache middleware for GET requests
+app.use(cacheMiddleware);
 
 // API routes
-app.use('/api/v1', routes);
+app.use('/api', routes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime() });
-});
-
-// Catch-all for undefined routes
+// Send 404 error for any unknown API request
 app.use((req, res, next) => {
-  res.status(404).json({ message: 'Not Found', path: req.originalUrl });
+  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
 });
 
-// Global error handler middleware
+// Convert error to ApiError, if needed
+app.use(errorConverter);
+
+// Handle error
 app.use(errorHandler);
 
 module.exports = app;
-```

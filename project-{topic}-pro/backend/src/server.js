@@ -1,43 +1,55 @@
-```javascript
 const app = require('./app');
-const mongoose = require('mongoose');
 const config = require('./config');
 const logger = require('./utils/logger');
-const seedDB = require('./db/seed');
+const { scraperWorker, setupScheduledScrapers } = require('./jobs/scraperConsumer'); // Import worker and scheduler setup
+require('./database/connection'); // Ensure database connection is established
 
-const PORT = config.port;
-const MONGO_URI = config.mongoURI;
+let server;
 
-// Connect to MongoDB
-mongoose.connect(MONGO_URI)
-  .then(() => {
-    logger.info('Connected to MongoDB Atlas');
-    // Seed database if in development and not already seeded
-    if (config.nodeEnv === 'development') {
-      seedDB();
-    }
-  })
-  .catch(err => {
-    logger.error('Could not connect to MongoDB:', err.message);
-    process.exit(1); // Exit process with failure
-  });
+const startServer = async () => {
+  try {
+    // Start BullMQ worker
+    await scraperWorker.run();
+    logger.info('BullMQ Scraper Worker started.');
 
-// Start the server
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${config.nodeEnv} mode`);
+    // Setup scheduled jobs from database
+    await setupScheduledScrapers();
+
+    // Start Express server
+    server = app.listen(config.port, () => {
+      logger.info(`Server listening on port ${config.port} (http://localhost:${config.port})`);
+      logger.info(`Environment: ${config.env}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+const exitHandler = () => {
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(1);
+    });
+  } else {
+    process.exit(1);
+  }
+};
+
+const unexpectedErrorHandler = (error) => {
+  logger.error(error);
+  exitHandler();
+};
+
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close();
+  }
 });
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err, promise) => {
-  logger.error(`Unhandled Rejection: ${err.message}`);
-  // Close server & exit process
-  server.close(() => process.exit(1));
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err, origin) => {
-  logger.error(`Uncaught Exception: ${err.message}`);
-  // Close server & exit process
-  server.close(() => process.exit(1));
-});
-```

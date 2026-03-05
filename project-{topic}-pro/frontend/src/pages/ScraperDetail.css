@@ -1,0 +1,174 @@
+.scraper-detail-container {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.scraper-detail-container .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 1rem;
+}
+
+.scraper-detail-container h1 {
+  margin: 0;
+  color: #333;
+}
+
+.scraper-detail-container .actions {
+  display: flex;
+  gap: 10px;
+}
+
+.scraper-detail-container .button {
+  padding: 0.7rem 1.2rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+  transition: background-color 0.3s ease;
+  color: white; /* Default for all buttons */
+}
+
+.scraper-detail-container .trigger-scrape-button {
+  background-color: #ffc107;
+  color: #333;
+}
+.scraper-detail-container .trigger-scrape-button:hover {
+  background-color: #e0a800;
+}
+
+.scraper-detail-container .edit-scraper-button {
+  background-color: #17a2b8;
+}
+.scraper-detail-container .edit-scraper-button:hover {
+  background-color: #138496;
+}
+
+.scraper-detail-container .back-button {
+  background-color: #6c757d;
+}
+.scraper-detail-container .back-button:hover {
+  background-color: #5a6268;
+}
+
+.scraper-detail-container .tabs {
+  display: flex;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.scraper-detail-container .tab-button {
+  background-color: transparent;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #555;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.scraper-detail-container .tab-button:hover {
+  color: #007bff;
+}
+
+.scraper-detail-container .tab-button.active {
+  color: #007bff;
+  border-bottom-color: #007bff;
+  font-weight: bold;
+}
+
+.tab-content {
+  padding: 1rem 0;
+}
+
+.details-section p, .jobs-section p, .items-section p {
+  margin-bottom: 0.7rem;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.details-section strong, .jobs-section strong, .items-section strong {
+  color: #333;
+}
+
+.code-block {
+  background-color: #f8f8f8;
+  border: 1px solid #eee;
+  padding: 1rem;
+  border-radius: 5px;
+  overflow-x: auto;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 0.9em;
+  color: #333;
+}
+
+.job-list, .item-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.job-card, .item-card {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1.2rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.job-card.status-completed { border-left: 5px solid #28a745; }
+.job-card.status-failed { border-left: 5px solid #dc3545; }
+.job-card.status-running { border-left: 5px solid #ffc107; }
+.job-card.status-pending { border-left: 5px solid #6c757d; }
+
+.status-tag {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: white;
+  margin-left: 5px;
+}
+
+.status-tag.completed { background-color: #28a745; }
+.status-tag.failed { background-color: #dc3545; }
+.status-tag.running { background-color: #ffc107; color: #333;}
+.status-tag.pending { background-color: #6c757d; }
+.status-tag.cancelled { background-color: #17a2b8; }
+
+.job-error {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.view-job-items {
+  background-color: #007bff;
+  margin-top: 0.8rem;
+}
+.view-job-items:hover {
+  background-color: #0056b3;
+}
+
+.loading-spinner, .error-message, .not-found-message {
+  text-align: center;
+  margin-top: 50px;
+  font-size: 1.2rem;
+  color: #555;
+}
+
+.error-message {
+  color: red;
+}
+.not-found-message {
+  color: orange;
+}
