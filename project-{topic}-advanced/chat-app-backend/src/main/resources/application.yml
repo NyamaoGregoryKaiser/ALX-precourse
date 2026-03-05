@@ -1,0 +1,64 @@
+```yaml
+spring:
+  application:
+    name: chat-application
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:chat_db}
+    username: ${DB_USER:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Set to validate in production, update or create in dev for schema management
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true # Important for existing databases or initial deployments
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:} # No password by default for local Redis
+
+application:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Base64 encoded, at least 256-bit (32 bytes) for HS256
+      expiration: 86400000 # 24 hours
+      refresh-token:
+        expiration: 604800000 # 7 days
+
+server:
+  port: 8080
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    org.hibernate: WARN
+    com.alx.chat: DEBUG # Set to DEBUG for detailed application logs
+  file:
+    name: logs/chat-app.log # Log to a file
+
+# Springdoc OpenAPI (Swagger UI) Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true # Show request execution time
+    doc-expansion: none # None, list, full
+    filter: true # Enable filtering of endpoints
+    deep-linking: true # Enable deep linking to specific tags
+    default-models-expand-depth: 0 # Collapse schemas by default
+
+```

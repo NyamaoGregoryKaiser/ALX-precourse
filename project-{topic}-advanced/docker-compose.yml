@@ -2,55 +2,75 @@
 version: '3.8'
 
 services:
-  visgenius-backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: visgenius-backend
+  db:
+    image: postgres:15-alpine
+    container_name: chat_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-chat_db}
+      POSTGRES_USER: ${DB_USER:-user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck: # Ensure database is ready before backend starts
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-user} -d ${DB_NAME:-chat_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chat_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-} # Enable persistence, set password
+
+  backend:
+    build: ./chat-app-backend
+    container_name: chat_backend
     ports:
       - "8080:8080"
-    volumes:
-      # Persist the SQLite database file outside the container
-      - ./data/visgenius.db:/app/visgenius.db
-      # Optionally, bind-mount the data directory for easy CSV access/modification
-      - ./data/csv:/app/data/csv
     environment:
-      # Load variables from .env file
-      - APP_PORT=${APP_PORT:-8080}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - DATABASE_PATH=/app/visgenius.db
-      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_that_should_be_long_and_random_but_unique_to_this_env}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - DATA_CACHE_TTL_MINUTES=${DATA_CACHE_TTL_MINUTES:-30}
-      - CHART_CACHE_TTL_MINUTES=${CHART_CACHE_TTL_MINUTES:-10}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
-      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
-    # For a production environment, add restart policy and resource limits
-    # restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: '1'
-    #       memory: 512M
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-chat_db}
+      DB_USER: ${DB_USER:-user}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Must be at least 32 chars Base64 encoded
+    depends_on:
+      db:
+        condition: service_healthy # Wait for DB to be healthy
+      redis:
+        condition: service_started
+    networks:
+      - chat-network
 
-  # Optional: Nginx reverse proxy for production deployment, serving on port 80/443
-  # nginx:
-  #   image: nginx:stable-alpine
-  #   container_name: visgenius-nginx
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./nginx/conf.d:/etc/nginx/conf.d:ro
-  #     - ./certbot/www:/var/www/certbot:ro # For Let's Encrypt
-  #     - ./certbot/conf:/etc/nginx/ssl:ro # For SSL certs
-  #   depends_on:
-  #     - visgenius-backend
-  #   restart: always
+  frontend:
+    build: ./chat-app-frontend
+    container_name: chat_frontend
+    ports:
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx)
+    environment:
+      # These variables are typically baked into the React build process,
+      # but are listed here for clarity if using runtime environment injection
+      REACT_APP_API_BASE_URL: http://localhost:8080/api/v1 # This might need to be 'http://backend:8080/api/v1' for internal docker communication
+      REACT_APP_WEBSOCKET_URL: ws://localhost:8080/websocket # And 'ws://backend:8080/websocket'
+    depends_on:
+      - backend
+    networks:
+      - chat-network
 
-# Define volumes if needed
+networks:
+  chat-network:
+    driver: bridge
+
 volumes:
-  visgenius-data:
+  db_data:
+  redis_data:
 ```
