@@ -1,66 +1,113 @@
+```yaml
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   db:
-    image: postgres:13
-    container_name: dataviz_db
-    restart: always
+    image: postgres:15-alpine
+    container_name: chat_db
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: datavizdb
+      POSTGRES_DB: chat_db
+      POSTGRES_USER: ${DB_USER:-user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     ports:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d datavizdb"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: chat_redis
+    restart: unless-stopped
+    # If you need a password for Redis
+    # command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend Service
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dataviz_backend
-    restart: always
-    ports:
-      - "8080:8080"
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    container_name: chat_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
-      # Load from .env file directly if docker-compose version supports it and file is present
-      # Otherwise, explicitly define or use environment variables
-      DATABASE_URL: "postgresql://user:password@db:5432/datavizdb"
-      HTTP_ADDRESS: "0.0.0.0"
-      HTTP_PORT: "8080"
-      JWT_SECRET: "${JWT_SECRET}" # Uses environment variable from host or .env
-      LOG_LEVEL: "${LOG_LEVEL:-INFO}" # Default to INFO if not set
+      # Override DB_URL and REDIS_HOST to use service names within Docker network
+      DATABASE_URL: postgresql://${DB_USER:-user}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-chat_db}?schema=public
+      REDIS_HOST: redis
+      # CLIENT_ORIGIN needs to point to the frontend accessible URL
+      CLIENT_ORIGIN: http://localhost:3000 # If frontend is running locally
+      # CLIENT_ORIGIN: http://localhost:80 # If frontend is running in Docker via Nginx
+    ports:
+      - "5000:5000"
     volumes:
-      # Mount data_uploads for persistence
-      - ./data_uploads:/app/data_uploads
-      # Mount migration scripts for DBManager::initializeSchema
-      - ./database/migrations:/app/database/migrations
+      - ./backend/src:/app/src:ro # Read-only mount for source code
+      - ./backend/prisma:/app/prisma:ro # Read-only mount for prisma folder
     depends_on:
       db:
         condition: service_healthy
-    # Optional: If you want to seed data on startup (for dev)
-    # entrypoint: /bin/bash -c "sleep 5 && psql -h db -U user -d datavizdb -f /app/database/seed_data.sql && ./dataviztool"
+      redis:
+        condition: service_healthy
+    # Commands to run migrations and seed data
+    # This should only run ONCE during initial setup or carefully managed in production
+    # For development, `npx prisma migrate dev` in backend container is more interactive
+    # You might want a dedicated command for `seed` in production for idempotent seeding.
+    # For a simple dev setup, this works.
+    command: sh -c "npx prisma migrate deploy && node prisma/seed.js && npm start"
+    # Alternatively for development, just start:
+    # command: npm start
 
 
-  # frontend: (Conceptual - if you had a React/Vue app)
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   container_name: dataviz_frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     REACT_APP_API_BASE_URL: "http://localhost:8080/api/v1" # Or "http://backend:8080/api/v1" if frontend is in same docker network
-  #   depends_on:
-  #     - backend
+  # Frontend Service (React + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: chat_frontend
+    restart: unless-stopped
+    # Frontend build needs to know backend and socket.io URLs.
+    # These are typically baked into the build or served by Nginx rewrite/proxy.
+    # For local dev, React dev server connects directly to backend.
+    # For Docker, Nginx serves static files, and JS code connects to backend service name.
+    environment:
+      # These are only used if the build process consumes them, e.g., for `npm run build`
+      # but if Nginx serves, frontend connects directly to backend URL
+      REACT_APP_API_BASE_URL: http://localhost:5000/api # Points to backend container from host perspective
+      REACT_APP_SOCKET_IO_URL: http://localhost:5000   # Points to backend container from host perspective
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started # Ensure backend is running before frontend starts
+    # No volume mounts needed for production-like static serving, as build is copied in Dockerfile.
+    # If you want hot-reloading for frontend dev:
+    # volumes:
+    #   - ./frontend:/app
+    #   - /app/node_modules
+    # command: npm start
+
 
 volumes:
   db_data:
-    driver: local
-  data_uploads:
-    driver: local # To persist uploaded CSVs
+  redis_data:
+```
+
+### CI/CD Pipeline Configuration (GitHub Actions)

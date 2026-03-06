@@ -1,36 +1,35 @@
 ```javascript
-const jwt = require('jsonwebtoken');
-const config = require('../config');
+// This file is now deprecated. JWT token generation/verification is handled directly in tokenService.js
+// This file might be kept for simple utility functions or if more JWT specific helper logic is needed.
+// For now, its functionality is absorbed by tokenService.
 
-/**
- * Generates a JWT token.
- * @param {string} userId - The user ID to embed in the token.
- * @param {string[]} roles - The user's roles to embed in the token.
- * @returns {string} The signed JWT token.
- */
-const generateToken = (userId, roles) => {
-  const payload = {
-    sub: userId,
-    roles: roles,
-  };
-  return jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiration });
-};
+import jwt from 'jsonwebtoken';
+import config from '../config/index.js';
 
 /**
  * Verifies a JWT token.
- * @param {string} token - The JWT token to verify.
- * @returns {object|null} The decoded payload if valid, null otherwise.
+ * @param {string} token - The JWT token.
+ * @returns {object} The decoded payload.
+ * @throws {Error} If token is invalid or expired.
  */
-const verifyToken = (token) => {
+export const verifyJwtToken = (token) => {
   try {
     return jwt.verify(token, config.jwt.secret);
   } catch (error) {
-    return null;
+    throw new Error('Invalid or expired token.');
   }
 };
 
-module.exports = {
-  generateToken,
-  verifyToken,
+/**
+ * Decodes a JWT token without verification.
+ * @param {string} token - The JWT token.
+ * @returns {object|null} The decoded payload or null.
+ */
+export const decodeJwtToken = (token) => {
+  try {
+    return jwt.decode(token);
+  } catch (error) {
+    return null;
+  }
 };
 ```

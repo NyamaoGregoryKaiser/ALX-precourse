@@ -1,5 +1,5 @@
 ```yaml
-name: CI/CD Pipeline for SecureTask
+name: Chat App CI/CD
 
 on:
   push:
@@ -10,131 +10,189 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
-  lint-test-backend:
+  # ==============================
+  # Backend CI Pipeline
+  # ==============================
+  backend-ci:
+    name: Backend CI
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './backend/package-lock.json'
 
-      - name: Install backend dependencies
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint backend code
+        run: npm run lint
+
+      - name: Setup test database (PostgreSQL)
         run: |
-          cd backend
-          npm install
+          docker run --name test-db -e POSTGRES_DB=test_db -e POSTGRES_USER=testuser -e POSTGRES_PASSWORD=testpass -p 5433:5432 -d postgres:15-alpine
+          docker run --name test-redis -p 6380:6379 -d redis:7-alpine
+          # Wait for services to be ready
+          sleep 10 # Give services some time to start
 
-      - name: Run backend lint
+      - name: Run Prisma migrations on test DB
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/test_db?schema=public
         run: |
-          cd backend
-          npm run lint
-
-      - name: Set up PostgreSQL for testing
-        uses: ankane/setup-postgres@v1
-        with:
-          postgres-version: 15
-          database: securetask_test_db
-          username: testuser
-          password: testpassword
-
-      - name: Set up Backend .env for testing
-        run: |
-          echo "NODE_ENV=test" > backend/.env
-          echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5432/securetask_test_db?schema=public" >> backend/.env
-          echo "JWT_SECRET=test_jwt_secret" >> backend/.env
-          echo "JWT_EXPIRATION=1h" >> backend/.env
-          echo "ADMIN_EMAIL=admin@test.com" >> backend/.env
-          echo "ADMIN_PASSWORD=adminpassword" >> backend/.env
-          echo "FRONTEND_URL=http://localhost:3000" >> backend/.env
-          echo "CACHE_REDIS_URL=redis://localhost:6379" >> backend/.env
-
-      - name: Install Prisma CLI
-        run: |
-          cd backend
-          npm install prisma
-
-      - name: Generate Prisma client
-        run: |
-          cd backend
+          npx prisma migrate deploy
           npx prisma generate
 
-      - name: Run backend migrations
-        run: |
-          cd backend
-          npx prisma migrate dev --name test_migration --skip-seed --skip-generate # Use dev for local testing
-
       - name: Run backend tests
-        run: |
-          cd backend
-          npm test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/test_db?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: 6380
+          JWT_SECRET: testsecret
+          JWT_ACCESS_EXPIRATION_MINUTES: 1
+          JWT_REFRESH_EXPIRATION_DAYS: 1
+        run: npm test
 
-  lint-test-frontend:
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: ./backend/coverage
+
+  # ==============================
+  # Frontend CI Pipeline
+  # ==============================
+  frontend-ci:
+    name: Frontend CI
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
 
-      - name: Install frontend dependencies
-        run: |
-          cd frontend
-          npm install
+      - name: Install dependencies
+        run: npm install
 
-      - name: Run frontend lint
-        run: |
-          cd frontend
-          npm run lint
+      - name: Lint frontend code
+        run: npm run lint
 
       - name: Run frontend tests
-        run: |
-          cd frontend
-          npm test -- --coverage --watchAll=false # Run tests once with coverage
+        # Create dummy env variables for React build if needed, though usually not for tests
+        env:
+          CI: true # Required for Create React App tests in CI environments
+          REACT_APP_API_BASE_URL: http://localhost:5000/api
+          REACT_APP_SOCKET_IO_URL: http://localhost:5000
+        run: npm test
 
-  build-and-deploy:
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+      - name: Build frontend for production check
+        env:
+          REACT_APP_API_BASE_URL: /api # Assume Nginx proxies /api to backend
+          REACT_APP_SOCKET_IO_URL: /   # Assume Nginx proxies / to frontend/socket.io
+        run: npm run build
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: ./frontend/coverage
+
+  # ==============================
+  # CD Pipeline (Deployment) - Example for a simple Docker-based deployment
+  # ==============================
+  deploy:
+    name: Deploy to Server
     runs-on: ubuntu-latest
-    needs: [lint-test-backend, lint-test-frontend] # Ensure tests pass before deployment
+    needs: [backend-ci, frontend-ci] # Ensure CI passes before deployment
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Build Docker images
-        run: docker-compose build
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # Example: Push to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry)
-      # - name: Login to Docker Hub
-      #   uses: docker/login-action@v2
-      #   with:
-      #     username: ${{ secrets.DOCKER_USERNAME }}
-      #     password: ${{ secrets.DOCKER_PASSWORD }}
-      # - name: Push images
-      #   run: |
-      #     docker tag securetask_backend your_docker_username/securetask_backend:latest
-      #     docker push your_docker_username/securetask_backend:latest
-      #     docker tag securetask_frontend your_docker_username/securetask_frontend:latest
-      #     docker push your_docker_username/securetask_frontend:latest
+      - name: Log in to Docker Hub (or other registry)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Example: Deploy to a server via SSH
-      # - name: Deploy to EC2 via SSH
-      #   uses: appleboy/ssh-action@master
-      #   with:
-      #     host: ${{ secrets.SSH_HOST }}
-      #     username: ${{ secrets.SSH_USERNAME }}
-      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
-      #     script: |
-      #       cd /path/to/your/app
-      #       git pull origin main
-      #       docker-compose down
-      #       docker-compose pull # Pull new images if pushed to registry
-      #       docker-compose up -d --build # Rebuild if not pulling
-      #       docker system prune -f # Clean up old images
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.backend
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/chat-app-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.frontend
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/chat-app-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            REACT_APP_API_BASE_URL=/api # For production, Nginx will handle routing
+            REACT_APP_SOCKET_IO_URL=/    # For production, Nginx will handle routing
+
+      - name: Deploy to remote server (example using SSH and Docker Compose)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/your/app/on/server # Change to your deployment directory
+            # Pull latest code or just use the images from Docker Hub
+            # For simplicity, we assume docker-compose.yml is already on server and just needs updating
+            docker pull ${{ secrets.DOCKER_USERNAME }}/chat-app-backend:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/chat-app-frontend:latest
+            # Update .env for production if it's not managed otherwise
+            # echo "DATABASE_URL='...' \n REDIS_HOST='...' \n JWT_SECRET='...'" > .env
+            docker-compose down # Stop existing containers
+            docker-compose up -d --build --force-recreate # Start new containers, recreate from new images
+
+            # Run migrations for production if not handled by entrypoint in Dockerfile
+            # docker-compose exec backend npx prisma migrate deploy
+
+# Environment Variables and Secrets for CI/CD:
+# DOCKER_USERNAME: Your Docker Hub username
+# DOCKER_PASSWORD: Your Docker Hub access token
+# SSH_HOST: IP address or hostname of your deployment server
+# SSH_USERNAME: SSH user for your deployment server
+# SSH_PRIVATE_KEY: SSH private key to authenticate to your server
 ```
+
+---
+
+## 4. Testing & Quality
+
+### Backend Tests (Jest, Supertest)
+
+**Unit Tests (aim for 80%+ coverage)**

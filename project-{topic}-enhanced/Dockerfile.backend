@@ -1,0 +1,48 @@
+```dockerfile
+# Stage 1: Build the Prisma client (if not already done) and install dependencies
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+# Install Prisma CLI globally or locally depending on your project's needs.
+# Here we'll install it locally as a dev dependency.
+# This ensures it's available for `prisma generate` command.
+RUN npm install
+
+# Copy Prisma schema and seed files
+COPY prisma ./prisma/
+COPY .env.example ./.env
+
+# Generate Prisma client for the target database.
+# This should ideally be done AFTER .env is available with DATABASE_URL
+# In a multi-stage build, .env will be available during runtime,
+# so we generate the client here based on the schema and rely on runtime .env for connection.
+# The `postinstall` script in package.json will run this.
+RUN npm run prisma:generate
+
+# Stage 2: Create the production-ready image
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy production dependencies and built client from builder stage
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+COPY src ./src
+COPY package.json ./
+COPY .env.example ./.env.example # Copy .env.example, .env will be mounted/provided by orchestrator
+
+# Expose the port the app runs on
+EXPOSE 5000
+
+# Run Prisma migrations and seed the database (only once during setup or deployment)
+# For production, migrations are usually run by a separate job or entrypoint script.
+# For Docker Compose dev setup, we can put it here or in a separate command in docker-compose.
+# Best practice is to have an entrypoint script that checks if migrations need to be run.
+# ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# CMD ["npm", "start"]
+
+# Keep the entrypoint simple for now, relying on docker-compose for migrations/seed.
+CMD ["node", "src/server.js"]
+```

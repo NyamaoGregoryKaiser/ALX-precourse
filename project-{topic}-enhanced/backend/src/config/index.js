@@ -1,5 +1,13 @@
 ```javascript
-require('dotenv').config();
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const config = {
   env: process.env.NODE_ENV || 'development',
@@ -7,26 +15,25 @@ const config = {
   databaseUrl: process.env.DATABASE_URL,
   jwt: {
     secret: process.env.JWT_SECRET,
-    expiration: process.env.JWT_EXPIRATION,
+    accessExpirationMinutes: parseInt(process.env.JWT_ACCESS_EXPIRATION_MINUTES, 10),
+    refreshExpirationDays: parseInt(process.env.JWT_REFRESH_EXPIRATION_DAYS, 10),
   },
-  admin: {
-    email: process.env.ADMIN_EMAIL,
-    password: process.env.ADMIN_PASSWORD,
+  redis: {
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT, 10),
+    password: process.env.REDIS_PASSWORD || null,
   },
-  frontendUrl: process.env.FRONTEND_URL,
-  redisUrl: process.env.CACHE_REDIS_URL,
+  clientOrigin: process.env.CLIENT_ORIGIN,
+  logLevel: process.env.LOG_LEVEL || 'info',
 };
 
 // Validate essential configurations
 if (!config.jwt.secret) {
-  throw new Error('JWT_SECRET not defined in environment variables');
+  throw new Error('JWT_SECRET environment variable is not defined.');
 }
 if (!config.databaseUrl) {
-  throw new Error('DATABASE_URL not defined in environment variables');
-}
-if (config.env === 'production' && (!config.admin.email || !config.admin.password)) {
-  console.warn('Admin credentials not set for production. Please configure ADMIN_EMAIL and ADMIN_PASSWORD.');
+  throw new Error('DATABASE_URL environment variable is not defined.');
 }
 
-module.exports = config;
+export default config;
 ```

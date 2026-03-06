@@ -1,204 +1,142 @@
 ```javascript
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
-const config = require('../src/config');
-const logger = require('../src/utils/logger');
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
-const seedDatabase = async () => {
-  try {
-    // Check if admin user already exists
-    const existingAdmin = await prisma.user.findUnique({
-      where: { email: config.admin.email },
-    });
+async function main() {
+  console.log('Start seeding...');
 
-    if (existingAdmin) {
-      logger.info('Admin user already exists. Skipping seed data for users.');
-      // Update admin password if it has changed
-      if (!await bcrypt.compare(config.admin.password, existingAdmin.password)) {
-        const hashedPassword = await bcrypt.hash(config.admin.password, 12);
-        await prisma.user.update({
-          where: { id: existingAdmin.id },
-          data: { password: hashedPassword },
-        });
-        logger.info('Admin user password updated.');
-      }
-      return; // Exit if admin exists, assuming other data might be dependent
-    }
+  // Create initial users
+  const password = 'password123';
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-    logger.info('Seeding database with initial users, projects, and tasks...');
+  const user1 = await prisma.user.upsert({
+    where: { email: 'alice@example.com' },
+    update: {},
+    create: {
+      id: uuidv4(),
+      username: 'alice',
+      email: 'alice@example.com',
+      passwordHash: hashedPassword,
+    },
+  });
 
-    // 1. Create Users
-    const hashedPasswordAdmin = await bcrypt.hash(config.admin.password, 12);
-    const hashedPasswordManager = await bcrypt.hash('Manager@123', 12);
-    const hashedPasswordMember = await bcrypt.hash('Member@123', 12);
+  const user2 = await prisma.user.upsert({
+    where: { email: 'bob@example.com' },
+    update: {},
+    create: {
+      id: uuidv4(),
+      username: 'bob',
+      email: 'bob@example.com',
+      passwordHash: hashedPassword,
+    },
+  });
 
-    const admin = await prisma.user.create({
-      data: {
-        name: 'Admin User',
-        email: config.admin.email,
-        password: hashedPasswordAdmin,
-        role: 'ADMIN',
-      },
-    });
+  const user3 = await prisma.user.upsert({
+    where: { email: 'charlie@example.com' },
+    update: {},
+    create: {
+      id: uuidv4(),
+      username: 'charlie',
+      email: 'charlie@example.com',
+      passwordHash: hashedPassword,
+    },
+  });
 
-    const manager1 = await prisma.user.create({
-      data: {
-        name: 'Manager One',
-        email: 'manager1@securetask.com',
-        password: hashedPasswordManager,
-        role: 'MANAGER',
-      },
-    });
+  console.log('Users created:', { user1, user2, user3 });
 
-    const manager2 = await prisma.user.create({
-      data: {
-        name: 'Manager Two',
-        email: 'manager2@securetask.com',
-        password: hashedPasswordManager,
-        role: 'MANAGER',
-      },
-    });
+  // Create initial channels
+  const generalChannel = await prisma.channel.upsert({
+    where: { name: 'general' },
+    update: {},
+    create: {
+      id: uuidv4(),
+      name: 'general',
+      description: 'General discussions',
+      ownerId: user1.id,
+      type: 'PUBLIC',
+    },
+  });
 
-    const member1 = await prisma.user.create({
-      data: {
-        name: 'Member One',
-        email: 'member1@securetask.com',
-        password: hashedPasswordMember,
-        role: 'MEMBER',
-      },
-    });
+  const randomChannel = await prisma.channel.upsert({
+    where: { name: 'random' },
+    update: {},
+    create: {
+      id: uuidv4(),
+      name: 'random',
+      description: 'Random thoughts and fun stuff',
+      ownerId: user2.id,
+      type: 'PUBLIC',
+    },
+  });
 
-    const member2 = await prisma.user.create({
-      data: {
-        name: 'Member Two',
-        email: 'member2@securetask.com',
-        password: hashedPasswordMember,
-        role: 'MEMBER',
-      },
-    });
+  console.log('Channels created:', { generalChannel, randomChannel });
 
-    logger.info('Users created.');
+  // Add users to channels (general channel for all, random for user2, user3)
+  await prisma.channelUser.upsert({
+    where: { channelId_userId: { channelId: generalChannel.id, userId: user1.id } },
+    update: {},
+    create: { channelId: generalChannel.id, userId: user1.id },
+  });
+  await prisma.channelUser.upsert({
+    where: { channelId_userId: { channelId: generalChannel.id, userId: user2.id } },
+    update: {},
+    create: { channelId: generalChannel.id, userId: user2.id },
+  });
+  await prisma.channelUser.upsert({
+    where: { channelId_userId: { channelId: generalChannel.id, userId: user3.id } },
+    update: {},
+    create: { channelId: generalChannel.id, userId: user3.id },
+  });
+  await prisma.channelUser.upsert({
+    where: { channelId_userId: { channelId: randomChannel.id, userId: user2.id } },
+    update: {},
+    create: { channelId: randomChannel.id, userId: user2.id },
+  });
+  await prisma.channelUser.upsert({
+    where: { channelId_userId: { channelId: randomChannel.id, userId: user3.id } },
+    update: {},
+    create: { channelId: randomChannel.id, userId: user3.id },
+  });
 
-    // 2. Create Projects
-    const project1 = await prisma.project.create({
-      data: {
-        name: 'SecureTask Backend Development',
-        description: 'Developing the secure backend API for SecureTask application.',
-        managerId: manager1.id,
-        createdById: admin.id,
-        status: 'IN_PROGRESS',
-        members: {
-          connect: [{ id: member1.id }, { id: member2.id }],
-        },
-      },
-    });
+  console.log('Users added to channels.');
 
-    const project2 = await prisma.project.create({
-      data: {
-        name: 'SecureTask Frontend UI/UX',
-        description: 'Building the user interface and experience for SecureTask.',
-        managerId: manager2.id,
-        createdById: admin.id,
-        status: 'PENDING',
-        members: {
-          connect: [{ id: member1.id }],
-        },
-      },
-    });
+  // Create some messages
+  await prisma.message.createMany({
+    data: [
+      { id: uuidv4(), content: 'Hi everyone, welcome to the general chat!', userId: user1.id, channelId: generalChannel.id },
+      { id: uuidv4(), content: 'Hello Alice! Glad to be here.', userId: user2.id, channelId: generalChannel.id },
+      { id: uuidv4(), content: 'Hey guys! This chat app is awesome.', userId: user3.id, channelId: generalChannel.id },
+      { id: uuidv4(), content: 'Any plans for the weekend?', userId: user2.id, channelId: randomChannel.id },
+      { id: uuidv4(), content: 'Just chilling, maybe some coding.', userId: user3.id, channelId: randomChannel.id },
+    ],
+  });
 
-    logger.info('Projects created.');
-
-    // 3. Create Tasks for Project 1
-    const task1 = await prisma.task.create({
-      data: {
-        title: 'Implement User Auth with JWT',
-        description: 'Set up JWT token generation and verification for user authentication.',
-        projectId: project1.id,
-        assignedToId: member1.id,
-        createdById: manager1.id,
-        status: 'IN_PROGRESS',
-        priority: 'HIGH',
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 7)), // 7 days from now
-      },
-    });
-
-    await prisma.task.create({
-      data: {
-        title: 'Develop Role-Based Access Control',
-        description: 'Create middleware for role-based authorization for API endpoints.',
-        projectId: project1.id,
-        assignedToId: member2.id,
-        createdById: manager1.id,
-        status: 'PENDING',
-        priority: 'HIGH',
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 10)),
-      },
-    });
-
-    const task3 = await prisma.task.create({
-      data: {
-        title: 'Database Schema Design',
-        description: 'Define Prisma schema for User, Project, Task, and Comment models.',
-        projectId: project1.id,
-        assignedToId: member1.id,
-        createdById: manager1.id,
-        status: 'COMPLETED',
-        priority: 'MEDIUM',
-        dueDate: new Date(new Date().setDate(new Date().getDate() - 3)), // 3 days ago
-      },
-    });
-    logger.info('Tasks for Project 1 created.');
-
-    // 4. Create Comments for Task 1
-    await prisma.comment.create({
-      data: {
-        content: 'Started working on this. Looking into `bcrypt` for password hashing.',
-        taskId: task1.id,
-        authorId: member1.id,
-      },
-    });
-
-    await prisma.comment.create({
-      data: {
-        content: 'Make sure to consider refresh tokens for production readiness.',
-        taskId: task1.id,
-        authorId: manager1.id,
-      },
-    });
-    logger.info('Comments created for Task 1.');
-
-
-    // 5. Create Tasks for Project 2
-    await prisma.task.create({
-      data: {
-        title: 'Design Login/Registration Forms',
-        description: 'Create responsive and secure forms for user authentication.',
-        projectId: project2.id,
-        assignedToId: member1.id,
-        createdById: manager2.id,
-        status: 'PENDING',
-        priority: 'MEDIUM',
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 14)),
-      },
-    });
-    logger.info('Tasks for Project 2 created.');
-
-
-    logger.info('Database seeding complete!');
-  } catch (error) {
-    logger.error('Error seeding database:', error);
-    process.exit(1);
-  } finally {
-    await prisma.$disconnect();
-  }
-};
-
-// Only run seed if executed directly
-if (require.main === module) {
-  seedDatabase();
+  console.log('Messages created.');
+  console.log('Seeding finished.');
 }
 
-module.exports = seedDatabase; // Export for server.js to use
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
 ```
+
+### Query Optimization
+*   **Indexes:** The `schema.prisma` file includes:
+    *   `@@unique` constraints on `User.username`, `User.email`, `Channel.name` for efficient lookups.
+    *   `@@index([channelId, createdAt])` on `Message` model to optimize fetching messages for a specific channel ordered by time, which is critical for chat history.
+*   **Prisma Client:** Prisma generates optimized SQL queries based on the operations, handling connection pooling and query preparation.
+*   **Caching (Redis):** Implemented in `backend/src/utils/cache.js` and utilized in `channelService.js` (`CHANNEL_USERS_CACHE_PREFIX`) and `messageService.js` (`CHANNEL_MESSAGES_CACHE_PREFIX`) to reduce database load for frequently accessed data like channel members and recent messages.
+
+---
+
+## 3. Configuration & Setup
+
+### Docker Setup
