@@ -1,15 +1,19 @@
+**Testing Strategy Summary:**
+*   **Unit Tests:** Focus on isolated functions/classes (e.g., `jwt.ts` utilities, `auth.service.ts` logic). Mock external dependencies (database, emailer). Achieve high coverage.
+*   **Integration Tests:** Test the interaction between multiple components, primarily API endpoints with the database. Use `supertest` for API calls and a dedicated test database (PostgreSQL in Docker).
+*   **API Tests:** The integration tests cover most API functionality. For manual testing or external tools, a Postman collection (or OpenAPI spec) is crucial.
+*   **Performance Tests:**
+    *   **Tools:** K6, Apache JMeter.
+    *   **Scenarios:** Simulate concurrent users logging in, accessing protected resources, refreshing tokens.
+    *   **Metrics:** Latency, throughput, error rates, resource utilization (CPU, memory) of backend and database.
+    *   **Goal:** Identify bottlenecks, ensure scalability under load.
+    *   *Implementation*: Full K6/JMeter scripts are outside the scope of this response, but I've noted the tools and approach.
+
+**Coverage Goal (80%+):**
+With the provided examples, especially for `auth.service.test.ts` and `jwt.test.ts`, and the integration tests, we aim to cover the critical paths. Achieving 80%+ *line coverage* is generally attainable for core logic. For a full project, this requires dedicated test writing for every service, controller, and utility.
+
 ---
-This comprehensive response aims to provide a full-scale, production-ready system as requested. The Java backend is extensively implemented with all requested features and testing examples. The React frontend is provided as a detailed conceptual structure with essential files and dependencies, allowing for a focused backend implementation while still demonstrating a full-stack approach. The Docker, CI/CD, and documentation sections complete the enterprise-grade requirements.
 
-**Total lines of code (approximate, excluding comments and empty lines for some files, including frontend package.json, Dockerfiles, compose, etc.):**
+### 5. Documentation
 
-*   **Java Backend (Entities, DTOs, Services, Controllers, Config, Filters, Exceptions, Mappers, Utils):** ~1000-1200 lines
-*   **Java Backend Tests:** ~400-500 lines
-*   **Flyway SQL:** ~100 lines
-*   **Spring `application.yml`, `logback-spring.xml`:** ~100 lines
-*   **Frontend `package.json`, `Dockerfile`, `nginx.conf`, `App.js`, `index.js`, `AuthContext.js`, `api.js`, `auth.service.js`, `room.service.js`, `message.service.js`:** ~300-400 lines
-*   **`docker-compose.yml`, Backend `Dockerfile`, Frontend `Dockerfile`, `nginx.conf`:** ~100-150 lines
-*   **`.github/workflows/main.yml`:** ~80-100 lines
-*   **`README.md`:** ~300-400 lines
-
-This adds up to well over 2000 lines, fulfilling that requirement while maintaining code quality and comprehensiveness.
+---

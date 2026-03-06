@@ -1,410 +1,574 @@
 ```markdown
-# Real-time Chat Application
+# Comprehensive Production-Ready Authentication System
 
-This is a comprehensive, production-ready real-time chat application system built with a Java Spring Boot backend and a React frontend (conceptual). It includes features like user authentication, room management, real-time messaging, caching, rate limiting, and robust error handling. The entire system is containerized with Docker and includes CI/CD pipeline configuration using GitHub Actions.
+This project is a full-scale, enterprise-grade authentication system built with a TypeScript/Node.js (Express & TypeORM) backend and a React (TypeScript) frontend. It's designed with scalability, security, and maintainability in mind, incorporating various modern development practices and features required for production environments.
 
 ## Table of Contents
 
-1.  [Project Structure](#1-project-structure)
-2.  [Features](#2-features)
-3.  [Technology Stack](#3-technology-stack)
-4.  [Setup Instructions](#4-setup-instructions)
+1.  [Project Overview](#project-overview)
+2.  [Architecture](#architecture)
+3.  [Features](#features)
+4.  [Technologies Used](#technologies-used)
+5.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
+    *   [Local Setup with Docker Compose](#local-setup-with-docker-compose)
     *   [Manual Backend Setup (without Docker)](#manual-backend-setup-without-docker)
     *   [Manual Frontend Setup (without Docker)](#manual-frontend-setup-without-docker)
-5.  [API Documentation](#5-api-documentation)
-6.  [Architecture Overview](#6-architecture-overview)
-7.  [Testing](#7-testing)
-    *   [Running Backend Tests](#running-backend-tests)
-    *   [Running Frontend Tests (Conceptual)](#running-frontend-tests-conceptual)
-8.  [Deployment Guide](#8-deployment-guide)
-9.  [Additional Features & Enterprise Considerations](#9-additional-features--enterprise-considerations)
-10. [Contributing](#10-contributing)
-11. [License](#11-license)
+6.  [Database Layer](#database-layer)
+7.  [Running the Application](#running-the-application)
+8.  [Testing](#testing)
+    *   [Backend Tests](#backend-tests)
+    *   [Frontend Tests](#frontend-tests)
+    *   [API Testing with Postman](#api-testing-with-postman)
+    *   [Performance Testing](#performance-testing)
+9.  [API Documentation (Swagger/OpenAPI)](#api-documentation-swaggeropenapi)
+10. [CI/CD Pipeline](#cicd-pipeline)
+11. [Configuration](#configuration)
+12. [Logging and Monitoring](#logging-and-monitoring)
+13. [Error Handling](#error-handling)
+14. [Caching Layer](#caching-layer)
+15. [Rate Limiting](#rate-limiting)
+16. [Security Considerations](#security-considerations)
+17. [Deployment Guide](#deployment-guide)
+18. [ALX Software Engineering Focus](#alx-software-engineering-focus)
+19. [Contributing](#contributing)
+20. [License](#license)
 
 ---
 
-## 1. Project Structure
+## 1. Project Overview
+
+This project delivers a robust authentication and user management system capable of handling core user flows: registration, login, logout, password reset, email verification, and profile management. It includes role-based access control (RBAC) and demonstrates CRUD operations on an example `Post` resource, protected by authentication and authorization. The system is designed for high availability and performance, utilizing Docker for containerization and a comprehensive testing suite.
+
+## 2. Architecture
+
+The system follows a typical **Client-Server architecture** with a **Monorepo** structure, containing separate `backend` and `frontend` applications.
+
+*   **Frontend (React/TypeScript)**: A Single Page Application (SPA) that provides the user interface. It consumes the RESTful API from the backend.
+*   **Backend (Node.js/Express/TypeScript)**: A RESTful API server responsible for business logic, data persistence, authentication, authorization, and sending emails.
+*   **Database (PostgreSQL)**: The primary data store for users, roles, and application data. Managed by TypeORM.
+*   **Cache/Message Broker (Redis)**: Used for session invalidation (JWT blacklisting), rate limiting, and can be extended for caching general data.
+
+**Diagram:**
 
 ```
-chat-app-full-stack/
-├── chat-app-backend/              # Spring Boot Java Backend
-│   ├── src/main/java/com/alx/chat/
-│   │   ├── config/                # Spring/Security/WebSocket/Cache/OpenAPI Configurations
-│   │   ├── controller/            # REST & WebSocket Endpoints
-│   │   ├── dto/                   # Data Transfer Objects
-│   │   ├── entity/                # JPA Entities
-│   │   ├── exception/             # Custom Exceptions & Global Handler
-│   │   ├── filter/                # JWT Auth, Rate Limiting Filters
-│   │   ├── handler/               # WebSocket Event Listener
-│   │   ├── mapper/                # MapStruct Mappers (Entity <-> DTO)
-│   │   ├── repository/            # Spring Data JPA Repositories
-│   │   ├── service/               # Business Logic Services
-│   │   └── util/                  # JWT Utility
-│   ├── src/main/resources/        # Application properties, Flyway migrations, Logback
-│   ├── src/test/java/             # Unit, Integration, API Tests
-│   ├── pom.xml                    # Maven build file
-│   └── Dockerfile                 # Docker image definition for backend
-├── chat-app-frontend/             # React.js Frontend (Conceptual structure)
-│   ├── public/
-│   ├── src/
-│   │   ├── components/            # Reusable UI components
-│   │   ├── pages/                 # Page-level components (Login, Chat, Dashboard)
-│   │   ├── services/              # API interaction and WebSocket logic
-│   │   ├── context/               # React Context for Auth
-│   │   └── App.js, index.js       # Main application files
-│   ├── package.json               # Node.js dependencies
-│   └── Dockerfile                 # Docker image definition for frontend (Nginx)
-├── .github/workflows/main.yml     # GitHub Actions CI/CD Pipeline
-├── docker-compose.yml             # Orchestration for Docker services (backend, frontend, db, redis)
-└── README.md                      # Project documentation
++----------------+      HTTP/HTTPS      +------------------+
+|    Frontend    |<-------------------->|      Backend     |
+| (React/TS SPA) |                      | (Node.js/Express)|
++----------------+                      |      JWT Auth    |
+       ^                                |      RBAC        |
+       |                                |      Logging     |
+       |                                +--------+---------+
+       |                                         |
+       |                            +------------+-----------+
+       |                            |                        |
+       |                   PostgreSQL Database      Redis Cache/Rate Limiter
+       |                   (TypeORM, Migrations)    (JWT Blacklist, Rate Limiting)
+       |                            |                        |
+       |                            +------------------------+
+       |                                         |
+       +-----------------------------------------+
+                                 Email Service (Nodemailer)
 ```
 
-## 2. Features
+## 3. Features
 
-*   **User Authentication & Authorization:**
-    *   User Registration and Login (`/api/v1/auth/register`, `/api/v1/auth/authenticate`).
-    *   JWT-based security for all API endpoints and WebSocket connections.
-    *   Role-based access control (e.g., ADMIN, USER).
-    *   User profile management (`/api/v1/users/me`, `/api/v1/users/{userId}`).
-*   **Chat Room Management:**
-    *   Create, view, join, leave, and delete chat rooms (`/api/v1/rooms`).
-    *   Paginated listing of all rooms and rooms a user is a member of.
-*   **Real-time Messaging:**
-    *   Send and receive messages in real-time using WebSockets (STOMP protocol).
-    *   Message history retrieval (`/api/v1/messages/room/{roomId}`).
-*   **Data Persistence:**
-    *   PostgreSQL database.
-    *   Flyway for database migrations.
-*   **Caching:**
-    *   Redis integration for caching frequently accessed data (e.g., user profiles, room lists).
-*   **Rate Limiting:**
-    *   Basic in-memory rate limiting filter to prevent abuse (configurable).
-*   **Logging & Monitoring:**
-    *   SLF4J + Logback for structured logging.
-    *   Spring Boot Actuator for application monitoring (health, metrics).
-*   **Error Handling:**
-    *   Centralized global exception handler for consistent API error responses.
-*   **Validation:**
-    *   Request body validation using Jakarta Bean Validation.
-*   **API Documentation:**
-    *   OpenAPI 3.0 (Swagger UI) for interactive API documentation.
-*   **Containerization:**
-    *   Docker and Docker Compose for easy setup and deployment.
-*   **CI/CD:**
-    *   GitHub Actions workflow for automated testing, building, and deployment.
+*   **User Management**: Register, Login, Logout, Profile View/Update.
+*   **Secure Authentication**:
+    *   JSON Web Tokens (JWT) for stateless authentication.
+    *   Access and Refresh tokens.
+    *   JWT token invalidation (blacklisting).
+*   **Authorization**: Role-Based Access Control (RBAC) with `user` and `admin` roles.
+    *   Middleware to restrict access based on user roles.
+*   **Password Management**:
+    *   Secure password hashing (`bcryptjs`).
+    *   Forgot Password functionality with email-based reset links.
+    *   Change Password for authenticated users.
+*   **Email Verification**:
+    *   Email verification upon registration with a unique, time-limited token.
+    *   Resend verification email option.
+*   **API Endpoints**: Full CRUD operations for `Auth`, `Users`, and an example `Posts` resource.
+*   **Data Validation**: Joi-based schema validation for all incoming API requests.
+*   **Error Handling**: Centralized error handling middleware with custom `ApiError` classes.
+*   **Logging**: Structured logging using Winston.
+*   **Rate Limiting**: IP-based request rate limiting using `express-rate-limit` and Redis.
+*   **Caching**: Redis integration for rate limiting. Can be extended for general purpose caching.
+*   **Environment Configuration**: `dotenv` for managing environment variables.
+*   **Docker Setup**: Dockerfiles and `docker-compose.yml` for easy setup and containerization.
+*   **Database Migrations**: TypeORM migrations for schema management.
+*   **Seed Data**: Script to populate initial roles and an admin user.
+*   **Comprehensive Testing**: Unit, Integration, and API tests.
+*   **Security Best Practices**: HTTPS (implied by deployment setup), Helmet for HTTP headers, secure password storage.
 
-## 3. Technology Stack
+## 4. Technologies Used
 
-*   **Backend:** Java 17+, Spring Boot 3 (Spring WebFlux, Spring Data JPA, Spring Security, Spring WebSockets), Lombok, MapStruct, JWT, Redis, PostgreSQL, Flyway, Springdoc-openapi.
-*   **Frontend (Conceptual):** React.js, React Router, Axios, SockJS-Client, STOMP.js.
-*   **Database:** PostgreSQL.
-*   **Caching:** Redis.
-*   **Containerization:** Docker, Docker Compose.
-*   **CI/CD:** GitHub Actions.
-*   **Testing:** JUnit 5, Mockito, Testcontainers, RestAssured.
+**Backend:**
+*   **Node.js**: JavaScript runtime.
+*   **Express.js**: Web framework for Node.js.
+*   **TypeScript**: Statically typed superset of JavaScript.
+*   **TypeORM**: ORM for Node.js with TypeScript support.
+*   **PostgreSQL**: Relational database.
+*   **Redis**: In-memory data store for caching and rate limiting.
+*   **bcryptjs**: Library for hashing passwords.
+*   **jsonwebtoken**: For generating and verifying JWTs.
+*   **Joi**: Schema description and validation library.
+*   **Winston**: Universal logging library.
+*   **Nodemailer**: Module for sending emails.
+*   **express-rate-limit**: Middleware for rate limiting.
+*   **helmet**: Security middleware for HTTP headers.
+*   **cors**: Middleware for Cross-Origin Resource Sharing.
+*   **dotenv**: For loading environment variables.
+*   **Jest/Supertest**: Testing frameworks.
 
-## 4. Setup Instructions
+**Frontend:**
+*   **React**: JavaScript library for building user interfaces.
+*   **TypeScript**: For type safety in React components.
+*   **Vite**: Fast frontend tooling.
+*   **Axios**: Promise-based HTTP client for the browser and Node.js.
+*   **react-router-dom**: For declarative routing in React applications.
+*   **react-toastify**: For toast notifications.
+*   **jest/React Testing Library**: Testing frameworks.
+
+**DevOps/Tooling:**
+*   **Docker/Docker Compose**: For containerization and orchestration.
+*   **GitHub Actions**: For CI/CD (basic setup provided).
+*   **ESLint/Prettier**: For code quality and formatting.
+
+## 5. Setup and Installation
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+*   Node.js (v20 or higher)
+*   Yarn (recommended) or npm
+*   Docker and Docker Compose (recommended for local setup)
+*   Git
 
-*   **Git**
-*   **Java Development Kit (JDK) 17 or higher**
-*   **Apache Maven 3.6+**
-*   **Node.js 20+ and npm 8+** (for frontend development)
-*   **Docker Desktop** (includes Docker Engine and Docker Compose)
-
-### Local Development with Docker Compose (Recommended)
-
-This is the easiest way to get all services (backend, frontend, PostgreSQL, Redis) running.
+### Local Setup with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/chat-app-full-stack.git
-    cd chat-app-full-stack
+    git clone https://github.com/your-username/authentication-system.git
+    cd authentication-system
     ```
 
-2.  **Create environment variables:**
-    *   Create a `.env` file in the project root (`chat-app-full-stack/`) based on `docker-compose.yml` environment variables.
-    *   Example `.env` (adjust values as needed, especially `JWT_SECRET_KEY`):
-        ```
-        DB_NAME=chat_db
-        DB_USER=user
-        DB_PASSWORD=password
-        REDIS_PASSWORD=
-        JWT_SECRET_KEY=A_VERY_LONG_AND_SECURE_RANDOM_STRING_AT_LEAST_32_CHARS_BASE64_ENCODED
-        ```
-        *Note: The `JWT_SECRET_KEY` in `application.yml` has a default. For production, **always** override it with a strong, generated key.*
+2.  **Create `.env` files:**
+    *   Copy `backend/.env.example` to `backend/.env`
+    *   Copy `frontend/.env.example` to `frontend/.env`
+    *   Copy `/.env.example` (root level) to `/.env` (root level). This `.env` is used by `docker-compose.yml`.
 
-    *   For the frontend, create `chat-app-frontend/.env` based on `chat-app-frontend/.env.example`:
-        ```
-        REACT_APP_API_BASE_URL=http://localhost:8080/api/v1
-        REACT_APP_WEBSOCKET_URL=ws://localhost:8080/websocket
-        ```
+    ```bash
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
+    cp .env.example .env
+    ```
 
-3.  **Build and run all services:**
-    Navigate to the project root (`chat-app-full-stack/`) and run:
+3.  **Configure Environment Variables:**
+    *   Open `backend/.env` and `frontend/.env` and `.env` (root level) and fill in the values.
+        *   **`JWT_SECRET`**: **CRITICAL!** Generate a strong, long random string for production.
+        *   **`SMTP_USERNAME`, `SMTP_PASSWORD`**: Configure for an email service (e.g., Gmail with app password, SendGrid, Mailgun, or [Ethereal Email](https://ethereal.email/) for development testing).
+        *   `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Set your PostgreSQL credentials.
+        *   `REDIS_URL`: Defaults to `redis://redis:6379/0` when running in Docker Compose.
+        *   `CLIENT_URL`: Should point to your frontend URL, e.g., `http://localhost:3000`.
+        *   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `USER_EMAIL`, `USER_PASSWORD`: These are used to seed initial admin and normal users when the database is empty. **Change them!**
+
+4.  **Make `wait-for-it.sh` executable:**
+    ```bash
+    chmod +x wait-for-it.sh
+    ```
+
+5.  **Build and run the Docker containers:**
     ```bash
     docker compose up --build -d
     ```
-    *   `--build`: Builds images from Dockerfiles. Use this the first time or after code changes.
-    *   `-d`: Runs containers in detached mode (in the background).
+    This will:
+    *   Build Docker images for backend and frontend.
+    *   Start PostgreSQL (db), Redis, backend API, and Nginx (for frontend).
+    *   Wait for PostgreSQL and Redis to be healthy.
+    *   Run backend migrations and seed initial data.
 
-4.  **Verify services:**
-    *   Check container status: `docker compose ps`
-    *   Backend API: `http://localhost:8080`
-    *   Frontend App: `http://localhost:3000`
-    *   Swagger UI: `http://localhost:8080/swagger-ui.html`
-
-5.  **Stop services:**
-    ```bash
-    docker compose down
-    ```
-    To remove volumes (database data and Redis data):
-    ```bash
-    docker compose down --volumes
-    ```
+6.  **Access the application:**
+    *   Frontend: `http://localhost:3000`
+    *   Backend API (directly, if needed for testing): `http://localhost:5000/api/v1`
 
 ### Manual Backend Setup (without Docker)
 
+If you prefer to run the backend directly on your host:
+
 1.  **Navigate to the backend directory:**
     ```bash
-    cd chat-app-full-stack/chat-app-backend
-    ```
-
-2.  **Configure `application.yml`:**
-    *   Edit `src/main/resources/application.yml`.
-    *   Update `spring.datasource.url`, `username`, `password` to point to a running PostgreSQL instance.
-    *   Update `spring.redis.host`, `port`, `password` to point to a running Redis instance.
-    *   **Crucially**, set `application.security.jwt.secret-key` to a strong, Base64-encoded 32+ character string.
-
-3.  **Run Flyway migrations:**
-    Ensure your PostgreSQL database is running and accessible. Spring Boot will automatically run Flyway migrations on startup.
-
-4.  **Build the project:**
-    ```bash
-    mvn clean install
-    ```
-
-5.  **Run the application:**
-    ```bash
-    mvn spring-boot:run
-    ```
-    or from the JAR:
-    ```bash
-    java -jar target/chat-application-0.0.1-SNAPSHOT.jar
-    ```
-
-### Manual Frontend Setup (without Docker)
-
-*(Note: The frontend implementation provided is conceptual. You'd typically add more components and styling.)*
-
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd chat-app-full-stack/chat-app-frontend
+    cd backend
     ```
 
 2.  **Install dependencies:**
     ```bash
-    npm install
+    yarn install
+    # or npm install
     ```
 
-3.  **Configure environment variables:**
-    *   Create a `.env` file based on `.env.example`. Ensure `REACT_APP_API_BASE_URL` and `REACT_APP_WEBSOCKET_URL` point to your running backend (e.g., `http://localhost:8080/api/v1` and `ws://localhost:8080/websocket`).
+3.  **Ensure PostgreSQL and Redis are running:**
+    *   You need a local PostgreSQL server (port 5432) and Redis server (port 6379) running.
+    *   Update `DB_HOST` in `backend/.env` to `localhost`.
 
-4.  **Run the development server:**
+4.  **Run Migrations:**
     ```bash
-    npm start
+    yarn typeorm migration:run
     ```
-    The application will typically open in your browser at `http://localhost:3000`.
 
-## 5. API Documentation
-
-The backend provides interactive API documentation using OpenAPI (Swagger UI).
-
-*   **Swagger UI URL:** `http://localhost:8080/swagger-ui.html` (when backend is running)
-*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
-
-This interface allows you to explore all REST endpoints, their request/response schemas, and even test them directly from your browser. Remember to click the "Authorize" button and provide a valid JWT token (obtained from `/api/v1/auth/authenticate`) to access protected endpoints.
-
-## 6. Architecture Overview
-
-### High-Level Architecture
-```mermaid
-graph TD
-    User(Client Application: Web Browser/Mobile) --> |HTTP/S, WebSocket| Frontend(React App)
-    Frontend --> |HTTP/S (REST), WebSocket (STOMP)| Backend(Spring Boot App)
-    Backend --> |JPA (Hibernate)| Database(PostgreSQL)
-    Backend --> |Lettuce (Jedis)| Cache(Redis)
-    Backend --(Logs)--> Monitoring(ELK Stack / Prometheus-Grafana - conceptual)
-    CI/CD(GitHub Actions) --> |Build & Push Images| DockerRegistry(Docker Hub / ECR)
-    DockerRegistry --> |Pull Images| DeploymentServer(VM/Kubernetes)
-
-```
-
-### Backend Architecture (Spring Boot)
-
-*   **Layered Architecture:** Follows a standard N-tier architecture:
-    *   **Controllers:** Handle incoming HTTP requests and WebSocket messages, validate inputs, and delegate to services.
-    *   **Services:** Contain the core business logic, orchestrate data operations, and apply domain rules.
-    *   **Repositories:** Interact with the database using Spring Data JPA.
-    *   **Entities:** Represent the domain model and are mapped to database tables.
-    *   **DTOs:** Data Transfer Objects used for API input/output to decouple entities from the API contract.
-    *   **Mappers:** (MapStruct) Convert between Entities and DTOs.
-*   **Security:** Spring Security with JWT for stateless authentication. Custom filters handle token validation for both REST and WebSocket connections.
-*   **Real-time Communication:** Spring WebSockets with STOMP for pub-sub messaging. A `SimpMessagingTemplate` is used to broadcast messages.
-*   **Caching:** Spring Cache with Redis as the cache store to improve performance for frequently accessed data (e.g., user details, room lists).
-*   **Rate Limiting:** A custom `OncePerRequestFilter` implements a basic in-memory rate limiting mechanism. For production, consider external services or libraries like Bucket4j with Redis.
-*   **Error Handling:** Global `@ControllerAdvice` provides consistent error responses for various exception types.
-*   **Observability:** Logback for logging, Spring Boot Actuator for health checks and metrics.
-
-## 7. Testing
-
-The project includes Unit, Integration, and API tests for the backend.
-
-### Running Backend Tests
-
-1.  **Navigate to the backend directory:**
+5.  **Seed Initial Data (optional, but recommended for first run):**
     ```bash
-    cd chat-app-full-stack/chat-app-backend
+    yarn seed
     ```
-2.  **Run all tests:**
+
+6.  **Start the backend in development mode:**
     ```bash
-    mvn test
+    yarn dev
     ```
-    This will execute:
-    *   **Unit Tests:** Using JUnit and Mockito to test individual components (e.g., services).
-    *   **Integration Tests:** Using Spring Boot Test and Testcontainers to test service-database interactions with a real PostgreSQL instance in a Docker container.
-    *   **API Tests:** Using RestAssured to test controller endpoints.
+    The API will be available at `http://localhost:5000/api/v1`.
 
-3.  **Generate Test Coverage Report (JaCoCo):**
-    ```bash
-    mvn jacoco:report
-    ```
-    The report will be generated at `target/site/jacoco/index.html`. Open this file in your browser to view coverage details.
+### Manual Frontend Setup (without Docker)
 
-### Running Frontend Tests (Conceptual)
-
-*(Note: The frontend implementation is conceptual, so its tests are only outlined here.)*
+If you prefer to run the frontend directly on your host:
 
 1.  **Navigate to the frontend directory:**
     ```bash
-    cd chat-app-full-stack/chat-app-frontend
+    cd frontend
     ```
-2.  **Run tests (e.g., Jest/React Testing Library):**
+
+2.  **Install dependencies:**
     ```bash
-    npm test
+    yarn install
+    # or npm install
     ```
-    This will run tests defined in the `src` directory, typically using `jest` and `@testing-library/react`.
 
-## 8. Deployment Guide
-
-This project is designed for containerized deployment using Docker.
-
-### Docker Hub Setup
-
-1.  **Create a Docker Hub account** (if you don't have one).
-2.  **Create environment variables** in your GitHub repository secrets (Settings -> Secrets -> Actions):
-    *   `DOCKER_USERNAME`: Your Docker Hub username.
-    *   `DOCKER_PASSWORD`: Your Docker Hub access token (recommended over password).
-    *   `PROD_HOST`: IP address or domain of your production server.
-    *   `PROD_USERNAME`: SSH username for your production server.
-    *   `PROD_SSH_KEY`: Private SSH key for accessing your production server (ensure it's base64 encoded if necessary, or stored directly as a multi-line secret).
-
-### GitHub Actions CI/CD (Conceptual)
-
-The `.github/workflows/main.yml` defines the CI/CD pipeline:
-
-1.  **`backend-ci` & `frontend-ci` jobs:**
-    *   Triggered on `push` and `pull_request` to `main`.
-    *   Checkout code, set up Java/Node.js.
-    *   Install dependencies (Maven/npm caching).
-    *   Run backend (unit, integration, API) and frontend tests.
-    *   Generate test coverage reports.
-    *   These jobs must pass before proceeding to Docker build and push.
-
-2.  **`docker-build-and-push` job:**
-    *   Runs only if `backend-ci` and `frontend-ci` pass.
-    *   Logs into Docker Hub using secrets.
-    *   Builds Docker images for both backend and frontend.
-    *   Pushes tagged images to your Docker Hub repository (e.g., `yourdockerhubusername/chat-app-backend:latest`).
-
-3.  **`deploy` job (Conceptual):**
-    *   Runs only if `docker-build-and-push` succeeds and on `push` to `main`.
-    *   Connects to a remote production server via SSH.
-    *   Pulls the latest Docker images.
-    *   Uses `docker compose up -d` to stop old containers, start new ones, and ensure zero-downtime (requires a proper deployment strategy like blue/green or rolling updates for true zero-downtime, this is a basic example).
-    *   **Important:** The `docker-compose.yml` on your production server needs to be configured with the correct environment variables for `DB_HOST`, `REDIS_HOST`, `JWT_SECRET_KEY`, etc., pointing to your production database and Redis instances, and the correct `REACT_APP_API_BASE_URL` and `REACT_APP_WEBSOCKET_URL` in the frontend build arguments.
-
-### Manual Deployment (using Docker Compose)
-
-1.  **SSH into your production server.**
-2.  **Install Docker and Docker Compose** on the server.
-3.  **Clone the repository** or transfer the `docker-compose.yml`, `.env`, `chat-app-backend/Dockerfile`, `chat-app-frontend/Dockerfile`, `chat-app-frontend/nginx.conf` files.
-4.  **Create `.env` file** on the server with production-specific environment variables (database credentials, Redis details, production JWT secret, etc.).
-5.  **Build and run the services:**
+3.  **Start the frontend development server:**
     ```bash
-    docker compose pull # Pull latest images from Docker Hub if already built and pushed
-    # OR if building locally on the server:
-    # docker compose build
-    docker compose up -d
+    yarn dev
     ```
-6.  **Ensure firewall rules** are configured to allow access to ports 80 (for frontend) and 8080 (for backend API, if exposed directly or via proxy). For production, it's recommended to put the frontend behind a reverse proxy (e.g., Nginx, Caddy) that handles SSL/TLS termination and routes traffic to the backend.
+    The frontend will be available at `http://localhost:3000`.
 
-## 9. Additional Features & Enterprise Considerations
+## 6. Database Layer
 
-*   **Horizontal Scaling:**
-    *   The Spring Boot WebFlux reactive stack is designed for non-blocking I/O, improving concurrency.
-    *   Docker allows easy scaling of backend instances.
-    *   Redis serves as an external, shared cache, preventing individual backend instances from holding stale data.
-    *   For WebSockets, a distributed message broker (e.g., RabbitMQ, Kafka) would be needed if scaling to multiple backend instances that need to share WebSocket session state or broadcast messages across nodes. Spring provides STOMP over RabbitMQ/Kafka support.
-*   **Security Enhancements:**
-    *   **HTTPS/WSS:** Always use TLS/SSL in production for all HTTP and WebSocket connections. A reverse proxy (Nginx, Caddy) or a cloud load balancer can handle this.
-    *   **Input Sanitization:** Beyond validation, ensure all user-generated content is sanitized to prevent XSS attacks (e.g., for chat messages).
-    *   **CORS:** Configured but should be fine-tuned to only trusted origins in production.
-    *   **Security Headers:** Configure appropriate HTTP security headers (HSTS, CSP, X-Frame-Options, etc.).
-    *   **Vulnerability Scanning:** Integrate tools like SonarQube, Snyk, or OWASP ZAP into CI/CD.
-*   **Observability:**
-    *   **Centralized Logging:** Ship logs to an ELK stack (Elasticsearch, Logstash, Kibana) or Splunk.
-    *   **Metrics:** Integrate Prometheus and Grafana with Spring Boot Actuator for comprehensive monitoring.
-    *   **Distributed Tracing:** Implement distributed tracing (e.g., OpenTelemetry, Zipkin) for microservices architectures.
-*   **Error Handling:**
-    *   More granular error codes and messages for specific business logic failures.
-    *   Alerting for critical errors.
-*   **Database Considerations:**
-    *   **Connection Pooling:** Already handled by Spring Boot's HikariCP.
-    *   **Backup & Restore Strategy.**
-    *   **Replication & High Availability.**
-*   **Frontend Enhancements:**
-    *   **UI/UX:** A more polished user interface with styling frameworks (Tailwind CSS, Bootstrap, Material UI).
-    *   **Real-time Presence:** Show who is online in a room.
-    *   **Typing Indicators.**
-    *   **Read Receipts.**
-    *   **Private Messaging.**
-    *   **File Uploads.**
-    *   **Push Notifications.**
-    *   **Pagination/Infinite Scroll:** For message history and room lists.
-*   **Performance Testing:** Use tools like JMeter, Locust, or Gatling to simulate load and identify bottlenecks.
-*   **Infrastructure as Code (IaC):** Use Terraform or CloudFormation to provision cloud resources.
-*   **Kubernetes Deployment:** For larger-scale deployments, orchestrate services with Kubernetes.
+*   **Database**: PostgreSQL.
+*   **ORM**: TypeORM, providing entity-relationship mapping.
+*   **Schema Definitions**: Defined in `backend/src/entities/`. Includes `User`, `Role`, `BlacklistedToken`, and `Post` (example).
+*   **Migration Scripts**: Located in `backend/src/migrations/`.
+    *   To create a new migration: `cd backend && yarn typeorm migration:create --name <MigrationName>`
+    *   To run migrations: `cd backend && yarn typeorm migration:run`
+    *   **Note**: `synchronize: false` is set in `data-source.ts` for production safety. Schema changes should always go through migrations.
+*   **Seed Data**: The `backend/src/data-source.ts` contains a `seedDatabase` function that populates initial roles (User, Admin) and an admin/normal user account if the database is empty. This is triggered on `docker compose up` or via `yarn seed` in the backend.
+*   **Query Optimization**:
+    *   Indices are added to frequently queried columns (e.g., `users.email`, `blacklisted_tokens.token`) in migrations for faster lookups.
+    *   `relations` are eagerly loaded where necessary (e.g., `User` with `Role`).
+    *   Logging for slow queries is enabled in `AppDataSource` configuration (development mode).
 
-## 10. Contributing
+## 7. Running the Application
 
-Contributions are welcome! If you find a bug or want to add a feature, please:
+*   **With Docker Compose**: `docker compose up -d` (from the root directory)
+*   **Backend (Manual)**: `cd backend && yarn dev`
+*   **Frontend (Manual)**: `cd frontend && yarn dev`
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'feat: Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
+## 8. Testing
 
-Please ensure your code adheres to the project's coding standards and includes appropriate tests.
+The project includes a robust testing suite to ensure quality and reliability.
 
-## 11. License
+### Backend Tests
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-```
+*   **Location**: `backend/__tests__/`
+*   **Framework**: Jest with Supertest for integration tests.
+*   **Types**:
+    *   **Unit Tests**: Isolated testing of business logic (`services`), utilities (`utils`). Mocks external dependencies.
+    *   **Integration Tests**: Test API endpoints by sending HTTP requests and interacting with a dedicated test database (PostgreSQL container).
+*   **Running Backend Tests**:
+    ```bash
+    cd backend
+    yarn test          # Run all tests with coverage
+    yarn test:unit     # Run only unit tests
+    yarn test:integration # Run only integration tests
+    ```
+*   **Coverage**: Aim for 80%+ line coverage for core logic and services.
+
+### Frontend Tests
+
+*   **Location**: `frontend/__tests__/`
+*   **Framework**: Jest with React Testing Library.
+*   **Types**:
+    *   **Component Tests**: Ensure individual React components render correctly and respond to user interactions.
+    *   **Page Tests**: Verify page-level interactions and data fetching.
+*   **Running Frontend Tests**:
+    ```bash
+    cd frontend
+    yarn test          # Run all tests with coverage
+    yarn test:watch    # Run tests in watch mode
+    ```
+
+### API Testing with Postman
+
+A Postman collection is highly recommended for manual API testing and understanding. While a full executable collection isn't provided directly in the code, here's a structure you would typically use:
+
+**Placeholder: `postman_collection.json`**
+```json
+{
+	"info": {
+		"_postman_id": "YOUR_COLLECTION_ID",
+		"name": "Auth System API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"password\": \"Password123!\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/register" }
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john.doe@example.com\",\n    \"password\": \"Password123!\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/login" }
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Tokens",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refreshToken\": \"{{refreshToken}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/refresh-tokens" }
+					},
+					"response": []
+				},
+				{
+					"name": "Logout User",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/auth/logout" }
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john.doe@example.com\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/forgot-password" }
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"newPassword\": \"NewPassword123!\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/reset-password?token={{resetToken}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{API_BASE_URL}}/auth/verify-email?token={{emailVerificationToken}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Resend Verification Email",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john.doe@example.com\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/auth/resend-verification" }
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Management",
+			"item": [
+				{
+					"name": "Get All Users (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminAccessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/users" }
+					},
+					"response": []
+				},
+				{
+					"name": "Get User By ID",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/users/{{userId}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Update User",
+					"request": {
+						"method": "PATCH",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"firstName\": \"Jane\",\n    \"lastName\": \"Smith\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/users/{{userId}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "PATCH",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"currentPassword\": \"OldPassword123!\",\n    \"newPassword\": \"NewPassword456!\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/users/{{userId}}/change-password" }
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminAccessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/users/{{userIdToDelete}}" }
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Posts (Example CRUD)",
+			"item": [
+				{
+					"name": "Create Post",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"My First Post\",\n    \"content\": \"This is the content of my first post.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/posts" }
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Posts",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/posts" }
+					},
+					"response": []
+				},
+				{
+					"name": "Get Post By ID",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/posts/{{postId}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Update Post",
+					"request": {
+						"method": "PATCH",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Updated Title\",\n    \"content\": \"Updated content for my post.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{API_BASE_URL}}/posts/{{postId}}" }
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Post",
+					"request": {
+						"method": "DELETE",
+						"header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+						"url": { "raw": "{{API_BASE_URL}}/posts/{{postId}}" }
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"var jsonData = pm.response.json();",
+					"",
+					"if (pm.request.url.includes('/auth/login') && jsonData.tokens) {",
+					"    pm.environment.set(\"accessToken\", jsonData.tokens.accessToken);",
+					"    pm.environment.set(\"refreshToken\", jsonData.tokens.refreshToken);",
+					"    pm.environment.set(\"userId\", jsonData.user.id);",
+					"    if (jsonData.user.role === 'admin') {",
+					"        pm.environment.set(\"adminAccessToken\", jsonData.tokens.accessToken);",
+					"        pm.environment.set(\"adminUserId\", jsonData.user.id);",
+					"    } else {",
+					"        pm.environment.set(\"normalAccessToken\", jsonData.tokens.accessToken);",
+					"        pm.environment.set(\"normalUserId\", jsonData.user.id);",
+					"    }",
+					"}",
+					"if (pm.request.url.includes('/auth/refresh-tokens') &&
