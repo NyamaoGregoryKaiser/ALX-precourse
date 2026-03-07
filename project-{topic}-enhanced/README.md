@@ -1,10 +1,103 @@
-```markdown
-# Real-time Chat Application
-
-This is a comprehensive, production-ready real-time chat application built with a focus on enterprise-grade software engineering principles. It features a full-stack implementation using Node.js (Express, Socket.IO) for the backend, React.js for the frontend, PostgreSQL for the database (managed by Prisma ORM), and Redis for caching. The project includes robust authentication/authorization, logging, error handling, rate limiting, and extensive testing with a Dockerized setup and CI/CD pipeline configuration.
-
-## Features
-
-**Core Chat Functionality:**
-*   **User Authentication:** Register and log in users securely using JWT (JSON Web Tokens).
-*   **Channel Management:** Create,
+ml-utilities-system/
+├── .github/
+│   └── workflows/
+│       └── main.yml
+├── docker-compose.yml
+├── Dockerfile
+├── pom.xml
+├── README.md
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── ml/
+│   │   │           └── utilities/
+│   │   │               └── system/
+│   │   │                   ├── MlUtilitiesSystemApplication.java
+│   │   │                   ├── config/
+│   │   │                   │   ├── CacheConfig.java
+│   │   │                   │   ├── OpenApiConfig.java
+│   │   │                   │   ├── RateLimitFilter.java
+│   │   │                   │   └── SecurityConfig.java
+│   │   │                   ├── controller/
+│   │   │                   │   ├── AuthController.java
+│   │   │                   │   ├── DatasetController.java
+│   │   │                   │   ├── ExperimentController.java
+│   │   │                   │   ├── FeatureSetController.java
+│   │   │                   │   └── ModelController.java
+│   │   │                   ├── dto/
+│   │   │                   │   ├── AuthRequest.java
+│   │   │                   │   ├── AuthResponse.java
+│   │   │                   │   ├── DatasetDTO.java
+│   │   │                   │   ├── ExperimentDTO.java
+│   │   │                   │   ├── FeatureSetDTO.java
+│   │   │                   │   ├── ModelDTO.java
+│   │   │                   │   └── UserDTO.java
+│   │   │                   ├── exception/
+│   │   │                   │   ├── GlobalExceptionHandler.java
+│   │   │                   │   ├── InvalidCredentialsException.java
+│   │   │                   │   ├── RateLimitExceededException.java
+│   │   │                   │   ├── ResourceNotFoundException.java
+│   │   │                   │   └── UserAlreadyExistsException.java
+│   │   │                   ├── model/
+│   │   │                   │   ├── Dataset.java
+│   │   │                   │   ├── Experiment.java
+│   │   │                   │   ├── FeatureSet.java
+│   │   │                   │   ├── Model.java
+│   │   │                   │   ├── Role.java
+│   │   │                   │   └── User.java
+│   │   │                   ├── repository/
+│   │   │                   │   ├── DatasetRepository.java
+│   │   │                   │   ├── ExperimentRepository.java
+│   │   │                   │   ├── FeatureSetRepository.java
+│   │   │                   │   ├── ModelRepository.java
+│   │   │                   │   └── UserRepository.java
+│   │   │                   ├── security/
+│   │   │                   │   ├── CustomUserDetailsService.java
+│   │   │                   │   ├── JwtAuthFilter.java
+│   │   │                   │   ├── JwtAuthenticationEntryPoint.java
+│   │   │                   │   └── JwtService.java
+│   │   │                   ├── service/
+│   │   │                   │   ├── AuthService.java
+│   │   │                   │   ├── DatasetService.java
+│   │   │                   │   ├── ExperimentService.java
+│   │   │                   │   ├── FeatureSetService.java
+│   │   │                   │   └── ModelService.java
+│   │   │                   └── util/
+│   │   │                       └── MapperUtil.java
+│   │   │
+│   │   └── resources/
+│   │       ├── application.yml
+│   │       ├── logback-spring.xml
+│   │       └── db/
+│   │           └── migration/
+│   │               ├── V1__Initial_schema.sql
+│   │               └── V2__Seed_data.sql
+│   │
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── ml/
+│                   └── utilities/
+│                       └── system/
+│                           ├── controller/
+│                           │   ├── AuthControllerTest.java
+│                           │   ├── DatasetControllerIntegrationTest.java
+│                           │   ├── ExperimentControllerIntegrationTest.java
+│                           │   ├── FeatureSetControllerIntegrationTest.java
+│                           │   └── ModelControllerIntegrationTest.java
+│                           ├── repository/
+│                           │   ├── DatasetRepositoryTest.java
+│                           │   ├── ExperimentRepositoryTest.java
+│                           │   ├── FeatureSetRepositoryTest.java
+│                           │   ├── ModelRepositoryTest.java
+│                           │   └── UserRepositoryTest.java
+│                           └── service/
+│                               ├── AuthServiceTest.java
+│                               ├── DatasetServiceTest.java
+│                               ├── ExperimentServiceTest.java
+│                               ├── FeatureSetServiceTest.java
+│                               └── ModelServiceTest.java
+├── static/
+│   ├── index.html
+│   └── script.js

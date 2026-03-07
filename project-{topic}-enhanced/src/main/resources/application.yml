@@ -1,0 +1,97 @@
+```yaml
+spring:
+  application:
+    name: ml-utilities-system
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ml_utilities_db}
+    username: ${DB_USER:ml_user}
+    password: ${DB_PASSWORD:ml_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Use 'update' or 'create' for development, 'validate' for production
+    show-sql: false # Set to true to see SQL queries in logs
+    properties:
+      hibernate.format_sql: false
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true # Recommended for existing databases without Flyway metadata
+    locations: classpath:db/migration
+  security:
+    user:
+      name: admin
+      password: '{bcrypt}$2a$10$T899nL6/G1pT/2y1zQ9xW.E9zQ7zQ8zQ9zQ0zQ1zQ2zQ3zQ4z' # bcrypt for 'password'
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s # Default cache spec
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:supersecretjwtkeyforalxprojectdevelopmentonlyandnotforproductionuse} # Should be a strong, random key in production
+  expiration: 3600000 # 1 hour in milliseconds
+
+# Actuator Endpoints (Monitoring)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+
+# OpenAPI (Swagger UI) Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  info:
+    title: ML Utilities System API
+    description: API documentation for managing ML experiments, models, datasets, and feature sets.
+    version: 1.0.0
+    contact:
+      name: ALX SE Team
+      email: contact@alx.com
+    license:
+      name: Apache 2.0
+      url: https://www.apache.org/licenses/LICENSE-2.0.html
+  # Set security scheme for JWT
+  security:
+    enabled: true
+    name: Bearer Authentication # Name for the security scheme
+    type: http
+    scheme: bearer
+    bearerFormat: JWT
+
+# Rate Limiting Configuration
+app:
+  rate-limit:
+    enabled: true
+    requests-per-second: 5 # 5 requests per second
+    burst-capacity: 10 # Allow a burst of 10 requests
+
+logging:
+  level:
+    com.ml.utilities.system: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+  file:
+    name: logs/ml-utilities-system.log
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%clr(%wex){red}"
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: never
+```

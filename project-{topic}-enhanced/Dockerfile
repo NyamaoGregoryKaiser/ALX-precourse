@@ -1,58 +1,41 @@
-# Use a C++ development image (e.g., Ubuntu with GCC)
-FROM ubuntu:20.04 AS build-env
+```dockerfile
+# Stage 1: Build the application
+FROM eclipse-temurin:17-jdk-jammy AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libboost-all-dev \
-    libpqxx-dev \
-    pkg-config \
-    git \
-    libssl-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Clone nlohmann/json (header-only)
-RUN git clone https://github.com/nlohmann/json.git third_party/nlohmann_json
+# Copy the Maven wrapper and project files
+COPY .mvn/ .mvn
+COPY mvnw pom.xml ./
+RUN ./mvnw dependency:go-offline
 
-# Clone Catch2 (for tests)
-RUN git clone https://github.com/catchorg/Catch2.git third_party/Catch2
+# Copy the rest of the application source code
+COPY src ./src
 
-# Copy source code
-COPY backend/ ./backend/
+# Build the Spring Boot application
+RUN ./mvnw clean install -DskipTests
 
-# Build application
-RUN cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release
-RUN cmake --build backend/build -j $(nproc)
+# Stage 2: Create the final image
+FROM eclipse-temurin:17-jre-jammy
 
-# --- Runtime Image ---
-FROM ubuntu:20.04 AS runtime
-
-# Install runtime dependencies (libpqxx, libssl, etc.)
-RUN apt-get update && apt-get install -y \
-    libpqxx-7.4 \
-    libssl1.1 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Copy the built executable from the build-env
-COPY --from=build-env /app/backend/build/dataviztool .
+# Copy the built JAR file from the builder stage
+COPY --from=builder /app/target/*.jar app.jar
 
-# Create data_uploads directory for CSVs
-RUN mkdir -p data_uploads
-
-# Copy the migration scripts
-COPY database/migrations/ ./database/migrations/
-
-# Expose the application port
+# Expose the port the application runs on
 EXPOSE 8080
 
-# Run the application
-CMD ["./dataviztool"]
+# Set environment variables for the database (can be overridden by docker-compose or Kubernetes)
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=ml_utilities_db
+ENV DB_USER=ml_user
+ENV DB_PASSWORD=ml_password
+ENV JWT_SECRET=supersecretjwtkeyforalxprojectdevelopmentonlyandnotforproductionuse
+
+# Command to run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
