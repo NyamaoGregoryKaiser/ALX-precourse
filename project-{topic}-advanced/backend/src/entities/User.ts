@@ -1,57 +1,43 @@
 ```typescript
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { Role } from './Role';
-import bcrypt from 'bcryptjs';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { IsEmail, Length, IsEnum, IsArray } from 'class-validator';
+import { Service } from './Service';
 
-@Entity('users')
+export enum UserRole {
+  ADMIN = 'admin',
+  USER = 'user',
+  SERVICE_OWNER = 'service_owner',
+}
+
+@Entity()
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ unique: true })
-  email: string;
+  @Length(3, 50, { message: 'Username must be between 3 and 50 characters' })
+  username!: string;
+
+  @Column({ unique: true })
+  @IsEmail({}, { message: 'Invalid email format' })
+  email!: string;
 
   @Column()
-  password?: string; // Made optional for cases like social logins, but mandatory on creation
+  @Length(6, 100, { message: 'Password must be at least 6 characters long' })
+  passwordHash!: string;
 
-  @Column({ nullable: true })
-  firstName: string;
+  @Column({ type: 'jsonb', default: [UserRole.USER] })
+  @IsArray()
+  @IsEnum(UserRole, { each: true, message: 'Invalid user role' })
+  roles!: UserRole[];
 
-  @Column({ nullable: true })
-  lastName: string;
+  @OneToMany(() => Service, (service) => service.user)
+  services!: Service[];
 
-  @ManyToOne(() => Role, role => role.users, { eager: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'roleId' })
-  role: Role;
+  @CreateDateColumn()
+  createdAt!: Date;
 
-  @Column({ nullable: true })
-  roleId: string; // Foreign key column
-
-  @Column({ default: false })
-  isEmailVerified: boolean;
-
-  @Column({ nullable: true })
-  verificationToken: string;
-
-  @Column({ nullable: true, type: 'timestamp' })
-  verificationTokenExpires: Date;
-
-  @Column({ nullable: true })
-  resetPasswordToken: string;
-
-  @Column({ nullable: true, type: 'timestamp' })
-  resetPasswordTokenExpires: Date;
-
-  @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt: Date;
-
-  // Method to check password validity
-  async comparePassword(candidatePassword: string): Promise<boolean> {
-    if (!this.password) return false;
-    return bcrypt.compare(candidatePassword, this.password);
-  }
+  @UpdateDateColumn()
+  updatedAt!: Date;
 }
 ```

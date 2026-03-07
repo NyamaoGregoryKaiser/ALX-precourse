@@ -1,31 +1,40 @@
-```dockerfile
-# Stage 1: Build the React application
-FROM node:20-alpine AS builder
+```Dockerfile
+# Use the official Node.js 20 LTS image as the build image
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package.json and yarn.lock/package-lock.json to install dependencies
-COPY frontend/package.json frontend/yarn.lock* ./
-RUN yarn install --frozen-lockfile
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Copy the rest of the application source code
-COPY frontend .
+# Install dependencies
+RUN npm install
 
-# Build the React app
-RUN yarn build
+# Copy the rest of the application code
+COPY . .
 
-# Stage 2: Serve the React application with Nginx
+# Build the React application
+ENV REACT_APP_API_BASE_URL=http://localhost:5000/api/v1 # This can be overridden at runtime
+RUN npm run build
+
+# --- Production Stage ---
+# Use a lightweight web server like Nginx to serve the static files
 FROM nginx:alpine
 
-# Copy the Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /usr/share/nginx/html
 
-# Copy the built React app from the builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Remove default Nginx configuration
+RUN rm -rf ./*
 
-# Expose port 80 for the Nginx server
+# Copy the built React app from the build stage
+COPY --from=build /app/build .
+
+# Copy custom Nginx configuration (optional, if you need specific config)
+# COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80 (default for web servers)
 EXPOSE 80
 
-# Command to run Nginx
+# The default command for Nginx will start the server
 CMD ["nginx", "-g", "daemon off;"]
 ```

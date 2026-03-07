@@ -1,62 +1,37 @@
 ```typescript
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import DashboardLayout from './components/layout/DashboardLayout';
-import DataSourcesPage from './pages/DataSourcesPage';
-import DatasetsPage from './pages/DatasetsPage';
-import VisualizationsPage from './pages/VisualizationsPage';
-import DashboardBuilderPage from './pages/DashboardBuilderPage';
-import VisualizationEditorPage from './pages/VisualizationEditorPage';
-import DashboardsPage from './pages/DashboardsPage';
-import HomePage from './pages/HomePage';
-import NotFoundPage from './pages/NotFoundPage';
-import { Spin } from 'antd';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 
-// PrivateRoute component to protect routes
-const PrivateRoute: React.FC<{ children: JSX.Element }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+// Layout Components
+import Navbar from './components/Navbar';
 
-  if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Spin size="large" /></div>;
-  }
-
-  return isAuthenticated ? children : <Navigate to="/login" />;
-};
+// Page Components
+import HomePage from './pages/Dashboard'; // Default home for authenticated users
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import ServiceList from './pages/ServiceList';
+import ServiceDetail from './pages/ServiceDetail';
+import NotFound from './pages/NotFound';
 
 const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
+        <Navbar />
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-
-          {/* Protected Routes - Rendered within DashboardLayout */}
-          <Route path="/app/*" element={
-            <PrivateRoute>
-              <DashboardLayout>
-                <Routes>
-                  <Route path="data-sources" element={<DataSourcesPage />} />
-                  <Route path="datasets" element={<DatasetsPage />} />
-                  <Route path="visualizations" element={<VisualizationsPage />} />
-                  <Route path="visualizations/new" element={<VisualizationEditorPage />} />
-                  <Route path="visualizations/edit/:id" element={<VisualizationEditorPage />} />
-                  <Route path="dashboards" element={<DashboardsPage />} />
-                  <Route path="dashboards/new" element={<DashboardBuilderPage />} />
-                  <Route path="dashboards/edit/:id" element={<DashboardBuilderPage />} />
-                  <Route path="dashboards/view/:id" element={<DashboardBuilderPage viewMode={true} />} />
-                  <Route path="*" element={<NotFoundPage />} /> {/* Nested 404 */}
-                </Routes>
-              </DashboardLayout>
-            </PrivateRoute>
-          } />
-
-          {/* Catch all other unknown routes */}
-          <Route path="*" element={<NotFoundPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/" element={<ProtectedRoute />}>
+            <Route index element={<Dashboard />} /> {/* Home for authenticated users */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/services" element={<ServiceList />} />
+            <Route path="/services/:id" element={<ServiceDetail />} />
+            <Route path="/services/:id/metrics" element={<ServiceDetail />} /> {/* Alias for viewing metrics */}
+          </Route>
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
     </Router>

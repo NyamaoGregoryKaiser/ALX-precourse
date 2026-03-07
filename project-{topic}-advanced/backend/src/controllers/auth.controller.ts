@@ -1,114 +1,106 @@
 ```typescript
 import { Request, Response, NextFunction } from 'express';
-import { authService } from '../services/auth.service';
-import { logger } from '../utils/logger';
-import { ApiError, UnauthorizedError, BadRequestError } from '../utils/apiErrors';
+import { registerUser, loginUser, refreshAccessToken, logoutUser } from '../services/auth.service';
+import { BadRequestError } from '../middleware/errorHandler.middleware';
+import logger from '../utils/logger';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { LoginDto, RegisterDto, RefreshTokenDto } from './dtos/auth.dto';
 
-class AuthController {
-  public async register(req: Request, res: Response, next: NextFunction) {
-    try {
-      const user = await authService.registerUser(req.body);
-      res.status(201).json({
-        message: 'Registration successful. Please check your email to verify your account.',
-        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, isEmailVerified: user.isEmailVerified, role: user.role.name }
-      });
-    } catch (error) {
-      next(error);
-    }
+// Helper for sending tokens in HTTP-only cookies
+const sendTokenResponse = (res: Response, accessToken: string, refreshToken: string, user: any) => {
+  // Set refresh token in an HTTP-only cookie
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    sameSite: 'lax', // CSRF protection
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (matches JWT_REFRESH_EXPIRES_IN)
+  });
+
+  res.status(200).json({
+    status: 'success',
+    accessToken,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      roles: user.roles,
+    },
+  });
+};
+
+export const register = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { username, email, password } = req.body;
+    const user = await registerUser(username, email, password);
+    logger.info(`User registration successful: ${user.email}`);
+
+    // Log in immediately after registration
+    const { accessToken, refreshToken } = await loginUser(user.email, password);
+    sendTokenResponse(res, accessToken, refreshToken, user);
+
+  } catch (error) {
+    next(error);
   }
+};
 
-  public async login(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email, password } = req.body;
-      const { user, tokens } = await authService.loginUser(email, password);
-      res.status(200).json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role.name }, tokens });
-    } catch (error) {
-      next(error);
-    }
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { emailOrUsername, password } = req.body;
+    const { user, accessToken, refreshToken } = await loginUser(emailOrUsername, password);
+    logger.info(`User login successful: ${user.email}`);
+    sendTokenResponse(res, accessToken, refreshToken, user);
+  } catch (error) {
+    next(error);
   }
+};
 
-  public async logout(req: Request, res: Response, next: NextFunction) {
-    try {
-      if (!req.token || !req.user) {
-        throw new UnauthorizedError('No token provided or user not authenticated.');
-      }
-      // Assuming access tokens have an expiry embedded, which can be extracted during verification
-      // For simplicity, we are blacklisting the current req.token.
-      // In a real system, you might want to decode the token to get its `exp` claim.
-      // For now, let's assume `req.token` is the accessToken and we need its expiry.
-      // A more robust solution might pass the token's expiry from the `authenticate` middleware.
-      // For now, we'll use a placeholder expiry or re-verify to get the expiry.
-      // A proper JWT `exp` can be extracted like: `jwt.decode(req.token)?.exp * 1000`
-      // Let's assume a generic 1 hour expiry from now if we can't reliably get `exp` from `req.token` without re-verifying or storing it.
-      // Better approach: `authenticate` middleware stores `decoded.exp`
-      const expiryDate = new Date(Date.now() + 60 * 60 * 1000); // Placeholder: blacklisted for 1 hour from now
+export const refresh = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const oldRefreshToken = req.cookies.refreshToken;
 
-      await authService.logoutUser(req.token, expiryDate);
-      res.status(200).json({ message: 'Logged out successfully.' });
-    } catch (error) {
-      next(error);
+    if (!oldRefreshToken) {
+      return next(new BadRequestError('No refresh token provided.'));
     }
-  }
 
-  public async refreshTokens(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { refreshToken } = req.body;
-      const tokens = await authService.refreshAuthTokens(refreshToken);
-      res.status(200).json(tokens);
-    } catch (error) {
-      next(error);
+    const { accessToken, refreshToken: newRefreshToken } = await refreshAccessToken(oldRefreshToken);
+    logger.info(`Access token refreshed for user: ${req.user?.id}`);
+    sendTokenResponse(res, accessToken, newRefreshToken, req.user); // req.user populated from old token payload
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (req.user && refreshToken) {
+      await logoutUser(req.user.id, refreshToken);
     }
-  }
 
-  public async forgotPassword(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email } = req.body;
-      await authService.forgotPassword(email);
-      res.status(200).json({ message: 'If an account with that email exists, a password reset link has been sent.' });
-    } catch (error) {
-      next(error);
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+
+    res.status(200).json({ status: 'success', message: 'Logged out successfully' });
+    logger.info(`User logged out: ${req.user?.id}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMe = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // User object is attached to req by the protect middleware
+    if (!req.user) {
+      return next(new BadRequestError('User not found after authentication.'));
     }
+    res.status(200).json({ status: 'success', user: req.user });
+  } catch (error) {
+    next(error);
   }
-
-  public async resetPassword(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { token } = req.query;
-      const { newPassword } = req.body;
-
-      if (typeof token !== 'string') {
-        throw new BadRequestError('Invalid reset token.');
-      }
-
-      await authService.resetPassword(token, newPassword);
-      res.status(200).json({ message: 'Password reset successful. You can now log in with your new password.' });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  public async verifyEmail(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { token } = req.query;
-      if (typeof token !== 'string') {
-        throw new BadRequestError('Invalid verification token.');
-      }
-      await authService.verifyEmail(token);
-      res.status(200).json({ message: 'Email verified successfully.' });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  public async resendVerificationEmail(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email } = req.body;
-      await authService.resendVerificationEmail(email);
-      res.status(200).json({ message: 'If an account with that email exists and is not verified, a new verification email has been sent.' });
-    } catch (error) {
-      next(error);
-    }
-  }
-}
-
-export const authController = new AuthController();
+};
 ```

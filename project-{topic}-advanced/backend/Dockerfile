@@ -1,38 +1,45 @@
-```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:20-alpine AS builder
+```Dockerfile
+# Use the official Node.js 20 LTS image as the base image
+FROM node:20-alpine AS build
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and yarn.lock/package-lock.json to install dependencies
-COPY backend/package.json backend/yarn.lock* ./
-RUN yarn install --frozen-lockfile --production=false
+# Copy package.json and package-lock.json to the working directory
+# We copy these first to leverage Docker's layer caching
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
 
 # Copy the rest of the application source code
-COPY backend/src src/
-COPY backend/tsconfig.json tsconfig.json
-COPY backend/ormconfig.ts ormconfig.ts
+COPY . .
 
-# Build the TypeScript code
-RUN npx tsc
+# Build the TypeScript application
+RUN npm run build
 
-# Stage 2: Create the production-ready image
+# --- Production Stage ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy only production dependencies
-COPY --from=builder /app/package.json /app/yarn.lock* ./
-RUN yarn install --frozen-lockfile --production=true
-
-# Copy the built application code from the builder stage
-COPY --from=builder /app/dist dist/
-COPY --from=builder /app/src/migrations src/migrations/ # Keep migrations for running in container if needed
-COPY --from=builder /app/ormconfig.ts ormconfig.ts
+# Copy only necessary files from the build stage
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/.env.example ./.env.example # Useful for deploying and configuring env vars
+COPY --from=build /app/logs ./logs # Ensure logs directory exists if logging to files
+COPY --from=build /app/src/migrations ./src/migrations # Migrations are needed for runtime
 
 # Expose the port the app runs on
 EXPOSE 5000
 
+# Set environment variables (these can be overridden by docker-compose or Kubernetes)
+ENV NODE_ENV=production
+ENV PORT=5000
+
 # Command to run the application
-CMD ["node", "dist/server.js"]
+# We ensure migrations are run *before* starting the app.
+# The `npm run migration:run` command is configured in package.json
+CMD ["sh", "-c", "npm run migration:run && npm start"]
 ```

@@ -1,0 +1,15 @@
+```yaml
+global:
+  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. Default is every 1 minute.
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'backend-app'
+    metrics_path: /metrics # This is where our Node.js app exposes its metrics
+    static_configs:
+      - targets: ['backend:5000'] # 'backend' is the service name in docker-compose, '5000' is its port
+```

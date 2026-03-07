@@ -2,63 +2,126 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   db:
-    image: postgres:14-alpine
-    restart: always
-    environment:
-      POSTGRES_DB: ${DB_NAME:-datavizdb}
-      POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    image: postgres:15-alpine
+    restart: unless-stopped
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_DB: perf_monitor_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      # Initialize uuid-ossp extension if not already present
+      # For a fresh install, run `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";` in the database.
+      # Or uncomment the following to run an init script (requires proper permissions)
+      # - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-datavizdb}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d perf_monitor_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Service
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    restart: always
+    restart: unless-stopped
     ports:
       - "5000:5000"
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${PORT:-5000}
-      DB_HOST: db # Refers to the 'db' service name within the docker-compose network
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USERNAME: ${DB_USERNAME:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      DB_NAME: ${DB_NAME:-datavizdb}
-      JWT_SECRET: ${JWT_SECRET:-your_strong_jwt_secret_key_here}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
-      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://user:password@db:5432/perf_monitor_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your_jwt_secret_key # IMPORTANT: Change this in production
+      JWT_REFRESH_SECRET: your_jwt_refresh_secret_key # IMPORTANT: Change this in production
+      CORS_ORIGIN: http://localhost:3000 # Update for your frontend deployment URL
+      # RATE_LIMIT_WINDOW_MS: 60000
+      # RATE_LIMIT_MAX_REQUESTS: 100
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - .:/app # Mount source code for live-reloading in dev (optional, remove for prod deployment)
-      - /app/node_modules # Avoid overwriting node_modules inside container with host's
-    command: sh -c "npm run migration:run && npm run seed:run && npm run dev" # Run migrations, seed, and then start dev server
+      - ./backend:/app
+      - /app/node_modules # Exclude node_modules from host mount
+    command: sh -c "npm run migration:run && npm start" # Run migrations before starting
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Frontend React App
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:80" # Map container's port 80 to host's port 3000
     environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api # Connects to backend on host
+      NODE_ENV: production
+      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Update if backend is on a different domain/port
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Exclude node_modules from host mount
+
+  # Prometheus for monitoring the monitoring system
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    depends_on:
+      backend:
+        condition: service_started # No healthcheck on backend for prometheus, just needs it to start
+
+  # Grafana for visualizing Prometheus metrics
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: grafana
+    ports:
+      - "3001:3000" # Grafana default port is 3000
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin # IMPORTANT: Change this in production
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    depends_on:
+      prometheus:
+        condition: service_started
 
 volumes:
-  pgdata:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
 ```

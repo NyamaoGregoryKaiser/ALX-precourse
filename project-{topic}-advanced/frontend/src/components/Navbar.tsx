@@ -1,47 +1,54 @@
 ```typescript
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@hooks/useAuth';
-import { toast } from 'react-toastify';
-import { logoutUser } from '@api/auth';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const Navbar: React.FC = () => {
-  const { user, isAuthenticated, logout: clientLogout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    try {
-      await logoutUser();
-      clientLogout();
-      toast.success('Logged out successfully!');
-      navigate('/login');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Logout failed.');
-    }
-  };
+  const { isAuthenticated, user, logout, loading } = useAuth();
 
   return (
-    <nav>
-      <ul>
-        <li><Link to="/">Home</Link></li>
-        {isAuthenticated ? (
-          <>
-            <li><Link to="/dashboard">Dashboard</Link></li>
-            <li><Link to="/profile">Profile</Link></li>
-            {user?.role === 'admin' && <li><Link to="/admin/users">Admin Users</Link></li>}
-            <li>
-              <button onClick={handleLogout} className="button" style={{ backgroundColor: '#dc3545' }}>
-                Logout ({user?.email})
-              </button>
-            </li>
-          </>
-        ) : (
-          <>
-            <li><Link to="/login">Login</Link></li>
-            <li><Link to="/register">Register</Link></li>
-          </>
-        )}
-      </ul>
+    <nav className="bg-gray-800 p-4 text-white">
+      <div className="container mx-auto flex justify-between items-center">
+        <Link to="/" className="text-xl font-bold">
+          PerfMonitor
+        </Link>
+        <ul className="flex space-x-4 items-center">
+          {!loading && isAuthenticated && (
+            <>
+              <li>
+                <Link to="/dashboard" className="hover:text-gray-300">
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link to="/services" className="hover:text-gray-300">
+                  Services
+                </Link>
+              </li>
+              <li className="text-gray-400">Hello, {user?.username}!</li>
+              <li>
+                <button onClick={logout} className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded">
+                  Logout
+                </button>
+              </li>
+            </>
+          )}
+          {!loading && !isAuthenticated && (
+            <>
+              <li>
+                <Link to="/login" className="hover:text-gray-300">
+                  Login
+                </Link>
+              </li>
+              <li>
+                <Link to="/register" className="hover:text-gray-300">
+                  Register
+                </Link>
+              </li>
+            </>
+          )}
+        </ul>
+      </div>
     </nav>
   );
 };

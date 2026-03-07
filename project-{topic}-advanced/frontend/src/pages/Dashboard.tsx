@@ -1,68 +1,56 @@
 ```typescript
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '@hooks/useAuth';
-import { getUserProfile, UserProfile } from '@api/user';
-import { toast } from 'react-toastify';
+import { getGlobalDashboardSummary, GlobalDashboardServiceSummary } from '../api/dashboard';
+import ServiceCard from '../components/ServiceCard';
 
-const DashboardPage: React.FC = () => {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+const Dashboard: React.FC = () => {
+  const [servicesSummary, setServicesSummary] = useState<GlobalDashboardServiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user?.id) {
-        setError('User ID not available.');
-        setLoading(false);
-        return;
-      }
+    const fetchSummary = async () => {
       try {
-        const userProfile = await getUserProfile(user.id);
-        setProfile(userProfile);
+        setLoading(true);
+        const data = await getGlobalDashboardSummary();
+        setServicesSummary(data);
       } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to fetch profile.');
-        toast.error(err.response?.data?.message || 'Failed to fetch profile.');
+        setError(err.response?.data?.message || 'Failed to fetch dashboard summary.');
+        console.error('Error fetching dashboard summary:', err);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchProfile();
-  }, [user?.id]);
+    fetchSummary();
+  }, []);
 
   if (loading) {
-    return <div className="container">Loading dashboard...</div>;
+    return <div className="container mx-auto p-6 text-center">Loading dashboard...</div>;
   }
 
   if (error) {
-    return <div className="container error-message">Error: {error}</div>;
+    return <div className="container mx-auto p-6 text-red-500 text-center">Error: {error}</div>;
   }
 
   return (
-    <div className="container">
-      <h1>Welcome to Your Dashboard, {profile?.firstName}!</h1>
-      <p>This is a protected area, accessible only to authenticated users.</p>
-      {profile && (
-        <div>
-          <h2>Your Profile Summary:</h2>
-          <p><strong>Email:</strong> {profile.email}</p>
-          <p><strong>Name:</strong> {profile.firstName} {profile.lastName}</p>
-          <p><strong>Role:</strong> {profile.role}</p>
-          <p><strong>Email Verified:</strong> {profile.isEmailVerified ? 'Yes' : 'No'}</p>
-          {!profile.isEmailVerified && (
-            <p className="error-message">
-              Please verify your email to unlock all features. You can resend the verification email <a href="/resend-verification" className="link">here</a>.
-            </p>
-          )}
+    <div className="container mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-8 text-gray-800">My Services Dashboard</h1>
+
+      {servicesSummary.length === 0 ? (
+        <div className="bg-white p-8 rounded-lg shadow-md text-center">
+          <p className="text-gray-600 text-lg mb-4">You haven't added any services yet.</p>
+          <p className="text-gray-500">Go to the <a href="/services" className="text-blue-600 hover:underline">Services page</a> to add your first service!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {servicesSummary.map((service) => (
+            <ServiceCard key={service.id} service={service} />
+          ))}
         </div>
       )}
-      <p>
-        Feel free to explore other protected sections or manage your <a href="/profile" className="link">profile</a>.
-      </p>
     </div>
   );
 };
 
-export default DashboardPage;
+export default Dashboard;
 ```

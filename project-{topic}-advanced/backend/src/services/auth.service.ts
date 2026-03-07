@@ -1,188 +1,114 @@
 ```typescript
-import { AppDataSource } from '../config/database';
+import { AppDataSource } from '../data-source';
 import { User } from '../entities/User';
-import { Role, UserRole } from '../entities/Role';
-import { BlacklistedToken } from '../entities/BlacklistedToken';
-import { generateAuthTokens, generateToken, verifyRefreshToken } from '../utils/jwt';
-import { hashPassword } from '../utils/password';
-import { BadRequestError, UnauthorizedError, ConflictError, NotFoundError } from '../utils/apiErrors';
-import { config } from '../config';
-import { mailService } from './mail.service';
-import { logger } from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_SECRET, JWT_REFPIRES_IN } from '../config/env';
+import { BadRequestError, UnauthorizedError } from '../middleware/errorHandler.middleware';
+import { getRedisClient, deleteCache, setCache } from '../config/redis';
+import logger from '../utils/logger';
 
-class AuthService {
-  private userRepository = AppDataSource.getRepository(User);
-  private roleRepository = AppDataSource.getRepository(Role);
-  private blacklistedTokenRepository = AppDataSource.getRepository(BlacklistedToken);
+const userRepository = AppDataSource.getRepository(User);
 
-  public async registerUser(userData: Partial<User>) {
-    const { email, password, firstName, lastName } = userData;
-
-    if (!email || !password || !firstName || !lastName) {
-      throw new BadRequestError('All fields (firstName, lastName, email, password) are required.');
-    }
-
-    const existingUser = await this.userRepository.findOneBy({ email });
-    if (existingUser) {
-      throw new ConflictError('Email already registered.');
-    }
-
-    const hashedPassword = await hashPassword(password);
-    const userRole = await this.roleRepository.findOneBy({ name: UserRole.USER });
-
-    if (!userRole) {
-      logger.error('Default user role not found during registration.');
-      throw new BadRequestError('Cannot register user: default role not configured.');
-    }
-
-    const verificationToken = uuidv4();
-    const verificationTokenExpires = new Date(Date.now() + config.jwt.verifyEmailExpirationMinutes * 60 * 1000);
-
-    const newUser = this.userRepository.create({
-      firstName,
-      lastName,
-      email,
-      password: hashedPassword,
-      role: userRole,
-      isEmailVerified: false,
-      verificationToken,
-      verificationTokenExpires,
-    });
-
-    await this.userRepository.save(newUser);
-
-    // Send email verification
-    await mailService.sendVerificationEmail(newUser.email, newUser.firstName, verificationToken);
-
-    // Filter out sensitive data before returning
-    const { password: _, verificationToken: __, verificationTokenExpires: ___, ...userWithoutSensitiveData } = newUser;
-    return userWithoutSensitiveData;
-  }
-
-  public async loginUser(email: string, passwordPlain: string) {
-    const user = await this.userRepository.findOne({
-      where: { email },
-      relations: ['role'], // Load role information
-    });
-
-    if (!user || !(await user.comparePassword(passwordPlain))) {
-      throw new UnauthorizedError('Incorrect email or password.');
-    }
-
-    if (!user.isEmailVerified) {
-      throw new UnauthorizedError('Please verify your email to log in.');
-    }
-
-    const tokens = generateAuthTokens(user.id, user.role.name);
-
-    // Filter out sensitive data before returning
-    const { password: _, verificationToken: __, verificationTokenExpires: ___, resetPasswordToken: ____, resetPasswordTokenExpires: _____, ...userWithoutSensitiveData } = user;
-    return { user: userWithoutSensitiveData, tokens };
-  }
-
-  public async logoutUser(token: string, expiresAt: Date) {
-    const blacklistedToken = this.blacklistedTokenRepository.create({
-      token,
-      expiresAt,
-    });
-    await this.blacklistedTokenRepository.save(blacklistedToken);
-  }
-
-  public async refreshAuthTokens(refreshToken: string) {
-    try {
-      const decoded = verifyRefreshToken(refreshToken);
-      const user = await this.userRepository.findOne({
-        where: { id: decoded.userId },
-        relations: ['role'],
-      });
-
-      if (!user) {
-        throw new UnauthorizedError('User not found for refresh token.');
-      }
-
-      // Check if the refresh token is also blacklisted (optional, but good for security)
-      // For this simple implementation, we assume refresh tokens are single-use or handled client-side.
-      // A more robust system would blacklist the used refresh token and issue a new one.
-
-      const newTokens = generateAuthTokens(user.id, user.role.name);
-      return newTokens;
-    } catch (error: any) {
-      // Catch specific JWT errors from verifyRefreshToken
-      throw new UnauthorizedError('Invalid or expired refresh token. Please log in again.');
-    }
-  }
-
-  public async forgotPassword(email: string) {
-    const user = await this.userRepository.findOneBy({ email });
-    if (!user) {
-      // For security, don't reveal if email exists or not
-      logger.warn(`Attempted password reset for non-existent email: ${email}`);
-      return; // Do nothing, but still return success to prevent enumeration attacks
-    }
-
-    const resetToken = uuidv4(); // Generate a unique token
-    const resetTokenExpires = new Date(Date.now() + config.jwt.resetPasswordExpirationMinutes * 60 * 1000);
-
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordTokenExpires = resetTokenExpires;
-    await this.userRepository.save(user);
-
-    await mailService.sendResetPasswordEmail(user.email, user.firstName, resetToken);
-  }
-
-  public async resetPassword(resetToken: string, newPasswordPlain: string) {
-    const user = await this.userRepository.findOne({
-      where: { resetPasswordToken: resetToken },
-    });
-
-    if (!user || !user.resetPasswordTokenExpires || user.resetPasswordTokenExpires < new Date()) {
-      throw new BadRequestError('Invalid or expired password reset token.');
-    }
-
-    user.password = await hashPassword(newPasswordPlain);
-    user.resetPasswordToken = null;
-    user.resetPasswordTokenExpires = null;
-    await this.userRepository.save(user);
-  }
-
-  public async verifyEmail(verificationToken: string) {
-    const user = await this.userRepository.findOne({
-      where: { verificationToken },
-    });
-
-    if (!user || !user.verificationTokenExpires || user.verificationTokenExpires < new Date()) {
-      throw new BadRequestError('Invalid or expired email verification token.');
-    }
-
-    user.isEmailVerified = true;
-    user.verificationToken = null;
-    user.verificationTokenExpires = null;
-    await this.userRepository.save(user);
-    return true;
-  }
-
-  public async resendVerificationEmail(email: string) {
-    const user = await this.userRepository.findOneBy({ email });
-    if (!user) {
-      throw new NotFoundError('User not found.');
-    }
-
-    if (user.isEmailVerified) {
-      throw new BadRequestError('Email is already verified.');
-    }
-
-    const newVerificationToken = uuidv4();
-    const newVerificationTokenExpires = new Date(Date.now() + config.jwt.verifyEmailExpirationMinutes * 60 * 1000);
-
-    user.verificationToken = newVerificationToken;
-    user.verificationTokenExpires = newVerificationTokenExpires;
-    await this.userRepository.save(user);
-
-    await mailService.sendVerificationEmail(user.email, user.firstName, newVerificationToken);
-    return true;
-  }
+interface TokenPayload {
+  id: string;
+  username: string;
+  email: string;
+  roles: string[];
 }
 
-export const authService = new AuthService();
+const signToken = (payload: TokenPayload, secret: string, expiresIn: string) => {
+  return jwt.sign(payload, secret, { expiresIn });
+};
+
+const verifyToken = (token: string, secret: string) => {
+  return jwt.verify(token, secret);
+};
+
+export const registerUser = async (username: string, email: string, password: string): Promise<User> => {
+  const existingUser = await userRepository.findOne({ where: [{ username }, { email }] });
+  if (existingUser) {
+    throw new BadRequestError('User with that username or email already exists.');
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const newUser = userRepository.create({ username, email, passwordHash });
+  await userRepository.save(newUser);
+  logger.info(`User registered: ${newUser.username} (${newUser.id})`);
+  return newUser;
+};
+
+export const loginUser = async (emailOrUsername: string, password: string): Promise<{ user: User; accessToken: string; refreshToken: string }> => {
+  const user = await userRepository.findOne({
+    where: [{ email: emailOrUsername }, { username: emailOrUsername }],
+  });
+
+  if (!user) {
+    throw new UnauthorizedError('Invalid credentials');
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+  if (!isPasswordValid) {
+    throw new UnauthorizedError('Invalid credentials');
+  }
+
+  const payload: TokenPayload = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    roles: user.roles,
+  };
+
+  const accessToken = signToken(payload, JWT_SECRET, JWT_EXPIRES_IN);
+  const refreshToken = signToken(payload, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN);
+
+  // Store refresh token in Redis for revocation
+  await setCache(`refreshToken:${user.id}:${refreshToken}`, 'active', parseInt(JWT_REFRESH_EXPIRES_IN) * 1000); // JWT_REFRESH_EXPIRES_IN should be numeric for seconds, or handle string like '7d'
+
+  logger.info(`User logged in: ${user.username} (${user.id})`);
+  return { user, accessToken, refreshToken };
+};
+
+export const refreshAccessToken = async (oldRefreshToken: string): Promise<{ accessToken: string; refreshToken: string }> => {
+  try {
+    const decoded: any = verifyToken(oldRefreshToken, JWT_REFRESH_SECRET);
+    const userId = decoded.id;
+
+    // Check if refresh token is still valid in Redis (not revoked)
+    const storedTokenStatus = await getRedisClient().get(`refreshToken:${userId}:${oldRefreshToken}`);
+    if (!storedTokenStatus) {
+      throw new UnauthorizedError('Refresh token revoked or expired.');
+    }
+
+    const user = await userRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new UnauthorizedError('User not found for refresh token.');
+    }
+
+    const payload: TokenPayload = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      roles: user.roles,
+    };
+
+    const newAccessToken = signToken(payload, JWT_SECRET, JWT_EXPIRES_IN);
+    const newRefreshToken = signToken(payload, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN);
+
+    // Invalidate old refresh token and store new one
+    await deleteCache(`refreshToken:${userId}:${oldRefreshToken}`);
+    await setCache(`refreshToken:${user.id}:${newRefreshToken}`, 'active', parseInt(JWT_REFRESH_EXPIRES_IN) * 1000); // Same as above
+
+    logger.info(`Access token refreshed for user: ${user.username} (${user.id})`);
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  } catch (error) {
+    logger.error('Failed to refresh token:', error);
+    throw new UnauthorizedError('Invalid or expired refresh token.');
+  }
+};
+
+export const logoutUser = async (userId: string, refreshToken: string): Promise<void> => {
+  await deleteCache(`refreshToken:${userId}:${refreshToken}`);
+  logger.info(`User logged out: ${userId}`);
+};
 ```
