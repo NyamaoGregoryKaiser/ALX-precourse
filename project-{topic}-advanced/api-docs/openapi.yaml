@@ -1,0 +1,332 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: Data Visualization Tools API
+  version: 1.0.0
+  description: API for managing data sources, datasets, visualizations, and dashboards.
+  contact:
+    email: support@example.com
+tags:
+  - name: Authentication
+    description: User login and registration
+  - name: Data Sources
+    description: CRUD operations for data sources
+  - name: Datasets
+    description: CRUD operations for datasets and fetching data
+  - name: Visualizations
+    description: CRUD operations for visualizations and fetching chart-ready data
+  - name: Dashboards
+    description: CRUD operations for dashboards and managing visualizations within them
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, admin]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DataSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [postgres, mysql, mongodb, csv_upload, json_upload]
+        connectionConfig:
+          type: object
+          description: JSON object with connection details (e.g., host, port, dbName, etc.)
+        description:
+          type: string
+          nullable: true
+        userId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Dataset:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query:
+          type: string
+        schema:
+          type: object
+          description: Inferred or defined schema of the dataset (key-value pairs of field name and type)
+        description:
+          type: string
+          nullable: true
+        dataSourceId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Visualization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        chartType:
+          type: string
+          enum: [bar, line, pie, scatter, area, table, gauge]
+        configuration:
+          type: object
+          description: Chart-specific configuration (e.g., xField, yField, title)
+        dataMapping:
+          type: object
+          nullable: true
+          description: Mapping of dataset fields to chart properties
+        description:
+          type: string
+          nullable: true
+        datasetId:
+          type: string
+          format: uuid
+        dashboardId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        layout:
+          type: object
+          nullable: true
+          description: Layout configuration for visualizations on the dashboard
+        userId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+        stack:
+          type: string
+          nullable: true
+          description: Stack trace (only in development)
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  example: Password123!
+                role:
+                  type: string
+                  enum: [user, admin]
+                  default: user
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      token:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User with this email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-sources:
+    post:
+      summary: Create a new data source
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, connectionConfig]
+              properties:
+                name:
+                  type: string
+                  example: My Sales Database
+                type:
+                  type: string
+                  enum: [postgres, csv_upload]
+                  example: postgres
+                connectionConfig:
+                  type: object
+                  description: Connection parameters for the data source.
+                  example:
+                    host: db
+                    port: 5432
+                    username: postgres
+                    password: password
+                    database: salesdb
+                description:
+                  type: string
+                  nullable: true
+                  example: Main database for sales data.
+      responses:
+        '201':
+          description: Data source created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/DataSource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      summary: Get all data sources for the authenticated user
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: A list of data sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DataSource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ... other paths for /data-sources/{id}, /datasets, /visualizations, /dashboards
+  # (similar structure for GET, PUT, DELETE, and specific actions like /datasets/{id}/data)
+
+components:
+  responses:
+    Unauthorized:
+      description: Authentication token missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: You do not have permission to perform this action
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid input data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+```

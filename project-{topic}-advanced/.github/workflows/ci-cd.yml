@@ -1,120 +1,189 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  build-and-test:
+  build-and-test-backend:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
       with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
+        node-version: '18'
 
-    - name: Configure Git for JaCoCo properties
-      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    - name: Install dependencies
+      run: npm install
 
-    - name: Build and run tests with Maven
-      run: mvn -B package --file pom.xml
+    - name: Run ESLint
+      run: npm run lint
 
-    - name: Check code coverage with JaCoCo
-      run: mvn jacoco:check -Dmaven.test.skip=false # Ensure tests are run before coverage check
+    - name: Build TypeScript
+      run: npm run build
 
-    - name: Upload JaCoCo report to GitHub Artifacts
-      uses: actions/upload-artifact@v4
+    - name: Set up Docker Compose
+      run: docker-compose up -d db
+
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        docker-compose logs db
+        until docker-compose exec db pg_isready -U postgres -d datavizdb; do
+          echo "Waiting for postgres..."
+          sleep 5
+        done
+        echo "PostgreSQL is ready."
+      timeout-minutes: 5
+
+    - name: Run migrations
+      run: npm run migration:run
+      env:
+        DB_HOST: localhost # Access db directly on host for migrations/tests
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: password
+        DB_NAME: datavizdb
+
+    - name: Run Backend Tests
+      run: npm test
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: password
+        DB_NAME: datavizdb_test # Use a separate test database
+        JWT_SECRET: test_jwt_secret
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
       with:
-        name: jacoco-report
-        path: target/site/jacoco/jacoco.xml
-        
-    - name: Upload test results to GitHub Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: target/surefire-reports/
+        name: backend-coverage-report
+        path: coverage/
 
-  docker-build-and-push:
-    needs: build-and-test
+  build-and-test-frontend:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Only push Docker image on main branch push
-
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm install
+
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Run Frontend Tests
+      working-directory: ./frontend
+      run: npm test -- --coverage --watchAll=false # Run tests once and exit, collect coverage
+
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-coverage-report
+        path: frontend/coverage/
+
+  deploy-to-staging:
+    needs: [build-and-test-backend, build-and-test-frontend]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment:
+      name: Staging
+      url: https://staging.yourdomain.com
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build and Push Docker Images
+      uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
+    - uses: docker/setup-buildx-action@v2
+    - uses: docker/build-push-action@v4
       with:
         context: .
+        file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/task-management-platform:latest
-        build-args: |
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-
-  deploy:
-    needs: docker-build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Only deploy on main branch push
-    environment: Production
-
-    steps:
-    - name: Deploy to EC2 instance
-      uses: appleboy/ssh-action@v1.0.3
+        tags: yourusername/data-viz-backend:staging-${{ github.sha }}
+    - uses: docker/build-push-action@v4
       with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        push: true
+        tags: yourusername/data-viz-frontend:staging-${{ github.sha }}
+
+    - name: Deploy to Staging (SSH)
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USERNAME }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
         script: |
-          # Create/navigate to project directory
-          mkdir -p /opt/task-management-platform
-          cd /opt/task-management-platform
+          cd /path/to/your/staging/app
+          docker-compose pull
+          docker-compose up -d --build
+          docker system prune -f # Clean up old images
 
-          # Create .env file for Docker Compose (or ensure environment variables are set)
-          echo "DB_NAME=${{ secrets.DB_NAME }}" > .env
-          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
-          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+  deploy-to-production:
+    needs: [build-and-test-backend, build-and-test-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://yourdomain.com
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-          # Pull latest docker-compose.yml (assuming it's managed via version control)
-          # Alternatively, you might copy it from the repo. For simplicity, we'll assume it exists or is simple.
-          # For a real scenario, you'd `git clone` or `git pull` the repo to get the docker-compose.yml.
-          # For this example, let's just make sure the necessary image is pulled and restarted.
-          
-          # Stop and remove existing containers
-          docker compose -f docker-compose.yml down || true
+    - name: Build and Push Docker Images
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    - uses: docker/setup-buildx-action@v2
+    - uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: yourusername/data-viz-backend:latest
+    - uses: docker/build-push-action@v4
+      with:
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        push: true
+        tags: yourusername/data-viz-frontend:latest
 
-          # Pull the latest Docker image
-          docker pull ${{ secrets.DOCKER_USERNAME }}/task-management-platform:latest
-
-          # Recreate and start containers
-          docker compose -f docker-compose.yml up -d
-
-          echo "Deployment complete!"
+    - name: Deploy to Production (SSH)
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USERNAME }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          cd /path/to/your/production/app
+          docker-compose pull
+          docker-compose up -d --build
+          docker system prune -f
 ```
-**GitHub Secrets required:**
-*   `DOCKER_USERNAME`: Your Docker Hub username.
-*   `DOCKER_PASSWORD`: Your Docker Hub Access Token.
-*   `EC2_HOST`: IP address or hostname of your EC2 instance.
-*   `EC2_USERNAME`: SSH username for your EC2 instance (e.g., `ubuntu`, `ec2-user`).
-*   `EC2_SSH_KEY`: Your private SSH key for EC2 (use `-----BEGIN OPENSSH PRIVATE KEY-----...-----END OPENSSH PRIVATE KEY-----` format).
-*   `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`: Database credentials for the production environment.
-*   `JWT_SECRET`: A strong, randomly generated secret for JWT.
-
-**Note:** The `deploy` step is a simplified example. In a real-world scenario, you might have more sophisticated deployment strategies (e.g., Blue/Green, Canary deployments, Kubernetes manifests). This example assumes a single EC2 instance with Docker and Docker Compose installed.
