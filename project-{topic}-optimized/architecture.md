@@ -1,140 +1,110 @@
-# Web Scraping Tools System Architecture
+```markdown
+# Architecture Documentation: Task Management System
 
-This document outlines the architecture of the comprehensive web scraping tools system, detailing its components, their interactions, and the technologies used.
+This document outlines the architectural design of the Task Management System, focusing on its structure, components, and interactions.
 
 ## 1. High-Level Overview
 
-The system is a modular, full-stack application designed for robustness, scalability, and ease of maintenance. It follows a microservices-inspired approach for clarity, although all components are contained within a single Python application for deployment convenience. Key components include a Flask API, a PostgreSQL database, Celery for asynchronous task processing, and Redis for caching and message brokering.
+The system employs a multi-layered, API-driven architecture. The core is a C++ backend acting as a RESTful API server, responsible for all business logic and data persistence. This API serves a conceptual frontend (e.g., a Single Page Application built with JavaScript frameworks) or mobile clients. Docker is used for containerization to ensure consistency across environments.
 
-```mermaid
-graph TD
-    User(User/Client Browser) --> |HTTP/HTTPS| Frontend(Flask Jinja2 Frontend)
-    Frontend --> |HTTP/HTTPS (proxied)| API(Flask Backend API)
-    API --&gt; |Read/Write| DB(PostgreSQL Database)
-    API --&gt; |Read/Write| Cache(Redis Cache)
-    API --&gt; |Enqueue Task| CeleryBroker(Redis Celery Broker)
-    CeleryBroker --&gt; |Distribute Task| CeleryWorker(Celery Worker)
-    CeleryWorker --&gt; |Scrape Web| Scraper(Scraper Core)
-    Scraper --&gt; |Fetch Data| Web(External Websites)
-    Scraper --&gt; |Store Results| DB
-    CeleryWorker --&gt; |Update Status/Store Result| CeleryBackend(Redis Celery Result Backend)
-    CeleryWorker --&gt; |Update Job Status| DB
-    Monitoring(Monitoring/Logging) &lt;-- API
-    Monitoring &lt;-- CeleryWorker
+```
++----------------+          +-----------------------+          +-------------------+
+|    Client      | <------> |  C++ Backend (Drogon) | <------> |     Database      |
+| (Web/Mobile)   |   (REST) |  - Controllers        |  (ORM)   |     (SQLite/PG)   |
+|                |          |  - Services           |          |  - Users          |
+|                |          |  - Filters (Auth, RL) |          |  - Tasks          |
+|                |          |  - Models             |          |  - Categories     |
++----------------+          +-----------------------+          +-------------------+
+                                   ^     |
+                                   |     | (Logging, Caching)
+                                   v     v
+                             +-------------------+
+                             | Monitoring & Logs |
+                             |    (Files/ELK)    |
+                             +-------------------+
 ```
 
-## 2. Core Application (Python - Flask)
+## 2. Component Breakdown
 
-The backend is built using Flask, a lightweight Python web framework. It provides RESTful API endpoints for managing scraper configurations, initiating jobs, and retrieving results.
+### 2.1. Client Layer
 
-### 2.1. Modules and Components:
+*   **Description**: This layer represents the user interface that interacts with the backend API. For this project, a fully implemented C++ frontend is not provided, but the C++ server is capable of serving static web assets (HTML, JS, CSS) for a basic SPA.
+*   **Technologies**: (Conceptual) React, Vue.js, Angular for web; Swift/Kotlin for mobile.
+*   **Interaction**: Communicates with the C++ Backend via HTTP/HTTPS, sending and receiving JSON data.
 
-*   **`app/__init__.py`**:
-    *   Initializes the Flask application, SQLAlchemy, Flask-Migrate, Flask-Limiter, RedisCache, and Celery.
-    *   Configures logging and error handling.
-    *   Registers blueprints for API and frontend views.
-*   **`app/api/`**: Contains Flask Blueprints for API endpoints.
-    *   `auth.py`: Handles user registration and login (JWT token issuance).
-    *   `scrapers.py`: CRUD operations for `ScraperConfig` objects.
-    *   `jobs.py`: CRUD operations for `ScrapingJob` objects, including initiating and cancelling jobs.
-    *   `results.py`: Retrieval of `ScrapingResult` data.
-*   **`app/auth/`**:
-    *   `decorators.py`: JWT token validation (`@token_required`) and role-based access control (`@admin_required`).
-    *   `services.py`: Business logic for user authentication (registration, login, JWT generation).
-*   **`app/models/`**: Defines SQLAlchemy ORM models, representing the database schema.
-    *   `base.py`: Provides a `Base` model with common fields (`id`, `created_at`, `updated_at`).
-    *   `user.py`: Stores user details, including hashed passwords and admin status.
-    *   `scraper_config.py`: Defines what to scrape (target URL, CSS selectors, description).
-    *   `scraping_job.py`: Tracks individual scraping runs (status, timestamps, associated config/user).
-    *   `scraping_result.py`: Stores the actual scraped data.
-*   **`app/schemas/`**: Pydantic models for request body validation and API response serialization.
-    *   `auth.py`, `scraper.py`, `job.py`, `result.py`: Corresponding schemas for API endpoints.
-*   **`app/services/`**: Encapsulates the business logic for each resource, interacting with models and other services.
-    *   `scraper_service.py`: Logic for creating, retrieving, updating, and deleting scraper configurations.
-    *   `job_service.py`: Logic for creating, managing (cancel, status), and deleting scraping jobs. Initiates Celery tasks.
-    *   `result_service.py`: Logic for retrieving scraping results.
-*   **`app/scraper/core.py`**: The core scraping engine.
-    *   Uses `requests` for HTTP requests and `BeautifulSoup` for HTML parsing.
-    *   Implements `_fetch_page` (with retries, delays, user-agents), `_parse_html`, and `_extract_data` based on CSS selectors.
-    *   Includes a conceptual `crawl` method for future expansion into multi-page scraping.
-*   **`app/tasks/`**: Celery tasks for asynchronous processing.
-    *   `celery_app.py`: Defines the Celery application instance.
-    *   `scraping_tasks.py`: Contains the `run_scraping_job` task, which orchestrates the scraping process, updates job status, and stores results.
-*   **`app/utils/`**: Utility functions and helper classes.
-    *   `errors.py`: Custom `APIError` classes and a global error handler middleware.
-    *   `logging_config.py`: Configures application logging to console and file.
-    *   `rate_limiter.py`: Integrates `Flask-Limiter` for API rate limiting.
-*   **`app/templates/` & `app/views.py`**: A basic Jinja2-based frontend for user interaction (login, register, dashboard). This acts as a conceptual client to the API.
+### 2.2. C++ Backend (Drogon Framework)
 
-## 3. Database Layer (PostgreSQL & SQLAlchemy)
+The backend is built using the Drogon C++ web framework. It handles all incoming API requests, processes business logic, and interacts with the database.
 
-*   **Database**: PostgreSQL is chosen for its robustness, reliability, and rich feature set, including support for `JSONB` for flexible storage of scraped data.
-*   **ORM**: SQLAlchemy is used as the Object-Relational Mapper, providing an abstraction layer over raw SQL queries, enabling Pythonic interaction with the database.
-*   **Schema Definitions**: Defined in `app/models/` using SQLAlchemy's declarative base. Includes `User`, `ScraperConfig`, `ScrapingJob`, and `ScrapingResult` models.
-*   **Migrations**: Alembic is used for database schema migrations, ensuring controlled evolution of the database schema.
-*   **Seed Data**: `seed_data.py` populates the database with initial users and example scraper configurations for development and testing.
-*   **Query Optimization**: Basic indexing is applied to foreign keys and frequently queried fields (e.g., `username`, `email`, `name`, `user_id`, `job_id`). Further optimization would involve analyzing query plans and adding more specific indexes as needed.
+#### 2.2.1. Core Modules
 
-## 4. Configuration & Setup
+*   **`main.cpp`**: The application entry point. Initializes Drogon, sets up listeners, loads configuration, and starts the event loop.
+*   **`config.json`**: Central configuration file for Drogon, including server settings, database connection details, and filter-specific configurations (e.g., JWT secret, rate limits).
 
-*   **`requirements.txt`**: Lists all Python dependencies, ensuring consistent environments.
-*   **`.env.example`**: Provides a template for environment variables (database URL, secret keys, Celery config), promoting secure and flexible configuration.
-*   **`config.py`**: Manages application-specific configurations, offering different settings for development, testing, and production environments.
-*   **Docker**:
-    *   `Dockerfile`: Defines the application's build environment and runtime dependencies.
-    *   `docker-compose.yml`: Orchestrates the multi-service application (Flask app, PostgreSQL, Redis, Celery worker, Celery beat) for local development and simplified deployment.
-    *   `entrypoint.sh`: A shell script run inside the Docker container to wait for database readiness, apply migrations, seed data (once), and start the Flask application or Celery processes.
-*   **CI/CD Pipeline**:
-    *   `.github/workflows/main.yml`: A basic GitHub Actions workflow configuration.
-    *   Triggers on `push` and `pull_request` to `main` and `develop` branches.
-    *   Performs dependency installation, database setup (test DB), runs unit/integration/API tests, and reports code coverage.
-    *   Includes a conceptual step for building Docker images.
+#### 2.2.2. API Layer
 
-## 5. Testing & Quality (pytest)
+*   **Controllers (`src/controllers/`)**:
+    *   **Purpose**: Handle HTTP requests, define API routes, parse request bodies/parameters, and delegate tasks to the service layer.
+    *   **Examples**: `AuthController` (user registration, login), `TaskController` (CRUD for tasks), `CategoryController` (CRUD for categories).
+    *   **Responsibility**: Input validation (basic), request/response marshalling (JSON), error handling (API response formatting).
+*   **Filters (`src/filters/`)**:
+    *   **Purpose**: Middleware components that process requests before they reach controllers.
+    *   **Examples**:
+        *   `AuthFilter`: Validates JWT tokens from the `Authorization` header, authenticates the user, and injects user ID into request attributes.
+        *   `RateLimitFilter`: Limits the number of requests from a client IP within a time window to prevent abuse.
+    *   **Mechanism**: Drogon's filter chain mechanism, allowing requests to be processed sequentially or rejected early.
 
-*   **Unit Tests (`tests/unit/`)**: Focus on individual components in isolation (models, services, scraper core logic).
-    *   `test_models.py`: Verifies ORM model behavior, field types, and basic CRUD operations.
-    *   `test_services.py`: Tests the business logic within services, mocking external dependencies like database interactions or Celery tasks where appropriate.
-    *   `test_scraper_core.py`: Tests the scraping utility functions, mocking network requests.
-*   **Integration Tests (`tests/integration/`)**: Verifies interactions between different components, particularly the application and the database.
-    *   `test_db_interactions.py`: Confirms relationships and cascade operations between SQLAlchemy models.
-*   **API Tests (`tests/api/`)**: Uses `FlaskClient` to simulate HTTP requests to API endpoints, validating responses, status codes, and data integrity.
-    *   `test_auth_api.py`: Tests user registration and login.
-    *   `test_scraper_api.py`: Tests CRUD operations for scraper configurations.
-    *   `test_job_api.py`: Tests job creation, status updates, and deletion.
-    *   `test_results_api.py`: Tests retrieval of scraped data.
-*   **Coverage**: `pytest-cov` is used to measure test coverage, aiming for 80%+ coverage for critical modules.
-*   **Performance Tests (Conceptual)**: For a full enterprise-grade system, tools like [Locust](https://locust.io/) or [JMeter](https://jmeter.apache.org/download_bin.cgi) would be integrated to simulate concurrent user loads and measure API response times and throughput. The focus would be on identifying bottlenecks in database queries, API logic, and external scraping calls.
+#### 2.2.3. Business Logic Layer
 
-## 6. Additional Features
+*   **Services (`src/services/`)**:
+    *   **Purpose**: Encapsulate the core business logic and workflows. They interact with the ORM/database client to perform data operations.
+    *   **Examples**: `AuthService` (user authentication, password hashing, JWT generation/verification), `TaskService` (task creation, retrieval, update, deletion logic, including validation and ownership checks).
+    *   **Responsibility**: Implement complex business rules, data validation beyond basic parsing, transaction management (if applicable), and data retrieval/manipulation.
 
-*   **Authentication/Authorization**:
-    *   **JWT (JSON Web Tokens)**: Used for stateless authentication. Upon successful login, a JWT is issued.
-    *   **Decorators (`@token_required`, `@admin_required`)**: Protect API endpoints, ensuring only authenticated and authorized users can access specific resources.
-    *   **Role-Based Access Control (RBAC)**: A simple `is_admin` flag on the `User` model demonstrates basic role differentiation.
-*   **Logging and Monitoring**:
-    *   **Python's `logging` module**: Configured to write structured logs to `stdout` and a rotating file (`app.log`).
-    *   **Log Levels**: Configurable (`INFO`, `DEBUG`, `WARNING`, `ERROR`, `CRITICAL`).
-    *   **Monitoring (Conceptual)**: In a production setup, logs would be aggregated by tools like ELK Stack (Elasticsearch, Logstash, Kibana) or Splunk. Application performance monitoring (APM) tools like Prometheus/Grafana or Datadog would track metrics for Flask, Celery, and database performance.
-*   **Error Handling Middleware**:
-    *   Custom `APIError` exceptions (e.g., `NotFoundError`, `BadRequestError`, `UnauthorizedError`, `ForbiddenError`) are raised within services and caught by a global Flask error handler, returning consistent JSON error responses.
-*   **Caching Layer (RedisCache)**:
-    *   `Flask-Caching` with Redis backend is used to cache frequently accessed data (e.g., lists of scraper configs, job details).
-    *   `@cache.memoize` decorator is used in service methods to automatically cache results, reducing database load and improving response times.
-*   **Rate Limiting (Flask-Limiter)**:
-    *   Protects API endpoints from abuse by limiting the number of requests a user can make within a specified timeframe.
-    *   Limits can be defined globally, per blueprint, or per route, and can differentiate between authenticated and unauthenticated users.
-*   **Background Tasks (Celery with Redis)**:
-    *   **Celery**: A distributed task queue system used to offload long-running operations (like web scraping) from the main Flask process.
-    *   **Redis**: Serves as both the message broker (for Celery to send/receive tasks) and the result backend (to store task status and results).
-    *   **Celery Worker**: Executes the actual scraping tasks asynchronously.
-    *   **Celery Beat**: A scheduler that can be configured to run tasks periodically (e.g., scheduled scraping jobs).
+#### 2.2.4. Data Access Layer
 
-## 7. Frontend (Jinja2)
+*   **Models (`src/models/`)**:
+    *   **Purpose**: Define the structure of data entities (e.g., `User`, `Task`, `Category`) and their mapping to database tables. They contain methods for serialization/deserialization to/from JSON and database results.
+    *   **Mechanism**: Drogon's ORM (Object-Relational Mapping) capabilities, though for this project, manual mapping is used for custom control and clarity.
+*   **Database Client (Drogon ORM `drogon::orm::DbClientPtr`)**:
+    *   **Purpose**: Provides an asynchronous interface to interact with the database.
+    *   **Technologies**: Configured for SQLite (development/testing) but supports PostgreSQL, MySQL, etc.
 
-A minimal Flask-rendered HTML/CSS/JS frontend is provided to demonstrate basic user interaction, authentication flow, and conceptual calls to the API. In a true full-scale project, this would typically be a separate Single Page Application (SPA) built with frameworks like React, Vue, or Angular, directly consuming the REST API. The current setup uses a Flask "proxy" endpoint to funnel frontend AJAX calls through the Flask backend to handle JWT token injection from the session.
+#### 2.2.5. Utilities
 
-## Conclusion
+*   **`src/utils/ApiResponse.h`**: A helper for consistent JSON API response formatting (success/error).
+*   **Logging**: Drogon's built-in logging (`LOG_INFO`, `LOG_ERROR`, etc.) is used to capture application events and errors, configured to write to files (`app.log`).
 
-This architecture provides a robust, scalable, and maintainable foundation for a production-ready web scraping system. By leveraging established tools and design patterns, it addresses common challenges in distributed systems and web development, aligning with principles of good software engineering practice.
+## 3. Database Layer
+
+*   **Technology**: SQLite (for development/testing), PostgreSQL/MySQL (recommended for production).
+*   **Schema (`db/schema.sql`)**: Defines tables (`users`, `tasks`, `categories`), their columns, data types, primary/foreign keys, and constraints. Includes indexes for query optimization.
+*   **Migrations**: A simple shell script (`scripts/run_migrations.sh`) is used to apply schema and seed data. For production, dedicated migration tools (e.g., Flyway, Liquibase) would be integrated.
+*   **Seed Data (`db/seed.sql`)**: Populates the database with initial dummy data for testing and demonstration.
+
+## 4. Cross-Cutting Concerns
+
+*   **Authentication & Authorization**: JWT-based. `AuthService` generates/verifies tokens. `AuthFilter` protects API endpoints, ensuring only authenticated and authorized requests proceed.
+*   **Error Handling**: Exceptions (e.g., `drogon::HttpException`) are caught by controllers/services and translated into standardized JSON error responses using `ApiResponse` utility, with appropriate HTTP status codes.
+*   **Logging**: Drogon's internal logging mechanism writes to `app.log`. Configurable log levels.
+*   **Caching**: A basic in-memory caching mechanism can be implemented (e.g., using `std::unordered_map` with time-based eviction) for specific frequently accessed data, or integrated with external solutions like Redis. (Not fully implemented in code, but mentioned as a feature).
+*   **Rate Limiting**: `RateLimitFilter` limits requests per IP, configured via `config.json`.
+*   **Configuration**: Managed via `config.json` and environment variables (`.env` file, Docker environment).
+
+## 5. Development & Deployment Workflow
+
+*   **Build System**: CMake orchestrates the C++ compilation and linking.
+*   **Testing**: Google Test for unit and integration tests. `ctest` is used to discover and run tests.
+*   **Containerization**: `Dockerfile` creates a portable Docker image of the C++ application. `docker-compose.yml` orchestrates the application and its local database.
+*   **CI/CD**: GitHub Actions workflow (`.github/workflows/ci-cd.yml`) automates building, testing, and potentially deploying the application upon code changes.
+
+## 6. Scalability & Performance Considerations
+
+*   **Asynchronous Processing**: Drogon's event-driven, non-blocking I/O model is inherently scalable, utilizing multiple threads for handling concurrent requests efficiently.
+*   **Database**: While SQLite is used for simplicity, the ORM allows for easy migration to high-performance databases like PostgreSQL or MySQL, which are critical for production scalability. Connection pooling is managed by Drogon.
+*   **Caching**: Implementation of a robust caching layer (e.g., Redis) can significantly reduce database load and improve response times.
+*   **Load Balancing**: In a production deployment, multiple instances of the Drogon application can be run behind a load balancer to distribute traffic.
+*   **Optimized Queries**: Database queries in services are designed to be efficient, using indexes where appropriate.
+
+This architecture provides a solid foundation for a robust, scalable, and maintainable task management system.
 ```

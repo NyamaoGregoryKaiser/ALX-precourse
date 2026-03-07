@@ -1,435 +1,252 @@
-# E-commerce Mobile App Backend
+```markdown
+# Enterprise-Grade Task Management System
 
-This project provides a comprehensive, production-ready backend system for a mobile e-commerce application. It's built with Python using the Flask framework and adheres to best practices for scalability, security, and maintainability.
+This project is a comprehensive, production-ready Task Management System built with a C++ backend (using the Drogon framework) and designed for scalability, robustness, and ease of deployment. It adheres to modern software engineering best practices, including a multi-layered architecture, extensive testing, and CI/CD integration.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Architecture](#architecture)
-4.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup](#local-development-setup)
-    *   [Database Migrations](#database-migrations)
-    *   [Seeding Initial Data](#seeding-initial-data)
-    *   [Running the Application](#running-the-application)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-    *   [Unit Tests](#unit-tests)
-    *   [Integration Tests](#integration-tests)
-    *   [Performance Tests](#performance-tests)
-    *   [Test Coverage](#test-coverage)
-7.  [Deployment Guide](#deployment-guide)
-8.  [CI/CD Configuration](#cicd-configuration)
-9.  [Logging and Monitoring](#logging-and-monitoring)
-10. [Error Handling](#error-handling)
-11. [Caching](#caching)
-12. [Rate Limiting](#rate-limiting)
-13. [Authentication and Authorization](#authentication-and-authorization)
-14. [Contributing](#contributing)
-15. [License](#license)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Setup & Installation](#setup--installation)
+  - [Prerequisites](#prerequisites)
+  - [Local Development (Without Docker)](#local-development-without-docker)
+  - [Docker Setup (Recommended)](#docker-setup-recommended)
+- [Database Management](#database-management)
+- [Running the Application](#running-the-application)
+- [API Endpoints](#api-endpoints)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
-## 1. Features
+## Features
 
-This backend system offers the following core functionalities:
+**Core Task Management:**
+-   **User Management**: Register, Login, Authentication (JWT).
+-   **Task CRUD**: Create, Read (single, all by user, filtered), Update, Delete tasks.
+-   **Task Attributes**: Title, Description, Status (TODO, IN_PROGRESS, DONE), Due Date, Category.
+-   **Category Management**: Create, Read, Update, Delete categories for tasks.
 
-*   **User Management:**
-    *   User registration and login (email/password).
-    *   JWT-based authentication and refresh token mechanism.
-    *   Role-Based Access Control (RBAC) for `ADMIN`, `EDITOR`, `CUSTOMER` roles.
-    *   CRUD operations for users (Admin only for full control, users can manage their own profile).
-*   **Product Catalog:**
-    *   CRUD operations for product categories.
-    *   CRUD operations for products with details (name, description, price, stock, image, category).
-    *   Pagination, searching, and filtering for product and category listings.
-*   **Order Management:**
-    *   Customer can create orders with multiple products.
-    *   Automatic stock deduction upon order creation.
-    *   Retrieve individual orders and a list of orders (customers see their own, admins see all).
-    *   Update order status (Admin/Editor only).
-*   **Robustness & Performance:**
-    *   Comprehensive error handling with custom exceptions.
-    *   Logging for auditing and debugging.
-    *   Caching layer with Redis for frequently accessed data (products, categories).
-    *   Rate limiting to protect against abuse.
-    *   Database migrations with Alembic.
-    *   Dockerized setup for consistent environments.
-*   **Quality & Maintainability:**
-    *   Modular project structure.
-    *   Unit, integration, and API tests with high coverage.
-    *   CI/CD pipeline configuration (GitHub Actions).
-    *   Clear and extensive documentation.
+**Enterprise-Grade Features:**
+-   **Authentication & Authorization**: JSON Web Tokens (JWT) for secure API access.
+-   **Logging & Monitoring**: Structured logging for application events and errors.
+-   **Error Handling**: Consistent API error responses with appropriate HTTP status codes.
+-   **Rate Limiting**: Protects API endpoints from abuse and overload.
+-   **Caching Layer**: (Conceptual/Basic In-memory) Improves response times for frequently accessed data.
+-   **Database Abstraction**: Using Drogon's ORM for database interactions, allowing for easy switching of DB backends (e.g., SQLite, PostgreSQL, MySQL).
+-   **Containerization**: Docker support for consistent development and deployment environments.
+-   **CI/CD Pipeline**: Automated build, test, and deployment workflows (GitHub Actions).
+-   **Comprehensive Testing**: Unit, Integration, and API tests.
+-   **Detailed Documentation**: README, API docs, Architecture docs, Deployment guide.
 
-## 2. Technology Stack
+## Architecture
 
-*   **Backend Framework:** Flask (Python)
-*   **Database:** PostgreSQL
-*   **ORM:** SQLAlchemy with Flask-SQLAlchemy
-*   **Migrations:** Alembic
-*   **Serialization/Validation:** Marshmallow, webargs, Flask-Smorest
-*   **Authentication:** Flask-JWT-Extended (JWT)
-*   **Hashing:** Flask-Bcrypt
-*   **Caching:** Redis with Flask-Caching
-*   **Rate Limiting:** Flask-Limiter
-*   **CORS:** Flask-Cors
-*   **Containerization:** Docker, Docker Compose
-*   **Testing:** Pytest, pytest-cov, Locust (for performance)
-*   **API Documentation:** Flask-Smorest (generates OpenAPI/Swagger UI)
-*   **Environment Management:** python-dotenv
-*   **WSGI Server:** Gunicorn
+The system follows a layered architecture, promoting separation of concerns and maintainability:
 
-## 3. Architecture
+1.  **Client Layer (Conceptual Frontend)**: A typical web application (e.g., React, Vue.js) or mobile app that consumes the RESTful API. The C++ server can serve static assets for a simple client.
+2.  **API Layer (C++ Backend - Drogon)**:
+    *   **Controllers**: Handle incoming HTTP requests, parse inputs, and orchestrate responses. They delegate business logic to services.
+    *   **Filters/Middleware**: Intercept requests for cross-cutting concerns like authentication, authorization, and rate limiting.
+    *   **Services**: Contain the core business logic, interact with the database (via ORM), and encapsulate operations on models.
+    *   **Models**: Represent the data structures (e.g., `User`, `Task`, `Category`) and their mapping to database tables.
+3.  **Database Layer (SQLite)**: Persists application data. Configured with schema, migrations, and seed data. Designed to be swappable for production-grade databases like PostgreSQL.
 
-The application follows a layered architectural pattern to ensure separation of concerns and maintainability.
+See `architecture.md` for a more detailed diagram and explanation.
 
-*   **Presentation Layer (`app/api`):**
-    *   Handles HTTP requests and responses.
-    *   Uses Flask Blueprints for modular API endpoints.
-    *   Utilizes Marshmallow schemas for request validation and response serialization.
-    *   Integrates Flask-Smorest for API documentation generation and improved validation.
-    *   Applies authentication, authorization, caching, and rate limiting decorators.
-*   **Business Logic Layer (`app/services`):**
-    *   Contains the core business rules and data processing logic.
-    *   Interacts with the `Database Layer` through ORM models.
-    *   Encapsulates operations like user registration, product updates, order creation, ensuring data integrity and consistency.
-    *   Raises custom `APIError` exceptions for specific business rule violations.
-*   **Database Layer (`app/models`, `app/database`):**
-    *   Defines the database schema using SQLAlchemy ORM models.
-    *   Manages database sessions and connections.
-    *   Includes association tables for many-to-many relationships (e.g., `User` and `UserRole`).
-    *   Migrations are handled by Alembic.
-*   **Utilities Layer (`app/utils`):**
-    *   Provides common functionalities such as custom decorators (e.g., `role_required`, `cache_response`), centralized error handling, and logging configuration.
-*   **Configuration & Extensions (`app/config`, `app/extensions`):**
-    *   Manages application settings for different environments (development, testing, production).
-    *   Initializes Flask extensions (JWT, Bcrypt, Cache, Limiter, CORS).
+## Technology Stack
 
-### Component Diagram
+*   **Core Application**: C++17/20
+*   **Web Framework**: [Drogon](https://drogon.org/) (C++ HTTP application framework)
+*   **Database**: SQLite (for development and testing), easily configurable for PostgreSQL/MySQL in production.
+*   **Database ORM**: Drogon's built-in ORM.
+*   **Hashing**: `bcrypt` (for password security).
+*   **JWT**: `jwt-cpp` library.
+*   **Build System**: CMake
+*   **Containerization**: Docker, Docker Compose
+*   **Testing Framework**: [Google Test](https://github.com/google/googletest)
+*   **CI/CD**: GitHub Actions
 
-```
-+------------------+     +------------------+     +------------------+
-| Mobile App (FE)  |<--->|    Web Browser   |     |  3rd Party Integrations  |
-|                  |     |  (Swagger UI)    |     |   (Future: Payment)      |
-+------------------+     +------------------+     +------------------+
-         |                       |
-         | (HTTPS: REST API)     |
-         v                       v
-+------------------------------------------------------------------+
-|                       Load Balancer / Reverse Proxy              |
-|                             (e.g., Nginx)                        |
-+------------------------------------------------------------------+
-         |
-         v
-+------------------------------------------------------------------+
-|                        API Gateway (Optional)                    |
-+------------------------------------------------------------------+
-         |
-         v
-+------------------------------------------------------------------+
-|                 [Flask Backend Application - Gunicorn]           |
-|  +------------------------------------------------------------+  |
-|  |           Presentation Layer (`app/api`)                 |  |
-|  |           - API Endpoints, Request/Response Handling       |  |
-|  |           - Authentication (JWT), Authorization (RBAC)     |  |
-|  |           - Request Validation (Marshmallow, webargs)      |  |
-|  |           - Rate Limiting (Flask-Limiter)                  |  |
-|  |           - Caching (Flask-Caching)                        |  |
-|  +------------------------------------------------------------+  |
-|                           |                                      |
-|                           v                                      |
-|  +------------------------------------------------------------+  |
-|  |           Business Logic Layer (`app/services`)          |  |
-|  |           - User, Product, Category, Order Management Logic  |  |
-|  |           - Stock Management, Order Calculation            |  |
-|  |           - Custom Error Handling (`app/utils/errors`)     |  |
-|  +------------------------------------------------------------+  |
-|                           |                                      |
-|                           v                                      |
-|  +------------------------------------------------------------+  |
-|  |           Database Layer (`app/models`, `app/database`)  |  |
-|  |           - SQLAlchemy ORM Models (User, Product, Order)   |  |
-|  |           - Query Optimization (eager loading)             |  |
-|  +------------------------------------------------------------+  |
-|                           ^                                      |
-|                           |                                      |
-|  +------------------------------------------------------------+  |
-|  |                     Utility Modules (`app/utils`)          |  |
-|  |                     - Logging (`app/utils/logger`)         |  |
-|  |                     - Decorators (`app/utils/decorators`)    |  |
-|  +------------------------------------------------------------+  |
-+------------------------------------------------------------------+
-         |                 |
-         | (SQL)           | (Key-Value)
-         v                 v
-+------------+       +----------+
-| PostgreSQL |<----->|   Redis  |
-| (Database) |       | (Cache,  |
-+------------+       | Rate Lim |
-                     +----------+
-```
-
-## 4. Setup and Installation
+## Setup & Installation
 
 ### Prerequisites
 
-*   Docker and Docker Compose
-*   Python 3.9+ (if running locally without Docker)
-*   `pip` (Python package installer)
+*   Git
+*   CMake (>= 3.15)
+*   A C++17/20 compatible compiler (GCC >= 8 or Clang >= 7)
+*   Drogon library (installed globally or via `vcpkg`, or let Docker handle it)
+*   `libjsoncpp-dev`, `libsqlite3-dev`, `libssl-dev`, `uuid-dev`, `zlib1g-dev`, `libjwt-dev`, `libbcrypt-dev`
+*   SQLite3 command-line tool (for migrations script)
+*   Docker and Docker Compose (recommended)
 
-### Local Development Setup
+### Local Development (Without Docker)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/ALX-Software-Engineering/ecommerce-backend.git
-    cd ecommerce-backend
+    git clone https://github.com/yourusername/task-management-system.git
+    cd task-management-system
     ```
 
-2.  **Create `.env` file:**
-    Copy the example environment variables and customize them.
+2.  **Install Drogon and dependencies:**
+    Follow Drogon's official installation guide (e.g., `vcpkg install drogon` or build from source). Ensure `libjsoncpp-dev`, `libsqlite3-dev`, `libssl-dev`, `uuid-dev`, `zlib1g-dev`, `libjwt-dev`, `libbcrypt-dev` are also installed.
+    *Example for Debian/Ubuntu:*
+    ```bash
+    sudo apt update
+    sudo apt install build-essential cmake git libjsoncpp-dev libsqlite3-dev libssl-dev uuid-dev zlib1g-dev libjwt-dev libbcrypt-dev sqlite3
+    # For Drogon, if not using a package manager:
+    # git clone https://github.com/drogonframework/drogon
+    # cd drogon
+    # git submodule update --init
+    # cmake -B build
+    # sudo cmake --build build --target install
+    # cd ..
+    ```
+
+3.  **Configure Environment Variables:**
+    Copy the example environment file and fill in your JWT secret.
     ```bash
     cp .env.example .env
+    # Generate a strong JWT_SECRET:
+    ./scripts/generate_jwt_secret.sh
+    # Paste the generated key into the .env file.
     ```
-    Edit `.env` and fill in your desired secret keys and database/redis URLs. For Docker Compose, the default URLs in `.env.example` are usually correct.
 
-3.  **Build and run with Docker Compose:**
-    This will build the Flask app image, start PostgreSQL, Redis, and the Flask app. It also runs database migrations and seeds initial data via `docker-entrypoint.sh`.
+4.  **Build the application:**
     ```bash
-    docker-compose up --build -d
-    ```
-    The `-d` flag runs containers in detached mode. To see logs, use `docker-compose logs -f`.
-
-    *Expected output for `docker-compose up --build -d`*:
-    ```
-    [+] Running 4/4
-     ⠿ Network ecommerce-backend_default  Created                                                    0.1s
-     ⠿ Container db                       Started                                                    0.1s
-     ⠿ Container redis                    Started                                                    0.1s
-     ⠿ Container app                      Started                                                    0.1s
+    mkdir build
+    cd build
+    cmake ..
+    cmake --build .
     ```
 
-4.  **Verify services are running:**
+5.  **Setup Database:**
     ```bash
-    docker-compose ps
+    cd .. # Go back to root directory
+    ./scripts/run_migrations.sh
     ```
-    You should see `db`, `redis`, and `app` containers with `Up` status.
 
-### Database Migrations
-
-The `docker-entrypoint.sh` script automatically runs `flask db upgrade` on container startup.
-If you need to manage migrations manually (e.g., in local development without full Docker Compose rebuilds, or adding new models):
-
-1.  **Ensure your app container is running:**
+6.  **Run the application:**
     ```bash
-    docker-compose ps
+    ./build/TaskManagementSystem
     ```
-2.  **Access the app container's shell:**
+    The server will start on `http://0.0.0.0:8080`.
+
+### Docker Setup (Recommended)
+
+1.  **Clone the repository:**
     ```bash
-    docker-compose exec app bash
+    git clone https://github.com/yourusername/task-management-system.git
+    cd task-management-system
     ```
-3.  **Generate a new migration script (after changing models):**
+
+2.  **Configure Environment Variables:**
     ```bash
-    flask db revision --autogenerate -m "Add new feature tables"
+    cp .env.example .env
+    # Generate a strong JWT_SECRET:
+    ./scripts/generate_jwt_secret.sh
+    # Paste the generated key into the .env file.
     ```
-    This creates a new file in the `migrations/versions/` directory. Review the generated script carefully before applying.
-4.  **Apply migrations:**
+
+3.  **Build and run the Docker containers:**
     ```bash
-    flask db upgrade
+    docker compose up --build -d
     ```
-    This applies all pending migrations to the database.
-5.  **Downgrade migrations (if needed):**
-    ```bash
-    flask db downgrade
-    ```
-    Use `flask db downgrade -1` to go back one step, or a specific revision ID.
+    This will build the Docker image, run the database migrations, and start the Drogon application in the background.
 
-### Seeding Initial Data
+4.  **Verify:**
+    The application should be accessible at `http://localhost:8080`.
+    You can check logs: `docker compose logs -f app`
 
-The `docker-entrypoint.sh` script automatically runs `python seed_db.py` on container startup.
-This script populates the database with:
-*   Default roles: `ADMIN`, `EDITOR`, `CUSTOMER`.
-*   An admin user: `admin@example.com` with password `adminpass123`.
-*   A customer user: `customer@example.com` with password `customerpass`.
-*   Example product categories and products.
+## Database Management
 
-To manually seed data (e.g., after a fresh migration or if you skip auto-seeding):
+The `db/` directory contains:
+*   `schema.sql`: Defines the tables (`users`, `categories`, `tasks`).
+*   `seed.sql`: Populates the tables with initial data.
+*   `app.db`: The SQLite database file (created on first run).
 
-1.  **Access the app container's shell:**
-    ```bash
-    docker-compose exec app bash
-    ```
-2.  **Run the seed script:**
-    ```bash
-    python seed_db.py
-    ```
-    You can also use the Flask CLI command:
-    ```bash
-    flask db-ops seed
-    ```
+The `scripts/run_migrations.sh` script applies these SQL files. It's executed automatically by the Docker setup.
 
-### Running the Application
+## Running the Application
 
-Once Docker Compose is up, the Flask application will be accessible at:
-*   **API Root:** `http://localhost:5000/`
-*   **Swagger UI:** `http://localhost:5000/api/docs/swagger-ui/` (in development mode)
-*   **OpenAPI Spec:** `http://localhost:5000/api/docs/openapi.json` (in development mode)
+Once built (locally or via Docker):
 
-## 5. API Documentation
+*   **Local**: `./build/TaskManagementSystem`
+*   **Docker**: `docker compose up -d`
 
-The API is documented using Flask-Smorest, which generates an OpenAPI 3.0 specification.
-In development mode (`FLASK_ENV=development`), you can access the interactive Swagger UI at:
+The server listens on `http://0.0.0.0:8080` (or `http://localhost:8080` if accessed from host).
 
-[http://localhost:5000/api/docs/swagger-ui/](http://localhost:5000/api/docs/swagger-ui/)
+## API Endpoints
 
-The raw OpenAPI JSON specification is available at:
-
-[http://localhost:5000/api/docs/openapi.json](http://localhost:5000/api/docs/openapi.json)
-
-These endpoints are disabled in `production` mode for security.
-
-### Key Endpoints (Examples)
+All API endpoints are prefixed with `/api/v1`.
+Authentication is handled via JWT Bearer tokens in the `Authorization` header.
 
 **Authentication**
-*   `POST /api/auth/register` - Register a new user.
-*   `POST /api/auth/login` - Login and get JWT tokens.
-*   `POST /api/auth/refresh` - Refresh access token using refresh token.
-*   `GET /api/auth/me` - Get current user profile (requires access token).
+| Method | Endpoint                    | Description                          | Authentication |
+| :----- | :-------------------------- | :----------------------------------- | :------------- |
+| `POST` | `/api/v1/auth/register`     | Register a new user                  | None           |
+| `POST` | `/api/v1/auth/login`        | Authenticate user and get JWT token  | None           |
 
-**Users (Admin Only for most)**
-*   `GET /api/users/` - List all users (Admin only).
-*   `GET /api/users/<id>` - Get user by ID (Admin or self).
-*   `PUT /api/users/<id>` - Update user (Admin or self for limited fields).
-*   `DELETE /api/users/<id>` - Delete user (Admin only, cannot delete self).
+**Task Management**
+| Method | Endpoint                    | Description                                  | Authentication |
+| :----- | :-------------------------- | :------------------------------------------- | :------------- |
+| `GET`  | `/api/v1/tasks`             | Get all tasks for the authenticated user     | Required       |
+| `POST` | `/api/v1/tasks`             | Create a new task                            | Required       |
+| `GET`  | `/api/v1/tasks/{id}`        | Get a specific task by ID                    | Required       |
+| `PUT`  | `/api/v1/tasks/{id}`        | Update a specific task by ID                 | Required       |
+| `DELETE`| `/api/v1/tasks/{id}`       | Delete a specific task by ID                 | Required       |
 
-**Categories**
-*   `GET /api/categories/` - List all categories (public).
-*   `GET /api/categories/<id>` - Get category by ID (public).
-*   `POST /api/categories/` - Create category (Admin/Editor).
-*   `PUT /api/categories/<id>` - Update category (Admin/Editor).
-*   `DELETE /api/categories/<id>` - Delete category (Admin/Editor, no products linked).
+**Category Management**
+| Method | Endpoint                    | Description                                  | Authentication |
+| :----- | :-------------------------- | :------------------------------------------- | :------------- |
+| `GET`  | `/api/v1/categories`        | Get all categories for the authenticated user| Required       |
+| `POST` | `/api/v1/categories`        | Create a new category                        | Required       |
+| `GET`  | `/api/v1/categories/{id}`   | Get a specific category by ID                | Required       |
+| `PUT`  | `/api/v1/categories/{id}`   | Update a specific category by ID             | Required       |
+| `DELETE`| `/api/v1/categories/{id}`  | Delete a specific category by ID             | Required       |
 
-**Products**
-*   `GET /api/products/` - List all products (public).
-*   `GET /api/products/<id>` - Get product by ID (public).
-*   `POST /api/products/` - Create product (Admin/Editor).
-*   `PUT /api/products/<id>` - Update product (Admin/Editor).
-*   `DELETE /api/products/<id>` - Delete product (Admin/Editor).
+For detailed request/response schemas, refer to `openapi.yaml`.
 
-**Orders**
-*   `POST /api/orders/` - Create new order (Customer).
-*   `GET /api/orders/` - List orders (Customer: own orders; Admin: all orders).
-*   `GET /api/orders/<id>` - Get order by ID (Customer: own order; Admin: any order).
-*   `PUT /api/orders/<id>/status` - Update order status (Admin/Editor).
-*   `DELETE /api/orders/<id>` - Delete order (Admin only).
+## Testing
 
-## 6. Testing
+The project includes a comprehensive test suite using Google Test.
 
-The project includes a comprehensive test suite covering unit, integration, and performance aspects.
+**To run tests (after building):**
+```bash
+cd build
+cmake --build . --target TaskManagementSystem_tests # This will build the test executable
+ctest --verbose # Run all tests
+```
 
-### Unit Tests
+### Test Categories:
 
-*   Located in `tests/unit/`.
-*   Focus on individual components (models, services) in isolation.
-*   Run with `pytest`.
+*   **Unit Tests**: Located in `tests/unit/`. Focus on individual classes and functions (e.g., `AuthService`, `TaskService` business logic). Aim for high code coverage (80%+).
+*   **Integration Tests**: Located in `tests/integration/`. Test the interaction between multiple components, often by making HTTP requests to the running (or mocked) API server.
+*   **API Tests**: Covered by `ApiIntegration_test.cpp`. In a real-world scenario, you might also use external tools like Postman, Insomnia, or custom scripts (`curl`) for end-to-end API validation.
+*   **Performance Tests**: (Conceptual) Tools like `ApacheBench`, `JMeter`, `k6` can be used to simulate load and measure system performance.
 
-### Integration Tests
+## Deployment
 
-*   Located in `tests/integration/`.
-*   Test the interaction between multiple components, primarily through API endpoints.
-*   Use Flask's test client to simulate HTTP requests.
-*   Run with `pytest`.
+The system is designed for containerized deployment using Docker.
 
-### Performance Tests
+1.  Ensure your `JWT_SECRET` is set as an environment variable in your production environment (e.g., in your Docker Compose file, Kubernetes secret, or cloud provider configuration). **Never hardcode production secrets.**
+2.  Build the Docker image: `docker compose build`
+3.  Deploy the Docker container to your chosen environment (e.g., a VPS, Kubernetes, AWS ECS, Google Cloud Run).
 
-*   Located in `tests/performance/`.
-*   Uses [Locust](https://locust.io/) to simulate user load and measure API performance.
-*   The `locustfile.py` script defines various user behaviors.
+See `deployment.md` for a more detailed guide.
 
-**To run performance tests:**
+## Contributing
 
-1.  Ensure your application is running (e.g., `docker-compose up -d`).
-2.  Open a new terminal and install Locust if you haven't: `pip install locust`.
-3.  Navigate to the project root and run Locust:
-    ```bash
-    locust -f tests/performance/locustfile.py
-    ```
-4.  Open your browser to `http://localhost:8089` to access the Locust UI.
-5.  Enter the number of users, spawn rate, and host (`http://localhost:5000`), then click "Start swarming".
+Contributions are welcome! Please follow these steps:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write comprehensive tests for your changes.
+5.  Ensure all tests pass (`ctest`).
+6.  Commit your changes (`git commit -m 'Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
 
-### Test Coverage
+## License
 
-We aim for 80%+ test coverage. To generate a coverage report:
-
-1.  Install `pytest-cov`: `pip install pytest-cov` (included in `requirements.txt`).
-2.  Run tests with coverage:
-    ```bash
-    pytest --cov=app --cov-report=term-missing --cov-report=html
-    ```
-    *   `--cov=app`: Specifies the directory to measure coverage for.
-    *   `--cov-report=term-missing`: Shows missing lines in the terminal.
-    *   `--cov-report=html`: Generates an HTML report in `htmlcov/` directory. Open `htmlcov/index.html` in your browser for a detailed report.
-
-## 7. Deployment Guide
-
-This setup is designed for Docker-based deployment to various cloud providers (e.g., AWS EC2, Google Cloud Run, Azure Container Instances, DigitalOcean Droplets).
-
-1.  **Prepare your environment:**
-    *   Provision a Linux VM (e.g., Ubuntu) on your chosen cloud provider.
-    *   Install Docker and Docker Compose on the VM.
-    *   Install `git`.
-2.  **Clone the repository on the server:**
-    ```bash
-    git clone https://github.com/ALX-Software-Engineering/ecommerce-backend.git
-    cd ecommerce-backend
-    ```
-3.  **Configure `.env`:**
-    *   Create a `.env` file on the server.
-    *   **Crucially, set `FLASK_ENV=production`** and use strong, unique `SECRET_KEY` and `JWT_SECRET_KEY` values.
-    *   Set `DATABASE_URL` to your production PostgreSQL instance (if external, otherwise use `db` if running with docker-compose on the same server).
-    *   Set `REDIS_URL` for your production Redis instance.
-    *   **Disable `FLASK_DEBUG=1`**.
-    *   Disable `OPENAPI_SWAGGER_UI_PATH` and `OPENAPI_URL_PREFIX` in `app/config.py` for `ProductionConfig` to prevent exposure of API docs in production.
-4.  **Run with Docker Compose:**
-    ```bash
-    docker-compose up --build -d
-    ```
-    The `docker-entrypoint.sh` handles migrations and initial seeding automatically.
-5.  **Set up a Reverse Proxy (Recommended):**
-    For production, it's highly recommended to place a reverse proxy (like Nginx) in front of your Gunicorn application. This provides:
-    *   SSL/TLS termination (HTTPS).
-    *   Load balancing (if you scale out Flask app instances).
-    *   Static file serving (if you had a web frontend).
-    *   Request buffering, compression, etc.
-
-    Example Nginx configuration (e.g., `/etc/nginx/sites-available/ecommerce`):
-    ```nginx
-    server {
-        listen 80;
-        server_name your_domain.com; # Replace with your domain or IP
-        return 301 https://$host$request_uri;
-    }
-
-    server {
-        listen 443 ssl;
-        server_name your_domain.com; # Replace with your domain or IP
-
-        ssl_certificate /etc/letsencrypt/live/your_domain.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/your_domain.com/privkey.pem;
-
-        location / {
-            proxy_pass http://localhost:5000; # Or the IP/port of your Flask app container if not localhost
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_redirect off;
-        }
-    }
-    ```
-    Then `sudo ln -s /etc/nginx/sites-available/ecommerce /etc/nginx/sites-enabled/` and `sudo systemctl restart nginx`.
-    Use Certbot for easy SSL certificate generation (`sudo apt install certbot python3-certbot-nginx`).
-
-## 8. CI/CD Configuration
-
-A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided for Continuous Integration.
-
-```yaml
+This project is licensed under the MIT License - see the LICENSE file for details.
+```

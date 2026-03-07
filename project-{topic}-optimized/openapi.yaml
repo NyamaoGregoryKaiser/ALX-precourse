@@ -1,0 +1,539 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: Task Management System API
+  description: An enterprise-grade task management system built with C++ and Drogon.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Development Server
+  - url: https://api.yourdomain.com/api/v1
+    description: Production Server
+
+tags:
+  - name: Authentication
+    description: User registration and login
+  - name: Tasks
+    description: Operations related to tasks
+  - name: Categories
+    description: Operations related to task categories
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates a new user account and returns a JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  example: jondoe
+                email:
+                  type: string
+                  format: email
+                  example: jon.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: password123
+      responses:
+        '200':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: User registered successfully
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      token:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Conflict, user with email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in a user
+      description: Authenticates a user and returns a JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: jon.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  example: password123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Login successful
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '401':
+          description: Unauthorized, invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: Get all tasks for the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [TODO, IN_PROGRESS, DONE]
+          description: Filter tasks by status.
+        - in: query
+          name: category_id
+          schema:
+            type: integer
+          description: Filter tasks by category ID.
+      responses:
+        '200':
+          description: A list of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Tasks retrieved successfully
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Tasks
+      summary: Create a new task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  example: Finish project report
+                description:
+                  type: string
+                  nullable: true
+                  example: Complete the Q4 project report and send to manager.
+                status:
+                  type: string
+                  enum: [TODO, IN_PROGRESS, DONE]
+                  default: TODO
+                  example: TODO
+                category_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2023-12-31"
+      responses:
+        '200':
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Task created successfully
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /tasks/{id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get a specific task by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the task to retrieve.
+      responses:
+        '200':
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Task retrieved successfully
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Tasks
+      summary: Update a specific task by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the task to update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Updated task title
+                description:
+                  type: string
+                  nullable: true
+                  example: New description of the updated task.
+                status:
+                  type: string
+                  enum: [TODO, IN_PROGRESS, DONE]
+                  example: IN_PROGRESS
+                category_id:
+                  type: integer
+                  nullable: true
+                  example: 2
+                due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2024-01-15"
+      responses:
+        '200':
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Task updated successfully
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Tasks
+      summary: Delete a specific task by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the task to delete.
+      responses:
+        '200':
+          description: Task deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Task deleted successfully
+                  data:
+                    type: object # Empty object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Add /categories endpoints here, similar to /tasks
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 1
+        username:
+          type: string
+          example: jondoe
+        email:
+          type: string
+          format: email
+          example: jon.doe@example.com
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-10-26 10:00:00"
+    
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 1
+        name:
+          type: string
+          example: Work
+        user_id:
+          type: integer
+          readOnly: true
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-10-26 10:05:00"
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 1
+        title:
+          type: string
+          example: Complete report
+        description:
+          type: string
+          nullable: true
+          example: Finalize the quarterly report for the team.
+        status:
+          type: string
+          enum: [TODO, IN_PROGRESS, DONE]
+          example: TODO
+        user_id:
+          type: integer
+          readOnly: true
+          example: 1
+        category_id:
+          type: integer
+          nullable: true
+          example: 1
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2023-12-31"
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-10-26 10:10:00"
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-10-26 10:10:00"
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Invalid input data
+        error_code:
+          type: string
+          nullable: true
+          example: VALIDATION_ERROR
+
+  responses:
+    BadRequest:
+      description: Bad Request / Invalid Input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Unauthorized / Authentication Failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+            example:
+              status: error
+              message: Invalid or expired token.
+              error_code: UNAUTHORIZED
+    Forbidden:
+      description: Forbidden / Permission Denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+            example:
+              status: error
+              message: Permission denied.
+              error_code: FORBIDDEN
+    NotFound:
+      description: Not Found / Resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+            example:
+              status: error
+              message: Resource not found.
+              error_code: NOT_FOUND
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+            example:
+              status: error
+              message: An internal server error occurred.
+              error_code: INTERNAL_SERVER_ERROR
+    TooManyRequests:
+      description: Too Many Requests (Rate Limited)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            description: Number of seconds to wait before retrying.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+            example:
+              status: error
+              message: Too many requests. Please try again later.
+              error_code: RATE_LIMITED
+```

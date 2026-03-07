@@ -1,76 +1,24 @@
+```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:13-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: scraper_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:6-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-
   app:
-    build: .
-    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: task-management-app
     ports:
-      - "5000:5000"
-    environment:
-      FLASK_ENV: development
-      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt" # Replace with a strong key in production
-      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
-      LOG_LEVEL: INFO
-      LOG_FILE: /app/app.log
-    depends_on:
-      - db
-      - redis
+      - "8080:8080"
     volumes:
-      - .:/app # Mount the current directory into the container for development
-    command: ["./entrypoint.sh", "flask_run"] # Use entrypoint with specific command
-
-  celery_worker:
-    build: .
-    restart: always
+      - ./db:/app/db # Persist the SQLite database
+      - ./log:/app/log # Persist application logs
+      # Optional: Mount config.json for easier development config changes without rebuild
+      # - ./config.json:/app/config.json
     environment:
-      FLASK_ENV: development
-      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt"
-      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
-      LOG_LEVEL: INFO
-    depends_on:
-      - db
-      - redis
-      - app # Ensure app container is up to run initial migrations if needed
-    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "-P", "gevent"] # Using gevent for concurrent I/O
-
-  celery_beat:
-    build: .
-    restart: always
-    environment:
-      FLASK_ENV: development
-      SECRET_KEY: "your_super_secret_key_here_for_flask_and_jwt"
-      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
-      LOG_LEVEL: INFO
-    depends_on:
-      - db
-      - redis
-      - app
-    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
-
-volumes:
-  postgres_data:
+      # Load from .env file directly (docker-compose will do this)
+      # Or specify individual variables
+      JWT_SECRET: ${JWT_SECRET}
+      APP_ENV: ${APP_ENV}
+    # For a production setup, consider restart policies and resource limits
+    restart: unless-stopped
 ```

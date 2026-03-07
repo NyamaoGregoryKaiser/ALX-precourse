@@ -1,0 +1,127 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    name: Build & Test C++ Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          submodules: 'recursive' # If Drogon or other dependencies are submodules
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git \
+            libjsoncpp-dev libsqlite3-dev libssl-dev uuid-dev zlib1g-dev \
+            libjwt-dev libbcrypt-dev sqlite3
+          # If Drogon is not installed via apt, you'd build and install it here
+          # For example, if building Drogon from source or using vcpkg:
+          # git clone https://github.com/drogonframework/drogon.git
+          # cd drogon
+          # git submodule update --init
+          # cmake -B build
+          # sudo cmake --build build --target install
+          # cd .. # Back to project root
+
+      - name: Configure CMake
+        run: cmake -B build -S .
+
+      - name: Build Application
+        run: cmake --build build --target TaskManagementSystem
+
+      - name: Setup Test Database
+        run: |
+          chmod +x scripts/run_migrations.sh
+          ./scripts/run_migrations.sh # This sets up db/app.db
+
+      - name: Build Tests
+        run: cmake --build build --target TaskManagementSystem_tests
+
+      - name: Run Unit Tests
+        run: ./build/TaskManagementSystem_tests --gtest_filter=AuthServiceTest.*:TaskServiceTest.*
+        working-directory: ${{github.workspace}}/build
+
+      - name: Run API Integration Tests
+        run: ./build/TaskManagementSystem_tests --gtest_filter=ApiIntegrationTest.*
+        working-directory: ${{github.workspace}}/build
+
+      # - name: Report Code Coverage (Optional)
+      #   run: |
+      #     # Requires GCOV/LCOV setup in CMake and a tool to upload results
+      #     # e.g., codecov: https://docs.codecov.com/docs/github-actions
+      #     # For C++, this is more involved with compiler flags and tooling.
+      #     echo "Code coverage generation and reporting skipped for brevity."
+
+  # docker-build-and-push:
+  #   name: Build & Push Docker Image
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-test # Only run if tests pass
+  #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only for main/develop branches
+
+  #   steps:
+  #     - name: Checkout Repository
+  #       uses: actions/checkout@v3
+
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v2
+
+  #     - name: Log in to Docker Hub
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
+
+  #     - name: Build and Push Docker Image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: .
+  #         file: ./Dockerfile
+  #         push: true
+  #         tags: your_docker_username/task-management-system:${{ github.sha }}, your_docker_username/task-management-system:latest
+
+  # deploy:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: docker-build-and-push
+  #   if: github.ref == 'refs/heads/main' # Only deploy main branch to production
+
+  #   steps:
+  #     - name: Deploy to Cloud Provider (e.g., Kubernetes, AWS ECS, GCP Cloud Run)
+  #       # This step would be highly dependent on your cloud provider and deployment strategy.
+  #       # Examples:
+  #       # - Uses a kubectl action to update a Kubernetes deployment
+  #       # - Calls AWS CLI to update an ECS service
+  #       # - Triggers a deployment on Google Cloud Run
+  #       run: |
+  #         echo "Simulating deployment to production..."
+  #         echo "Deployment steps would involve securely accessing the target environment"
+  #         echo "and updating the application service with the new Docker image tag."
+  #         echo "Image: your_docker_username/task-management-system:${{ github.sha }}"
+  #         # Example for a simple SSH deploy:
+  #         # - uses: appleboy/ssh-action@master
+  #         #   with:
+  #         #     host: ${{ secrets.PROD_SSH_HOST }}
+  #         #     username: ${{ secrets.PROD_SSH_USER }}
+  #         #     key: ${{ secrets.PROD_SSH_KEY }}
+  #         #     script: |
+  #         #       cd /path/to/your/app
+  #         #       docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+  #         #       docker compose pull app
+  #         #       docker compose up -d app
+  #       echo "Deployment complete."
+```

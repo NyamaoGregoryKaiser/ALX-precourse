@@ -1,0 +1,37 @@
+```json
+{
+    "app": {
+        "listen_ip": "0.0.0.0",
+        "listen_port": 8080,
+        "document_root": "web",
+        "log_path": ".",
+        "log_file": "app.log",
+        "log_level": "debug",
+        "run_as_daemon": false,
+        "threads_num": 4,
+        "connection_timeout": 60
+    },
+    "db_client": [
+        {
+            "db_type": "sqlite3",
+            "db_host": "./db/app.db",
+            "db_port": 0,
+            "db_name": "",
+            "user": "",
+            "passwd": "",
+            "connections_num": 1,
+            "is_fast": true,
+            "name": "default"
+        }
+    ],
+    "filters": {
+        "AuthFilter": {
+            "jwt_secret": "${JWT_SECRET}"
+        },
+        "RateLimitFilter": {
+            "limit": 100,
+            "window_seconds": 60
+        }
+    }
+}
+```
