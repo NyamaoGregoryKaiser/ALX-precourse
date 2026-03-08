@@ -1,42 +1,39 @@
 ```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:18-alpine AS builder
+# Stage 1: Builder
+FROM python:3.10-slim-buster AS builder
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
-COPY package.json yarn.lock ./
-# Install dependencies
-RUN yarn install --frozen-lockfile --production=false
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source code
-COPY . .
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
 
-# Build the TypeScript project
-RUN yarn build
-
-# Stage 2: Run the application
-FROM node:18-alpine
+# Stage 2: Final Image
+FROM python:3.10-slim-buster
 
 WORKDIR /app
 
-# Copy only production dependencies from builder stage
-COPY --from=builder /app/package.json /app/yarn.lock ./
-RUN yarn install --frozen-lockfile --production=true
+# Install runtime dependencies (from builder stage)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy built application code
-COPY --from=builder /app/dist ./dist
-# Copy migrations, seeds and data_uploads (if any)
-COPY --from=builder /app/src/migrations ./src/migrations
-COPY --from=builder /app/src/seeds ./src/seeds
-COPY --from=builder /app/data_uploads ./data_uploads
+COPY --from=builder /usr/src/app/wheels /wheels
+COPY --from=builder /usr/src/app/requirements.txt .
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Copy the application code
+COPY . /app
 
-# Set environment variables (if any, typically handled by docker-compose .env)
-# ENV NODE_ENV=production
+# Expose the port FastAPI runs on
+EXPOSE 8000
 
-# Command to run the application
-CMD ["node", "dist/server.js"]
+# Command to run the application (overridden by docker-compose for development)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```

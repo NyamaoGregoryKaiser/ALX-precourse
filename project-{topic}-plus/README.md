@@ -1,297 +1,277 @@
-# Secure Auth System
+```markdown
+# Real-Time Chat Application
 
-A comprehensive, production-ready authentication and authorization system built with Spring Boot, JWT, and PostgreSQL. It features robust user management, role-based access control, caching, rate limiting, and extensive testing, packaged with Docker and configured for CI/CD.
+This is a comprehensive, production-ready real-time chat application built with FastAPI (Python) for the backend, React with TypeScript for the frontend, and PostgreSQL for the database. It leverages WebSockets for real-time communication, JWT for authentication, and Docker for containerization.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Prerequisites](#prerequisites)
-4.  [Getting Started](#getting-started)
-    *   [Local Setup with Docker Compose](#local-setup-with-docker-compose)
-    *   [Manual Local Setup (without Docker for App)](#manual-local-setup-without-docker-for-app)
-5.  [API Documentation](#api-documentation)
-6.  [Authentication & Authorization](#authentication--authorization)
-7.  [Testing](#testing)
-8.  [CI/CD](#cicd)
-9.  [Configuration](#configuration)
-10. [Database](#database)
-11. [Logging & Monitoring](#logging--monitoring)
-12. [Contributing](#contributing)
-13. [License](#license)
+2.  [Project Structure](#project-structure)
+3.  [Technologies Used](#technologies-used)
+4.  [Setup and Installation](#setup-and-installation)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
+    *   [Backend Setup (Manual)](#backend-setup-manual)
+    *   [Frontend Setup (Manual)](#frontend-setup-manual)
+5.  [Running the Application](#running-the-application)
+6.  [Database Migrations](#database-migrations)
+7.  [Seed Data](#seed-data)
+8.  [Testing](#testing)
+9.  [API Documentation](#api-documentation)
+10. [Architecture](#architecture)
+11. [Deployment Guide](#deployment-guide)
+12. [CI/CD](#cicd)
+13. [Future Enhancements](#future-enhancements)
+14. [Contributing](#contributing)
+15. [License](#license)
 
----
+## Features
 
-## 1. Features
+*   **User Authentication**: Register, Login (JWT-based).
+*   **User Management**: View and update user profiles.
+*   **Real-time Messaging**: Send and receive messages instantly via WebSockets.
+*   **Chat Room Management**: Create public/private rooms, join/leave rooms.
+*   **Message History**: Load past messages for a chat room.
+*   **Online/Offline Status**: (Basic implementation, can be extended).
+*   **Caching**: Redis integration for user data and rate limiting.
+*   **Robust Error Handling**: Centralized exception handling.
+*   **Logging**: Structured logging for backend operations.
+*   **Rate Limiting**: Protects API endpoints from abuse.
+*   **Containerization**: Docker and Docker Compose for easy environment setup.
+*   **Comprehensive Testing**: Unit, integration, and API tests.
+*   **Detailed Documentation**: README, API docs, Architecture, Deployment.
 
-*   **User Management:** Register, login, retrieve, update, and delete users.
-*   **Role Management:** Create, assign, and manage roles for users (ADMIN only).
-*   **JWT Authentication:** Secure token-based authentication for API access.
-*   **Role-Based Authorization:** Granular access control based on user roles (`ROLE_USER`, `ROLE_ADMIN`).
-*   **Password Hashing:** Secure storage of passwords using BCrypt.
-*   **Data Validation:** Input validation using Jakarta Bean Validation.
-*   **Database Management:** PostgreSQL with Flyway for schema migrations and seed data.
-*   **Caching:** In-memory caching (Caffeine) for frequently accessed data (e.g., user details).
-*   **Rate Limiting:** Basic in-memory rate limiting for authentication endpoints to prevent brute-force attacks.
-*   **Centralized Error Handling:** Global exception handling for consistent API responses.
-*   **Logging & Monitoring:** Structured logging with Logback and Spring Boot Actuator.
-*   **API Documentation:** OpenAPI (Swagger UI) for interactive API exploration.
-*   **Dockerization:** Containerized application and database for easy setup and deployment.
-*   **CI/CD:** GitHub Actions workflow for automated build, test, and deployment.
-*   **Comprehensive Testing:** Unit, integration, and API tests with high coverage goals.
+## Project Structure
 
-## 2. Architecture
+Refer to the `Project Structure` section in the main document for a detailed breakdown.
 
-The application follows a layered architecture typical of Spring Boot applications:
+## Technologies Used
 
-*   **Presentation Layer (Controllers):** Handles HTTP requests, maps them to service methods, and returns API responses. Uses Spring MVC.
-*   **Service Layer (Services):** Contains the core business logic, orchestrates interactions with repositories, and applies domain-specific rules.
-*   **Persistence Layer (Repositories):** Interacts with the database using Spring Data JPA.
-*   **Domain Layer (Models):** JPA entities representing the core data structures (User, Role).
-*   **Security Layer:** Spring Security for authentication and authorization, JWT for stateless token management.
-*   **Infrastructure Layer:** Configuration, utilities, global exception handling, caching, rate limiting.
+### Backend (Python FastAPI)
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview.
+*   **Framework**: FastAPI
+*   **Database ORM**: SQLAlchemy (asyncpg for async PostgreSQL driver)
+*   **Authentication**: python-jose (JWT), passlib (password hashing)
+*   **Real-time**: websockets (via Starlette's WebSocket support)
+*   **Caching/Rate Limiting**: aioredis, fastapi-limiter
+*   **Migrations**: Alembic
+*   **Testing**: Pytest, httpx
+*   **Linting/Formatting**: Black, Flake8, Isort
 
-## 3. Prerequisites
+### Frontend (React with TypeScript)
 
-Before you begin, ensure you have met the following requirements:
+*   **Framework**: React
+*   **Language**: TypeScript
+*   **Styling**: Tailwind CSS
+*   **State Management**: React Context API
+*   **Routing**: React Router DOM
+*   **API Client**: Axios
+*   **Real-time**: Native WebSocket API
+*   **Testing**: React Testing Library, Jest
 
-*   **Java 17 or higher:** [Download & Install Java JDK 17](https://www.oracle.com/java/technologies/downloads/)
-*   **Maven 3.6.3 or higher:** [Download & Install Maven](https://maven.apache.org/download.cgi)
-*   **Docker & Docker Compose:** [Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop)
-*   (Optional for manual setup) **PostgreSQL 15 or higher:** [Download & Install PostgreSQL](https://www.postgresql.org/download/)
+### Database & Infrastructure
 
-## 4. Getting Started
+*   **Database**: PostgreSQL
+*   **Caching**: Redis
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
 
-Choose your preferred setup method:
+## Setup and Installation
 
-### Local Setup with Docker Compose
+### Prerequisites
 
-This is the recommended way to get the entire application (app + database) running quickly.
+*   Docker and Docker Compose
+*   Node.js & npm (or yarn)
+*   Python 3.9+ & pip (if not using Docker for dev)
+
+### Local Development with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/alx-examples/secure-auth-system.git
-    cd secure-auth-system
+    git clone https://github.com/your-username/realtime-chat-app.git
+    cd realtime-chat-app
     ```
 
-2.  **Build and run with Docker Compose:**
+2.  **Create `.env` file:**
+    Copy `.env.example` to `.env` in the `backend/` directory and fill in the environment variables.
     ```bash
-    # Navigate to the directory containing docker-compose.yml
-    cd docker 
+    cp backend/.env.example backend/.env
+    ```
+    Ensure `DATABASE_URL` matches the PostgreSQL service in `docker-compose.yml`.
+
+3.  **Build and run services:**
+    This will build the Docker images for backend and frontend, set up PostgreSQL and Redis, and start all services.
+    ```bash
     docker-compose up --build -d
     ```
-    *   `--build`: Builds the Docker image for the application from the `Dockerfile`.
-    *   `-d`: Runs the containers in detached mode (in the background).
 
-3.  **Verify services are running:**
+4.  **Run database migrations:**
+    Execute migrations to create the database schema.
     ```bash
-    docker-compose ps
+    docker-compose exec backend alembic upgrade head
     ```
-    You should see `secure-auth-app` and `auth-postgres-db` containers in `Up` status.
 
-4.  **Application is ready!**
-    The Spring Boot application will be accessible at `http://localhost:8080`.
+5.  **Seed initial data (optional):**
+    Populate the database with some initial users and chat rooms.
+    ```bash
+    docker-compose exec backend python /app/scripts/seed_db.py
+    ```
 
-    *   **Swagger UI (API Docs):** `http://localhost:8080/swagger-ui.html`
-    *   **Actuator Health:** `http://localhost:8080/actuator/health`
+6.  **Access the application:**
+    *   Frontend: `http://localhost:3000`
+    *   Backend API Docs (Swagger UI): `http://localhost:8000/docs`
 
-5.  **Stop services:**
+### Backend Setup (Manual - if not using Docker Compose)
+
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd realtime-chat-app/backend
+    ```
+2.  **Create and activate a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **Create `.env` file:**
+    `cp .env.example .env` and configure your `DATABASE_URL`, `REDIS_URL`, etc. Make sure your PostgreSQL and Redis instances are running and accessible.
+5.  **Run migrations:**
+    ```bash
+    alembic upgrade head
+    ```
+6.  **Run the application:**
+    ```bash
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+
+### Frontend Setup (Manual - if not using Docker Compose)
+
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd realtime-chat-app/frontend
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install # or yarn install
+    ```
+3.  **Start the development server:**
+    ```bash
+    npm start # or yarn start
+    ```
+    The application will typically be available at `http://localhost:3000`.
+
+## Running the Application
+
+After following the Docker Compose setup, all services should be running in detached mode (`-d`).
+
+*   **To stop services:**
     ```bash
     docker-compose down
     ```
-    This will stop and remove the containers and network. To also remove volumes: `docker-compose down --volumes`.
-
-### Manual Local Setup (without Docker for App)
-
-This method runs the Spring Boot application directly on your machine, but still uses Docker for the PostgreSQL database.
-
-1.  **Start the PostgreSQL database with Docker Compose:**
+*   **To restart services:**
     ```bash
-    # Navigate to the directory containing docker-compose.yml
-    cd docker
-    docker-compose up db -d
+    docker-compose restart
     ```
-    Verify it's running: `docker-compose ps`.
-
-2.  **Build the Spring Boot application:**
+*   **To view logs:**
     ```bash
-    # Navigate back to the project root
-    cd ..
-    mvn clean install -DskipTests
+    docker-compose logs -f
     ```
 
-3.  **Run the Spring Boot application:**
-    You need to set environment variables for the database connection.
+## Database Migrations
 
+This project uses Alembic for database migrations.
+
+*   **Initialize Alembic (already done in project structure):**
+    `alembic init -t async alembic`
+*   **Generate a new migration:**
     ```bash
-    # On Linux/macOS
-    export DB_HOST=localhost
-    export DB_PORT=5432
-    export DB_NAME=auth_db
-    export DB_USERNAME=admin
-    export DB_PASSWORD=password
-    export JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
-
-    # On Windows (Command Prompt)
-    set DB_HOST=localhost
-    set DB_PORT=5432
-    set DB_NAME=auth_db
-    set DB_USERNAME=admin
-    set DB_PASSWORD=password
-    set JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
-
-    # On Windows (PowerShell)
-    $env:DB_HOST="localhost"
-    $env:DB_PORT="5432"
-    $env:DB_NAME="auth_db"
-    $env:DB_USERNAME="admin"
-    $env:DB_PASSWORD="password"
-    $env:JWT_SECRET_KEY="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
-    java -jar target/secure-auth-system-0.0.1-SNAPSHOT.jar
+    docker-compose exec backend alembic revision --autogenerate -m "Add new table/column"
+    ```
+    Review the generated script in `alembic/versions/` and modify if necessary.
+*   **Apply migrations:**
+    ```bash
+    docker-compose exec backend alembic upgrade head
+    ```
+*   **Revert migrations:**
+    ```bash
+    docker-compose exec backend alembic downgrade -1 # Revert last migration
     ```
 
-4.  **Application is ready!**
-    The Spring Boot application will be accessible at `http://localhost:8080`.
+## Seed Data
 
-    *   **Swagger UI (API Docs):** `http://localhost:8080/swagger-ui.html`
-    *   **Actuator Health:** `http://localhost:8080/actuator/health`
-
-5.  **Stop services:**
-    *   Stop the Java application (Ctrl+C).
-    *   Stop the PostgreSQL container: Navigate to `docker` directory and run `docker-compose down db`.
-
-## 5. API Documentation
-
-Interactive API documentation is available via Swagger UI.
-
-*   **Swagger UI:** `http://localhost:8080/swagger-ui.html`
-*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
-
-See [API.md](API.md) for a detailed list of endpoints and their usage.
-
-## 6. Authentication & Authorization
-
-The system uses **JWT (JSON Web Tokens)** for stateless authentication and **Spring Security** for authorization.
-
-### Default Users (seeded by Flyway)
-
-*   **Admin User:**
-    *   **Username:** `admin`
-    *   **Password:** `password123!A`
-    *   **Roles:** `ROLE_USER`, `ROLE_ADMIN`
-*   **Regular User:**
-    *   **Username:** `testuser`
-    *   **Password:** `Userpass1!`
-    *   **Roles:** `ROLE_USER`
-
-### Flow
-
-1.  **Register (`/api/auth/register`):** Create a new user account. Returns a JWT.
-2.  **Login (`/api/auth/login`):** Authenticate with username/password. Returns a JWT.
-3.  **Access Secured Endpoints:** Include the JWT in the `Authorization` header of subsequent requests: `Authorization: Bearer <YOUR_JWT_TOKEN>`.
-
-### Authorization
-
-*   **Role-Based Access Control (RBAC):**
-    *   Endpoints are protected using `@PreAuthorize` annotations and Spring Security configuration.
-    *   `ROLE_ADMIN` has full access to user and role management endpoints.
-    *   `ROLE_USER` can access their own user profile data.
-*   **Rate Limiting:** Login and registration endpoints are rate-limited per IP address to prevent brute-force attacks (default: 5 requests per second).
-
-## 7. Testing
-
-The project emphasizes high-quality testing:
-
-*   **Unit Tests:** Focus on individual components (services, utilities) in isolation using Mockito (aiming for 80%+ coverage).
-*   **Integration Tests:** Verify interactions between multiple layers (controller, service, repository) using Spring Boot's testing utilities and Testcontainers for a real database environment.
-*   **API Tests:** Covered conceptually and can be implemented with tools like Postman or RestAssured (see [API.md](API.md) for scenarios).
-*   **Performance Tests:** Described conceptually, suggesting tools like JMeter or Gatling for load, stress, and scalability testing.
-
-To run tests:
-
+A script `backend/scripts/seed_db.py` is provided to populate the database with initial users and chat rooms.
+Run it using:
 ```bash
-mvn test
+docker-compose exec backend python /app/scripts/seed_db.py
 ```
+Default users created: `testuser1`/`password123`, `testuser2`/`password123`.
 
-To run tests and generate a JaCoCo coverage report:
+## Testing
 
+### Backend Tests
+
+Run backend tests using `pytest` within the Docker container:
 ```bash
-mvn clean test jacoco:report
+docker-compose exec backend pytest /app/app/tests
 ```
-The coverage report will be generated in `target/site/jacoco/index.html`.
-
-## 8. CI/CD
-
-A GitHub Actions workflow (`.github/workflows/ci-cd.yml`) is configured for Continuous Integration and Continuous Deployment.
-
-*   **Build & Test:** On every `push` or `pull_request` to `main` or `develop` branches:
-    *   Builds the project with Maven.
-    *   Runs all unit and integration tests.
-    *   Generates JaCoCo test coverage reports.
-    *   (Optional) Integrates with SonarCloud for static code analysis.
-*   **Docker Image Build & Push:** On `push` to `main` or `develop`:
-    *   Builds a Docker image of the application.
-    *   Pushes the image to Docker Hub (or any configured registry).
-*   **Deployment (Conceptual):** The workflow includes a commented-out section for a simple SSH-based deployment to a server. In a production scenario, this would involve deploying to Kubernetes, AWS ECS, Azure App Service, etc.
-
-**Required GitHub Secrets for CI/CD:**
-
-*   `DOCKER_USERNAME`: Your Docker Hub username.
-*   `DOCKER_PASSWORD`: Your Docker Hub access token or password.
-*   `SONAR_TOKEN`: (Optional, for SonarCloud) SonarCloud token.
-*   `SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY`: (Optional, for deployment) SSH credentials for your deployment server.
-*   `PROD_DB_HOST`, `PROD_DB_USERNAME`, `PROD_DB_PASSWORD`, `PROD_JWT_SECRET_KEY`: (Optional, for deployment) Production database/JWT configuration.
-
-## 9. Configuration
-
-Application configuration is managed via `src/main/resources/application.yml` and environment variables.
-
-Key configurable aspects:
-
-*   **Database:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
-*   **JWT:** `JWT_SECRET_KEY` (critical for security, **must be a strong, random 256-bit base64-encoded string in production**), `jwt.expiration`
-*   **Caching:** Caffeine cache specifications (e.g., `expireAfterAccess`, `maximumSize`).
-*   **Rate Limiting:** Requests per second for auth endpoints.
-*   **Logging:** Configured in `logback-spring.xml` for console and file output, with different levels for various packages.
-
-## 10. Database
-
-*   **Type:** PostgreSQL
-*   **Migration:** [Flyway](https://flywaydb.org/) is used for database schema evolution. Migration scripts are located in `src/main/resources/db/migration/`.
-    *   `V1__initial_schema.sql`: Creates `users`, `roles`, and `user_roles` tables.
-    *   `V2__seed_data.sql`: Inserts default roles (`ROLE_USER`, `ROLE_ADMIN`) and initial `admin` and `testuser` accounts.
-
-## 11. Logging & Monitoring
-
-*   **Logging:** Configured using `logback-spring.xml` for structured logging to console and files (info and error logs).
-    *   Logs can be found in the `logs/` directory (created at runtime).
-*   **Monitoring:** Spring Boot Actuator endpoints are exposed for basic monitoring and health checks:
-    *   `/actuator/health`: Application health status.
-    *   `/actuator/info`: Application info.
-    *   `/actuator/metrics`: Various application metrics.
-    *   `/actuator/prometheus`: Prometheus-compatible metrics endpoint.
-
-## 12. Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and write tests.
-4.  Ensure all tests pass and code coverage is maintained.
-5.  Commit your changes (`git commit -m 'feat: Add new feature'`).
-6.  Push to your fork (`git push origin feature/your-feature-name`).
-7.  Create a Pull Request to the `develop` branch of the original repository.
-
-## 13. License
-
-This project is licensed under the [MIT License](LICENSE).
+To view coverage (after installing `pytest-cov` in requirements.txt):
+```bash
+docker-compose exec backend pytest --cov=/app/app --cov-report term-missing /app/app/tests
 ```
 
-#### `ARCHITECTURE.md`
+### Frontend Tests
 
-```markdown
+To run frontend tests:
+```bash
+cd frontend
+npm test # or yarn test
+```
+
+## API Documentation
+
+The FastAPI backend automatically generates OpenAPI documentation (Swagger UI).
+Access it at: `http://localhost:8000/docs`
+
+For a more structured overview, refer to `docs/api.md`.
+
+## Architecture
+
+A high-level overview of the system architecture can be found in `docs/architecture.md`.
+
+## Deployment Guide
+
+Detailed steps for deploying this application to a production environment can be found in `docs/deployment.md`.
+
+## CI/CD
+
+A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is configured to:
+*   Lint backend code (flake8, black)
+*   Run backend tests
+*   Build backend Docker image
+
+This can be extended for frontend tests, building frontend, and pushing images to a container registry.
+
+## Future Enhancements
+
+*   **Private Messages**: Direct 1-on-1 chats.
+*   **File Uploads**: Sharing images, documents.
+*   **Read Receipts**: Showing when messages are read.
+*   **Typing Indicators**: Showing when users are typing.
+*   **Notifications**: Push notifications for new messages.
+*   **Admin Panel**: For managing users, rooms, etc.
+*   **Search**: Full-text search for messages and users.
+*   **Advanced Caching**: Cache more dynamic data, optimize cache invalidation.
+*   **Scalable WebSocket Service**: Consider dedicated WebSocket services for very high loads.
+*   **Frontend UI/UX**: More refined design and animations.
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details (not included in this response for brevity, but would typically be present).
+```

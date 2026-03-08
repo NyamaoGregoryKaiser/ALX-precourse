@@ -1,141 +1,146 @@
 ```markdown
-# DataVizPro Architecture Document
+# Real-Time Chat Application - Architecture Document
 
-## 1. Introduction
+## 1. High-Level Architecture
 
-This document describes the architecture of DataVizPro, an enterprise-grade data visualization platform. It outlines the system's components, their interactions, and the rationale behind key design decisions.
+The Real-Time Chat Application follows a **Microservice-oriented Architecture** with a clear separation of concerns between the frontend and backend, enabling independent development, deployment, and scaling. It leverages **WebSockets** for real-time communication, a cornerstone for any chat application.
 
-## 2. High-Level Architecture
-
-DataVizPro follows a modern, distributed, microservices-oriented (though currently monolithic in terms of backend deployment, it's modularly designed to allow future splitting) architecture.
-
-```
-+----------------+          +-----------------------+          +-----------------+          +-----------------+
-|   Client Web   | <------> |  DataVizPro Backend   | <------> |   PostgreSQL    | <------> |      Redis      |
-|    (React)     |          |   (Node.js/Express)   |          |    (Database)   |          |     (Cache)     |
-+----------------+          +-----------------------+          +-----------------+          +-----------------+
-        ^                            ^
-        |                            | (Data Source Connectors / File Storage)
-        |                            V
-        |                   +------------------+
-        |                   | External Data    |
-        |                   | Sources (CSV, DB)|
-        +-------------------+------------------+
-
+```mermaid
+graph TD
+    A[Client Applications (Web Browser)] -->|HTTP/REST| B(FastAPI Backend API)
+    A -->|WebSocket (WS)| D(FastAPI WebSocket Endpoint)
+    B -->|Database Access| E[PostgreSQL Database]
+    B -->|Caching/Rate Limiting| F[Redis Cache]
+    D -->|Internal Communication/State| F
+    E -->|Persistent Data Storage| G(Disk/Volume)
+    F -->|In-Memory Data Storage| G
+    H[Admin/Monitoring Tools] --> B
 ```
 
-**Key Components:**
+### Key Components:
 
-*   **Client Web (Frontend)**: A Single Page Application (SPA) built with React and TypeScript, responsible for user interface rendering, user interaction, and making API requests.
-*   **DataVizPro Backend**: A RESTful API server built with Node.js and Express.js, using TypeScript. It handles business logic, data processing, authentication, authorization, and persistence.
-*   **PostgreSQL**: The primary relational database for storing application metadata (user profiles, dashboard configurations, chart definitions, data source connections).
-*   **Redis**: An in-memory data store used for caching frequently accessed data (e.g., processed chart data, dashboard lists), session management (if using server-side sessions), and rate limiting.
-*   **External Data Sources**: Users can connect to various external data sources. Currently, CSV file uploads are supported, and the architecture allows for easy extension to connect to other databases (PostgreSQL, MySQL, SQL Server) or data lakes.
+*   **Client Applications (Frontend)**: A single-page application (SPA) built with React and TypeScript, running in web browsers. It interacts with the backend via RESTful HTTP requests for CRUD operations and maintains persistent connections via WebSockets for real-time updates.
+*   **FastAPI Backend API**: The core application logic, built with Python's FastAPI framework. It exposes RESTful API endpoints for user management, chat room management, and message sending. It also hosts the WebSocket endpoint.
+*   **PostgreSQL Database**: A robust relational database used for persistent storage of user data, chat room configurations, messages, and relationships. SQLAlchemy is used as the Object-Relational Mapper (ORM).
+*   **Redis Cache**: An in-memory data store used for two primary purposes:
+    *   **Caching**: Storing frequently accessed data to reduce database load and improve response times.
+    *   **Rate Limiting**: Tracking request counts to prevent API abuse.
+    *   **WebSocket Management**: Potentially storing WebSocket session data (though in this basic version, `WebSocketManager` handles in-memory).
 
-## 3. Component Details
+## 2. Detailed Backend Architecture
 
-### 3.1. Frontend (React/TypeScript)
+The FastAPI backend is structured into several logical modules, promoting modularity and maintainability.
 
-*   **Framework**: React.js
-*   **Language**: TypeScript
-*   **Charting Library**: Nivo (built on D3.js) - chosen for its rich feature set, responsiveness, and React-friendly API.
-*   **State Management**: React Context API for global state (e.g., authentication, notifications). Local component state for UI specific data.
-*   **Routing**: `react-router-dom` for navigation.
-*   **API Communication**: `Axios` for HTTP requests, with interceptors for JWT token management and refresh.
-*   **Styling**: Material-UI (MUI) for a consistent and professional UI.
+```mermaid
+graph TD
+    subgraph FastAPI Backend
+        M[main.py: App Init, Middleware, Routers] --> A[api/v1/: API Endpoints]
+        A --> B[services/: Business Logic]
+        B --> C[crud/: Database Operations]
+        C --> D[models/: SQLAlchemy ORM Models]
+        M --> E[core/: Configuration, DB, Security, Dependencies, Middleware]
+        A --> F[api/v1/websockets.py: WebSocket Endpoint]
+        F --> G[services/websocket_manager.py: WS Connection Mgmt]
+        G --> B
 
-### 3.2. Backend (Node.js/Express/TypeScript)
+        B --- F_Redis[FastAPILimiter/Redis]
+        C --- F_Postgres[PostgreSQL]
+    end
 
-*   **Runtime**: Node.js
-*   **Language**: TypeScript
-*   **Framework**: Express.js - lightweight and flexible for building RESTful APIs.
-*   **ORM**: TypeORM - strong TypeScript support, allows mapping classes to database entities, simplifies DB operations.
-*   **Database Driver**: `pg` for PostgreSQL.
-*   **Authentication**: JWT (JSON Web Tokens) using `passport-jwt` strategy. Access tokens for short-term authorization, refresh tokens for renewing access tokens.
-*   **Authorization**: Role-Based Access Control (RBAC) via middleware based on user roles (`USER`, `ADMIN`) and resource ownership.
-*   **Validation**: `Joi` schemas for robust input validation on API endpoints.
-*   **Logging**: `Winston` for structured, configurable logging (console, file, external services).
-*   **Caching**: `ioredis` client for interacting with Redis, implementing a cache-aside pattern.
-*   **Rate Limiting**: `express-rate-limit` middleware to protect against abuse and DDoS attacks.
-*   **Error Handling**: Centralized error handling middleware that distinguishes operational errors from programming errors, providing consistent API responses.
-*   **Data Processing**: Services layer handles transformation of raw data from data sources into a format suitable for various chart types based on chart configurations.
-*   **File Uploads**: `multer` for handling CSV file uploads, storing them on the server's file system (extendable to cloud storage).
+    F_Postgres[PostgreSQL]
+    F_Redis[Redis Cache]
+```
 
-### 3.3. Database (PostgreSQL)
+### Modules Breakdown:
 
-*   **Type**: Relational Database Management System (RDBMS).
-*   **Schema**:
-    *   `User`: Stores user credentials, roles.
-    *   `DataSource`: Stores metadata about connected data sources (name, type, configuration, ownership).
-    *   `Dashboard`: Stores dashboard layouts, names, descriptions, and ownership.
-    *   `Chart`: Stores chart configurations (type, data mappings, visual settings) and links to its data source and dashboard.
-*   **Migrations**: TypeORM migrations are used for schema evolution, ensuring database changes are tracked and applied reliably.
-*   **Query Optimization**: Indices on foreign keys and frequently queried columns. Eager/lazy loading configured via TypeORM relations.
+*   **`main.py`**: The entry point of the FastAPI application. It sets up the FastAPI instance, integrates middleware (CORS, logging, error handling), initializes the database and Redis, and registers API routers.
+*   **`core/`**: Contains foundational components:
+    *   `config.py`: Loads environment variables and provides application settings.
+    *   `db.py`: Configures the SQLAlchemy engine and session management for asynchronous operations.
+    *   `security.py`: Handles password hashing (Bcrypt) and JWT token creation/validation.
+    *   `dependencies.py`: Provides reusable dependency injection functions (e.g., database session, current authenticated user).
+    *   `middleware.py`: Custom HTTP middleware for logging and global exception handling.
+*   **`models/`**: Defines the SQLAlchemy ORM models, representing the database schema (e.g., `User`, `ChatRoom`, `Message`, `UserRoomAssociation`).
+*   **`schemas/`**: Defines Pydantic models for data validation and serialization/deserialization of API request/response bodies. This ensures consistent data structures.
+*   **`crud/`**: Implements Create, Read, Update, Delete (CRUD) operations for database models. It abstracts direct database interactions from the business logic. `CRUDBase` provides generic functionality.
+*   **`services/`**: Contains the core business logic. These services orchestrate interactions between CRUD operations, security utilities, and the WebSocket manager. Examples include `AuthService` (user registration/login) and `ChatService` (room/message management).
+*   **`api/v1/endpoints/`**: Defines the RESTful API endpoints for specific resources (e.g., `auth.py`, `users.py`, `chat_rooms.py`, `messages.py`). Each endpoint uses dependencies to get database sessions, authenticated users, and interacts with the services layer.
+*   **`api/v1/websockets.py`**: The dedicated WebSocket endpoint that handles new WebSocket connections, authenticates users via tokens in query parameters, and integrates with the `WebSocketManager`.
+*   **`services/websocket_manager.py`**: Manages active WebSocket connections. It tracks which users are connected to which rooms and facilitates broadcasting messages to specific rooms or individual users.
+*   **`tests/`**: Contains unit and integration tests to ensure code quality and correctness.
+*   **`scripts/`**: Utility scripts (e.g., `seed_db.py` for populating initial data).
+*   **`alembic/`**: Directory for database migration scripts using Alembic.
 
-### 3.4. Cache (Redis)
+## 3. Frontend Architecture
 
-*   **Type**: In-memory, key-value data store.
-*   **Usage**:
-    *   Caching processed chart data to reduce redundant computations and database queries.
-    *   Caching dashboard configurations and lists for faster retrieval.
-    *   Can be extended for session management (if using server-side sessions) or distributed locks.
+The React/TypeScript frontend is structured using standard React best practices.
 
-## 4. Data Flow
+```mermaid
+graph TD
+    A[index.tsx: App Entry Point] --> B(App.tsx: Main Router & Private Routes)
+    B --> C[pages/: Top-level Views]
+    C --> D[components/: Reusable UI Elements]
+    C --> E[context/: Global State Management]
+    C --> F[hooks/: Custom React Hooks]
+    C --> G[api/: API Client]
+    C --> H[types/: Shared Type Definitions]
+    C --> I[utils/: Utility Functions]
 
-1.  **User Authentication**:
-    *   Frontend sends login/register credentials to `/api/auth`.
-    *   Backend authenticates (bcrypt for password, JWT for token generation).
-    *   Frontend stores JWTs (access and refresh tokens).
-2.  **Resource Access (e.g., Dashboards)**:
-    *   Frontend sends authenticated requests (with access token in header) to `/api/dashboards`.
-    *   Backend validates token (`passport-jwt`), authorizes user (ownership/roles), and checks cache.
-    *   If cached, return data from Redis.
-    *   If not cached, query PostgreSQL via TypeORM.
-    *   Cache result in Redis and return to frontend.
-3.  **Chart Data Fetching**:
-    *   Frontend requests chart data from `/api/charts/:id/data`.
-    *   Backend authenticates/authorizes, gets chart config from PostgreSQL.
-    *   Gets associated `DataSource` details from PostgreSQL.
-    *   Retrieves raw data:
-        *   For `csv` type: reads and parses the stored CSV file.
-        *   For `database` type: (conceptual) connects to the external DB and fetches data.
-    *   Transforms raw data into chart-specific format based on `Chart.configuration`.
-    *   Caches processed data in Redis and returns to frontend.
-4.  **Frontend Rendering**:
-    *   Frontend receives processed data.
-    *   Uses Nivo to render the appropriate chart type.
+    E --> F
+    F --> E
+    D --> E
+    D --> F
+    C --> G
+    B --> E
+    A --> E
+```
 
-## 5. Security Considerations
+### Modules Breakdown:
 
-*   **Authentication**: JWT with secure secret management. Access and refresh token strategy.
-*   **Authorization**: Role-based and resource-ownership based access control.
-*   **Input Validation**: `Joi` schemas prevent malicious or malformed data from reaching the core logic and database.
-*   **Rate Limiting**: Protects against brute-force attacks and API abuse.
-*   **Helmet**: Sets various HTTP headers for enhanced security.
-*   **CORS**: Configured to allow only trusted origins in production.
-*   **Password Hashing**: `bcryptjs` for secure password storage.
-*   **Sensitive Data**: Environment variables for secrets. Avoid logging sensitive information.
+*   **`index.tsx`**: The main entry point of the React application, rendering the root `App` component within `BrowserRouter` and `AuthProvider`.
+*   **`App.tsx`**: Defines the main routing structure, including public and private routes. It wraps the entire application with `AuthProvider` and `WebSocketProvider`.
+*   **`pages/`**: Contains top-level components that represent different pages or views of the application (e.g., `LoginPage`, `RegisterPage`, `HomePage`, `ChatPage`).
+*   **`components/`**: Houses reusable UI components (e.g., `AuthForm`, `RoomList`, `ChatHeader`, `MessageBubble`, `MessageList`, `ChatInput`, `UserList`).
+*   **`context/`**: Manages global state using React Context API:
+    *   `AuthContext.tsx`: Manages user authentication state (login, logout, current user, JWT token).
+    *   `WebSocketContext.tsx`: Manages WebSocket connection state, incoming messages, and provides functions to connect/disconnect.
+*   **`hooks/`**: Custom React hooks to abstract component logic and state management (e.g., `useAuth` for accessing auth context, `useWebSocket` for WebSocket interactions).
+*   **`api/`**: Contains `axiosInstance.ts` for configuring Axios with base URL, request/response interceptors (e.g., for attaching JWT token), and error handling.
+*   **`types/`**: Defines TypeScript interfaces and types for consistent data structures across the frontend (e.g., `User`, `ChatRoom`, `Message`, `AuthState`, `WebSocketMessageType`).
+*   **`utils/`**: General utility functions (e.g., `auth.ts` for handling local storage operations for tokens/user info).
+*   **`App.css` / `index.css` / `tailwind.config.js`**: Styling and Tailwind CSS configuration.
 
-## 6. Scalability
+## 4. Data Flow (Authentication)
 
-*   **Stateless Backend**: JWT authentication makes the backend stateless, allowing horizontal scaling of API instances.
-*   **Database**: PostgreSQL can be scaled vertically (more resources) or horizontally (read replicas, sharding for very large datasets).
-*   **Caching (Redis)**: Offloads database, improving response times and reducing load, especially for read-heavy operations. Can be clustered for high availability and scalability.
-*   **Modular Design**: Services and controllers are separated, facilitating potential future migration to microservices.
-*   **Dockerization**: Enables easy deployment and scaling in container orchestration platforms (Kubernetes).
+1.  **User registers/logs in**: Frontend sends `POST /api/v1/auth/register` or `POST /api/v1/auth/token` (form data) to FastAPI.
+2.  **FastAPI (`auth.py`)**:
+    *   For registration, `AuthService` hashes the password and creates a new `User` in PostgreSQL via `CRUDUser`.
+    *   For login, `AuthService` authenticates user against hashed password in PostgreSQL via `CRUDUser`, then generates a JWT token using `security.py`.
+3.  **FastAPI responds**: Returns `UserPublic` (for register) or `Token` (for login) to the frontend.
+4.  **Frontend**: Stores the JWT token in local storage. After successful login, it fetches the full `User` profile using `GET /api/v1/users/me` and stores it in `AuthContext`.
 
-## 7. Observability
+## 5. Data Flow (Real-time Messaging)
 
-*   **Structured Logging**: `Winston` provides consistent log formats, making it easier to parse, filter, and analyze logs with external tools.
-*   **Error Handling**: Centralized error middleware ensures all errors are caught, logged, and handled gracefully, providing clear feedback to clients without exposing sensitive details.
-*   **Monitoring**: Integration with APM tools (e.g., Prometheus, Grafana, Datadog - conceptual) can be achieved by instrumenting the application and collecting metrics.
+1.  **User navigates to a chat room**: Frontend renders `ChatPage`.
+2.  **Frontend (`ChatPage` -> `useWebSocket`)**:
+    *   On `ChatPage` mount, it calls `useWebSocket().connect(roomId, token)`.
+    *   A WebSocket connection is initiated to `ws://backend-url/api/v1/ws?room_id=<id>&token=<jwt>`.
+3.  **FastAPI (`websockets.py`)**:
+    *   The WebSocket endpoint receives the connection.
+    *   The `get_user_from_websocket_token` dependency authenticates the user using the JWT token and verifies they are a member of the requested `room_id`.
+    *   If successful, `WebSocketManager.connect()` registers the WebSocket connection.
+    *   A system message ("User X has joined") is broadcast to the room.
+4.  **User sends a message**: Frontend sends `POST /api/v1/messages/{room_id}` with message `content` to FastAPI.
+5.  **FastAPI (`messages.py` -> `ChatService`)**:
+    *   `ChatService.send_message()` first verifies the user is a member of the room.
+    *   It then saves the message to PostgreSQL via `CRUDMessage`.
+    *   Finally, it calls `WebSocketManager.broadcast_to_room()` to send the message JSON to all active WebSockets connected to that `room_id`.
+6.  **WebSockets broadcast**:
+    *   `WebSocketManager` iterates through registered WebSockets for the room and `send_text()` the message JSON.
+7.  **Frontend (`useWebSocket`)**:
+    *   The `newWs.onmessage` handler receives the message JSON.
+    *   It parses the message and adds it to the `messages` state in `WebSocketContext`.
+    *   `MessageList` component (subscribed to `messages`) re-renders, displaying the new message instantly.
 
-## 8. Deployment Strategy
-
-*   Docker containers for all services (backend, frontend, database, Redis).
-*   Orchestration using Docker Compose for development and small-scale deployment.
-*   For production, leverage Kubernetes or similar container orchestration platforms for high availability, auto-scaling, and self-healing capabilities.
-*   CI/CD pipelines automate testing, building, and deployment processes.
-
-This architecture provides a solid foundation for a robust, scalable, and maintainable data visualization platform, adhering to modern software engineering principles.
+This architecture ensures a clear separation of concerns, scalability, and maintainability, crucial for an enterprise-grade application.
 ```

@@ -1,0 +1,113 @@
+```yaml
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  backend-lint-test-build:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/1 # Use separate DB for tests
+      DATABASE_URL: postgresql+asyncpg://testuser:testpassword@db:5432/testdb
+      SECRET_KEY: ci-secret-key-for-testing
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1 # Short expiry for tests
+      FRONTEND_URL: http://localhost:3000
+      APP_NAME: CI Chat App
+
+    services:
+      db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install poetry (optional, if using it)
+        run: pip install poetry
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          pip install -r requirements.txt
+          # If using poetry: poetry install
+
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in `seq 1 10`; do
+            pg_isready -h localhost -p 5432 -U ${{ env.POSTGRES_USER }} && break
+            echo "PostgreSQL not ready, waiting 5s..."
+            sleep 5
+          done
+          echo "PostgreSQL is ready!"
+
+          echo "Waiting for Redis..."
+          for i in `seq 1 10`; do
+            redis-cli -h localhost -p 6379 ping && break
+            echo "Redis not ready, waiting 5s..."
+            sleep 5
+          done
+          echo "Redis is ready!"
+
+      - name: Run Alembic migrations
+        working-directory: ./backend
+        run: |
+          alembic upgrade head
+
+      - name: Run Black formatter check
+        working-directory: ./backend
+        run: black --check .
+
+      - name: Run Flake8 linter
+        working-directory: ./backend
+        run: flake8 .
+
+      - name: Run Isort check
+        working-directory: ./backend
+        run: isort --check-only .
+
+      - name: Run backend tests with coverage
+        working-directory: ./backend
+        run: pytest --cov=app --cov-report=term-missing app/tests
+
+      - name: Build backend Docker image
+        run: docker build -t realtime-chat-backend:latest ./backend
+```
