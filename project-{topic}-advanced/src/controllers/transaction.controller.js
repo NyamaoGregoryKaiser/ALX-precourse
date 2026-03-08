@@ -1,146 +1,129 @@
 ```javascript
-// src/controllers/transaction.controller.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status-codes');
+const transactionService = require('../services/transaction.service');
+const paymentGatewayService = require('../services/paymentGateway.service');
 const catchAsync = require('../utils/catchAsync');
-const { transactionService, idempotencyService, webhookService } = require('../services');
-const { ApiError } = require('../utils/ApiError');
 const logger = require('../utils/logger');
-const { pick } = require('../utils/helpers');
+const ApiError = require('../utils/apiError');
 
-const processTransaction = catchAsync(async (req, res) => {
-    // ALX Principle: Idempotency
-    // Ensures that an API call can be safely repeated without unintended side effects.
-    const idempotencyKey = req.headers['x-idempotency-key'];
-    const merchantId = req.user.merchantId; // Injected by apiKeyAuth middleware
+const initiateTransaction = catchAsync(async (req, res) => {
+  const { sourceAccountId, destinationAccountId, amount, currency, description } = req.body;
 
-    if (!idempotencyKey) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'X-Idempotency-Key header is required.');
-    }
+  // Step 1: Create a pending transaction in our system
+  const transaction = await transactionService.createPendingTransaction({
+    userId: req.user.id,
+    sourceAccountId,
+    destinationAccountId,
+    amount,
+    currency,
+    description,
+  });
 
-    const idempotentResponse = await idempotencyService.checkIdempotency(idempotencyKey, merchantId, req.method, req.originalUrl, req.body);
-    if (idempotentResponse) {
-        logger.info(`Idempotent request for key ${idempotencyKey} returned cached response.`);
-        return res.status(idempotentResponse.statusCode).send(idempotentResponse.responseBody);
-    }
+  // Step 2: Simulate interaction with an external payment gateway
+  // In a real app, this would involve calling Stripe, PayPal, etc.
+  // The gateway would return a payment intent ID or similar.
+  const paymentGatewayResponse = await paymentGatewayService.processPayment({
+    transactionId: transaction.id,
+    amount,
+    currency,
+    description,
+    // Add real payment details here: card_token, bank_account_details, etc.
+  });
 
-    const transactionData = {
-        ...req.body,
-        merchantId,
-        idempotencyKey, // Store the key with the transaction
-    };
+  // Step 3: Update our transaction based on gateway's initial response
+  await transactionService.updateTransactionStatus(
+    transaction.id,
+    paymentGatewayResponse.status, // e.g., 'PROCESSING', 'FAILED', 'SUCCESS'
+    paymentGatewayResponse.gatewayRefId // Store gateway's reference ID
+  );
 
-    // ALX Principle: Business Logic Encapsulation
-    // The core transaction processing logic resides in the service layer.
-    const transaction = await transactionService.processNewTransaction(transactionData);
+  // If the gateway immediately confirms success (rare for async), update again.
+  // More often, we wait for a webhook.
+  if (paymentGatewayResponse.status === 'SUCCESS') {
+    await transactionService.completeTransaction(transaction.id, paymentGatewayResponse.gatewayRefId);
+  }
 
-    // After successful processing, save the response for idempotency
-    await idempotencyService.saveIdempotencyResponse(idempotencyKey, merchantId, req.method, req.originalUrl, req.body, httpStatus.CREATED, transaction);
-
-    // ALX Principle: Asynchronous Event Handling (Webhooks)
-    // Decouple notification from core transaction processing using webhooks.
-    // This could be an async job queue (e.g., BullMQ, RabbitMQ) in a real system.
-    setImmediate(async () => {
-        try {
-            await webhookService.dispatchWebhook(merchantId, transaction.id, 'transaction.created', transaction);
-        } catch (error) {
-            logger.error(`Failed to dispatch webhook for transaction ${transaction.id}:`, error);
-            // Handle webhook dispatch failures (e.g., retry mechanism)
-        }
-    });
-
-    res.status(httpStatus.CREATED).send(transaction);
-});
-
-const captureTransaction = catchAsync(async (req, res) => {
-    const idempotencyKey = req.headers['x-idempotency-key'];
-    const merchantId = req.user.merchantId;
-
-    if (!idempotencyKey) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'X-Idempotency-Key header is required.');
-    }
-
-    const idempotentResponse = await idempotencyService.checkIdempotency(idempotencyKey, merchantId, req.method, req.originalUrl, req.body);
-    if (idempotentResponse) {
-        logger.info(`Idempotent request for key ${idempotencyKey} returned cached response.`);
-        return res.status(idempotentResponse.statusCode).send(idempotentResponse.responseBody);
-    }
-
-    const { transactionId } = req.params;
-    const { amount } = req.body; // Optional partial capture
-
-    const transaction = await transactionService.captureTransaction(transactionId, merchantId, amount);
-
-    await idempotencyService.saveIdempotencyResponse(idempotencyKey, merchantId, req.method, req.originalUrl, req.body, httpStatus.OK, transaction);
-
-    setImmediate(async () => {
-        try {
-            await webhookService.dispatchWebhook(merchantId, transaction.id, 'transaction.captured', transaction);
-        } catch (error) {
-            logger.error(`Failed to dispatch webhook for transaction ${transaction.id}:`, error);
-        }
-    });
-
-    res.status(httpStatus.OK).send(transaction);
-});
-
-const refundTransaction = catchAsync(async (req, res) => {
-    const idempotencyKey = req.headers['x-idempotency-key'];
-    const merchantId = req.user.merchantId;
-
-    if (!idempotencyKey) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'X-Idempotency-Key header is required.');
-    }
-
-    const idempotentResponse = await idempotencyService.checkIdempotency(idempotencyKey, merchantId, req.method, req.originalUrl, req.body);
-    if (idempotentResponse) {
-        logger.info(`Idempotent request for key ${idempotencyKey} returned cached response.`);
-        return res.status(idempotentResponse.statusCode).send(idempotentResponse.responseBody);
-    }
-
-    const { transactionId } = req.params;
-    const { amount } = req.body; // Optional partial refund
-
-    const transaction = await transactionService.refundTransaction(transactionId, merchantId, amount);
-
-    await idempotencyService.saveIdempotencyResponse(idempotencyKey, merchantId, req.method, req.originalUrl, req.body, httpStatus.OK, transaction);
-
-    setImmediate(async () => {
-        try {
-            await webhookService.dispatchWebhook(merchantId, transaction.id, 'transaction.refunded', transaction);
-        } catch (error) {
-            logger.error(`Failed to dispatch webhook for transaction ${transaction.id}:`, error);
-        }
-    });
-
-    res.status(httpStatus.OK).send(transaction);
-});
-
-
-const getTransaction = catchAsync(async (req, res) => {
-    const { transactionId } = req.params;
-    const merchantId = req.user.merchantId;
-
-    const transaction = await transactionService.getTransactionByIdAndMerchant(transactionId, merchantId);
-    if (!transaction) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Transaction not found.');
-    }
-    res.status(httpStatus.OK).send(transaction);
+  res.status(httpStatus.ACCEPTED).send({
+    message: 'Transaction initiated successfully. Awaiting payment gateway confirmation.',
+    transactionId: transaction.id,
+    gatewayStatus: paymentGatewayResponse.status,
+    gatewayRefId: paymentGatewayResponse.gatewayRefId,
+  });
 });
 
 const getTransactions = catchAsync(async (req, res) => {
-    const merchantId = req.user.merchantId;
-    const filter = { ...pick(req.query, ['status', 'currency']), merchantId };
-    const options = pick(req.query, ['sortBy', 'limit', 'page']);
-
-    const result = await transactionService.queryTransactions(filter, options);
-    res.status(httpStatus.OK).send(result);
+  let transactions;
+  if (req.user.role === 'admin') {
+    transactions = await transactionService.queryTransactions(); // Admin gets all transactions
+  } else {
+    transactions = await transactionService.getTransactionsByUserId(req.user.id); // User gets their own
+  }
+  res.send(transactions);
 });
 
+const getTransactionDetails = catchAsync(async (req, res) => {
+  const transaction = await transactionService.getTransactionById(req.params.transactionId);
+
+  if (!transaction) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Transaction not found');
+  }
+
+  // Ensure user can only view their own transactions unless admin
+  if (req.user.role !== 'admin' && transaction.userId !== req.user.id) {
+    throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden: You can only view your own transactions');
+  }
+
+  res.send(transaction);
+});
+
+const processTransaction = catchAsync(async (req, res) => {
+  // This route is for admin to manually update or trigger internal processing.
+  // e.g., for refunds, disputes, or manual settlement.
+  const { status, remarks } = req.body; // status could be 'REFUNDED', 'COMPLETED', etc.
+  const transaction = await transactionService.updateTransactionStatus(
+    req.params.transactionId,
+    status,
+    null, // gatewayRefId generally not updated here
+    remarks
+  );
+  res.send(transaction);
+});
+
+const handlePaymentGatewayWebhook = catchAsync(async (req, res) => {
+  const { event, data } = req.body; // Example webhook structure
+  logger.info(`Received webhook from payment gateway: ${event}`);
+
+  // In a real system, you'd verify the webhook signature first!
+  // const signature = req.headers['x-signature'];
+  // if (!paymentGatewayService.verifyWebhookSignature(signature, req.body)) {
+  //   throw new ApiError(httpStatus.FORBIDDEN, 'Invalid webhook signature');
+  // }
+
+  switch (event) {
+    case 'payment_success':
+      const { transactionId: ourTransactionId, gatewayRefId } = data; // Assuming gateway sends our transaction ID
+      await transactionService.completeTransaction(ourTransactionId, gatewayRefId);
+      logger.info(`Transaction ${ourTransactionId} marked as SUCCESS via webhook.`);
+      break;
+    case 'payment_failed':
+      const { transactionId: failedTransactionId, reason } = data;
+      await transactionService.failTransaction(failedTransactionId, reason);
+      logger.info(`Transaction ${failedTransactionId} marked as FAILED via webhook: ${reason}`);
+      break;
+    // Add cases for refunds, disputes, etc.
+    default:
+      logger.warn(`Unhandled webhook event: ${event}`);
+  }
+
+  res.status(httpStatus.OK).send({ received: true });
+});
+
+
 module.exports = {
-    processTransaction,
-    captureTransaction,
-    refundTransaction,
-    getTransaction,
-    getTransactions,
+  initiateTransaction,
+  getTransactions,
+  getTransactionDetails,
+  processTransaction,
+  handlePaymentGatewayWebhook,
 };
 ```

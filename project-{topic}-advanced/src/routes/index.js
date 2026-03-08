@@ -1,40 +1,44 @@
 ```javascript
-// src/routes/index.js
 const express = require('express');
-const merchantRoutes = require('./merchant.routes');
+const authRoutes = require('./auth.routes');
 const userRoutes = require('./user.routes');
+const accountRoutes = require('./account.routes');
 const transactionRoutes = require('./transaction.routes');
-const webhookRoutes = require('./webhook.routes');
-const { auth } = require('../middlewares/auth'); // Internal auth middleware
-const { apiKeyAuth } = require('../middlewares/apiKeyAuth'); // API Key auth for merchants
+const config = require('../../config/config');
 
 const router = express.Router();
 
 const defaultRoutes = [
-    {
-        path: '/merchants',
-        route: merchantRoutes,
-        middleware: [auth], // Only authenticated internal users can manage merchants
-    },
-    {
-        path: '/users',
-        route: userRoutes,
-        middleware: [auth], // Only authenticated internal users can manage users
-    },
-    {
-        path: '/transactions',
-        route: transactionRoutes,
-        middleware: [apiKeyAuth], // Merchants interact with transactions via API keys
-    },
-    {
-        path: '/webhooks',
-        route: webhookRoutes,
-        middleware: [], // Webhook endpoints are typically public, with signature verification in controller
-    }
+  {
+    path: '/auth',
+    route: authRoutes,
+  },
+  {
+    path: '/users',
+    route: userRoutes,
+  },
+  {
+    path: '/accounts',
+    route: accountRoutes,
+  },
+  {
+    path: '/transactions',
+    route: transactionRoutes,
+  },
 ];
 
+// Add docs route only in development
+if (config.env === 'development') {
+  // Example for a docs route, you might use swagger-ui-express here
+  // const docsRoute = require('./docs.route');
+  // defaultRoutes.push({
+  //   path: '/docs',
+  //   route: docsRoute,
+  // });
+}
+
 defaultRoutes.forEach((route) => {
-    router.use(route.path, ...route.middleware, route.route);
+  router.use(route.path, route.route);
 });
 
 module.exports = router;

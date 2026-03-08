@@ -1,43 +1,60 @@
 ```javascript
-// src/server.js
 const app = require('./app');
-const { sequelize } = require('./database');
+const config = require('../config/config');
 const logger = require('./utils/logger');
-const config = require('./config/config');
+const db = require('../models');
+const redisClient = require('./config/database').redisClient;
 
-const PORT = config.server.port;
+let server;
 
-const startServer = async () => {
-    try {
-        // Connect to the database and sync models (in production, use migrations)
-        await sequelize.authenticate();
-        logger.info('Database connection has been established successfully.');
+// Connect to PostgreSQL and sync models
+db.sequelize.authenticate()
+  .then(() => {
+    logger.info('Connected to PostgreSQL database successfully.');
+    // In production, migrations should be handled externally or carefully.
+    // For development/testing, sync can be useful:
+    // return db.sequelize.sync({ force: false });
+  })
+  .then(() => {
+    logger.info('PostgreSQL models synchronized.');
+    // Connect to Redis
+    return redisClient.connect();
+  })
+  .then(() => {
+    logger.info('Connected to Redis successfully.');
+    // Start the server
+    server = app.listen(config.port, () => {
+      logger.info(`Server listening on port ${config.port} in ${config.env} mode.`);
+    });
+  })
+  .catch(err => {
+    logger.error('Database or Redis connection error:', err);
+    process.exit(1);
+  });
 
-        // In a production environment, you would run migrations separately:
-        // await sequelize.sync({ force: false, alter: true }); // DO NOT USE force: true in production!
-        // logger.info('Database models synchronized.');
-
-        app.listen(PORT, () => {
-            logger.info(`Server running on port ${PORT} in ${config.env} mode`);
-        });
-    } catch (error) {
-        logger.error('Unable to connect to the database or start the server:', error);
-        process.exit(1); // Exit with a failure code
-    }
+const exitHandler = () => {
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed.');
+      process.exit(1);
+    });
+  } else {
+    process.exit(1);
+  }
 };
 
-startServer();
+const unexpectedErrorHandler = (error) => {
+  logger.error(error);
+  exitHandler();
+};
 
-// Handle unhandled rejections
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    // Application specific logging, throwing an error, or other logic here
-});
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-    logger.error('Uncaught Exception:', error);
-    // It's critical to exit for uncaught exceptions to avoid undefined state
-    process.exit(1);
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close();
+  }
 });
 ```

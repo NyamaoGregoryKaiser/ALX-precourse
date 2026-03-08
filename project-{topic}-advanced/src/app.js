@@ -1,33 +1,29 @@
 ```javascript
-// src/app.js
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const morgan = require('morgan');
-const xss = require('xss-clean');
-const hpp = require('hpp');
+const xss = require('xss-clean'); // Typically, HTML escaping on output is better
+const hpp = require('hpp'); // HTTP Parameter Pollution
+const mongoSanitize = require('express-mongo-sanitize'); // Although we use SQL, good to be aware
 const rateLimit = require('express-rate-limit');
-const compression = require('compression');
+const compression = require('compression'); // For response compression
+const httpStatus = require('http-status-codes');
 
-const config = require('./config/config');
-const logger = require('./utils/logger');
-const { ApiError } = require('./utils/ApiError');
-const { errorConverter, errorHandler } = require('./middlewares/error');
-const apiRoutes = require('./routes'); // All API routes
-const authRoutes = require('./routes/auth.routes');
-const path = require('path');
+const config = require('../config/config');
+const routes = require('./routes');
+const { errorHandler, convertToApiError } = require('./middleware/errorHandler');
+const { authLimiter } = require('./middleware/rateLimiter');
+const requestLogger = require('./middleware/requestLogger');
+const ApiError = require('./utils/apiError');
 
 const app = express();
 
-// Security Middlewares
-app.use(helmet()); // Set security HTTP headers
-app.use(cors());   // Enable CORS for all requests
-app.options('*', cors()); // Enable pre-flight for all routes
+// Set security HTTP headers
+app.use(helmet());
 
-// Request logging (Morgan)
-// Using 'combined' format for production, 'dev' for development.
-// Stream logs to Winston.
-app.use(morgan(config.env === 'development' ? 'dev' : 'combined', { stream: { write: message => logger.info(message.trim()) } }));
+// Enable CORS
+app.use(cors());
+app.options('*', cors());
 
 // Parse JSON request body
 app.use(express.json());
@@ -35,40 +31,39 @@ app.use(express.json());
 // Parse URL-encoded request body
 app.use(express.urlencoded({ extended: true }));
 
-// Data sanitization against XSS attacks
-app.use(xss());
+// Sanitize request data (against XSS and NoSQL injection)
+// XSS: This is a basic layer; client-side output escaping is crucial.
+// For SQL injection, Sequelize's parameterized queries are the primary defense.
+app.use(xss()); // Cleans req.body, req.query, req.params to prevent XSS attacks
+// app.use(mongoSanitize()); // Prevent NoSQL injection attacks (not directly applicable for SQL, but good to know)
 
-// Prevent HTTP Parameter Pollution attacks
+// Prevent HTTP Parameter Pollution
 app.use(hpp());
 
-// Gzip compression for responses
+// Gzip compression
 app.use(compression());
 
-// Rate limiting to prevent brute-force attacks and abuse
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: config.rateLimit.maxRequests, // Max requests per windowMs
-    message: 'Too many requests from this IP, please try again after 15 minutes',
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
-    keyGenerator: (req, res) => req.ip, // Use client IP for rate limiting
-});
-app.use('/api/', apiLimiter); // Apply rate limiting to all API routes
+// Request logging middleware
+app.use(requestLogger);
 
-// Serve static frontend files (conceptual)
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// Limit repeated failed requests to auth endpoints
+if (config.env === 'production') {
+  app.use('/v1/auth', authLimiter);
+}
 
-// API routes
-app.use('/api/v1/auth', authRoutes); // Authentication routes
-app.use('/api/v1', apiRoutes);       // Main API routes
+// Serve static files (e.g., a simple frontend)
+app.use(express.static('public'));
+
+// V1 API routes
+app.use('/v1', routes);
 
 // Send back a 404 error for any unknown API request
 app.use((req, res, next) => {
-    next(new ApiError(404, 'Not Found - The requested API endpoint does not exist.'));
+  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
 });
 
 // Convert error to ApiError, if needed
-app.use(errorConverter);
+app.use(convertToApiError);
 
 // Handle errors
 app.use(errorHandler);

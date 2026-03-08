@@ -1,61 +1,46 @@
 ```yaml
-name: CI/CD Pipeline for Chat Application
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  backend-ci:
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Cache Maven dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('chat-app-backend/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
-
-      - name: Build and Test Backend with Maven
-        working-directory: ./chat-app-backend
-        run: mvn clean install -DskipTests # Build without running tests first
-
-      - name: Run Backend Unit and Integration Tests
-        working-directory: ./chat-app-backend
-        run: mvn test
+    services:
+      postgres:
+        image: postgres:15-alpine
         env:
-          # Use placeholder values for test DB, Testcontainers will override
-          DB_NAME: test_db
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          JWT_SECRET_KEY: some_super_secret_key_for_testing_purposes_only
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-      - name: Generate JaCoCo coverage report (Optional)
-        working-directory: ./chat-app-backend
-        run: mvn jacoco:report
-        # If you want to upload coverage to a service like Codecov
-        # - name: Upload coverage to Codecov
-        #   uses: codecov/codecov-action@v3
-        #   with:
-        #     token: ${{ secrets.CODECOV_TOKEN }}
-        #     directory: ./chat-app-backend/target/site/jacoco
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-  frontend-ci:
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,88 +48,90 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: chat-app-frontend/package-lock.json
+          node-version: 20
 
-      - name: Install Frontend dependencies
-        working-directory: ./chat-app-frontend
-        run: npm ci
+      - name: Install dependencies
+        run: npm install
 
-      - name: Run Frontend Tests (e.g., Jest, React Testing Library)
-        working-directory: ./chat-app-frontend
-        run: npm test -- --coverage --watchAll=false # Run tests with coverage
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in `seq 1 10`; do
+            echo "Waiting for postgres... attempt $i"
+            sudo docker logs postgres
+            pg_isready -h localhost -p 5432 -U testuser -d test_db && break
+            sleep 5
+          done
 
-      - name: Build Frontend
-        working-directory: ./chat-app-frontend
-        run: npm run build
-        env:
-          REACT_APP_API_BASE_URL: http://localhost:8080/api/v1 # Placeholder for build
-          REACT_APP_WEBSOCKET_URL: ws://localhost:8080/websocket # Placeholder for build
+      - name: Wait for Redis to be ready
+        run: |
+          for i in `seq 1 10`; do
+            echo "Waiting for redis... attempt $i"
+            redis-cli ping && break
+            sleep 5
+          done
 
-  docker-build-and-push:
-    needs: [backend-ci, frontend-ci] # Only run if CI jobs pass
-    if: github.ref == 'refs/heads/main' # Only push on merges to main
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Set up .env for testing
+        run: |
+          cp .env.example .env
+          sed -i 's/DB_HOST=localhost/DB_HOST=localhost/' .env
+          sed -i 's/DB_USER=user/DB_USER=testuser/' .env
+          sed -i 's/DB_PASSWORD=password/DB_PASSWORD=testpassword/' .env
+          sed -i 's/DB_NAME=payment_db/DB_NAME=test_db/' .env
+          sed -i 's/REDIS_HOST=localhost/REDIS_HOST=localhost/' .env
+          sed -i 's/REDIS_PORT=6379/REDIS_PORT=6379/' .env
+          sed -i 's/NODE_ENV=development/NODE_ENV=test/' .env
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Run database migrations and seeders
+        run: npm run db:setup
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: yourdockerhubusername/chat-app # Replace with your Docker Hub username
+      - name: Run ESLint
+        run: npm run lint
 
-      - name: Build and push Backend Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./chat-app-backend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}-backend
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Run tests
+        run: npm test
 
-      - name: Build and push Frontend Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./chat-app-frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}-frontend
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            REACT_APP_API_BASE_URL=http://your-production-backend-ip-or-domain/api/v1
-            REACT_APP_WEBSOCKET_URL=ws://your-production-backend-ip-or-domain/websocket
-
-  # Simplified deployment step (e.g., to a VM using SSH)
   deploy:
-    needs: [docker-build-and-push]
-    if: github.ref == 'refs/heads/main'
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    environment:
-      name: Production
-      url: https://your-chat-app.com # Replace with your app's URL
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: SSH into production server and deploy
-        uses: appleboy/ssh-action@master
+      - name: Configure AWS Credentials (Example for AWS)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USERNAME }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /path/to/your/deployment/directory
-            # Pull latest images
-            docker compose pull
-            # Stop existing services, remove old containers, and start new ones
-            docker compose up -d --remove-orphans
-            # Clean up old images (optional)
-            docker image prune -f
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1 # Change to your region
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY_URL }} # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY_URL }}
+          ECR_REPOSITORY: payment-processor
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to ECS (Example for AWS ECS)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: # Path to your task definition JSON
+          service: # Your ECS service name
+          cluster: # Your ECS cluster name
+          # You would typically generate a new task definition or update existing one
+          # See AWS documentation for full ECS deployment options
+          # This is a placeholder for a more complex deployment strategy.
+        run: echo "Simulating deployment to production via ECS"
+        # Actual deployment would involve updating a task definition and service
+        # or using tools like Terraform/Pulumi/Ansible.
 ```

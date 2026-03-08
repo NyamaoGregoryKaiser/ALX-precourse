@@ -1,62 +1,99 @@
 ```javascript
-// src/services/user.service.js
-const httpStatus = require('http-status');
-const { User } = require('../models');
-const { ApiError } = require('../utils/ApiError');
+const httpStatus = require('http-status-codes');
+const { User } = require('../../models');
+const ApiError = require('../utils/apiError');
+const logger = require('../utils/logger');
 
+/**
+ * Create a user
+ * @param {Object} userBody
+ * @returns {Promise<User>}
+ */
 const createUser = async (userBody) => {
-    // ALX Principle: Data Integrity
-    // Ensure unique constraints and valid data before persistence.
-    if (await User.isEmailTaken(userBody.email)) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
-    }
-    // ALX Principle: Password Hashing (done in User model 'beforeCreate' hook)
-    const user = await User.create(userBody);
-    return user;
+  if (await User.isEmailTaken(userBody.email)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
+  }
+  const user = await User.create(userBody);
+  logger.info(`User created: ${user.email}`);
+  return user;
 };
 
-const queryUsers = async (filter, options) => {
-    // ALX Principle: Pagination and Filtering
-    // Implement efficient data retrieval with options for sorting and limiting.
-    const users = await User.paginate(filter, options);
-    return users;
+/**
+ * Query for users
+ * @param {Object} filter - Mongo filter
+ * @param {Object} options - Query options
+ * @param {string} [options.sortBy] - Sort option in the format: sortField:(desc|asc)
+ * @param {number} [options.limit] - Maximum number of results per page (default = 10)
+ * @param {number} [options.page] - Current page (default = 1)
+ * @returns {Promise<QueryResult>}
+ */
+const queryUsers = async () => {
+  // Implement pagination and filtering here for a real application
+  const users = await User.findAll({
+    attributes: { exclude: ['password'] }
+  });
+  return users;
 };
 
+/**
+ * Get user by id
+ * @param {string} id
+ * @returns {Promise<User>}
+ */
 const getUserById = async (id) => {
-    return User.findByPk(id);
+  return User.findByPk(id, { attributes: { exclude: ['password'] } });
 };
 
+/**
+ * Get user by email
+ * @param {string} email
+ * @returns {Promise<User>}
+ */
 const getUserByEmail = async (email) => {
-    return User.findOne({ where: { email } });
+  return User.findOne({ where: { email } });
 };
 
+/**
+ * Update user by id
+ * @param {string} userId
+ * @param {Object} updateBody
+ * @returns {Promise<User>}
+ */
 const updateUserById = async (userId, updateBody) => {
-    const user = await getUserById(userId);
-    if (!user) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
-    }
-    if (updateBody.email && (await User.isEmailTaken(updateBody.email, userId))) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
-    }
-    Object.assign(user, updateBody);
-    await user.save();
-    return user;
+  const user = await getUserById(userId);
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  if (updateBody.email && (await User.isEmailTaken(updateBody.email, userId))) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
+  }
+  Object.assign(user, updateBody);
+  await user.save();
+  logger.info(`User updated: ${user.id}`);
+  return user;
 };
 
+/**
+ * Delete user by id
+ * @param {string} userId
+ * @returns {Promise<User>}
+ */
 const deleteUserById = async (userId) => {
-    const user = await getUserById(userId);
-    if (!user) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
-    }
-    await user.destroy();
+  const user = await getUserById(userId);
+  if (!user) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  await user.destroy();
+  logger.info(`User deleted: ${userId}`);
+  return user;
 };
 
 module.exports = {
-    createUser,
-    queryUsers,
-    getUserById,
-    getUserByEmail,
-    updateUserById,
-    deleteUserById,
+  createUser,
+  queryUsers,
+  getUserById,
+  getUserByEmail,
+  updateUserById,
+  deleteUserById,
 };
 ```
