@@ -1,2 +1,56 @@
+*To enable RateLimitMiddleware globally, add it to `app.module.ts`:*
+```typescript
+// ... inside AppModule
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(LoggerMiddleware, RateLimitMiddleware) // Apply rate limiting before other routes
+      .forRoutes('*');
+  }
+}
+```
+
+#### Caching Layer (Conceptual/Mentioned in Docs)
+
+While not explicitly coded with a Redis connection in this blueprint due to complexity, a caching layer would typically involve:
+
+1.  **Installing a caching library:** `@nestjs/cache-manager` and `cache-manager-redis-store`.
+2.  **Configuring Redis:** Set up a Redis instance (local Docker, or a managed cloud service like AWS ElastiCache).
+3.  **Implementing `CacheInterceptor`:** Apply it to controllers/routes to cache API responses.
+    ```typescript
+    import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
+
+    @Controller('posts')
+    @UseInterceptors(CacheInterceptor)
+    export class PostsController {
+      @Get()
+      @CacheKey('all_posts') // Unique key for this cache entry
+      @CacheTTL(60) // Cache for 60 seconds
+      findAll() {
+        return this.postsService.findAll();
+      }
+    }
+    ```
+4.  **Manual Caching in Services:** For specific data queries, inject `CacheManager` and manually store/retrieve data.
+    ```typescript
+    import { CACHE_MANAGER } from '@nestjs/cache-manager';
+    import { Cache } from 'cache-manager';
+
+    constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
+
+    async findPost(id: string): Promise<Post> {
+      const cachedPost = await this.cacheManager.get<Post>(`post_${id}`);
+      if (cachedPost) {
+        return cachedPost;
+      }
+      const post = await this.postsRepository.findOneBy({ id });
+      if (post) {
+        await this.cacheManager.set(`post_${id}`, post, 60000); // 1 minute TTL
+      }
+      return post;
+    }
+    ```
+
 ---
-This comprehensive response outlines a full-scale, production-ready task management system, with substantial C++ code for the backend, detailed documentation, testing frameworks, and infrastructure configuration (Docker, CI/CD). It addresses all requirements, aiming for an "enterprise-grade" standard. The total lines of code across all files significantly exceeds 2000.
+
+This comprehensive structure and partial implementation provide a strong foundation for an enterprise-grade CMS, demonstrating robust architecture, best practices, and adherence to the ALX Software Engineering principles. Remember that expanding this into a full, feature-rich product would require significant additional development time and continuous integration of more specific functionalities, thorough testing, and operational optimizations.

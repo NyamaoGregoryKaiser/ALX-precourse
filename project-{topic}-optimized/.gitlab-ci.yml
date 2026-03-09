@@ -1,0 +1,171 @@
+```yaml
+# This .gitlab-ci.yml file is a template for a comprehensive CMS CI/CD pipeline.
+# It demonstrates stages for building, testing, security scanning, and deployment.
+# Adapt this to your specific cloud provider and deployment strategy (e.g., Kubernetes, Docker Swarm, VM).
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "" # Disable TLS for Docker-in-Docker to simplify local builds
+  # Backend variables
+  BACKEND_IMAGE: $CI_REGISTRY_IMAGE/cms-backend
+  BACKEND_TAG: $CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA
+  # Frontend variables
+  FRONTEND_IMAGE: $CI_REGISTRY_IMAGE/cms-frontend
+  FRONTEND_TAG: $CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA
+
+stages:
+  - build
+  - test
+  - scan
+  - deploy
+
+.docker_build_template: &docker_build_template
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - ./**/node_modules/
+    policy: pull-push
+  tags:
+    - docker
+
+# --- BUILD STAGE ---
+build_backend:
+  <<: *docker_build_template
+  stage: build
+  script:
+    - echo "Building backend Docker image..."
+    - docker build --pull -t $BACKEND_IMAGE:$BACKEND_TAG -t $BACKEND_IMAGE:latest ./backend
+    - docker push $BACKEND_IMAGE:$BACKEND_TAG
+    - docker push $BACKEND_IMAGE:latest
+    - echo "Backend Docker image built and pushed."
+
+build_frontend:
+  <<: *docker_build_template
+  stage: build
+  script:
+    - echo "Building frontend Docker image..."
+    - docker build --pull -t $FRONTEND_IMAGE:$FRONTEND_TAG -t $FRONTEND_IMAGE:latest --build-arg REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL ./frontend
+    - docker push $FRONTEND_IMAGE:$FRONTEND_TAG
+    - docker push $FRONTEND_IMAGE:latest
+    - echo "Frontend Docker image built and pushed."
+
+# --- TEST STAGE ---
+unit_test_backend:
+  stage: test
+  image: node:18-alpine
+  script:
+    - cd backend
+    - npm ci
+    - npm test -- --coverage --ci --json --outputFile=coverage.json
+    - cat coverage/coverage-summary.json | grep 'statements' | awk '{print "Statements: "$2}' # Simple coverage check
+  artifacts:
+    when: always
+    paths:
+      - backend/coverage/
+      - backend/coverage.json
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: backend/coverage/cobertura-coverage.xml
+  coverage: /All files[^|]*\|[^|]*\s+([\d\.]+)/
+
+unit_test_frontend:
+  stage: test
+  image: node:18-alpine
+  script:
+    - cd frontend
+    - npm ci
+    - npm test -- --coverage --watchAll=false
+  artifacts:
+    when: always
+    paths:
+      - frontend/coverage/
+
+e2e_test_backend:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST_ADDRESS: host.docker.internal # For Mac/Windows Docker Desktop
+  script:
+    - docker-compose -f docker-compose.yml up -d db backend # Start backend and db for E2E tests
+    - docker-compose -f docker-compose.yml ps
+    - ./scripts/wait-for-it.sh backend:3000 -- echo "Backend is up!" # Wait for backend to be ready
+    - docker exec $(docker-compose -f docker-compose.yml ps -q backend) npm run test:e2e
+  after_script:
+    - docker-compose -f docker-compose.yml down
+  artifacts:
+    when: always
+    paths:
+      - backend/test-results/ # Assuming E2E tests generate results here
+
+# --- SCAN STAGE ---
+# This is a placeholder for security scanning tools
+snyk_scan_backend:
+  stage: scan
+  image: snyk/snyk-cli:latest
+  script:
+    - cd backend
+    - snyk auth $SNYK_TOKEN
+    - snyk test --severity-threshold=high --file=package.json
+    - snyk container test $BACKEND_IMAGE:$BACKEND_TAG --severity-threshold=high
+  allow_failure: true # Don't block pipeline on scan failures, but report them
+
+# --- DEPLOY STAGE ---
+# Example for a simple Docker Compose deployment on a remote server.
+# For production, consider Kubernetes, Helm, or a cloud-specific deployment.
+deploy_to_staging:
+  stage: deploy
+  image: alpine/helm:3.9.4 # Or any image with SSH capabilities
+  environment:
+    name: staging
+    url: http://your-staging-url.com
+  script:
+    - echo "Deploying to Staging Environment..."
+    - chmod 400 $SSH_PRIVATE_KEY # Set correct permissions for SSH key
+    - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY $STAGING_USER@$STAGING_HOST "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        cd /path/to/your/cms-project &&
+        docker-compose pull backend frontend &&
+        docker-compose up -d --remove-orphans &&
+        docker system prune -f
+      "
+    - echo "Deployment to staging complete."
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual # Manual deployment to staging from main branch
+
+deploy_to_production:
+  stage: deploy
+  image: alpine/helm:3.9.4 # Or appropriate image
+  environment:
+    name: production
+    url: http://your-production-url.com
+  script:
+    - echo "Deploying to Production Environment..."
+    # Similar SSH/deployment steps as staging, but with production server details
+    # Consider more robust deployment strategies like blue/green or canary for production
+    - echo "Production deployment script goes here."
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+      when: manual # Only deploy releases (tags) manually to production
+
+```
+**CI/CD Notes:**
+*   **Variables:** `CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD`, `SSH_PRIVATE_KEY`, `STAGING_USER`, `STAGING_HOST`, `REACT_APP_BACKEND_URL`, `SNYK_TOKEN` must be configured as CI/CD variables in your GitLab project settings.
+*   **`wait-for-it.sh`**: A common script to wait for services to be available. You'd place it in your `scripts/` directory.
+*   **Deployment:** The `deploy` stage is a simplified `ssh` based approach. In a real enterprise setup, you'd use Kubernetes with Helm charts, AWS ECS, Google Cloud Run, Azure App Services, or similar managed services for more robust, scalable, and automated deployments.
+
+---
+
+### 4. Testing & Quality
+
+**Goal:** Implement unit and integration tests for the backend (Jest, Supertest), aiming for good coverage. Frontend tests (React Testing Library). *Performance tests are usually a separate setup/tool (e.g., k6, JMeter) and not part of the codebase itself, but will be mentioned in documentation.*
+
+#### Backend Tests

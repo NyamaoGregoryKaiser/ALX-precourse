@@ -2,23 +2,107 @@
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: task-management-app
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./db:/app/db # Persist the SQLite database
-      - ./log:/app/log # Persist application logs
-      # Optional: Mount config.json for easier development config changes without rebuild
-      # - ./config.json:/app/config.json
+  db:
+    image: postgres:15-alpine
+    restart: always
     environment:
-      # Load from .env file directly (docker-compose will do this)
-      # Or specify individual variables
-      JWT_SECRET: ${JWT_SECRET}
-      APP_ENV: ${APP_ENV}
-    # For a production setup, consider restart policies and resource limits
-    restart: unless-stopped
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy # Wait for database to be healthy
+    environment:
+      # Pass database variables explicitly as they might be needed for migrations/seeds outside of runtime
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: ${DATABASE_USERNAME}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules # Preserve node_modules volume, preventing host node_modules from overriding container's
+    command: sh -c "npm install && npm run migration:run && npm run seed:run && npm run start:dev" # Migrations and seeds on startup
+    # Use `npm run start:prod` for production (requires `npm run build` first)
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./.env
+    ports:
+      - "80:80" # Map to standard HTTP port
+    depends_on:
+      - backend
+    environment:
+      REACT_APP_BACKEND_URL: http://localhost:3000 # This needs to be the accessible URL from the browser for the frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:
+```
+**Note on `REACT_APP_BACKEND_URL` in `docker-compose.yml` for `frontend`:** When running `docker-compose up`, the frontend running in its own container will try to access the backend. From the *browser's perspective* (which is where the React app executes its API calls), `localhost:3000` is the correct URL if you're accessing the frontend via `localhost:80`. If you deploy this, this URL will need to change to your deployed backend URL.
+
+---
+**`backend/Dockerfile`**:
+
+```dockerfile
+# Stage 1: Build the NestJS application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json yarn.lock* ./
+# Install only production dependencies initially, then dev dependencies for building
+RUN npm install --frozen-lockfile
+
+COPY . .
+
+RUN npm run build
+
+# Stage 2: Run the NestJS application
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+# Copy production dependencies from builder stage
+COPY --from=builder /app/package.json /app/yarn.lock* ./
+RUN npm install --omit=dev --frozen-lockfile
+
+# Copy built application files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/seeds ./seeds
+COPY --from=builder /app/.env.example ./.env.example # Useful for reference, but .env should be external
+
+# Environment variables (default to development, can be overridden by docker-compose)
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", "dist/main"]
 ```
