@@ -1,87 +1,55 @@
-```yaml
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
-    image: postgres:14-alpine
-    restart: always
+    image: postgres:15-alpine
+    container_name: task_db_container
     environment:
+      POSTGRES_DB: task_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: scraper_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose for local access/tools
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d scraper_db"]
+      test: ["CMD-SHELL", "pg_isready -U user -d task_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Cache and Job Queue
   redis:
-    image: redis:6-alpine
-    restart: always
+    image: redis:7-alpine
+    container_name: task_redis_container
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+      - "6379:6379" # Expose for local access/tools
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
-  # Backend Service
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    restart: always
-    environment:
-      NODE_ENV: production
-      PORT: 5000
-      DATABASE_URL: postgresql://user:password@db:5432/scraper_db
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: supersecretjwtkey
-      JWT_EXPIRES_IN: 1d
-      CACHE_ENABLED: "true"
-      CACHE_TTL: 3600
+    container_name: task_app_container
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - .:/app
     ports:
-      - "5000:5000"
+      - "8000:8000"
+    env_file:
+      - .env
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app # Mount for live reload in dev, remove for prod
-      - /app/node_modules # Prevent host node_modules from overwriting container's
-    command: sh -c "npx knex migrate:latest && npx knex seed:run && npm start"
-    # For production, consider using 'node dist/server.js' after building
-    # Also, remove the volume mount for ./backend to prevent issues with build context if doing full build inside container
-
-  # Frontend Service (React + Nginx)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    environment:
-      REACT_APP_API_BASE_URL: http://backend:5000/api # This is for React build time
-    ports:
-      - "3000:80" # Map host port 3000 to container's Nginx port 80
-    depends_on:
-      backend:
-        condition: service_healthy
-    volumes:
-      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    # For development, you might want to run frontend locally and connect to backend container
-    # Or use a separate dev Dockerfile that mounts code and runs `npm start`
+    restart: on-failure
 
 volumes:
   postgres_data:
-  redis_data:
+```
+
 ```
