@@ -1,0 +1,2 @@
+7.  **Configure Nginx (on host or separate container):** Set up your Nginx configuration as described above to proxy requests and serve static files. Restart Nginx.
+8.  **Monitor logs:**
