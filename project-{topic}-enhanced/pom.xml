@@ -6,32 +6,32 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
+        <version>3.2.5</version> <!-- Updated to latest stable Spring Boot 3.2.x -->
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.ml.utilities</groupId>
-    <artifactId>ml-utilities-system</artifactId>
+    <groupId>com.alx.pms</groupId>
+    <artifactId>project-management-system</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ml-utilities-system</name>
-    <description>A comprehensive system for managing ML experiments, models, datasets, and feature sets.</description>
+    <name>project-management-system</name>
+    <description>ALX Project Management System</description>
 
     <properties>
         <java.version>17</java.version>
-        <jwt.version>0.12.5</jwt.version>
-        <springdoc.version>2.5.0</springdoc.version>
+        <springdoc-openapi-starter-webmvc-ui.version>2.5.0</springdoc-openapi-starter-webmvc-ui.version>
+        <jjwt.version>0.12.5</jjwt.version> <!-- Latest for JWT -->
         <testcontainers.version>1.19.7</testcontainers.version>
-        <caffeine.version>3.1.8</caffeine.version>
+        <jacoco.version>0.8.12</jacoco.version> <!-- Latest Jacoco for code coverage -->
     </properties>
 
     <dependencies>
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -43,11 +43,11 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <!-- Database -->
@@ -60,48 +60,51 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-postgresql</artifactId>
+        </dependency>
 
-        <!-- JWT for Authentication -->
+        <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>${jwt.version}</version>
+            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>${jwt.version}</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>${jwt.version}</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- OpenAPI/Swagger UI -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>${springdoc.version}</version>
-        </dependency>
-
-        <!-- Caching Implementation -->
+        <!-- Caching -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-            <version>${caffeine.version}</version>
         </dependency>
 
-        <!-- Utilities -->
+        <!-- Development Tools -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
 
-        <!-- Test Dependencies -->
+        <!-- API Documentation -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc-openapi-starter-webmvc-ui.version}</version>
+        </dependency>
+
+        <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -114,18 +117,18 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.rest-assured</groupId>
-            <artifactId>rest-assured</artifactId>
-            <version>5.3.0</version> <!-- Use a compatible version with Spring Boot 3 -->
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -144,26 +147,27 @@
                     </excludes>
                 </configuration>
             </plugin>
-            <!-- JaCoCo for Code Coverage -->
+            <!-- JaCoCo Plugin for Code Coverage -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.11</version>
+                <version>${jacoco.version}</version>
                 <executions>
                     <execution>
+                        <id>prepare-agent</id>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
                     </execution>
                     <execution>
                         <id>report</id>
-                        <phase>test</phase>
+                        <phase>verify</phase>
                         <goals>
                             <goal>report</goal>
                         </goals>
                     </execution>
                     <execution>
-                        <id>jacoco-check</id>
+                        <id>check</id>
                         <goals>
                             <goal>check</goal>
                         </goals>
@@ -180,29 +184,26 @@
                                         <limit>
                                             <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.70</minimum> <!-- Aim for 70% branch coverage -->
+                                            <minimum>0.70</minimum>
                                         </limit>
                                     </limits>
-                                    <excludes>
-                                        <!-- Exclude generated code and configuration classes from coverage checks if desired -->
-                                        <exclude>com/ml/utilities/system/MlUtilitiesSystemApplication.class</exclude>
-                                        <exclude>com/ml/utilities/system/config/*</exclude>
-                                        <exclude>com/ml/utilities/system/dto/*</exclude>
-                                        <exclude>com/ml/utilities/system/model/*</exclude>
-                                        <exclude>com/ml/utilities/system/exception/*</exclude>
-                                        <exclude>com/ml/utilities/system/util/*</exclude>
-                                        <exclude>com/ml/utilities/system/security/*</exclude>
-                                        <!-- Note: Exclude security for now as they often involve complex mocking and external dependencies -->
-                                        <!-- Exclude main application class as it's typically just a runner -->
-                                    </excludes>
-                                </configuration>
-                            </rule>
-                        </rules>
+                                </rule>
+                            </rules>
+                            <excludes>
+                                <exclude>**/model/**</exclude> <!-- Exclude JPA entities from coverage check -->
+                                <exclude>**/exception/**</exclude> <!-- Exclude exception classes -->
+                                <exclude>**/ProjectManagementSystemApplication.class</exclude> <!-- Exclude main app class -->
+                                <exclude>**/config/**</exclude> <!-- Exclude configuration classes -->
+                                <exclude>**/auth/dto/**</exclude> <!-- Exclude DTOs -->
+                                <exclude>**/project/dto/**</exclude> <!-- Exclude DTOs -->
+                                <exclude>**/task/dto/**</exclude> <!-- Exclude DTOs -->
+                                <exclude>**/user/dto/**</exclude> <!-- Exclude DTOs -->
+                            </excludes>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
-
 </project>
 ```

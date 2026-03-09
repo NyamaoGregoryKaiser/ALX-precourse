@@ -1,15 +1,13 @@
 ```yaml
-name: CI/CD Pipeline
+name: CI/CD Pipeline for PMS
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
   build-and-test:
@@ -23,66 +21,102 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'maven'
+          cache: maven
+
+      - name: Set up Docker Compose
+        run: |
+          docker network create pms_network || true # Create network if it doesn't exist
+
+      - name: Start PostgreSQL with Testcontainers
+        run: echo "No explicit PostgreSQL container needed here, Testcontainers handles it."
 
       - name: Build and run tests
         run: mvn clean install
 
-      - name: Upload JaCoCo test report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/jacoco.xml
-          retention-days: 5
+      - name: Collect JaCoCo coverage report
+        run: mvn jacoco:report
 
-      - name: SonarCloud Scan (Optional, requires SonarCloud setup)
-        # Uncomment and configure if you have a SonarCloud project
-        # uses: SonarSource/sonarcloud-github-action@master
-        # env:
-        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        #   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: echo "Skipping SonarCloud scan. Configure secrets.SONAR_TOKEN to enable."
+      - name: Upload JaCoCo coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # Required for private repositories or advanced features
+          fail_ci_if_error: true
+          files: target/site/jacoco/jacoco.xml
+          verbose: true
 
   docker-build-and-push:
     needs: build-and-test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only build/push on main/develop
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ml-utilities-system:latest
-            ${{ secrets.DOCKER_USERNAME }}/ml-utilities-system:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
     needs: docker-build-and-push
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    # This is a placeholder for a real deployment step (e.g., to a cloud provider)
+    if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
+    runs-on: ubuntu-latest # Or a self-hosted runner with access to your server
+    environment:
+      name: Production
+      url: http://your-production-server-ip:8080 # Update with your actual server URL
     steps:
-      - name: Deploy to Staging/Production (Placeholder)
-        run: |
-          echo "Simulating deployment to production environment..."
-          echo "Image ${{ secrets.DOCKER_USERNAME }}/ml-utilities-system:latest would be deployed here."
-          # Add actual deployment commands (e.g., kubectl apply, ansible playbook, AWS CodeDeploy, etc.)
-          # Example: ssh user@your-server "docker pull ${{ secrets.DOCKER_USERNAME }}/ml-utilities-system:latest && docker-compose -f /path/to/docker-compose.yml up -d"
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            echo "Pulling latest Docker image from GitHub Container Registry..."
+            # Log in to GHCR on the server
+            echo ${{ secrets.GHCR_PAT }} | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+            
+            # Navigate to your deployment directory on the server
+            # Ensure docker-compose.yml is present in this directory
+            cd /opt/pms-deployment
+            
+            # Pull the latest image
+            docker-compose pull app
+            
+            # Stop and remove old containers, then start new ones
+            docker-compose up -d --remove-orphans
+            
+            echo "Deployment complete."
+            
+            # Clean up old Docker images to free space
+            docker system prune -f
+            docker image prune -f
+
 ```

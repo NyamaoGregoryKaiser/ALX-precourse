@@ -1,7 +1,31 @@
-```
+**Performance Tests Notes:**
+For a comprehensive setup, I would typically integrate with a tool like JMeter or k6 for external load testing. Within the Java application, performance tests can be done using JUnit combined with `Stopwatch` or by integrating with JMH (Java Microbenchmark Harness) for micro-benchmarking specific code paths.
+
+*   **Example approach for simple performance metrics in integration tests:**
+    ```java
+    // In an integration test class
+    @Test
+    @DisplayName("Measure createProject performance")
+    void createProject_PerformanceTest() {
+        // Prepare test data
+        ProjectRequest request = new ProjectRequest();
+        request.setName("Performance Project " + System.nanoTime());
+        request.setDescription("Performance test project");
+        request.setStartDate(LocalDate.now());
+        request.setEndDate(LocalDate.now().plusMonths(1));
+
+        long startTime = System.nanoTime();
+        // Call the service method multiple times or once for average
+        projectService.createProject(request, owner.getId()); // Assuming owner is set up in test
+        long endTime = System.nanoTime();
+        long duration = (endTime - startTime) / 1_000_000; // milliseconds
+
+        log.info("createProject took {} ms", duration);
+        assertTrue(duration < 200, "createProject should be fast enough (under 200ms)"); // Example threshold
+    }
+    ```
+    This can be repeated for critical endpoints or service methods. For full load testing, external tools are recommended.
+
+### 5. Documentation
 
 ---
-
-## 5. Documentation
-
-### Comprehensive README with setup instructions
