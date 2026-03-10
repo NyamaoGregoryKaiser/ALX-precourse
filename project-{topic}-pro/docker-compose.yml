@@ -3,53 +3,94 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
-    container_name: task_db_container
+    container_name: chat_db
+    restart: always
     environment:
-      POSTGRES_DB: task_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - chat_db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432" # Expose for local access/tools
+      - "5432:5432" # Expose for local development/debugging
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d task_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: task_redis_container
+    container_name: chat_redis
+    restart: always
     ports:
-      - "6379:6379" # Expose for local access/tools
+      - "6379:6379" # Expose for local development/debugging
+    volumes:
+      - chat_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 5
 
-  app:
+  server:
     build:
-      context: .
+      context: ./server
       dockerfile: Dockerfile
-    container_name: task_app_container
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    volumes:
-      - .:/app
+    container_name: chat_server
+    restart: always
+    environment:
+      NODE_ENV: development # Use development for hot-reloading with nodemon
+      PORT: 5000
+      CLIENT_URL: http://localhost:3000 # For CORS in dev
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REDIS_URL: redis://redis:6379 # Connect to Redis service by name
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "5000:5000" # Expose for direct API access during dev
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: on-failure
+    volumes:
+      - ./server:/app # Mount source code for hot-reloading (development)
+      - /app/node_modules # Avoid overwriting node_modules
+    # command: npm run dev # Use nodemon for development
+    command: sh -c "npm run migrate && npm start" # Run migrations then start server for production-like setup
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: chat_client
+    restart: always
+    ports:
+      - "3000:80" # Expose client on port 3000 locally
+    depends_on:
+      server:
+        condition: service_started
+    environment:
+      # These variables are for the client's build stage.
+      # When served by Nginx in the final image, the Nginx config handles routing.
+      VITE_API_URL: http://server:5000/api
+      VITE_WS_URL: ws://server:5000
+    volumes:
+      # This volume mount is primarily for development to enable hot-reloading.
+      # In a production setup, the client build would be copied into the Nginx container directly.
+      - ./client:/app
+      - /app/node_modules # Exclude node_modules from being overwritten by host mount
+    # For development, you might run client directly with `npm run dev` in a separate terminal
+    # and adjust client's Dockerfile to only build, then run `npm run dev` locally.
+    # For this docker-compose, we assume it serves a built client via Nginx.
+    # If using vite dev server, you'd change the client Dockerfile and command.
+    # For simplicity, we are using Nginx to serve the built client.
 
 volumes:
-  postgres_data:
-```
-
-```
+  chat_db_data:
+  chat_redis_data:

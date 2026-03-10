@@ -1,125 +1,102 @@
-name: CI/CD Pipeline
+name: CI Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  build-and-test-backend:
-    name: Build & Test Backend
+  backend-ci:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:14-alpine
-        env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: scraper_test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:6-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    defaults:
+      run:
+        working-directory: ./server
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18.x
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './server/package-lock.json'
 
-      - name: Install Backend Dependencies
+      - name: Install dependencies
         run: npm install
-        working-directory: ./backend
 
-      - name: Run Backend Tests
-        run: npm test -- --coverage # --coverage for coverage report
-        working-directory: ./backend
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/scraper_test_db
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test_jwt_secret
-          NODE_ENV: test
-          CACHE_ENABLED: "false" # Disable cache for tests
-          PUPPETEER_HEADLESS: "true" # Ensure headless for CI
+      - name: Lint backend code
+        run: npm run lint # Assuming you have a lint script configured in package.json
 
-  build-and-test-frontend:
-    name: Build & Test Frontend
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18.x
-
-      - name: Install Frontend Dependencies
-        run: npm install
-        working-directory: ./frontend
-
-      - name: Run Frontend Tests
-        run: npm test -- --watchAll=false
-        working-directory: ./frontend
-        env:
-          CI: true # Required for React scripts test in CI environments
-
-      - name: Build Frontend
+      - name: Build backend
         run: npm run build
-        working-directory: ./frontend
+
+      - name: Run backend unit tests
+        run: npm run test:unit
+
+      - name: Run backend integration tests
+        # For integration tests, a test database needs to be spun up.
+        # This example uses a simple approach, but for complex setups,
+        # consider dedicated test database services (e.g., testcontainers).
         env:
-          REACT_APP_API_BASE_URL: /api # Set for production build
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: testuser
+          DB_PASSWORD: testpass
+          DB_NAME: chat_test_db
+          JWT_SECRET: supersecretkey
+          REDIS_URL: redis://localhost:6379
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'testpass';"
+          sudo -u postgres psql -c "CREATE DATABASE chat_test_db OWNER testuser;"
+          npm run typeorm migration:run # Apply migrations to test DB
+          npm run test:integration --coverage
 
+      - name: Upload backend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: ./server/coverage
 
-  # Optional: Deployment job (e.g., to a VM using SSH, or to a cloud provider)
-  # deploy:
-  #   name: Deploy to Production
-  #   needs: [build-and-test-backend, build-and-test-frontend]
-  #   if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
-  #   runs-on: ubuntu-latest
-  #
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Copy Docker Compose files and .env to server
-  #       uses: appleboy/scp-action@master
-  #       with:
-  #         host: ${{ secrets.SSH_HOST }}
-  #         username: ${{ secrets.SSH_USERNAME }}
-  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #         source: "docker-compose.yml,backend/.env,frontend/.env.production,frontend/nginx.conf"
-  #         target: "/home/${{ secrets.SSH_USERNAME }}/web-scraper-system"
-  #
-  #     - name: Deploy Docker Compose stack
-  #       uses: appleboy/ssh-action@master
-  #       with:
-  #         host: ${{ secrets.SSH_HOST }}
-  #         username: ${{ secrets.SSH_USERNAME }}
-  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #         script: |
-  #           cd /home/${{ secrets.SSH_USERNAME }}/web-scraper-system
-  #           docker-compose pull # Pull latest images
-  #           docker-compose up --build -d --remove-orphans # Recreate services, remove old ones
-  #           docker system prune -f # Clean up unused Docker objects
-```
+  frontend-ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './client/package-lock.json'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint frontend code
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run frontend tests
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: ./client/coverage

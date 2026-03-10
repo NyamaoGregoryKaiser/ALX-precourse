@@ -1,361 +1,318 @@
-# Mobile Task Management Backend
+# Real-time Chat Application
 
-## Overview
+A comprehensive, production-ready real-time chat application built with TypeScript, Node.js (Express, Socket.io), React, PostgreSQL, and Redis.
 
-This is a comprehensive, production-ready backend system for a mobile task management application, built with Python (FastAPI), PostgreSQL, and Redis. It provides a robust and scalable foundation for managing user accounts and their associated tasks, incorporating essential features like authentication, authorization, data validation, logging, caching, and rate limiting.
+## Table of Contents
 
-The project is designed to be enterprise-grade, demonstrating best practices in software architecture, development, testing, and deployment, aligning with ALX Software Engineering principles.
+1.  [Features](#features)
+2.  [Architecture](#architecture)
+3.  [Technologies Used](#technologies-used)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup & Installation](#setup--installation)
+    *   [Local Setup (without Docker)](#local-setup-without-docker)
+    *   [Docker Compose Setup](#docker-compose-setup)
+6.  [Running the Application](#running-the-application)
+7.  [Database Management](#database-management)
+8.  [Testing](#testing)
+9.  [API Documentation](#api-documentation)
+10. [Deployment Guide](#deployment-guide)
+11. [Contributing](#contributing)
+12. [License](#license)
 
-## Features
+## 1. Features
 
-*   **User Management**:
-    *   User registration with secure password hashing.
-    *   User login with JWT-based authentication.
-    *   Token refresh mechanism.
-    *   User profile retrieval and update.
-    *   Admin functionality for managing all users (read, update, delete).
-*   **Task Management**:
-    *   CRUD (Create, Read, Update, Delete) operations for tasks.
-    *   Tasks owned by specific users.
-    *   Task status management (Pending, In Progress, Completed, Cancelled) with business logic for valid transitions.
-    *   Filtering tasks by status, due date, and owner.
-    *   Admin functionality for managing all tasks (read).
-*   **API Design**:
-    *   RESTful API endpoints with clear resource definitions.
-    *   Pydantic for request/response validation and serialization.
-    *   Automatic OpenAPI/Swagger UI documentation.
-*   **Database Layer**:
-    *   PostgreSQL for persistent storage.
-    *   SQLAlchemy as an asynchronous ORM.
-    *   Alembic for database migrations.
-    *   Seed data script for initial database population.
-*   **Authentication & Authorization**:
-    *   JSON Web Tokens (JWT) for stateless authentication.
-    *   OAuth2 bearer token scheme.
-    *   Role-based authorization (user vs. admin).
-*   **Configuration & Deployment**:
-    *   Environment-based configuration using `python-dotenv` and Pydantic Settings.
-    *   Docker and Docker Compose for containerization and orchestration.
-    *   `requirements.txt` for dependency management.
-*   **Testing & Quality**:
-    *   Unit tests for core business logic and services.
-    *   Integration tests for API endpoints with a dedicated test database.
-    *   High test coverage using `pytest` and `pytest-cov`.
-    *   Performance test example with `Locust`.
-    *   Linting and formatting checks (`Black`, `Isort`, `Flake8`).
-*   **Observability & Reliability**:
-    *   Structured logging with `Loguru`.
-    *   Centralized custom exception handling.
-    *   Caching layer with Redis (`fastapi-cache`, `aioredis`).
-    *   Rate limiting with Redis (`fastapi-limiter`).
-*   **Documentation**:
-    *   Comprehensive README.
-    *   Automatic API documentation (Swagger UI).
-    *   Architecture documentation (`ARCHITECTURE.md`).
-    *   Deployment guide.
+*   **Real-time Messaging:** Instant message delivery using WebSockets (Socket.io).
+*   **User Authentication & Authorization:** Secure JWT-based authentication (Register, Login).
+*   **Private & Group Conversations:** Create one-on-one chats or multi-user groups.
+*   **Conversation Management:** Add/remove participants, update group names.
+*   **User Management:** View other users, start new chats.
+*   **Online Status:** See which users are currently online.
+*   **Message History:** Load previous messages in a conversation.
+*   **Scalability:** Designed with Redis for caching and session management.
+*   **Robust Error Handling & Logging:** Centralized error handling and structured logging.
+*   **Rate Limiting:** Protects against abuse and brute-force attacks.
+*   **Containerization:** Docker for easy setup and deployment.
+*   **CI/CD:** Basic GitHub Actions workflow for automated testing.
 
-## Technologies Used
+## 2. Architecture
 
-*   **Backend Framework**: FastAPI (Python)
-*   **ASGI Server**: Uvicorn
-*   **Database**: PostgreSQL
-*   **ORM**: SQLAlchemy (async)
-*   **Database Migrations**: Alembic
-*   **Data Validation**: Pydantic
-*   **Authentication**: PyJWT, Passlib (Bcrypt)
-*   **Caching & Rate Limiting**: Redis, `fastapi-limiter`, `redis-py`
-*   **Logging**: Loguru
-*   **Testing**: Pytest, httpx, pytest-asyncio, pytest-cov
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions (configured)
+The application follows a client-server architecture with a clear separation of concerns:
 
-## Project Structure
+*   **Frontend (Client):** A React application built with TypeScript, responsible for the user interface and interacting with the backend API and WebSocket server.
+*   **Backend (Server):** A Node.js application using Express.js for RESTful APIs and Socket.io for real-time communication. It handles business logic, data persistence, authentication, and WebSocket events.
+*   **Database (PostgreSQL):** A robust relational database for storing user, conversation, and message data. Managed with TypeORM.
+*   **Cache/Message Broker (Redis):** Used for managing user online status, caching frequently accessed data, and potentially for scaling WebSocket messages across multiple backend instances (though only status is implemented here).
 
-```
-.
-├── .github/                      # GitHub Actions workflows for CI/CD
-│   └── workflows/
-│       └── main.yml              # CI/CD pipeline configuration
-├── .env.example                  # Example environment variables
-├── Dockerfile                    # Dockerfile for building the FastAPI application image
-├── docker-compose.yml            # Docker Compose for orchestrating app, database, and Redis
-├── requirements.txt              # Python dependencies
-├── alembic.ini                   # Alembic configuration for database migrations
-├── migrations/                   # Database migration scripts managed by Alembic
-│   ├── versions/
-│   └── env.py
-├── scripts/
-│   └── seed_db.py                # Script to populate initial data into the database
-├── app/                          # Main application source code
-│   ├── __init__.py
-│   ├── main.py                   # FastAPI application instance, global middleware, event handlers
-│   ├── config.py                 # Application settings and environment configuration
-│   ├── database.py               # SQLAlchemy engine and session setup
-│   ├── models/                   # SQLAlchemy ORM models (database schema definitions)
-│   │   ├── user.py               # User model
-│   │   └── task.py               # Task model
-│   ├── schemas/                  # Pydantic schemas (data transfer objects for API requests/responses)
-│   │   ├── user.py
-│   │   ├── task.py
-│   │   └── auth.py
-│   ├── crud/                     # CRUD (Create, Read, Update, Delete) operations (data access layer)
-│   │   ├── user.py
-│   │   └── task.py
-│   ├── services/                 # Business logic layer
-│   │   ├── auth.py               # Authentication related logic
-│   │   └── task.py               # Task related logic
-│   ├── api/                      # API endpoints (FastAPI routers)
-│   │   └── v1/                   # Version 1 of the API
-│   │       ├── auth.py           # Authentication routes
-│   │       ├── tasks.py          # Task routes
-│   │       └── users.py          # User routes (admin-specific)
-│   ├── core/                     # Core application utilities
-│   │   ├── security.py           # Password hashing, JWT token creation/decoding
-│   │   ├── dependencies.py       # FastAPI dependency injection for DB session, current user, etc.
-│   │   ├── exceptions.py         # Custom exception classes
-│   │   └── logging_config.py     # Loguru logging setup
-│   ├── utils/                    # General utility functions
-│   │   ├── caching.py            # Redis caching integration
-│   │   └── rate_limiter.py       # FastAPI-Limiter integration
-├── tests/                        # Application tests
-│   ├── conftest.py               # Pytest fixtures for setup, DB, test data
-│   ├── unit/                     # Unit tests for business logic (services)
-│   │   ├── test_auth_service.py
-│   │   └── test_task_service.py
-│   ├── integration/              # Integration tests for API endpoints
-│   │   ├── test_auth_api.py
-│   │   └── test_task_api.py
-│   └── performance/
-│       └── locustfile.py         # Locust performance test scripts
-├── ARCHITECTURE.md               # Detailed architecture documentation
-└── README.md                     # Project overview and setup instructions (this file)
+```mermaid
+graph TD
+    A[Client - React App] -->|HTTP/REST| B(Backend - Node.js/Express)
+    A -->|WebSocket/Socket.io| B
+    B -->|ORM/TypeORM| C(Database - PostgreSQL)
+    B -->|Client| D(Cache - Redis)
+    C --&gt; D
+    A[Client - React App] --&gt; E{Nginx Proxy}
+    E --&gt; B
 ```
 
-## Setup and Running
+## 3. Technologies Used
 
-### Prerequisites
+*   **Backend:**
+    *   TypeScript
+    *   Node.js
+    *   Express.js
+    *   Socket.io
+    *   TypeORM (ORM for PostgreSQL)
+    *   PostgreSQL (Database)
+    *   Redis (Caching, User Status)
+    *   Bcrypt.js (Password Hashing)
+    *   JSON Web Tokens (JWT) for authentication
+    *   Passport.js (Authentication Middleware)
+    *   Winston (Logging)
+    *   Express Rate Limit (Rate Limiting)
+*   **Frontend:**
+    *   TypeScript
+    *   React
+    *   React Router DOM
+    *   Axios (HTTP Client)
+    *   Socket.io Client
+    *   Vite (Build Tool)
+*   **Testing:**
+    *   Jest (Unit & Integration Tests)
+    *   Supertest (API Integration Tests)
+    *   React Testing Library (Frontend Unit Tests)
+*   **Development & Deployment:**
+    *   Docker & Docker Compose
+    *   Nginx (Frontend Reverse Proxy)
+    *   GitHub Actions (CI/CD)
 
-*   **Docker & Docker Compose**: Essential for containerized development and deployment.
-*   **Python 3.11+**: For local development if not using Docker.
+## 4. Prerequisites
 
-### 1. Clone the Repository
+Before you begin, ensure you have the following installed:
+
+*   [Node.js](https://nodejs.org/) (v20 or higher)
+*   [npm](https://www.npmjs.com/) (comes with Node.js)
+*   [Git](https://git-scm.com/)
+*   [Docker](https://www.docker.com/products/docker-desktop) & [Docker Compose](https://docs.docker.com/compose/install/) (recommended)
+*   [PostgreSQL](https://www.postgresql.org/download/) client tools (if not using Docker for DB)
+*   [Redis](https://redis.io/download/) (if not using Docker for Redis)
+
+## 5. Setup & Installation
+
+Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/mobile-task-backend.git
-cd mobile-task-backend
+git clone https://github.com/your-username/realtime-chat-app.git
+cd realtime-chat-app
 ```
 
-### 2. Configure Environment Variables
+### Local Setup (without Docker)
 
-Create a `.env` file in the project root by copying `.env.example` and filling in the values.
+**5.1. Backend Setup**
 
-```bash
-cp .env.example .env
-```
-
-**Important**:
-*   `SECRET_KEY`: **MUST** be a strong, randomly generated string in production.
-*   `DATABASE_URL`: Ensure it points to your PostgreSQL instance. For Docker Compose, the default `db` service name works.
-*   `REDIS_URL`: Ensure it points to your Redis instance. For Docker Compose, the default `redis` service name works.
-
-### 3. Run with Docker Compose (Recommended)
-
-This sets up PostgreSQL, Redis, and the FastAPI application in isolated containers.
-
-```bash
-docker-compose up --build -d
-```
-
-*   `--build`: Builds the Docker images (only needed the first time or after `Dockerfile` changes).
-*   `-d`: Runs the services in detached mode (in the background).
-
-Once services are up, the FastAPI app will be accessible at `http://localhost:8000`.
-
-**Verify Services**:
-*   PostgreSQL: `docker-compose exec db pg_isready -U user -d task_db`
-*   Redis: `docker-compose exec redis redis-cli ping`
-*   App Logs: `docker-compose logs -f app`
-
-### 4. Database Migrations
-
-The `Dockerfile` and `docker-compose.yml` are configured to automatically run `alembic upgrade head` on container startup. However, for manual control or local development:
-
-**Initialize Alembic (First time setup only if not using Docker auto-migrate):**
-```bash
-# From inside the app container or local environment
-docker-compose exec app alembic init migrations
-```
-(You will likely already have a migrations folder, so this is just for awareness).
-
-**Generate a new migration (after model changes):**
-```bash
-# From inside the app container or local environment
-docker-compose exec app alembic revision --autogenerate -m "Add new field to User model"
-```
-Review the generated script in `migrations/versions/`.
-
-**Apply migrations:**
-```bash
-# From inside the app container or local environment
-docker-compose exec app alembic upgrade head
-```
-
-### 5. Seed Initial Data (Optional)
-
-After migrations are applied, you can seed some initial users and tasks:
-
-```bash
-docker-compose exec app python scripts/seed_db.py
-```
-This will create an `admin@example.com` and `user1/2@example.com` with default passwords (`adminpassword`, `user1password`, `user2password`) and some sample tasks.
-
-### 6. Access the API Documentation
-
-Once the app is running, you can access the interactive API documentation (Swagger UI) at:
-`http://localhost:8000/docs`
-
-Or ReDoc UI at:
-`http://localhost:8000/redoc`
-
-*(These are only enabled if `DEBUG=true` in your .env)*
-
-## Development
-
-### Running Locally (without Docker Compose for the app, but with external DB/Redis)
-
-If you prefer to run the FastAPI app directly on your host while using Docker for the database and Redis:
-
-1.  **Start DB and Redis with Docker Compose**:
+1.  Navigate to the `server` directory:
     ```bash
-    docker-compose up db redis -d
+    cd server
     ```
-2.  **Install Python Dependencies**:
+2.  Install dependencies:
     ```bash
-    pip install -r requirements.txt
+    npm install
     ```
-3.  **Ensure `.env` DATABASE_URL points to localhost**:
-    Example: `DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/task_db"`
-4.  **Run Alembic migrations**:
+3.  Create a `.env` file based on `.env.example` and fill in your PostgreSQL and JWT details.
+    ```env
+    # .env
+    NODE_ENV=development
+    PORT=5000
+    CLIENT_URL=http://localhost:3000
+
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_USER=chatuser
+    DB_PASSWORD=chatpass
+    DB_NAME=chat_db
+
+    JWT_SECRET=supersecretkeythatshouldbemorandomandlonger
+    JWT_EXPIRES_IN=1d
+
+    REDIS_URL=redis://localhost:6379
+    ```
+4.  Ensure you have a PostgreSQL server running (e.g., locally or via Docker) and a Redis instance.
+    *   Create a user and database as specified in your `.env` file (e.g., `chatuser`, `chat_db`).
+5.  Run database migrations:
     ```bash
-    alembic upgrade head
+    npm run migrate
     ```
-5.  **Run the FastAPI application**:
+6.  (Optional) Seed initial data:
     ```bash
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    npm run seed # This script needs to be uncommented/created based on the conceptual seed logic
     ```
-    `--reload` enables hot-reloading on code changes (useful for development).
 
-### Code Quality
+**5.2. Frontend Setup**
 
-*   **Black**: Code formatter.
+1.  Navigate to the `client` directory:
     ```bash
-    black app tests scripts
+    cd ../client
     ```
-*   **Isort**: Import sorter.
+2.  Install dependencies:
     ```bash
-    isort app tests scripts
+    npm install
     ```
-*   **Flake8**: Linter.
+3.  Create a `.env` file based on `.env.example`:
+    ```env
+    # .env
+    VITE_API_URL=http://localhost:5000/api
+    VITE_WS_URL=http://localhost:5000
+    ```
+
+### Docker Compose Setup (Recommended)
+
+This method simplifies setup by running all services in isolated Docker containers.
+
+1.  Ensure Docker and Docker Compose are installed.
+2.  From the project root directory (`realtime-chat-app`), create a `.env` file. This `.env` will be used by `docker-compose.yml`.
+    ```env
+    # .env (in project root)
+    DB_USER=chatuser
+    DB_PASSWORD=chatpass
+    DB_NAME=chat_db
+    JWT_SECRET=your_docker_jwt_secret_here_make_it_long_and_random
+    JWT_EXPIRES_IN=1d
+    ```
+3.  Build and start the services:
     ```bash
-    flake8 app tests scripts
+    docker-compose up --build -d
     ```
-It's recommended to integrate these into your IDE or use pre-commit hooks.
+    This command will:
+    *   Build Docker images for `server` and `client` services.
+    *   Pull official images for `db` (PostgreSQL) and `redis`.
+    *   Start all containers in detached mode.
+    *   Run backend database migrations automatically.
 
-## Testing
+## 6. Running the Application
 
-### Running Tests
+### Local (without Docker Compose)
 
-This project uses `pytest` for unit and integration tests.
-
-1.  **Ensure test database is running**:
-    If using `docker-compose.yml` for tests (as in CI/CD), ensure `db` and `redis` services are running.
-    If running locally, set `DATABASE_URL` in `.env` to point to a test database (e.g., `localhost:5433` as in `conftest.py`) and ensure a PostgreSQL instance is running on that port. Also ensure Redis is available at `localhost:6380`.
-2.  **Run tests**:
+1.  Start the backend (from `server` directory):
     ```bash
-    pytest
+    npm run dev
     ```
-3.  **Run tests with coverage**:
+    The backend will run on `http://localhost:5000`.
+2.  Start the frontend (from `client` directory):
     ```bash
-    pytest --cov=app --cov-report=term-missing
+    npm run dev
     ```
-    This will show a report of code coverage directly in the terminal.
+    The frontend will run on `http://localhost:3000`.
 
-### Performance Testing
+### With Docker Compose
 
-The `tests/performance/locustfile.py` contains a Locust script to simulate user load.
+1.  After `docker-compose up -d`, the services will be running in the background.
+2.  Access the frontend in your browser: `http://localhost:3000`
+3.  The backend API will be accessible internally within Docker at `http://server:5000` and proxied by Nginx.
 
-1.  **Ensure backend is running (e.g., `docker-compose up`)**
-2.  **Install Locust**:
+## 7. Database Management
+
+When using Docker Compose, migrations are run on container startup. For local development:
+
+*   **Run migrations:** `cd server && npm run migrate`
+*   **Revert last migration:** `cd server && npm run migrate:revert`
+*   **Create a new migration:** `cd server && npm run migrate:create --name=YourMigrationName` (replace `YourMigrationName`)
+
+## 8. Testing
+
+Testing is separated into unit, integration, and API tests for the backend, and unit tests for the frontend.
+
+### Backend Tests
+
+1.  Navigate to the `server` directory.
+2.  **Run all tests:** `npm test`
+3.  **Run unit tests:** `npm run test:unit`
+4.  **Run integration tests:** `npm run test:integration` (requires a running PostgreSQL instance for the test database, as configured in `server/tests/integration/user.api.test.ts`)
+
+### Frontend Tests
+
+1.  Navigate to the `client` directory.
+2.  **Run all tests:** `npm test`
+3.  **Run tests with coverage:** `npm run test:coverage`
+
+## 9. API Documentation
+
+The backend exposes a RESTful API and a WebSocket interface.
+
+### REST API Endpoints
+
+*   **Authentication:**
+    *   `POST /api/auth/register`: Register a new user.
+    *   `POST /api/auth/login`: Log in an existing user, get JWT token.
+*   **Users:** (Requires JWT authentication)
+    *   `GET /api/users/me`: Get current authenticated user's profile.
+    *   `GET /api/users`: Get a list of all users.
+    *   `GET /api/users/:id`: Get a specific user by ID.
+    *   `GET /api/users/search?q=query`: Search users by username or email.
+*   **Conversations:** (Requires JWT authentication)
+    *   `GET /api/conversations`: Get all conversations for the authenticated user.
+    *   `GET /api/conversations/:id`: Get a specific conversation by ID (with messages and participants).
+    *   `POST /api/conversations/private`: Create or get a private conversation (payload: `{ targetUserId: string }`).
+    *   `POST /api/conversations/group`: Create a group conversation (payload: `{ name: string, participantIds: string[] }`).
+    *   `POST /api/conversations/:id/participants`: Add a participant to a group conversation (payload: `{ userId: string }`).
+    *   `DELETE /api/conversations/:id/participants/:userId`: Remove a participant from a group conversation.
+    *   `DELETE /api/conversations/:id`: Delete a conversation (if authorized).
+*   **Messages:** (Requires JWT authentication)
+    *   `GET /api/messages/:conversationId`: Get messages for a specific conversation.
+    *   `POST /api/messages/:conversationId`: Send a message to a conversation (payload: `{ content: string }`).
+    *   `POST /api/messages/:id/read`: Mark a message as read.
+
+*(For detailed schema and examples, a Swagger/OpenAPI definition would typically be generated or manually maintained. This documentation serves as a high-level overview.)*
+
+### WebSocket Events
+
+The Socket.io server handles real-time communication. All WebSocket connections require a JWT token for authentication during handshake.
+
+*   **Client Emits:**
+    *   `message:send`: `{ conversationId: string, content: string }` - Sends a new message.
+    *   `conversation:join`: `string` (conversationId) - Explicitly joins a conversation room (useful for ensuring real-time updates).
+*   **Server Emits:**
+    *   `message:receive`: `{ id: string, content: string, sender: { id: string, username: string }, conversationId: string, sentAt: string }` - A new message received in a conversation.
+    *   `user:status`: `{ userId: string, isOnline: boolean }` - Broadcasts user online/offline status changes.
+    *   `error`: `string` - Generic error messages from the server.
+
+## 10. Deployment Guide
+
+The `docker-compose.yml` provides a production-ready setup for a single-node deployment.
+
+1.  **Build production images:**
     ```bash
-    pip install locust
+    docker-compose build --no-cache
     ```
-3.  **Run Locust**:
+2.  **Start services:**
     ```bash
-    locust -f tests/performance/locustfile.py
+    docker-compose up -d
     ```
-4.  **Access Locust UI**: Open your browser to `http://localhost:8089`. You can configure the number of users, spawn rate, and host in the UI.
+3.  **Ensure `.env` variables are set:** In a production environment, you should secure your `.env` file or pass environment variables directly to your containers (e.g., using Kubernetes secrets, Docker Swarm secrets, or cloud provider environment management).
+4.  **CI/CD Integration:** The `.github/workflows/ci.yml` provides a basic CI pipeline. For production deployments, you would extend this to:
+    *   Build Docker images on merge to `main`.
+    *   Push images to a container registry (e.g., Docker Hub, AWS ECR, GCR).
+    *   Deploy updated images to your production server (e.g., using SSH, Kubernetes manifests, or cloud-specific deployment tools).
 
-## CI/CD
-
-The `.github/workflows/main.yml` file configures a GitHub Actions pipeline:
-*   **`build-and-test` job**:
-    *   Triggers on `push` to `main` or `develop`, and `pull_request` to `main` or `develop`.
-    *   Sets up Python environment.
-    *   Starts dedicated PostgreSQL and Redis services for testing.
-    *   Installs dependencies.
-    *   Runs code formatting (`black`, `isort`) and linting (`flake8`) checks.
-    *   Runs `pytest` with code coverage.
-    *   Uploads coverage reports to Codecov.
-*   **`deploy` job**:
-    *   Triggers only on `push` to `main` (after `build-and-test` passes).
-    *   This is a **simplified placeholder**. In a real-world scenario, this would involve:
-        *   Building and pushing Docker images to a container registry (e.g., AWS ECR, Google Container Registry).
-        *   Deploying to a production environment (e.g., Kubernetes, AWS ECS, Google Cloud Run, Azure App Service).
-        *   Running database migrations carefully in the production context.
-        *   Health checks and monitoring integration.
-
-## API Documentation
-
-FastAPI automatically generates interactive API documentation.
-When the application is running (and `DEBUG=true`):
-*   **Swagger UI**: `http://localhost:8000/docs`
-*   **ReDoc**: `http://localhost:8000/redoc`
-
-The schemas (`app/schemas/`) and route definitions (`app/api/v1/`) are extensively documented with Pydantic `Field` descriptions and FastAPI `summary`/`description` parameters, which directly populate these docs.
-
-## Error Handling
-
-The application implements centralized error handling:
-*   **`app/core/exceptions.py`**: Defines custom `APIException` subclasses for common HTTP error scenarios (e.g., `NotFoundException`, `UnauthorizedException`, `ConflictException`, `ForbiddenException`).
-*   **`app/main.py`**: Global exception handlers catch these custom exceptions, `RequestValidationError` (from Pydantic), and general `Exception`s, returning consistent JSON responses with appropriate HTTP status codes and logging details.
-
-## Logging and Monitoring
-
-*   **`app/core/logging_config.py`**: Configures `Loguru` for structured, colorized logging to `stdout` and optionally to a file with rotation/retention in production.
-*   `logger.info()`, `logger.warning()`, `logger.error()`, `logger.debug()` are used throughout the application to provide clear insights into application flow, errors, and important events.
-*   In a production setup, these logs would typically be collected by a centralized logging system (e.g., ELK Stack, Splunk, Datadog).
-
-## Caching Layer
-
-*   **`app/utils/caching.py`**: Provides a `@cache_response` decorator that uses Redis to cache API responses.
-    *   Example usage: `app/api/v1/tasks.py` for `/me` and `/admin/all` endpoints.
-*   Includes `invalidate_cache` functionality to clear relevant cache entries when data is modified (e.g., after creating/updating/deleting a task).
-*   Redis client is initialized and closed during FastAPI application lifespan events.
-
-## Rate Limiting
-
-*   **`app/utils/rate_limiter.py`**: Integrates `fastapi-limiter` with Redis.
-*   **`app/main.py`**: `init_rate_limiter` and `close_rate_limiter` are called during application lifespan.
-*   **`app/api/v1/tasks.py`**: An example rate limit is applied to the task creation endpoint (`/tasks/`) to limit to 5 requests per user per 60 seconds.
-    ```python
-    @router.post(...)
-    async def create_task(
-        ...,
-        rate_limiter: Annotated[None, Depends(RateLimiter(times=5, seconds=60))] = None
-    ):
-        ...
+    **Example `deploy` step (conceptual for a simple server):**
+    ```yaml
+    # ... after build and push to registry
+    - name: Deploy to Production
+      if: github.ref == 'refs/heads/main'
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        script: |
+          cd /path/to/your/app
+          docker-compose pull # Pull latest images
+          docker-compose up -d --remove-orphans # Restart services
+          docker system prune -f # Clean up old images
     ```
 
----
+## 11. Contributing
 
-```
+Feel free to fork the repository, open issues, and submit pull requests.
+
+## 12. License
+
+This project is licensed under the MIT License.
