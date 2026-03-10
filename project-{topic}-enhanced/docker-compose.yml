@@ -3,51 +3,81 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:16-alpine
-    container_name: pms-db
+    image: postgres:14-alpine
     restart: always
     environment:
-      POSTGRES_DB: pms_db
-      POSTGRES_USER: pms_user
-      POSTGRES_PASSWORD: pms_password
+      POSTGRES_DB: cms_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - pms-data:/var/lib/postgresql/data
+      - cms_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pms_user -d pms_db"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U user -d cms_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: pms-app
+  redis:
+    image: redis:6-alpine
     restart: always
     ports:
-      - "8080:8080"
+      - "6379:6379"
+    volumes:
+      - cms_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "5000:5000"
     environment:
-      # Inject database connection details as environment variables
-      # These will override the values in application.properties
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/pms_db
-      SPRING_DATASOURCE_USERNAME: pms_user
-      SPRING_DATASOURCE_PASSWORD: pms_password
-      # JWT Secret (ensure it's kept secure in production, e.g., via Docker secrets)
-      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-      # Use an explicit logging file path that works inside the container
-      LOGGING_FILE_PATH: /app/logs
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgres://user:password@db:5432/cms_db # Connect to 'db' service
+      JWT_SECRET: supersecretjwtkey # Change for production
+      JWT_EXPIRES_IN: 1h
+      SESSION_SECRET: anothersupersecret # Change for production
+      FRONTEND_URL: http://localhost:3000
+      REDIS_HOST: redis # Connect to 'redis' service
+      REDIS_PORT: 6379
+      REDIS_PASSWORD:
     depends_on:
       db:
-        condition: service_healthy # Wait for the database to be healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s # Give the app more time to start up
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend # Mount volume for live development (optional, remove for production build)
+      - /app/backend/node_modules # Prevent host node_modules from overriding container ones
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Connect to backend service via host machine
+    depends_on:
+      backend:
+        condition: service_started
+    # For local development with hot-reloading (uncomment for dev, comment for production deployment)
+    # volumes:
+    #   - ./frontend:/app/frontend
+    #   - /app/frontend/node_modules
+    # command: ["npm", "start"] # Override CMD in Dockerfile for dev, and expose 3000
 
 volumes:
-  pms-data:
+  cms_db_data:
+  cms_redis_data:
 ```

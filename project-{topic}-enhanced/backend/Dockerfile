@@ -1,27 +1,23 @@
 ```dockerfile
-# Stage 1: Build Prisma client (if not already built, for better multi-stage build optimization)
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm install --omit=dev
-COPY prisma ./prisma/
-RUN npx prisma generate --data-proxy false
+# Use a Node.js base image
+FROM node:18-alpine
 
-# Stage 2: Production image
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY src ./src
-COPY package.json .env.example ./
+# Set the working directory in the container
+WORKDIR /app/backend
 
-# Expose port (ensure it matches your app.js port)
+# Copy package.json and package-lock.json (or yarn.lock)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the rest of the application code
+COPY . .
+
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Set environment variables for the application
-ENV NODE_ENV=production
-ENV PORT=5000
-
-# Command to run the application (migrations are run via docker-compose for sequencing)
-CMD ["node", "src/server.js"]
+# Command to run the application
+# Use npm start in production, npm run dev for development
+CMD ["npm", "start"]
 ```

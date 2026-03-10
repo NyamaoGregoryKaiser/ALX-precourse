@@ -1,5 +1,5 @@
 ```yaml
-name: CI/CD Pipeline for PMS
+name: CMS CI/CD Pipeline
 
 on:
   push:
@@ -10,113 +10,99 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  build-and-test-backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
+          node-version: '18'
 
-      - name: Set up Docker Compose
+      - name: Install backend dependencies
+        run: npm install
+        working-directory: ./backend
+
+      - name: Set up PostgreSQL for tests
         run: |
-          docker network create pms_network || true # Create network if it doesn't exist
+          docker run --name test-db -e POSTGRES_DB=cms_test_db -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -p 5433:5432 -d postgres:14-alpine
+          sleep 10 # Give PostgreSQL time to start
 
-      - name: Start PostgreSQL with Testcontainers
-        run: echo "No explicit PostgreSQL container needed here, Testcontainers handles it."
+      - name: Run backend migrations
+        run: DATABASE_URL=postgres://test_user:test_password@localhost:5433/cms_test_db npm run db:migrate
+        working-directory: ./backend
 
-      - name: Build and run tests
-        run: mvn clean install
+      - name: Run backend tests
+        run: DATABASE_URL=postgres://test_user:test_password@localhost:5433/cms_test_db npm test
+        working-directory: ./backend
 
-      - name: Collect JaCoCo coverage report
-        run: mvn jacoco:report
-
-      - name: Upload JaCoCo coverage report to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }} # Required for private repositories or advanced features
-          fail_ci_if_error: true
-          files: target/site/jacoco/jacoco.xml
-          verbose: true
-
-  docker-build-and-push:
-    needs: build-and-test
+  build-and-test-frontend:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '18'
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: ./frontend
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Run frontend tests
+        run: npm test -- --watchAll=false # --watchAll=false for CI environments
+        working-directory: ./frontend
 
-  deploy:
-    needs: docker-build-and-push
-    if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
-    runs-on: ubuntu-latest # Or a self-hosted runner with access to your server
-    environment:
-      name: Production
-      url: http://your-production-server-ip:8080 # Update with your actual server URL
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Build frontend
+        run: npm run build
+        working-directory: ./frontend
 
-      - name: Deploy to production server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_SSH_HOST }}
-          username: ${{ secrets.PROD_SSH_USERNAME }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            echo "Pulling latest Docker image from GitHub Container Registry..."
-            # Log in to GHCR on the server
-            echo ${{ secrets.GHCR_PAT }} | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
-            
-            # Navigate to your deployment directory on the server
-            # Ensure docker-compose.yml is present in this directory
-            cd /opt/pms-deployment
-            
-            # Pull the latest image
-            docker-compose pull app
-            
-            # Stop and remove old containers, then start new ones
-            docker-compose up -d --remove-orphans
-            
-            echo "Deployment complete."
-            
-            # Clean up old Docker images to free space
-            docker system prune -f
-            docker image prune -f
+  # deploy:
+  #   needs: [build-and-test-backend, build-and-test-frontend]
+  #   runs-on: ubuntu-latest
+  #   environment: production # Use GitHub environments for secrets
+  #   if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
 
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v2
+
+  #     - name: Login to Docker Hub
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
+
+  #     - name: Build and push backend Docker image
+  #       run: |
+  #         docker build ./backend -t your-dockerhub-username/cms-backend:${{ github.sha }}
+  #         docker push your-dockerhub-username/cms-backend:${{ github.sha }}
+
+  #     - name: Build and push frontend Docker image
+  #       run: |
+  #         docker build ./frontend -t your-dockerhub-username/cms-frontend:${{ github.sha }}
+  #         docker push your-dockerhub-username/cms-frontend:${{ github.sha }}
+
+  #     - name: Deploy to EC2 instance (Example with SSH)
+  #       uses: appleboy/ssh-action@v0.1.5
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         script: |
+  #           cd /path/to/your/cms-project
+  #           # Pull latest images
+  #           docker pull your-dockerhub-username/cms-backend:${{ github.sha }}
+  #           docker pull your-dockerhub-username/cms-frontend:${{ github.sha }}
+  #           # Update docker-compose.yml to use specific image tags or just redeploy
+  #           docker-compose down
+  #           docker-compose pull
+  #           docker-compose up -d
+  #           docker system prune -f # Clean up old images
 ```

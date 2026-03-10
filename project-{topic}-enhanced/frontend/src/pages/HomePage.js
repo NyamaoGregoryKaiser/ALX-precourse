@@ -1,30 +1,54 @@
 ```javascript
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import React, { useEffect, useState } from 'react';
+import api from '../api/api';
 import './HomePage.css';
 
-const HomePage = () => {
-  const { isAuthenticated, user } = useAuth();
+function HomePage() {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const response = await api.get('/posts?status=published&sort=publishedAt:desc');
+        setPosts(response.data.data);
+      } catch (err) {
+        setError('Failed to fetch posts. Please try again later.');
+        console.error('Error fetching posts:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPosts();
+  }, []);
+
+  if (loading) return <div className="loading">Loading posts...</div>;
+  if (error) return <div className="error-message">{error}</div>;
 
   return (
-    <div className="homepage-container">
-      <h1 className="homepage-title">Welcome to SecureTask</h1>
-      <p className="homepage-description">Your enterprise-grade solution for secure task management.</p>
-      {isAuthenticated ? (
-        <div className="auth-status">
-          <p>You are logged in as {user.name} ({user.role}).</p>
-          <Link to="/dashboard" className="homepage-button">Go to Dashboard</Link>
-        </div>
-      ) : (
-        <div className="auth-actions">
-          <Link to="/login" className="homepage-button primary">Login</Link>
-          <Link to="/register" className="homepage-button secondary">Register</Link>
-        </div>
-      )}
+    <div className="home-page">
+      <h1>Latest Posts</h1>
+      <div className="posts-list">
+        {posts.length > 0 ? (
+          posts.map(post => (
+            <div key={post.id} className="post-card">
+              {post.featuredImage && <img src={post.featuredImage} alt={post.title} className="post-image" />}
+              <h2><a href={`/posts/${post.slug || post.id}`}>{post.title}</a></h2>
+              <p className="post-meta">
+                By {post.author?.username || 'Unknown'} on {new Date(post.publishedAt).toLocaleDateString()}
+              </p>
+              <p>{post.excerpt}</p>
+              <a href={`/posts/${post.slug || post.id}`} className="read-more">Read More</a>
+            </div>
+          ))
+        ) : (
+          <p>No published posts yet.</p>
+        )}
+      </div>
     </div>
   );
-};
+}
 
 export default HomePage;
 ```
