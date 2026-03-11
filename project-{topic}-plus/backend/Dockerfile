@@ -1,39 +1,36 @@
-```dockerfile
-# Stage 1: Builder
-FROM python:3.10-slim-buster AS builder
+# Use a slimmed-down OpenJDK image for better security and smaller size
+FROM eclipse-temurin:17-jdk-focal as build
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the Maven wrapper and pom.xml to leverage Docker cache for dependencies
+COPY pom.xml .
+COPY mvnw .
+COPY .mvn .mvn
 
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
+# Download project dependencies
+RUN --mount=type=cache,target=/root/.m2 ./mvnw dependency:go-offline
 
-# Stage 2: Final Image
-FROM python:3.10-slim-buster
+# Copy the entire source code
+COPY src src
+
+# Build the application
+RUN ./mvnw clean install -DskipTests
+
+# Stage 2: Create the runtime image
+FROM eclipse-temurin:17-jre-focal
 
 WORKDIR /app
 
-# Install runtime dependencies (from builder stage)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# Copy only the built JAR from the build stage
+COPY --from=build /app/target/*.jar app.jar
 
-COPY --from=builder /usr/src/app/wheels /wheels
-COPY --from=builder /usr/src/app/requirements.txt .
-RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt
+# Expose the port the application runs on
+EXPOSE 8080
 
-# Copy the application code
-COPY . /app
-
-# Expose the port FastAPI runs on
-EXPOSE 8000
-
-# Command to run the application (overridden by docker-compose for development)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
+
+#### `frontend/package.json` (Conceptual React Frontend)
+```json

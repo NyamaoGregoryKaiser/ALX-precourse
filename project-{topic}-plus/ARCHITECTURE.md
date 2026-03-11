@@ -1,177 +1,249 @@
-```markdown
-# Task Manager Pro - Architecture Documentation
+# ALX E-commerce Solution - Architecture Documentation
 
-This document describes the architectural design of the Task Manager Pro API, a comprehensive task management system built with Spring Boot, PostgreSQL, and various enterprise-grade features.
+This document describes the high-level and detailed architecture of the ALX E-commerce Solution.
 
-## 1. Overview
+## Table of Contents
 
-The Task Manager Pro is a multi-layered application designed to provide robust CRUD operations for tasks, categories, and user management, along with essential features like authentication, authorization, caching, and rate limiting.
+1.  [High-Level Architecture](#1-high-level-architecture)
+    *   [C4 Model - System Context Diagram](#c4-model---system-context-diagram)
+2.  [Detailed Backend Architecture](#2-detailed-backend-architecture)
+    *   [Layered Architecture](#layered-architecture)
+    *   [Modules](#modules)
+    *   [Data Flow](#data-flow)
+    *   [Technology Choices](#technology-choices)
+3.  [Data Model (Database Schema)](#3-data-model-database-schema)
+4.  [Non-Functional Requirements](#4-non-functional-requirements)
+    *   [Scalability](#scalability)
+    *   [Security](#security)
+    *   [Reliability](#reliability)
+    *   [Maintainability](#maintainability)
+    *   [Performance](#performance)
+    *   [Observability](#observability)
+5.  [Future Enhancements](#5-future-enhancements)
 
-## 2. High-Level Architecture
+---
 
-The system follows a typical **Client-Server Architecture** with a clear separation of concerns:
+## 1. High-Level Architecture
 
-```
-+----------------+       +------------------+       +-------------------+
-|    Frontend    | ----> |   API Gateway    | ----> |     Backend       |
-| (HTML/JS Demo) |       | (Optional/N/A)   |       | (Spring Boot App) |
-+----------------+       +------------------+       +-------------------+
-                                                          |
-                                                          | Database Access (JPA/JDBC)
-                                                          V
-                                                +-----------------+
-                                                |   PostgreSQL    |
-                                                |     Database    |
-                                                +-----------------+
-```
+The system is designed as a monolithic Spring Boot application for the backend, exposed via REST APIs, and consumed by a separate frontend application. This approach provides a good balance of rapid development and ease of deployment for a medium-sized application, while retaining options for future microservice decomposition if necessary.
 
--   **Frontend:** A simple HTML/JavaScript application demonstrating interaction with the API. In a real-world scenario, this would typically be a Single Page Application (SPA) built with frameworks like React, Angular, or Vue.js.
--   **API Gateway (Optional):** For complex microservices architectures, an API Gateway (e.g., Spring Cloud Gateway, NGINX) would sit in front of the backend to handle routing, load balancing, security, and more. For this monolithic backend, the Spring Boot application directly exposes its endpoints.
--   **Backend (Spring Boot):** The core of the system, implementing business logic, data persistence, and exposing RESTful APIs.
--   **Database (PostgreSQL):** A relational database for storing application data.
-
-## 3. Backend Architecture (Spring Boot)
-
-The Spring Boot backend adopts a **Layered Architecture** to promote modularity, maintainability, and testability.
+### C4 Model - System Context Diagram
 
 ```
-+-------------------------------------------------------+
-|                 Clients (Frontend, Other APIs)        |
-+-------------------------------------------------------+
-    | HTTP Requests
-    V
-+-------------------------------------------------------+
-|  **Presentation Layer (Controllers)**                 |
-|  - `AuthController`, `TaskController`, `CategoryController`, `UserController`
-|  - Handles HTTP requests, parses DTOs, returns responses
-|  - Invokes Service Layer methods
-|  - Global Exception Handling (`GlobalExceptionHandler`)
-|  - Security: JWT Authentication Filter (`JwtAuthFilter`)
-|  - Rate Limiting (`RateLimitInterceptor`)
-+-------------------------------------------------------+
-    | Method Calls, DTOs
-    V
-+-------------------------------------------------------+
-|  **Business/Service Layer (Services)**                |
-|  - `AuthService`, `TaskService`, `CategoryService`, `UserService`, `JwtService`
-|  - Contains core business logic and rules
-|  - Orchestrates interactions between multiple repositories
-|  - Performs validation, authorization checks (e.g., ownership for tasks)
-|  - Transaction Management (`@Transactional`)
-|  - Caching (`@Cacheable`, `@CacheEvict`)
-+-------------------------------------------------------+
-    | Entity Objects
-    V
-+-------------------------------------------------------+
-|  **Persistence/Data Access Layer (Repositories)**     |
-|  - `UserRepository`, `TaskRepository`, `CategoryRepository`
-|  - Abstraction over database operations
-|  - Uses Spring Data JPA for CRUD and custom query methods
-+-------------------------------------------------------+
-    | JPA / JDBC / SQL
-    V
-+-------------------------------------------------------+
-|  **Database Layer (PostgreSQL)**                      |
-|  - Stores persistent data
-|  - Managed by Flyway for schema migrations
-+-------------------------------------------------------+
++-------------------------------------------------------------+
+| System: ALX E-commerce Solution                             |
+|                                                             |
+|   +-------------------+       +------------------------+    |
+|   | User (Customer)   |------>| Web Browser (Frontend) |    |
+|   |                   |       +------------------------+    |
+|   |                   |<------|       (React App)      |    |
+|   +-------------------+       +------------------------+    |
+|                                     |                       |
+|                                     | HTTP(S) / JSON        |
+|                                     v                       |
+|   +-------------------------------------------------------+ |
+|   | E-commerce Backend (Spring Boot Application)          | |
+|   |   - User Management                                   | |
+|   |   - Product Catalog                                   | |
+|   |   - Shopping Cart                                     | |
+|   |   - Order Processing                                  | |
+|   |   - Authentication/Authorization                      | |
+|   +-------------------------------------------------------+ |
+|        |           |          |                            |
+|        | (JPA/JDBC)| (Redis)  | (Liquibase)                |
+|        v           v          v                            |
+|   +----------+  +-------+  +-----------+                   |
+|   | PostgreSQL |  | Redis |  | Filesystem  |               |
+|   | (Database) |  | (Cache)|  | (Log Files) |               |
+|   +----------+  +-------+  +-----------+                   |
+|                                                             |
++-------------------------------------------------------------+
 ```
+**Explanation:**
+*   **User (Customer)**: Interacts with the e-commerce platform through a web browser.
+*   **Web Browser (Frontend)**: A single-page application (React) running in the user's browser, responsible for the user interface and experience. It communicates with the backend via REST APIs.
+*   **E-commerce Backend (Spring Boot Application)**: The core application logic. It handles all business operations, manages data, and provides APIs.
+*   **PostgreSQL**: The primary relational database for persistence of all transactional data (users, products, orders, etc.).
+*   **Redis**: An in-memory data store used for caching frequently accessed data (e.g., product lists, categories) to improve response times and reduce database load. Also used for rate limiting state.
+*   **Filesystem**: Used for storing application logs.
 
-### 3.1. Key Components
+---
 
-*   **Entities (`com.alx.taskmgr.entity`):** JPA annotated classes (`User`, `Task`, `Category`, `Role`, `TaskStatus`) representing the domain model and database tables.
-*   **Data Transfer Objects (DTOs) (`com.alx.taskmgr.dto`):** Plain Java objects (`AuthRequest`, `RegisterRequest`, `TaskRequest`, `TaskResponse`, etc.) used for transferring data between the client and the server, and between different layers. They decouple the API contract from the internal entity model.
-*   **Repositories (`com.alx.taskmgr.repository`):** Spring Data JPA interfaces that extend `JpaRepository`, providing powerful, convention-over-configuration data access methods.
-*   **Services (`com.alx.taskmgr.service`):** Implement the core business logic. They encapsulate transactions, caching logic, and interact with multiple repositories.
-*   **Controllers (`com.alx.taskmgr.controller`):** RESTful endpoints that expose the application's functionality. They receive HTTP requests, delegate to services, and return HTTP responses.
-*   **Configuration (`com.alx.taskmgr.config`):** Spring `@Configuration` classes for setting up various aspects of the application, including:
-    *   **Spring Security (`SecurityConfig`, `ApplicationConfig`):** Defines security filter chains, authentication providers, and password encoders.
-    *   **JWT (`JwtAuthFilter`, `JwtService`):** Custom filter for JWT token validation and service for token generation/parsing.
-    *   **Caching (`CachingConfig`):** Configures Caffeine as the caching provider.
-    *   **Rate Limiting (`RateLimitInterceptor`, `BucketProvider`, `WebMvcConfig`):** Custom interceptor using Bucket4j for API rate limiting.
-    *   **Web MVC (`WebMvcConfig`):** Registers custom interceptors and static resource handlers.
-*   **Exception Handling (`com.alx.taskmgr.exception`, `GlobalExceptionHandler`):** Custom exception classes and a `@RestControllerAdvice` to centralize and standardize error responses for the API.
-*   **Logging:** Configured with SLF4J and Logback (`logback-spring.xml`) for structured logging to console and rolling files.
+## 2. Detailed Backend Architecture
 
-## 4. Database Schema
+The backend application follows a standard **layered architecture** and is organized into functional modules.
 
-The database schema is managed by **Flyway** for version control and migrations. The core entities are:
+### Layered Architecture
 
-*   **`users`:** Stores user information (`id`, `fullName`, `email`, `password`, `createdAt`, `updatedAt`). `email` is unique.
-*   **`user_roles`:** A join table for `users` and `roles` (as an `@ElementCollection` in `User` entity, this becomes a simple join table with `user_id` and `role`).
-*   **`categories`:** Stores task categories (`id`, `name`, `createdAt`, `updatedAt`). `name` is unique.
-*   **`tasks`:** Stores task details (`id`, `title`, `description`, `dueDate`, `status`, `owner_id` (FK to `users`), `category_id` (FK to `categories`), `createdAt`, `updatedAt`).
+*   **Controller Layer**: (e.g., `UserController`, `ProductController`)
+    *   Handles incoming HTTP requests.
+    *   Maps requests to service methods.
+    *   Performs input validation using `@Valid` and DTOs.
+    *   Returns HTTP responses.
+    *   Uses Springdoc OpenAPI for API documentation.
+    *   `GlobalExceptionHandler` provides consistent error responses.
+    *   `RateLimitFilter` acts as a request gateway to prevent abuse.
+*   **Service Layer**: (e.g., `UserService`, `ProductService`, `CartService`, `OrderService`)
+    *   Contains the core business logic.
+    *   Orchestrates operations across multiple repositories.
+    *   Applies transactions (`@Transactional`).
+    *   Handles complex data processing and calculations.
+    *   Integrates caching (`@Cacheable`, `@CacheEvict`).
+    *   Performs domain-specific validations.
+*   **Repository Layer**: (e.g., `UserRepository`, `ProductRepository`)
+    *   Provides data access abstraction using Spring Data JPA.
+    *   Performs CRUD operations on entities.
+    *   Translates business objects to database entities and vice-versa.
+*   **Domain Layer (Entities)**: (e.g., `User`, `Product`, `Order`)
+    *   Represents the core business objects and their relationships.
+    *   Annotated with JPA for ORM mapping.
+    *   Includes `User` (authentication, roles), `Category`, `Product`, `Cart`, `CartItem`, `Order`, `OrderItem`.
+*   **DTO (Data Transfer Object) Layer**: (e.g., `UserDTO`, `ProductDTO`, `LoginRequest`)
+    *   Objects used for data exchange between the client and the server, and between layers.
+    *   Decouples the API contract from internal data models.
+    *   Allows for data transformation and hiding sensitive information.
+*   **Configuration Layer**: (e.g., `SecurityConfig`, `RedisConfig`, `OpenApiConfig`)
+    *   Sets up Spring Boot components, security rules, caching mechanisms, etc.
 
-Relationships:
-*   `User` (One) to `Task` (Many): A user can own multiple tasks. (`owner_id` in `tasks` table).
-*   `Category` (One) to `Task` (Many): A category can have multiple tasks. (`category_id` in `tasks` table).
+### Modules
 
-**Migration Strategy (Flyway):**
-*   `V1__initial_schema.sql`: Sets up all necessary tables, constraints, and indexes.
-*   `V2__add_seed_data.sql`: Inserts initial data like an admin user, a regular user, and default categories/tasks.
+The backend is logically divided into modules to separate concerns:
 
-## 5. Security
+*   **`com.alx.ecommerce.config`**: Global application configurations, including Spring Security, JWT, OpenAPI, Redis, and Rate Limiting filters.
+*   **`com.alx.ecommerce.common`**: Shared utilities like `ApiResponse` for standardized responses and global exception handling.
+*   **`com.alx.ecommerce.user`**: Manages user authentication, authorization, and profile.
+    *   `model`: `User`, `Role`, `ERole`
+    *   `repository`: `UserRepository`, `RoleRepository`
+    *   `dto`: `SignupRequest`, `LoginRequest`, `JwtResponse`, `UserDTO`
+    *   `service`: `UserService`, `CustomUserDetailsService`
+    *   `controller`: `UserController`
+*   **`com.alx.ecommerce.product`**: Handles product catalog and category management.
+    *   `model`: `Product`, `Category`
+    *   `repository`: `ProductRepository`, `CategoryRepository`
+    *   `dto`: `ProductDTO`, `CategoryDTO`
+    *   `service`: `ProductService`, `CategoryService`
+    *   `controller`: `ProductController`, `CategoryController`
+*   **`com.alx.ecommerce.order`**: Manages shopping cart functionality and order processing.
+    *   `model`: `Cart`, `CartItem`, `Order`, `OrderItem`
+    *   `repository`: `CartRepository`, `CartItemRepository`, `OrderRepository`, `OrderItemRepository`
+    *   `dto`: `AddToCartRequest`, `CartDTO`, `OrderDTO`
+    *   `service`: `CartService`, `OrderService`
+    *   `controller`: `CartController`, `OrderController`
+*   **`com.alx.ecommerce.util`**: Helper utilities, specifically `JwtUtil` for JWT token generation and validation.
 
-**Authentication:** JWT (JSON Web Token) based.
-*   Users register or authenticate by sending credentials to `/api/v1/auth/register` or `/api/v1/auth/authenticate`.
-*   Upon successful authentication, a JWT token is issued.
-*   This token must be included in the `Authorization` header as `Bearer <token>` for all subsequent protected requests.
-*   `JwtAuthFilter` intercepts requests, validates the JWT, and sets the `Authentication` object in Spring Security's context.
+### Data Flow
 
-**Authorization:** Role-based.
-*   Users have roles (`ROLE_USER`, `ROLE_ADMIN`).
-*   Spring Security's `@PreAuthorize` annotation is used on controller methods to restrict access based on roles (e.g., `hasRole('ADMIN')`, `hasAnyRole('USER', 'ADMIN')`).
-*   `ADMIN` role has elevated privileges (e.g., creating/deleting categories, viewing all tasks).
+1.  **Client Request**: A frontend (React App) or other client sends an HTTP request to the Backend API (e.g., `POST /api/auth/signin`).
+2.  **Rate Limiting**: The `RateLimitFilter` intercepts the request, checks the client's IP against rate limits, and allows/denies the request.
+3.  **Authentication/Authorization**: `JwtAuthFilter` extracts JWT from the `Authorization` header, validates it using `JwtUtil`, and sets Spring Security's `SecurityContext`. Spring Security then authorizes access based on roles (`@PreAuthorize`).
+4.  **Controller Processing**: The relevant `@RestController` receives the request. Input DTOs are validated (`@Valid`).
+5.  **Service Logic**: The Controller calls a method in the appropriate `@Service`. Business logic is executed, including:
+    *   Fetching/saving data via `@Repository` interfaces.
+    *   Interacting with Redis for caching.
+    *   Performing complex calculations (e.g., cart total).
+    *   Updating product stock during order placement.
+6.  **Database Interaction**: The `@Repository` interacts with PostgreSQL via Hibernate/JPA. Liquibase manages database schema changes.
+7.  **Cache Interaction**: Services interact with Redis to store/retrieve cached data.
+8.  **Response Generation**: The Service returns a result (e.g., DTO). The Controller wraps it in an `ApiResponse` and returns an HTTP response to the client.
+9.  **Error Handling**: If an exception occurs, `GlobalExceptionHandler` intercepts it and returns a standardized error response.
+10. **Logging**: All layers utilize SLF4J/Logback for structured logging, aiding in debugging and monitoring.
 
-## 6. Caching
+### Technology Choices
 
-*   **Spring Cache Abstraction** with **Caffeine** as the underlying cache provider.
-*   Enabled via `@EnableCaching` on `TaskmgrApplication` and configured in `CachingConfig`.
-*   `@Cacheable` is used on read-heavy service methods (e.g., `CategoryService.getAllCategories`, `TaskService.getAllTasksForUser`, `TaskService.getTaskById`) to cache results.
-*   `@CacheEvict` is used on modifying methods (e.g., `CategoryService.createCategory`, `TaskService.updateTask`) to invalidate relevant cache entries, ensuring data consistency.
+*   **Spring Boot**: Chosen for its convention-over-configuration, rapid development features, and robust ecosystem for building enterprise-grade Java applications.
+*   **PostgreSQL**: A powerful, open-source relational database known for its reliability, data integrity, and advanced features, suitable for transactional e-commerce data.
+*   **Redis**: Selected as a high-performance in-memory data store for caching due to its speed and simplicity, effectively reducing database load.
+*   **Spring Security + JWT**: A industry-standard combination for securing REST APIs, providing stateless authentication and role-based authorization.
+*   **Liquibase**: For managing database schema changes reliably and versioning them.
+*   **Spring Data JPA**: Simplifies data access layer development by abstracting boilerplate code for CRUD operations.
+*   **Springdoc OpenAPI**: Automatically generates OpenAPI (Swagger) documentation from Spring Boot annotations, providing clear API contracts.
+*   **Lombok**: Reduces boilerplate code (getters, setters, constructors) for DTOs and entities, making code cleaner.
+*   **Bucket4j**: A Java library for rate limiting, providing efficient token bucket algorithm implementation.
 
-## 7. Rate Limiting
+---
 
-*   Implemented using the **Bucket4j Spring Boot Starter** and a custom `RateLimitInterceptor`.
-*   The `RateLimitInterceptor` is registered with Spring MVC (`WebMvcConfig`) to apply to `/api/v1/**` endpoints (excluding `/api/v1/auth/**`).
-*   Each client (identified by IP address) is assigned a token bucket.
-*   The default policy is **10 requests per minute**. If a client exceeds this, a `TooManyRequestsException` (HTTP 429) is returned.
+## 3. Data Model (Database Schema)
 
-## 8. Development and Deployment
+The database schema is managed by Liquibase and is defined in `backend/database/liquibase/changelogs/*.sql` files.
 
-*   **Maven:** Used for dependency management and project building (`pom.xml`).
-*   **Docker:** `Dockerfile` provides instructions to containerize the Spring Boot application.
-*   **Docker Compose:** `docker-compose.yml` orchestrates the application (`app`) and the PostgreSQL database (`db`) for easy local development and testing.
-*   **CI/CD (Conceptual):** A `.github/workflows/ci-cd.yml` file demonstrates a GitHub Actions pipeline for:
-    *   **Continuous Integration (CI):** Building the application and running tests on every push/pull request.
-    *   **Continuous Deployment (CD):** Building and pushing a Docker image to Docker Hub, and conceptually deploying to a target environment (e.g., EC2) on pushes to the `main` branch.
+**Key Tables:**
 
-## 9. Testing Strategy
+*   **`users`**: Stores user authentication and profile information.
+    *   `id` (PK), `username` (UNIQUE), `email` (UNIQUE), `password` (hashed), `created_at`, `updated_at`.
+*   **`roles`**: Stores user roles (e.g., ROLE_USER, ROLE_ADMIN).
+    *   `id` (PK), `name` (UNIQUE).
+*   **`user_roles`**: Join table for many-to-many relationship between `users` and `roles`.
+*   **`categories`**: Stores product categories.
+    *   `id` (PK), `name` (UNIQUE), `description`, `image_url`, `created_at`, `updated_at`.
+*   **`products`**: Stores product details.
+    *   `id` (PK), `name`, `sku` (UNIQUE), `description`, `price`, `stock_quantity`, `image_url`, `category_id` (FK to `categories`), `created_at`, `updated_at`.
+*   **`carts`**: Represents a user's shopping cart.
+    *   `id` (PK), `user_id` (FK to `users`, UNIQUE), `created_at`, `updated_at`.
+*   **`cart_items`**: Items within a shopping cart.
+    *   `id` (PK), `cart_id` (FK to `carts`), `product_id` (FK to `products`), `quantity`, `price_at_time_of_addition`, `created_at`, `updated_at`. (UNIQUE on `cart_id`, `product_id`).
+*   **`orders`**: Stores order details.
+    *   `id` (PK), `user_id` (FK to `users`), `total_amount`, `shipping_address`, `order_status`, `order_date`, `updated_at`.
+*   **`order_items`**: Items purchased in an order.
+    *   `id` (PK), `order_id` (FK to `orders`), `product_id` (FK to `products`), `quantity`, `price_at_purchase`, `created_at`, `updated_at`.
 
-The project employs a multi-faceted testing approach:
+---
 
-*   **Unit Tests:** Focus on individual components (e.g., services) in isolation, mocking dependencies. Achieved using JUnit 5 and Mockito. (Examples: `AuthServiceTest`, `CategoryServiceTest`, `TaskServiceTest`). Aims for 80%+ code coverage (enforced by JaCoCo plugin).
-*   **Integration Tests (Repository Layer):** Verify that data access components interact correctly with the actual database. Uses Spring Boot's `@DataJpaTest` and **Testcontainers** to spin up a real PostgreSQL instance for each test run, ensuring database-specific logic is validated. (Example: `UserRepositoryTest`).
-*   **API Tests (Controller Layer):** Verify that API endpoints behave as expected, handling requests, responses, and authorization correctly. Uses Spring Boot's `@WebMvcTest` and **MockMvc** to simulate HTTP requests without starting a full server. (`AuthControllerTest`, `TaskControllerTest`).
-*   **Performance Tests (Conceptual):** Described as using tools like JMeter or k6 to simulate high load and measure response times, throughput, and error rates. (No code provided for this, but methodology is outlined).
+## 4. Non-Functional Requirements
 
-## 10. Documentation
+### Scalability
+*   **Stateless Backend**: JWT-based authentication ensures the backend is stateless, allowing horizontal scaling of application instances.
+*   **Database**: PostgreSQL can be scaled vertically (more powerful server) and horizontally (read replicas, sharding for very large scale, though not implemented here).
+*   **Caching (Redis)**: Offloads read requests from the database, reducing database load and improving response times, which is crucial for scalability.
+*   **Docker/Kubernetes**: Designed for containerized deployment, facilitating easy scaling of services in container orchestration platforms.
 
-*   **README.md:** Comprehensive setup, build, run instructions, project overview.
-*   **API Documentation:** Integrated **Springdoc-openapi** (Swagger UI). Accessible at `/swagger-ui.html` when the application is running. Provides an interactive interface to explore and test API endpoints.
-*   **Architecture Documentation:** This `ARCHITECTURE.md` file.
-*   **Deployment Guide:** Included within `README.md` (Docker-Compose based deployment).
+### Security
+*   **Authentication & Authorization**: JWT with Spring Security provides robust, industry-standard authentication and role-based access control.
+*   **Password Hashing**: BCrypt algorithm is used for secure storage of user passwords.
+*   **Input Validation**: `jakarta.validation` annotations ensure input data integrity and prevent common injection attacks.
+*   **Error Handling**: Global exception handler prevents sensitive information leakage in error responses.
+*   **HTTPS**: (Deployment consideration) Should be enforced in production for all communication.
+*   **Rate Limiting**: Protects against brute-force attacks and denial-of-service attempts by limiting request frequency.
 
-## 11. Future Enhancements
+### Reliability
+*   **Transactional Operations**: `@Transactional` annotations ensure data consistency for multi-step operations (e.g., placing an order, updating stock).
+*   **Database Migrations (Liquibase)**: Manages schema evolution in a controlled and versioned manner, preventing data loss and ensuring database consistency across environments.
+*   **Logging**: Comprehensive logging provides visibility into application behavior, aiding in troubleshooting and identifying issues.
 
-*   **Pagination and Filtering:** For large datasets, implement pagination and robust filtering/sorting options for task retrieval.
-*   **User Profile Updates:** Add endpoints for users to update their own profile information (name, password).
-*   **Admin User Management:** Admin endpoints to manage users (e.g., assign roles, disable accounts).
-*   **Task Assignment:** Feature to assign tasks to other users.
-*   **Notifications:** Email or in-app notifications for task due dates, status changes, etc.
-*   **Frontend Framework:** Replace the simple HTML/JS demo with a full-fledged SPA using React, Angular, or Vue.js for a richer user experience.
-*   **Metrics and Monitoring:** Integrate Micrometer with Prometheus and Grafana for real-time application metrics and dashboards.
-*   **Distributed Caching:** For distributed deployments, use a dedicated cache server like Redis.
-*   **More Advanced Rate Limiting:** Implement rate limiting based on user ID or API key, not just IP address.
-*   **Observability:** Implement tracing with tools like Zipkin/Jaeger.
-```
+### Maintainability
+*   **Modular Design**: Code is organized into logical modules and layers, making it easier to understand, test, and maintain.
+*   **Clean Code Principles**: Adherence to Java coding conventions, meaningful naming, and proper use of design patterns.
+*   **Automated Tests**: Unit and integration tests ensure changes do not introduce regressions and help maintain code quality.
+*   **API Documentation (Swagger)**: Provides up-to-date documentation of API endpoints, simplifying integration for frontend developers and other consumers.
+
+### Performance
+*   **Caching (Redis)**: Significantly improves read performance for frequently accessed data like products and categories.
+*   **Database Indexing**: (Implicit via JPA, explicit in migrations if needed) Ensures fast data retrieval.
+*   **Efficient Queries**: Spring Data JPA's derived query methods and `@Query` annotations allow for optimized database interactions.
+*   **Lazy Loading**: JPA's `FetchType.LAZY` prevents loading unnecessary data, improving performance for complex object graphs.
+
+### Observability
+*   **Logging**: Configured with Logback for structured logging to console and files, supporting easy integration with log aggregation systems.
+*   **Actuator Endpoints**: Spring Boot Actuator provides endpoints for monitoring application health, metrics (integrated with Prometheus), and other operational insights.
+*   **Error Handling**: Centralized error logging and detailed stack traces (in logs) for rapid error diagnosis.
+
+---
+
+## 5. Future Enhancements
+
+This solution provides a strong foundation. Potential future enhancements include:
+
+*   **Payment Gateway Integration**: Implement integration with third-party payment providers (e.g., Stripe, PayPal).
+*   **Search & Filtering**: Advanced search capabilities (faceted search, full-text search) and more robust filtering options.
+*   **User Reviews & Ratings**: Allow users to leave reviews and ratings for products.
+*   **Wishlist Functionality**: Users can save products to a wishlist.
+*   **Email Notifications**: Send transactional emails (order confirmation, shipping updates, password reset).
+*   **Admin Dashboard**: A dedicated frontend or module for administrators to manage users, products, orders, etc., with richer analytics.
+*   **Image Upload Service**: Integrate with cloud storage (e.g., AWS S3) for product images.
+*   **Discount & Promotions**: Implement coupon codes, sales, and promotional offers.
+*   **Shipping & Inventory Management**: More sophisticated logic for calculating shipping costs and real-time inventory updates.
+*   **Event-Driven Architecture**: Introduce message queues (Kafka, RabbitMQ) for asynchronous processing of orders, notifications, etc., for greater scalability and resilience.
+*   **Container Orchestration**: Deploy to Kubernetes for advanced scaling, self-healing, and management.
+*   **Frontend**: Develop a full-featured, interactive React/Angular/Vue frontend.
+*   **Comprehensive Performance Tests**: Dedicated project with JMeter/Gatling scripts and detailed analysis.
+*   **Security Audits**: Regular security scans and penetration testing.
+*   **Circuit Breakers**: Implement circuit breakers (e.g., Resilience4j) for external service calls.

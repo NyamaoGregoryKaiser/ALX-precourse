@@ -1,356 +1,256 @@
-```markdown
-# ShopSwift E-commerce Solution: Deployment Guide
+# ALX E-commerce Solution - Deployment Guide
 
-This document outlines the steps to deploy the ShopSwift application to a production environment. We will focus on a Dockerized deployment using Gunicorn as the WSGI server and Nginx as a reverse proxy, with PostgreSQL and Redis as backing services.
+This document outlines the considerations and steps for deploying the ALX E-commerce Solution to a production environment. The primary deployment strategy suggested is using Docker for containerization, which simplifies dependency management and ensures consistency across environments.
 
-## 1. Prerequisites
+## Table of Contents
 
-*   **A Linux Server (e.g., Ubuntu LTS)**: With SSH access.
-*   **Docker & Docker Compose**: Installed on the server.
-*   **Domain Name**: Pointing to your server's IP address.
-*   **SSL Certificate**: (Highly recommended) For HTTPS (e.g., Let's Encrypt with Certbot).
-*   **Environment Variables**: All sensitive configuration (`.env` values) should be securely managed.
+1.  [Deployment Strategy Overview](#1-deployment-strategy-overview)
+2.  [Production Environment Prerequisites](#2-production-environment-prerequisites)
+3.  [Configuration for Production](#3-configuration-for-production)
+4.  [Building and Pushing Docker Images](#4-building-and-pushing-docker-images)
+5.  [Server Setup](#5-server-setup)
+6.  [Running on a Single Server (Docker Compose)](#6-running-on-a-single-server-docker-compose)
+7.  [Running on a Cluster (Kubernetes - Conceptual)](#7-running-on-a-cluster-kubernetes---conceptual)
+8.  [Monitoring and Logging](#8-monitoring-and-logging)
+9.  [Security Best Practices](#9-security-best-practices)
+10. [Backup and Recovery](#10-backup-and-recovery)
 
-## 2. Server Setup
+---
 
-### 2.1. Update and Install Docker
+## 1. Deployment Strategy Overview
 
-```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+The recommended deployment strategy involves:
 
-# Add your user to the docker group to run docker commands without sudo (optional, but convenient)
-sudo usermod -aG docker ${USER}
-# Log out and log back in for the group change to take effect
-```
+*   **Containerization with Docker**: Packaging the backend and frontend into Docker images.
+*   **Orchestration with Docker Compose**: For single-server deployments, managing the application services (backend, database, cache).
+*   **CI/CD Pipeline**: Automating the build, test, and deployment process using GitHub Actions.
 
-### 2.2. Clone the Repository
+For larger-scale or high-availability deployments, a container orchestration platform like **Kubernetes** would be the next logical step (covered conceptually).
 
-Clone your project to a suitable directory on your server, e.g., `/srv/shopsift`.
+## 2. Production Environment Prerequisites
 
-```bash
-sudo mkdir -p /srv/shopsift
-sudo chown ${USER}:${USER} /srv/shopsift
-git clone https://github.com/your-username/shopsift.git /srv/shopsift
-cd /srv/shopsift
-```
+Before deploying, ensure your production server(s) meet the following requirements:
 
-## 3. Configuration
+*   **Operating System**: A Linux distribution (e.g., Ubuntu Server, CentOS) is recommended.
+*   **Docker Engine**: Installed and running.
+*   **Docker Compose**: Installed (usually comes with Docker Desktop or can be installed separately).
+*   **Network Access**:
+    *   Public IP address for external access (or behind a load balancer).
+    *   Necessary ports open (e.g., 80 for HTTP, 443 for HTTPS, 8080 for backend if directly exposed, though not recommended).
+*   **Resource Allocation**:
+    *   Sufficient CPU, Memory, and Disk I/O for your expected load.
+    *   Disk space for PostgreSQL data and application logs.
+*   **Security**: SSH access configured for secure remote management.
+*   **DNS**: A registered domain name pointing to your server's IP.
 
-### 3.1. Environment Variables
+## 3. Configuration for Production
 
-Create a `.env` file in the project root (`/srv/shopsift/.env`).
-**It is crucial that you set strong, unique values for all production secrets.**
+It's crucial to adjust configurations for a production environment.
 
-```ini
-# Production Specific Settings
-FLASK_APP=manage.py
-FLASK_ENV=production # IMPORTANT: Set to production
+### Backend (`application.yml` and Environment Variables)
 
-# Database Configuration
-# Use a strong password and a dedicated user for production
-DATABASE_URL=postgresql://shopsift_user:YOUR_DB_PASSWORD@db:5432/shopsift_db
+*   **Database Credentials**: Use strong, unique passwords for the PostgreSQL database user. **Do not hardcode them in `application.yml`**. Use environment variables (as shown in `docker-compose.yml`) or a secrets management solution.
+*   **JWT Secret**: Generate a truly strong, random 256-bit (32 characters or longer) key. Store it securely as an environment variable (`JWT_SECRET`).
+*   **Redis Host/Port**: Ensure Redis connection details are correct for your production Redis instance.
+*   **Logging**: Configure `logback-spring.xml` for production logging, including log rotation, retention, and potentially shipping logs to a centralized logging system.
+*   **CORS**: Adjust CORS settings in `SecurityConfig.java` to allow only your production frontend domain.
+*   **Actuator Security**: Secure Actuator endpoints (e.g., `/actuator/prometheus`) if they are exposed publicly. Ideally, they should only be accessible internally or via monitoring tools.
+*   **Spring Profiles**: Use `SPRING_PROFILES_ACTIVE=prod` to enable production-specific configurations if you define them.
 
-# JWT Configuration
-# GENERATE A NEW, LONG, RANDOM KEY FOR PRODUCTION!
-JWT_SECRET_KEY=YOUR_PRODUCTION_JWT_SECRET_KEY_HERE
-JWT_ACCESS_TOKEN_EXPIRES_MINUTES=30
-JWT_REFRESH_TOKEN_EXPIRES_DAYS=7
+### Frontend (`.env` file)
 
-# Cache Configuration (Redis)
-REDIS_URL=redis://redis:6379/0
+*   **API Base URL**: Update `REACT_APP_API_BASE_URL` in `frontend/.env` to point to your deployed backend API URL (e.g., `https://api.your-ecommerce-domain.com/api`).
+*   **Build**: Always use `npm run build` to create optimized production assets.
 
-# Rate Limiting
-RATELIMIT_STORAGE_URL=redis://redis:6379/1
+### Docker Compose (`docker-compose.yml`)
 
-# Sentry DSN (Optional, for error monitoring)
-# SENTRY_DSN=https://examplepublickey@o0.ingest.sentry.io/0
-```
-**Best Practice**: For real production, consider using a dedicated secrets management solution (e.g., AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets) instead of `.env` files directly on the server.
+*   **Volumes**: Ensure persistent volumes for database data (`db_data`) and Redis data (`redis_data`) are configured correctly to prevent data loss upon container restarts.
+*   **Ports**:
+    *   For the backend, map `8080:8080` or to an internal port if using a reverse proxy.
+    *   For the frontend, if using Nginx, map `80:80` (or `443:443` for HTTPS).
+*   **Restart Policy**: Add `restart: always` to services to ensure they automatically restart if they crash or the Docker daemon restarts.
+*   **Resource Limits**: Consider adding `deploy.resources.limits` to prevent a single service from consuming all server resources.
+*   **Networking**: If you have multiple servers or complex network setups, define custom Docker networks.
 
-### 3.2. Docker Compose for Production
+## 4. Building and Pushing Docker Images
 
-The `docker-compose.yml` file defines our services. For production, ensure it's configured appropriately:
-*   Use `restart: always` for services.
-*   Map persistent volumes for `db` and `redis` data.
-*   The `app` service uses `gunicorn` to serve the Flask app.
-*   **Remove development-specific commands** like `flask seed-db` from the `command` section of the `app` service. You'll run migrations/seeds manually or as part of a CI/CD script.
+The CI/CD pipeline (GitHub Actions) is configured to automatically build and push Docker images to Docker Hub upon successful pushes to the `main` branch.
 
-```yaml
-# /srv/shopsift/docker-compose.yml (adjust if different from development version)
-version: '3.8'
+**Manual Steps (if not using CI/CD):**
 
-services:
-  db:
-    image: postgres:13-alpine
-    restart: always
-    env_file: ./.env
-    # The DATABASE_URL in .env points to 'db' service name
-    # You will likely want to define individual POSTGRES_* env vars too,
-    # or ensure DATABASE_URL is sufficient for the container to setup its internal user/db.
-    # For simplicity, if .env has DATABASE_URL, docker-entrypoint will often
-    # parse it or you might need specific POSTGRES_DB/USER/PASSWORD envs.
-    environment:
-      POSTGRES_DB: shopsift_db
-      POSTGRES_USER: shopsift_user
-      POSTGRES_PASSWORD: YOUR_DB_PASSWORD # Matches .env, but directly set for Postgres image
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck: # Added healthcheck for robust startup
-      test: ["CMD-SHELL", "pg_isready -U shopsift_user -d shopsift_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+1.  **Login to Docker Hub**:
+    ```bash
+    docker login -u your_docker_username -p your_docker_password
+    ```
 
-  redis:
-    image: redis:6-alpine
-    restart: always
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+2.  **Build Backend Image**:
+    ```bash
+    cd ecommerce-solution/backend
+    docker build -t your_docker_username/alx-ecommerce-backend:latest .
+    ```
 
-  app:
-    build: .
-    restart: always
-    env_file: ./.env
-    volumes:
-      # In production, you typically don't mount the app code directly,
-      # it's baked into the image. Comment out or remove this line:
-      # - .:/app
-    depends_on:
-      db:
-        condition: service_healthy # Wait for DB to be healthy
-      redis:
-        condition: service_healthy # Wait for Redis to be healthy
-    command: gunicorn --bind 0.0.0.0:5000 --workers 4 manage:app # Use Gunicorn
+3.  **Push Backend Image**:
+    ```bash
+    docker push your_docker_username/alx-ecommerce-backend:latest
+    ```
 
-  nginx:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443" # For HTTPS
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./certs:/etc/nginx/certs:ro # For SSL certificates
-      # If serving static files directly from Nginx:
-      # - ./app/static:/app/static:ro # Example, assuming static files are in app/static
-    depends_on:
-      - app
+4.  **Build Frontend Image**:
+    ```bash
+    cd ecommerce-solution/frontend
+    docker build -t your_docker_username/alx-ecommerce-frontend:latest .
+    ```
 
-volumes:
-  postgres_data:
-  redis_data:
-```
+5.  **Push Frontend Image**:
+    ```bash
+    docker push your_docker_username/alx-ecommerce-frontend:latest
+    ```
 
-### 3.3. Nginx Configuration
+## 5. Server Setup
 
-Create an `nginx` directory in your project root (`/srv/shopsift/nginx`) with the following files:
+1.  **SSH into your server**:
+    ```bash
+    ssh your_user@your_server_ip
+    ```
 
-**`/srv/shopsift/nginx/nginx.conf`**:
-```nginx
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
+2.  **Install Docker and Docker Compose**:
+    Follow the official Docker documentation for your Linux distribution.
 
-events {
-    worker_connections 1024;
-}
+3.  **Create application directory**:
+    ```bash
+    mkdir -p /opt/ecommerce
+    cd /opt/ecommerce
+    ```
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
+4.  **Copy `docker-compose.yml` and `.env`**:
+    *   Securely copy the `docker-compose.yml` file and the production `.env` file (containing sensitive configurations like `JWT_SECRET`, `DB_PASSWORD`) to `/opt/ecommerce` on your server.
+    *   **NEVER** commit your production `.env` file to source control.
 
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                      '$status $body_bytes_sent "$http_referer" '
-                      '"$http_user_agent" "$http_x_forwarded_for"';
+5.  **Set up Nginx as a Reverse Proxy (Recommended)**:
+    For a production setup, it's highly recommended to place Nginx in front of your frontend and backend services for:
+    *   **HTTPS Termination**: Handle SSL certificates (e.g., with Let's Encrypt using Certbot).
+    *   **Load Balancing**: If you scale your backend.
+    *   **Static File Serving**: Efficiently serve frontend static assets.
+    *   **CORS Management**: Centralized CORS configuration.
+    *   **Request Routing**: Route `/api` requests to the backend container and other requests to the frontend container.
 
-    access_log /var/log/nginx/access.log main;
+    Example `nginx.conf` snippet for reverse proxying:
+    ```nginx
+    server {
+        listen 80;
+        server_name your-ecommerce-domain.com;
 
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-
-    include /etc/nginx/conf.d/*.conf;
-}
-```
-
-**`/srv/shopsift/nginx/conf.d/default.conf`**:
-Replace `your_domain.com` with your actual domain.
-
-```nginx
-server {
-    listen 80;
-    server_name your_domain.com www.your_domain.com;
-
-    # Redirect all HTTP traffic to HTTPS
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name your_domain.com www.your_domain.com;
-
-    ssl_certificate /etc/nginx/certs/fullchain.pem; # Managed by Certbot/Let's Encrypt
-    ssl_certificate_key /etc/nginx/certs/privkey.pem; # Managed by Certbot/Let's Encrypt
-
-    ssl_session_cache shared:SSL:1m;
-    ssl_session_timeout 5m;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    # Optional: Enable HSTS
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    location / {
-        proxy_pass http://app:5000; # 'app' is the name of your Flask service in docker-compose
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_redirect off;
+        # Redirect HTTP to HTTPS
+        return 301 https://$host$request_uri;
     }
 
-    # If you have static files to serve (e.g., frontend built assets, images)
-    # location /static/ {
-    #     alias /app/static/; # Matches the volume mount in docker-compose for app/static
-    #     expires 30d;
-    #     access_log off;
-    #     log_not_found off;
-    # }
+    server {
+        listen 443 ssl http2;
+        server_name your-ecommerce-domain.com;
 
-    error_page 500 502 503 504 /50x.html;
-    location = /50x.html {
-        root /usr/share/nginx/html;
+        ssl_certificate /etc/letsencrypt/live/your-ecommerce-domain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/your-ecommerce-domain.com/privkey.pem;
+
+        # Frontend application
+        location / {
+            root /usr/share/nginx/html; # Path inside frontend Docker container
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Backend API
+        location /api/ {
+            proxy_pass http://ecommerce_backend:8080/api/; # 'ecommerce_backend' is service name in docker-compose
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 600;
+            proxy_send_timeout 600;
+            proxy_read_timeout 600;
+            send_timeout 600;
+        }
+
+        # Swagger UI
+        location /swagger-ui.html {
+            proxy_pass http://ecommerce_backend:8080/swagger-ui.html;
+            # ... other proxy headers
+        }
+        location /v3/api-docs {
+            proxy_pass http://ecommerce_backend:8080/v3/api-docs;
+            # ... other proxy headers
+        }
+
+        # Actuator endpoints (secure these appropriately)
+        location /actuator {
+            proxy_pass http://ecommerce_backend:8080/actuator;
+            # ... other proxy headers, e.g., for IP restrictions or basic auth
+        }
     }
-}
-```
+    ```
+    You would run Nginx in a separate Docker container and map its configuration and SSL certificates via volumes. Update `docker-compose.yml` to include the Nginx service.
 
-### 3.4. SSL Certificates (Certbot/Let's Encrypt)
+## 6. Running on a Single Server (Docker Compose)
 
-1.  **Stop Nginx if running outside Docker**: If you previously had Nginx running on the host for setup, stop it. For Docker, Certbot can issue certificates using the `webroot` plugin.
-2.  **Install Certbot on host**:
+From your application directory (`/opt/ecommerce`):
+
+1.  **Pull latest images**:
     ```bash
-    sudo snap install core; sudo snap refresh core
-    sudo snap install --classic certbot
-    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+    docker compose pull
     ```
-3.  **Create dummy Nginx config for Certbot validation (if needed, often handled by certbot itself)**:
-    Sometimes it's easier to run Nginx on port 80 initially, then use `certbot certonly --webroot` with your Nginx container, or even stop Nginx and use `--standalone`.
-    A simpler approach for Docker-based Nginx:
+
+2.  **Start services**:
     ```bash
-    # Temporarily run Nginx on port 80 only to allow Certbot to validate
-    # Modify docker-compose.yml to only map port 80:80 for nginx
-    # docker-compose up -d nginx
-
-    # Then use Certbot on your host, pointing it to the Nginx webroot for validation
-    # This assumes Nginx serves a static directory accessible by Certbot
-    # It's generally better to use --standalone or --nginx plugin if possible
-    
-    # Easiest: Use Certbot's `nginx` plugin if you installed Nginx on the host
-    sudo certbot --nginx -d your_domain.com -d www.your_domain.com
-    # Or, if running webroot via docker:
-    sudo docker-compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot -d your_domain.com -d www.your_domain.com
-    # You'd need a certbot service and volume mount for /var/www/certbot in docker-compose.yml
+    docker compose up -d --remove-orphans
     ```
-    For a simplified setup using `webroot` with Nginx inside Docker, create a `certs` directory and map it in Nginx.
+    *   `--remove-orphans`: Removes containers for services that are no longer defined in the `docker-compose.yml` file (useful after updating the file).
 
-    **Recommended Docker-native Certbot setup**:
-    Add `certbot` service to `docker-compose.yml` to manage certificates:
-    ```yaml
-    # ... inside docker-compose.yml
-    services:
-      # ... db, redis, app, nginx services
-
-      certbot:
-        image: certbot/certbot
-        restart: unless-stopped
-        volumes:
-          - ./certs:/etc/letsencrypt
-          - ./nginx/data/certbot:/var/www/certbot # Path for webroot challenges
-        command: certonly --webroot -w /var/www/certbot --email your_email@example.com -d your_domain.com --rsa-key-size 4096 --agree-tos --non-interactive
-        # Use depends_on if Nginx needs to be running for validation, or run manually.
-        # This will obtain the certificate once. For renewal, set up a cron job or a more advanced orchestrator.
-    # ... at the bottom with other volumes
-    volumes:
-      # ... postgres_data, redis_data
-      nginx_data_certbot: # If Nginx needs to write here for webroot challenge
-    ```
-    You would run `docker-compose up certbot` *after* Nginx is running and configured for the webroot path.
-
-4.  **Create `/srv/shopsift/certs` directory**:
-    This is where Certbot will place your certificates.
+3.  **Verify services are running and healthy**:
     ```bash
-    sudo mkdir -p /srv/shopsift/certs
+    docker compose ps
+    docker compose logs -f backend # Check backend logs for errors
     ```
-    After running Certbot, copy `fullchain.pem` and `privkey.pem` into this `certs` directory if Certbot created them elsewhere (e.g., `/etc/letsencrypt/live/your_domain.com/`). The Nginx container will mount these.
 
-## 4. Deploy the Application
+4.  **Access the application**:
+    *   If using Nginx, navigate to `https://your-ecommerce-domain.com`.
+    *   If directly exposing backend, `http://your_server_ip:8080/api`.
 
-1.  **Build the Docker image (if not done by CI/CD)**:
-    ```bash
-    docker-compose build app
-    ```
-    Or, if you push to Docker Hub from CI/CD, simply `docker-compose pull app`.
+## 7. Running on a Cluster (Kubernetes - Conceptual)
 
-2.  **Run Database Migrations and Seed Data**:
-    It's critical to run migrations before starting the `app` service fully, especially for the first deploy.
-    ```bash
-    docker-compose run --rm app flask db upgrade
-    docker-compose run --rm app flask seed-db # Optional, for initial data
-    docker-compose run --rm app flask create-admin admin@yourdomain.com your_admin_password # Create production admin
-    ```
-    The `--rm` flag ensures the container is removed after the command runs.
+For high-availability, auto-scaling, and more complex deployments, Kubernetes is the industry standard. This involves:
 
-3.  **Start all services**:
-    ```bash
-    docker-compose up -d
-    ```
-    The `-d` flag runs containers in detached mode (in the background).
+1.  **Writing Kubernetes manifests**: Convert `docker-compose.yml` services into `Deployment`, `Service`, `Ingress`, `PersistentVolumeClaim` (for database), `Secret`, and `ConfigMap` resources.
+2.  **Container Registry**: Using a private registry (e.g., AWS ECR, Google Container Registry) to store your Docker images.
+3.  **Cloud Provider**: Deploying to a managed Kubernetes service (AWS EKS, Azure AKS, Google GKE).
+4.  **Helm Charts**: For managing and deploying complex Kubernetes applications.
 
-4.  **Verify**:
-    Check Docker logs: `docker-compose logs -f`
-    Check Nginx logs: `docker-compose logs -f nginx`
-    Access your domain `https://your_domain.com` in a browser.
+This is a significant architectural step beyond basic Docker Compose.
 
-## 5. Continuous Deployment (CI/CD)
+## 8. Monitoring and Logging
 
-The `.github/workflows/ci-cd.yml` file provides a GitHub Actions pipeline example.
-*   It builds the application and runs tests on push/pull requests.
-*   For `develop` branch pushes, it deploys to a staging environment.
-*   For `main` branch pushes, it deploys to production (can be made manual approval).
+*   **Logs**: Configure log aggregation (e.g., ELK Stack - Elasticsearch, Logstash, Kibana; or Grafana Loki) to collect and centralize logs from all services. Logback is already configured for file output.
+*   **Metrics**:
+    *   Spring Boot Actuator exposes `/actuator/prometheus` endpoint, which can be scraped by **Prometheus**.
+    *   **Grafana** can then visualize these metrics, providing dashboards for application performance, JVM health, HTTP request metrics, etc.
+*   **Health Checks**: Docker Compose and Kubernetes leverage built-in health checks (`healthcheck` in `docker-compose.yml`) to ensure services are truly ready and responsive.
 
-**Key steps in CI/CD deployment:**
-1.  **Build Docker Image**: Build the application image with a unique tag (e.g., Git SHA).
-2.  **Push to Container Registry**: Push the image to Docker Hub, AWS ECR, GCP GCR, etc.
-3.  **SSH to Server**: Connect to your deployment server via SSH.
-4.  **Pull Latest Image**: `docker-compose pull app`.
-5.  **Run Migrations**: `docker-compose run --rm app flask db upgrade`.
-6.  **Restart Application**: `docker-compose up -d --no-deps app` (restarts only the app service, preserving DB/Redis).
-7.  **Cleanup**: `docker system prune -f` to remove old Docker images.
+## 9. Security Best Practices
 
-## 6. Monitoring and Maintenance
+*   **HTTPS Everywhere**: Always use HTTPS for all public-facing communication. Obtain SSL/TLS certificates (e.g., from Let's Encrypt).
+*   **Firewall**: Configure server firewalls (e.g., `ufw` on Ubuntu, AWS Security Groups) to open only necessary ports (80, 443, 22 for SSH).
+*   **Principle of Least Privilege**:
+    *   Run containers with non-root users.
+    *   Grant minimal necessary permissions to database users.
+    *   Limit access to production servers (SSH keys only, strong passwords for users).
+*   **Secrets Management**: Do not hardcode sensitive information. Use environment variables (for Docker Compose) or dedicated secrets management solutions (e.g., HashiCorp Vault, Kubernetes Secrets).
+*   **Regular Updates**: Keep your OS, Docker, Java, and application dependencies updated to patch security vulnerabilities.
+*   **Security Scans**: Integrate static application security testing (SAST) and dynamic application security testing (DAST) into your CI/CD pipeline.
+*   **Backup & Recovery**: Implement a robust backup and recovery strategy for your database (see below).
 
-*   **Logs**: Set up a centralized logging solution (e.g., ELK stack, Grafana Loki, Datadog) to collect logs from all containers.
-*   **Error Tracking**: Integrate Sentry or a similar service (`SENTRY_DSN` in `.env`) for real-time error alerts.
-*   **Metrics**: Use Prometheus and Grafana to monitor application and infrastructure metrics (CPU, memory, network, request latency, error rates).
-*   **Backups**: Implement a robust database backup strategy for PostgreSQL.
-*   **Security Updates**: Regularly update your server's OS, Docker, and application dependencies.
-*   **Container Updates**: Periodically update base images (e.g., `python:3.10-slim-buster`, `postgres:13-alpine`).
+## 10. Backup and Recovery
 
-This guide provides a solid foundation for deploying your ShopSwift application. Remember to adapt it to your specific infrastructure, security requirements, and organizational practices.
-```
+*   **Database Backups**:
+    *   Regularly back up your PostgreSQL database (e.g., daily full backups, hourly incremental backups).
+    *   Store backups securely in a separate location (e.g., cloud storage like S3).
+    *   Test your backup restoration process periodically to ensure data integrity and a smooth recovery.
+*   **Application Configuration Backups**: Keep `docker-compose.yml` and production `.env` files version-controlled (for `docker-compose.yml`) and securely backed up.
+
+By following this guide, you can establish a solid foundation for deploying and maintaining your ALX E-commerce Solution in a production environment.

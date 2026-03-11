@@ -1,39 +1,32 @@
-```dockerfile
 # Stage 1: Build the React application
-FROM node:18-alpine AS builder
+FROM node:18-alpine as build
 
 WORKDIR /app
 
-# Copy package.json and yarn.lock
-COPY package.json yarn.lock ./
+# Copy package.json and package-lock.json (if available)
+COPY package*.json ./
 
 # Install dependencies
-RUN yarn install --frozen-lockfile
+RUN npm install
 
 # Copy the rest of the application code
 COPY . .
 
 # Build the React app
-RUN yarn build
+RUN npm run build
 
-# Stage 2: Serve the application with Nginx (or another static server)
+# Stage 2: Serve the application with Nginx
 FROM nginx:alpine
 
-# Remove default Nginx configuration
-RUN rm /etc/nginx/conf.d/default.conf
+# Copy the built React app from the build stage to Nginx's public directory
+COPY --from=build /app/build /usr/share/nginx/html
 
-# Copy custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/datavizpro.conf
-
-# Copy the built React app from the builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
-
-# Expose port 80
+# Expose port 80 (default for Nginx)
 EXPOSE 80
 
-# Command to start Nginx
+# Command to run Nginx
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-**`frontend/nginx.conf` (Nginx configuration for frontend)**
-This file should be placed in `frontend/nginx.conf`.
+#### `backend/.github/workflows/main.yml` (CI/CD for Backend)
+```yaml

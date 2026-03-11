@@ -1,43 +1,80 @@
-```yaml
 version: '3.8'
 
 services:
-  app:
+  db:
+    image: postgres:16-alpine
+    container_name: ecommerce_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ecommerce_db}
+      POSTGRES_USER: ${DB_USERNAME:-ecommerce_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ecommerce_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ecommerce_user} -d ${DB_NAME:-ecommerce_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
+    container_name: ecommerce_backend
     ports:
       - "8080:8080"
     environment:
-      # Database connection details (matching application.yml)
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: taskmgr_db
-      DB_USERNAME: taskmgr_user
-      DB_PASSWORD: password
-      # JWT secret key (should be long and complex in production)
-      JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-      # Spring profiles for different environments (optional, default is 'default')
-      SPRING_PROFILES_ACTIVE: prod
+      DB_NAME: ${DB_NAME:-ecommerce_db}
+      DB_USERNAME: ${DB_USERNAME:-ecommerce_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ecommerce_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:superSecretKeyForALXECommerceSolutionThatIsAtLeast32BytesLong}
+      # Set Spring profiles for different environments, e.g., prod
+      SPRING_PROFILES_ACTIVE: development
     depends_on:
-      - db
-    # Optional: volume for logs if you want to persist them outside the container
-    # volumes:
-    #   - ./logs:/app/logs
-    restart: always
-
-  db:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: taskmgr_db
-      POSTGRES_USER: taskmgr_user
-      POSTGRES_PASSWORD: password
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - taskmgr_db_data:/var/lib/postgresql/data # Persist database data
-    restart: always
+      - ./backend/logs:/app/logs # Mount logs for easy inspection
+      - ./backend/target:/app/target # For dev mode, if you want to use hot-reloading (more advanced setup)
+
+  frontend: # Placeholder for a frontend application
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ecommerce_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:8080/api # Adjust for local dev vs. deployed environment
+    depends_on:
+      - backend
 
 volumes:
-  taskmgr_db_data:
+  db_data:
+  redis_data:
 ```
+**Note:** For `JWT_SECRET`, ensure you replace the default value with a truly secure, randomly generated 256-bit (32-character or longer) key in production environments. You can set this as an environment variable.
+
+#### `backend/Dockerfile`
+```dockerfile
