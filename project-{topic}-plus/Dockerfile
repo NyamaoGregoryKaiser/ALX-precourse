@@ -1,51 +1,34 @@
+```dockerfile
 # Stage 1: Build the Spring Boot application
-FROM maven:3.9.6-amazoncorretto-17 AS build
-LABEL authors="ALX Software Engineering"
-LABEL maintainer="ALX Developers <dev@alxafrica.com>"
-LABEL project="Secure Auth System"
+FROM eclipse-temurin:17-jdk-jammy AS build
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the pom.xml file first to cache dependencies
+# Copy the Maven wrapper and pom.xml to download dependencies
+COPY mvnw .
+COPY .mvn .mvn
 COPY pom.xml .
 
-# Download dependencies - only if pom.xml changes
-RUN mvn dependency:go-offline
+# Download dependencies (if they haven't changed, this layer will be cached)
+RUN ./mvnw dependency:go-offline -B
 
-# Copy the rest of the application source code
-COPY src ./src
+# Copy the rest of the source code
+COPY src src
 
-# Package the application into a JAR file
-RUN mvn clean install -DskipTests
+# Build the JAR file
+RUN ./mvnw package -DskipTests
 
 # Stage 2: Create the final Docker image
-FROM amazoncorretto:17-alpine-jdk
-LABEL authors="ALX Software Engineering"
-LABEL maintainer="ALX Developers <dev@alxafrica.com>"
-LABEL project="Secure Auth System"
+FROM eclipse-temurin:17-jre-jammy
 
-# Set the working directory
 WORKDIR /app
 
-# Copy the built JAR file from the build stage
+# Copy the JAR file from the build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose the port the Spring Boot application runs on
+# Expose the port on which the Spring Boot application runs
 EXPOSE 8080
 
-# Define environment variables with default values
-ENV DB_HOST=localhost
-ENV DB_PORT=5432
-ENV DB_NAME=auth_db
-ENV DB_USERNAME=admin
-ENV DB_PASSWORD=password
-ENV JWT_SECRET_KEY=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-
-# Command to run the application
+# Run the Spring Boot application
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
-
-#### `.github/workflows/ci-cd.yml`
-
-```yaml

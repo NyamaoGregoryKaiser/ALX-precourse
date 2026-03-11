@@ -1,90 +1,70 @@
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Define standard console appender -->
+    <!-- Define a property for the log directory -->
+    <property name="LOG_FILE_LOCATION" value="logs"/>
+    <!-- Define a property for the application name -->
+    <property name="APP_NAME" value="taskmgr-pro"/>
+
+    <!-- Console Appender: Logs messages to the console -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <!-- Pattern for console output: timestamp, log level, thread, logger name, message, new line -->
+            <!-- Pattern for console output: Timestamp, Log Level, Thread, Logger Name, Message, New Line -->
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </pattern>
-        <charset>UTF-8</charset>
         </encoder>
     </appender>
 
-    <!-- Define a file appender for INFO level logs, rotating daily -->
-    <appender name="FILE-INFO" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/application-info.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- Daily rollover -->
-            <fileNamePattern>logs/application-info.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <!-- Keep 7 days worth of history -->
-            <maxHistory>7</maxHistory>
-        </rollingPolicy>
+    <!-- Rolling File Appender: Logs messages to a file with daily rollover -->
+    <appender name="FILE-ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE_LOCATION}/${APP_NAME}.log</file>
         <encoder>
-            <!-- Pattern for file output, similar to console -->
+            <!-- Pattern for file output -->
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
-        <filter class="ch.qos.logback.classic.filter.LevelFilter">
-            <level>INFO</level>
-            <onMatch>ACCEPT</onMatch>
-            <onMismatch>DENY</onMismatch>
-        </filter>
-    </appender>
 
-    <!-- Define a file appender for ERROR level logs, rotating daily -->
-    <appender name="FILE-ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/application-error.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- Daily rollover -->
-            <fileNamePattern>logs/application-error.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <!-- Keep 30 days worth of history -->
+            <!-- Daily rollover: creates a new file each day -->
+            <fileNamePattern>${LOG_FILE_LOCATION}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <!-- Keep 30 days of history -->
             <maxHistory>30</maxHistory>
+            <!-- Max file size for a single day before creating indexed files -->
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>10MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
         </rollingPolicy>
-        <encoder>
-            <!-- Pattern for file output, including stack trace for errors -->
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-        <filter class="ch.qos.logback.classic.filter.LevelFilter">
-            <level>ERROR</level>
-            <onMatch>ACCEPT</onMatch>
-            <onMismatch>DENY</onMismatch>
-        </filter>
     </appender>
 
-    <!-- Root logger configuration -->
+    <!-- Root logger: All other loggers inherit from this -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
-        <appender-ref ref="FILE-ERROR" />
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-ROLLING"/>
     </root>
 
-    <!-- Specific logger for our application packages (can be set to DEBUG for development) -->
-    <logger name="com.authsystem" level="DEBUG" additivity="false">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
-        <appender-ref ref="FILE-ERROR" />
+    <!-- Specific logger for the application package, set to DEBUG level -->
+    <logger name="com.alx.taskmgr" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-ROLLING"/>
     </logger>
 
-    <!-- Detailed logging for Spring Security, useful for debugging authentication/authorization issues -->
-    <logger name="org.springframework.security" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
-        <appender-ref ref="FILE-ERROR" />
+    <!-- Specific logger for Hibernate SQL statements (useful for debugging ORM queries) -->
+    <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-ROLLING"/>
     </logger>
 
-    <!-- Detailed logging for Hibernate SQL statements and parameter binding (can be verbose) -->
-    <logger name="org.hibernate.SQL" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
-    </logger>
+    <!-- Specific logger for Hibernate parameter binding -->
     <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE" additivity="false">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-ROLLING"/>
     </logger>
 
-    <!-- Log Flyway migrations -->
-    <logger name="org.flywaydb" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="FILE-INFO" />
+    <!--
+        To see detailed Spring Security logs, uncomment the following:
+    <logger name="org.springframework.security" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE-ROLLING"/>
     </logger>
+    -->
 
 </configuration>
+```

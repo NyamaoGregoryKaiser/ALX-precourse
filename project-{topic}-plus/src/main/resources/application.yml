@@ -1,78 +1,75 @@
-# Spring Boot application configuration
+```yaml
 spring:
   application:
-    name: secure-auth-system
-  # Database configuration (PostgreSQL)
+    name: taskmgr-pro
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth_db}
-    username: ${DB_USERNAME:admin}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskmgr_db}
+    username: ${DB_USERNAME:taskmgr_user}
     password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10 # Max pool size for HikariCP, adjust based on load
-      minimum-idle: 2       # Min idle connections
-      connection-timeout: 30000 # Max wait for a connection (30 seconds)
-      idle-timeout: 600000    # Max lifetime of idle connections (10 minutes)
-      max-lifetime: 1800000   # Max lifetime of a connection in the pool (30 minutes)
-
-  # JPA (Hibernate) configuration
   jpa:
     hibernate:
-      ddl-auto: validate # Do not auto-create/update schema in production. Validate against existing.
-    show-sql: false      # Disable verbose SQL logging in console
+      ddl-auto: none # Flyway manages schema, so disable JPA's DDL auto-generation
+    show-sql: true # Log SQL statements
     properties:
       hibernate:
-        format_sql: true # Format SQL logs nicely if show-sql is true
+        format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    open-in-view: false # Avoid N+1 issues and keep sessions open, better to handle in service layer
-
-  # Flyway database migration configuration
   flyway:
     enabled: true
-    baseline-on-migrate: true # Baselines an existing database, useful for initial setup
-    locations: classpath:db/migration # Directory for SQL migration scripts
-
-  # Cache configuration (Caffeine)
+    locations: classpath:/db/migration # Directory for migration scripts
+    baseline-on-migrate: true # Baseline existing database schema if migrations are applied to a non-empty DB
+  security:
+    user:
+      name: admin
+      password: adminpassword # Default admin user for basic tests, change in production
+  # Spring Cache configuration using Caffeine
   cache:
     caffeine:
-      spec: expireAfterAccess=5m,maximumSize=1000 # Default cache settings
+      spec: maximumSize=500,expireAfterWrite=60s # Default spec for all caches
 
-# Application-specific security properties for JWT
+# Custom application security properties for JWT
 application:
   security:
     jwt:
-      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Base64 encoded 32-byte (256-bit) secret key
-      expiration: 3600000 # 1 hour (in milliseconds) - adjust as needed
+      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Base64 encoded secret key
+      expiration: 3600000 # 1 hour in milliseconds (3600 * 1000)
 
-# Server port
+# Server configuration
 server:
-  port: 8080
+  port: ${PORT:8080}
+  servlet:
+    context-path: /
 
-# Management endpoints (Actuator) configuration
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus # Expose useful actuator endpoints
-  endpoint:
-    health:
-      show-details: always # Show full health details
-    metrics:
-      enabled: true
-    prometheus:
-      enabled: true
-
-# Logging configuration (managed by logback-spring.xml)
+# Logging configuration (refer to logback-spring.xml for details)
 logging:
-  config: classpath:logback-spring.xml
   level:
-    com.authsystem: INFO # Default log level for our application packages
-    org.springframework.security: DEBUG # Detailed Spring Security logs
-    org.hibernate.SQL: INFO # Log executed SQL statements
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE # Log bound parameters for SQL
-    org.flywaydb: INFO # Flyway logging
+    com.alx.taskmgr: DEBUG
+    org.springframework: INFO
+    org.hibernate: INFO
+    org.flywaydb: INFO
+
+# Springdoc OpenAPI (Swagger UI) configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html # Custom path for Swagger UI
+    disable-swagger-default-url: true # Disable default swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs # Custom path for OpenAPI JSON/YAML
+  default-produces-media-type: application/json # Default response type
+
+# Bucket4j for Rate Limiting
+bucket4j:
+  enabled: true
+  filters:
+    - cache-name: bucket4j-cache # Name of the cache to store buckets
+      url: "/api/v1/**" # Apply to all API endpoints
+      strategy: first # Use the first matching filter
+      rate-limits: # Define rate limits for this filter
+        - capacity: 10 # Maximum number of requests
+          initial-tokens: 10 # Initial tokens available
+          refill-speed: 10 # Number of tokens to refill
+          refill-interval-in-seconds: 60 # Refill interval (every 60 seconds)
 ```
-
-#### `src/main/resources/logback-spring.xml`
-
-```xml
