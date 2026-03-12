@@ -1,316 +1,253 @@
-```markdown
-# Comprehensive Payment Processing System (Enterprise-Grade)
+# Task Management System
 
-This project provides a full-scale, production-ready payment processing system built with Node.js (Express), PostgreSQL, and Redis. It's designed for scalability, security, and maintainability, incorporating best practices for modern web development and financial applications.
+A comprehensive, production-ready Task Management System built with a full JavaScript stack (React frontend, Node.js/Express backend, PostgreSQL database). This project demonstrates enterprise-grade features including robust CRUD operations, authentication/authorization, logging, caching, rate limiting, Dockerization, and a CI/CD pipeline.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture Overview](#architecture-overview)
-3.  [Technology Stack](#technology-stack)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
 4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
+    *   [Local Setup (using Docker Compose)](#local-setup-using-docker-compose)
     *   [Local Setup (without Docker)](#local-setup-without-docker)
-    *   [Local Setup (with Docker)](#local-setup-with-docker)
-    *   [Database Initialization](#database-initialization)
 5.  [Running the Application](#running-the-application)
-6.  [API Endpoints](#api-endpoints)
-7.  [Testing](#testing)
-    *   [Unit Tests](#unit-tests)
-    *   [Integration Tests](#integration-tests)
-    *   [API Tests](#api-tests)
-    *   [Performance Tests](#performance-tests)
-8.  [CI/CD](#ci-cd)
+6.  [Testing](#testing)
+7.  [API Documentation](#api-documentation)
+8.  [Architecture](#architecture)
 9.  [Deployment](#deployment)
-10. [Future Enhancements](#future-enhancements)
-11. [License](#license)
-
----
+10. [CI/CD](#cicd)
+11. [Additional Features](#additional-features)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ## 1. Features
 
-*   **User Management**: Registration, login, user profiles, role-based access control (User, Admin).
-*   **Account Management**: Create, view, update, delete (with balance check) financial accounts. Deposit and withdraw funds.
-*   **Transaction Processing**:
-    *   Initiate payments between accounts.
-    *   Real-time balance updates (atomically).
-    *   Simulated external payment gateway integration.
-    *   Webhook handling for payment status updates (success/failure).
-    *   Idempotency for transaction processing.
-    *   Transaction history.
-*   **Security**: JWT authentication, password hashing (bcrypt), input validation (Joi), Helmet for HTTP headers, CORS, XSS protection, HTTP Parameter Pollution prevention.
-*   **Logging & Monitoring**: Structured logging with Winston.
-*   **Error Handling**: Centralized API error handling with custom `ApiError` class.
-*   **Caching**: Redis integration (e.g., for sessions, rate limiting).
-*   **Rate Limiting**: Prevent abuse on authentication endpoints.
-*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
-*   **Database**: PostgreSQL with Sequelize ORM, migrations, and seeders.
-*   **Testing**: Comprehensive suite including unit, integration, and API tests.
-*   **Documentation**: Detailed setup, API, and architecture documentation.
-*   **CI/CD**: GitHub Actions workflow for automated testing and deployment.
+*   **User Management**: Register, login, manage user profiles. Role-based access control (Admin/User).
+*   **Authentication & Authorization**: Secure JWT-based authentication. Middleware for protecting routes and enforcing roles.
+*   **Project Management**: Create, view, update, and delete projects. Projects are owned by users.
+*   **Task Management**: Create, view, update, and delete tasks. Tasks belong to projects and can be assigned to users, with status and priority tracking.
+*   **Data Persistence**: PostgreSQL database with Sequelize ORM, migrations, and seed data.
+*   **API Endpoints**: Full CRUD operations exposed via a RESTful API.
+*   **Configuration**: Environment-specific settings, `.env` for sensitive data.
+*   **Containerization**: Docker and Docker Compose for easy setup and consistent environments.
+*   **Testing Suite**: Unit, Integration, and API tests with Jest, Supertest, and React Testing Library for high code quality.
+*   **Comprehensive Logging**: Winston for structured server-side logging.
+*   **Robust Error Handling**: Centralized middleware to catch and process errors gracefully.
+*   **Caching Layer**: In-memory caching with `node-cache` to improve API response times (extensible to Redis).
+*   **Rate Limiting**: Protects API endpoints from abuse and brute-force attacks.
+*   **Security Headers**: `helmet` middleware for common web vulnerabilities.
+*   **CORS Configuration**: Secure cross-origin resource sharing.
+*   **Documentation**: Detailed `README`, API docs, architecture overview, and deployment guide.
+*   **CI/CD**: Basic GitHub Actions workflow for linting and testing.
 
-## 2. Architecture Overview
-
-The system follows a layered, modular architecture:
-
-*   **Client Layer (Implicit/Placeholder)**: A simple static `index.html` is provided. In a full-scale project, this would be a separate Single Page Application (SPA) built with React, Vue, or Angular.
-*   **API Gateway (Express.js)**: Handles incoming HTTP requests, routing, authentication, rate limiting, and basic validation.
-*   **Controllers**: Receive requests from routes, orchestrate business logic by calling services, and send back responses.
-*   **Services**: Encapsulate business logic, interact with the database (via models), and communicate with external services (e.g., payment gateways). This is where core transaction processing, balance updates, and fraud checks reside.
-*   **Models (Sequelize)**: Define the structure of the database tables and provide an interface for database operations.
-*   **Middleware**: Handles cross-cutting concerns like authentication, error handling, logging, and request validation before/after reaching controllers.
-*   **Utilities**: Helper functions, constants, custom error classes, and logging configurations.
-*   **Database (PostgreSQL)**: The primary data store for all application data.
-*   **Cache (Redis)**: Used for high-speed data access, such as storing session tokens, rate limit counters, or frequently accessed data.
-*   **External Payment Gateway (Mocked)**: Simulates interaction with third-party payment providers for processing actual funds.
-
-```mermaid
-graph TD
-    A[Client App/Postman] -->|HTTP Request| B(Express.js API Gateway)
-    B --> C{Middleware: Auth, Rate Limit, Validation}
-    C --> D[Controllers]
-    D --> E[Services: Business Logic]
-    E --> F[Models/ORM: Sequelize]
-    F --> G[PostgreSQL Database]
-    E --> H[Redis Cache]
-    E --> I[Mock Payment Gateway API]
-    I -->|Webhook Callback| B
-    subgraph Core Application
-        B
-        C
-        D
-        E
-        F
-        H
-    end
-    subgraph Infrastructure
-        G
-        I
-    end
-```
-
-## 3. Technology Stack
+## 2. Technology Stack
 
 *   **Backend**: Node.js, Express.js
+*   **Frontend**: React.js
 *   **Database**: PostgreSQL
 *   **ORM**: Sequelize
-*   **Caching/Messaging**: Redis
-*   **Authentication**: JWT (JSON Web Tokens), Bcrypt (password hashing)
-*   **Validation**: Joi
+*   **Authentication**: JSON Web Tokens (JWT), Bcrypt.js
+*   **Testing**: Jest, Supertest, React Testing Library
 *   **Logging**: Winston
-*   **Testing**: Jest, Supertest
+*   **Caching**: `node-cache` (in-memory)
+*   **Rate Limiting**: `express-rate-limit`
 *   **Containerization**: Docker, Docker Compose
 *   **CI/CD**: GitHub Actions
+*   **Utilities**: `dotenv`, `cors`, `helmet`, `dayjs` (frontend for date formatting)
+
+## 3. Project Structure
+
+```
+task-management-system/
+├── .github/                             # CI/CD workflows (GitHub Actions)
+├── backend/                             # Node.js/Express.js API
+│   ├── config/                          # Configuration files
+│   ├── src/
+│   │   ├── controllers/                 # Request handlers
+│   │   ├── models/                      # Sequelize model definitions
+│   │   ├── routes/                      # API routes
+│   │   ├── services/                    # Business logic
+│   │   ├── middleware/                  # Express middleware
+│   │   ├── migrations/                  # Database migration scripts
+│   │   ├── seeders/                     # Database seed data scripts
+│   │   ├── utils/                       # Utility functions (logger, cache)
+│   │   ├── tests/                       # Backend tests
+│   │   ├── app.js                       # Express app setup
+│   │   └── server.js                    # Server entry point
+│   ├── .env.example                     # Environment variables example
+│   ├── package.json                     # Backend dependencies
+│   └── Dockerfile                       # Dockerfile for backend service
+├── frontend/                            # React.js SPA
+│   ├── public/
+│   ├── src/
+│   │   ├── api/                         # API client functions
+│   │   ├── components/                  # Reusable UI components
+│   │   ├── contexts/                    # React Context for global state
+│   │   ├── pages/                       # Page-level components
+│   │   ├── utils/                       # Frontend utilities
+│   │   ├── tests/                       # Frontend tests
+│   │   ├── App.js                       # Main application component
+│   │   └── index.js                     # React entry point
+│   ├── .env.example                     # Environment variables example
+│   ├── package.json                     # Frontend dependencies
+│   └── Dockerfile                       # Dockerfile for frontend service
+├── .dockerignore                        # Files/dirs to ignore for Docker builds
+├── docker-compose.yml                   # Docker Compose setup for all services
+├── README.md                            # Main project README
+├── ARCHITECTURE.md                      # Architecture documentation
+├── API_DOCUMENTATION.md                 # API documentation
+└── DEPLOYMENT.md                        # Deployment guide
+```
 
 ## 4. Setup and Installation
 
 ### Prerequisites
 
-*   Node.js (v20 or higher)
-*   npm (v10 or higher)
-*   PostgreSQL (if not using Docker)
-*   Redis (if not using Docker)
-*   Docker and Docker Compose (recommended)
+Before you begin, ensure you have the following installed:
+
+*   [Git](https://git-scm.com/)
+*   [Node.js](https://nodejs.org/en/) (v18 or higher) & [npm](https://www.npmjs.com/) (comes with Node.js)
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop) (includes Docker Engine and Docker Compose)
+
+### Local Setup (using Docker Compose) - Recommended
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/task-management-system.git
+    cd task-management-system
+    ```
+
+2.  **Create `.env` files:**
+    Copy the example environment variables for both backend and frontend.
+
+    ```bash
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
+    ```
+
+    **Update `backend/.env`**:
+    *   `JWT_SECRET`: Generate a strong, long secret key.
+    *   `DB_USER`, `DB_PASSWORD`, `DB_NAME`: These defaults are set in `docker-compose.yml` and `backend/config/config.json`. You can keep them or change them consistently.
+    *   `FRONTEND_URL`: `http://localhost:3000`
+
+    **Update `frontend/.env`**:
+    *   `REACT_APP_API_BASE_URL`: `http://localhost:5000/api`
+
+3.  **Start the services with Docker Compose:**
+    ```bash
+    docker-compose up --build
+    ```
+    This command will:
+    *   Build Docker images for the backend and frontend.
+    *   Create a PostgreSQL database container.
+    *   Wait for the database to be healthy.
+    *   Run database migrations and seed data in the backend container.
+    *   Start the backend (Node.js) server.
+    *   Start the frontend (React) development server (served by Nginx in production build).
+
+    It may take a few minutes for all services to start, especially for the first build.
 
 ### Local Setup (without Docker)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/payment-processing-system.git
-    cd payment-processing-system
-    ```
+If you prefer to run the backend and frontend directly on your machine without Docker:
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+1.  **Backend Setup**:
+    Refer to `backend/README.md` for detailed instructions.
+    Essentially: `cd backend`, `npm install`, set up local PostgreSQL, `npm run db:migrate`, `npm run db:seed`, `npm run dev`.
 
-3.  **Create `.env` file:**
-    Copy `.env.example` to `.env` and fill in your database, JWT, and Redis credentials.
-    ```bash
-    cp .env.example .env
-    ```
-    Make sure your PostgreSQL and Redis servers are running locally and accessible.
-
-4.  **Configure `config/config.js` and `config/database.js`**
-    Ensure these files correctly point to your local PostgreSQL and Redis instances. The `config/config.js` reads from `.env`.
-
-### Local Setup (with Docker - Recommended)
-
-This is the easiest way to get the entire environment running.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/payment-processing-system.git
-    cd payment-processing-system
-    ```
-
-2.  **Create `.env` file:**
-    Copy `.env.example` to `.env`. The `docker-compose.yml` will pick up these environment variables. You can leave `DB_HOST` as `db` and `REDIS_HOST` as `redis` as these are the service names within the Docker network.
-    ```bash
-    cp .env.example .env
-    # You might want to set NODE_ENV=development in .env for development
-    ```
-
-3.  **Build and run containers:**
-    ```bash
-    docker-compose up --build -d
-    ```
-    This command will:
-    *   Build the Node.js application Docker image.
-    *   Start PostgreSQL and Redis containers.
-    *   Wait for PostgreSQL and Redis to be healthy.
-    *   Run database migrations and seeders (as configured in `docker-compose.yml` for development).
-    *   Start the Node.js application container.
-
-    You can check the logs with `docker-compose logs -f`.
-
-### Database Initialization
-
-If running without Docker, or if you need to manually run migrations/seeders:
-
-1.  **Run migrations:**
-    ```bash
-    npm run migrate
-    ```
-
-2.  **Seed initial data:**
-    ```bash
-    npm run seed
-    ```
-
-3.  **Convenience script for full DB setup (migrate + seed):**
-    ```bash
-    npm run db:setup
-    ```
+2.  **Frontend Setup**:
+    Refer to `frontend/README.md` for detailed instructions.
+    Essentially: `cd frontend`, `npm install`, `npm start`.
 
 ## 5. Running the Application
 
-*   **Development mode (without Docker):**
-    ```bash
-    npm run dev
-    ```
-    This uses `nodemon` for auto-reloading on file changes.
+Once Docker Compose is up (`docker-compose up`), or if you've set up locally:
 
-*   **Production mode (without Docker):**
-    ```bash
-    npm start
-    ```
+*   **Backend API**: Accessible at `http://localhost:5000/api`
+*   **Frontend UI**: Accessible at `http://localhost:3000`
 
-*   **With Docker Compose:**
-    The `docker-compose up -d` command already starts the application.
-    The `command` in `docker-compose.yml` runs `npm run dev` by default in development.
-    For production, you'd typically change the command to `npm start` and handle migrations/seeding in your CI/CD or deployment scripts.
+You can now navigate to `http://localhost:3000` in your web browser to use the Task Management System.
 
-The API will be accessible at `http://localhost:3000/v1` (or your configured port).
-A simple static HTML page can be accessed at `http://localhost:3000/`.
+**Default Credentials for Seeded Data:**
+*   **Admin User:**
+    *   Email: `admin@example.com`
+    *   Password: `password123`
+*   **Regular User:**
+    *   Email: `user@example.com`
+    *   Password: `password123`
+*   **Other User:**
+    *   Email: `john@example.com`
+    *   Password: `password123`
 
-## 6. API Endpoints
+## 6. Testing
 
-Refer to the [API Documentation](#api-documentation) for detailed endpoint specifications, request/response formats, and authentication requirements.
+The project includes comprehensive tests for both backend and frontend.
 
-## 7. Testing
+### Backend Tests
 
-The project includes a comprehensive suite of tests using `Jest` and `Supertest`.
-
-To run all tests:
+Navigate to the `backend` directory:
 ```bash
-npm test
+cd backend
+npm test               # Run all tests with coverage
+npm run test:watch     # Run tests in watch mode
 ```
-To run tests in watch mode:
+This includes:
+*   **Unit Tests**: For services and utility functions.
+*   **Integration Tests**: For API routes (using Supertest).
+*   **API Tests**: Further integration with `supertest` to cover full CRUD flows.
+*   **Performance Tests**: A conceptual outline and explanation in `backend/src/tests/api/task.performance.test.js`. Actual performance tests would use tools like `k6`.
+
+### Frontend Tests
+
+Navigate to the `frontend` directory:
 ```bash
-npm run test:watch
+cd frontend
+npm test               # Run all tests with coverage
 ```
+This includes:
+*   **Unit/Component Tests**: For React components and utility functions using React Testing Library and Jest.
 
-### Unit Tests
-Located in `tests/unit/`. These tests focus on individual functions, services, and modules in isolation.
+## 7. API Documentation
 
-### Integration Tests
-Located in `tests/integration/`. These tests verify the interaction between different components, especially the application and the database.
+Detailed API endpoints, request/response formats, and authentication requirements are documented in [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
-### API Tests
-Located in `tests/api/`. These tests use `supertest` to make HTTP requests to the actual API endpoints, covering full request-response cycles, authentication, and validation.
+## 8. Architecture
 
-### Performance Tests
-For performance testing, tools like `k6`, `JMeter`, or `Artillery` are recommended. A sample `k6` script demonstrating a basic load test flow is provided conceptually in `tests/performance/k6-load-test.js`. To run this:
-
-1.  Install `k6` (e.g., `brew install k6` on macOS).
-2.  Ensure your application is running.
-3.  Prepare a `users.json` file at the root containing pre-registered user credentials like:
-    ```json
-    {
-      "users": [
-        {"email": "test@example.com", "password": "Password123!"},
-        {"email": "john.doe@example.com", "password": "password123"}
-      ]
-    }
-    ```
-4.  Run the test:
-    ```bash
-    k6 run tests/performance/k6-load-test.js
-    ```
-
-## 8. CI/CD
-
-A basic GitHub Actions workflow (`.github/workflows/main.yml`) is provided:
-
-*   **`build-and-test` job**: Triggered on pushes and pull requests to `main` and `develop` branches.
-    *   Sets up Node.js.
-    *   Starts PostgreSQL and Redis services (isolated for testing).
-    *   Installs dependencies.
-    *   Runs database migrations and seeders for the test environment.
-    *   Runs ESLint for code quality checks.
-    *   Executes all unit, integration, and API tests.
-*   **`deploy` job**: Triggered only on pushes to the `main` branch, *after* `build-and-test` passes.
-    *   (Example) Configures AWS credentials.
-    *   Logs into Amazon ECR.
-    *   Builds and pushes the Docker image to ECR.
-    *   (Placeholder) Deploys the new image to an Amazon ECS cluster. This section would require detailed configuration for your specific deployment strategy (e.g., using a task definition file).
+An overview of the system's architecture, design decisions, and component interactions can be found in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 9. Deployment
 
-The application is containerized with Docker, making it highly portable. For production deployment, you would typically:
+A guide for deploying this application to a production environment is available in [DEPLOYMENT.md](DEPLOYMENT.md).
 
-1.  **Build the Docker image in CI**:
-    ```bash
-    docker build -t payment-processor:latest .
-    ```
-2.  **Push the image to a container registry**: (e.g., Docker Hub, AWS ECR, Google Container Registry)
-    ```bash
-    docker tag payment-processor:latest your-registry/payment-processor:latest
-    docker push your-registry/payment-processor:latest
-    ```
-3.  **Deploy to a cloud platform**:
-    *   **Kubernetes (EKS, GKE, AKS)**: Use `kubectl` to deploy to a Kubernetes cluster, defining your deployments, services, ingress controllers, etc.
-    *   **AWS ECS/Fargate**: Define a Task Definition and Service.
-    *   **Google Cloud Run**: Serverless container deployment.
-    *   **Heroku**: Connect to your GitHub repository and enable automatic deploys.
-    *   **Virtual Private Server (VPS)**: Use `docker-compose` directly on the server (less scalable but simple).
+## 10. CI/CD
 
-    **Key considerations for production deployment:**
-    *   **Environment Variables**: Securely manage sensitive data (DB credentials, JWT secrets) using secrets management services (e.g., AWS Secrets Manager, Kubernetes Secrets, Vault).
-    *   **Database Migrations**: Run migrations as part of your deployment process, *before* deploying the new application version. Ensure graceful handling of schema changes.
-    *   **Scalability**: Configure your cloud platform to auto-scale the application (e.g., based on CPU usage, request rate).
-    *   **Load Balancers**: Distribute traffic across multiple instances of your application.
-    *   **Monitoring & Alerting**: Set up comprehensive monitoring for application metrics, logs, and database performance.
-    *   **Security**: Implement firewalls, network security groups, and regularly scan for vulnerabilities.
+A basic CI/CD pipeline is configured using GitHub Actions.
+See `.github/workflows/ci.yml` for the configuration.
+It performs:
+*   Linting checks for both backend and frontend.
+*   Runs tests for both backend and frontend.
 
-## 10. Future Enhancements
+## 11. Additional Features
 
-*   **Full-fledged Frontend**: A dedicated SPA using React/Vue/Angular for a rich user experience.
-*   **Real Payment Gateway Integration**: Integrate with actual providers like Stripe, PayPal, Braintree.
-*   **Advanced Fraud Detection**: Implement machine learning models, rule engines, 3D Secure, etc.
-*   **Reporting & Analytics**: Dashboards for transaction volumes, user activity, revenue.
-*   **Admin Dashboard**: Dedicated interface for managing users, accounts, and transactions.
-*   **Notification System**: Email/SMS notifications for transactions, account activities.
-*   **Refunds & Chargebacks**: Comprehensive flow for handling these financial operations.
-*   **Multi-currency Support**: More robust handling of different currencies and exchange rates.
-*   **Idempotency Key Handling**: Implement a more explicit system for idempotent API requests.
-*   **Background Jobs/Queueing**: Use Redis Queues (BullMQ) or similar for asynchronous tasks like sending notifications, batch processing.
-*   **Audit Logging**: Detailed immutable logs of all sensitive actions.
-*   **GraphQL API**: Offer a GraphQL interface for more flexible data fetching.
+*   **Authentication/Authorization**: JWT-based authentication with role-based access control.
+*   **Logging and Monitoring**: Structured logging with Winston. Can be integrated with external monitoring tools (e.g., ELK stack, Prometheus/Grafana).
+*   **Error Handling Middleware**: Centralized error handling to provide consistent error responses.
+*   **Caching Layer**: In-memory caching (`node-cache`) for faster data retrieval. Can be extended to a distributed cache like Redis for multi-instance deployments.
+*   **Rate Limiting**: `express-rate-limit` to prevent API abuse.
 
-## 11. License
+## 12. Contributing
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+Contributions are welcome! Please follow these steps:
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature`).
+3.  Make your changes.
+4.  Commit your changes (`git commit -m 'Add new feature'`).
+5.  Push to the branch (`git push origin feature/your-feature`).
+6.  Open a Pull Request.
+
+## 13. License
+
+This project is licensed under the [ISC License](LICENSE).
 ```

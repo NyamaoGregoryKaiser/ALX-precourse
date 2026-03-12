@@ -1,72 +1,68 @@
-```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: payment_db
+    container_name: postgres_db
     environment:
       POSTGRES_USER: ${DB_USER:-user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-      POSTGRES_DB: ${DB_NAME:-payment_db}
-    volumes:
-      - db_data:/var/lib/postgresql/data
+      POSTGRES_DB: ${DB_NAME:-task_management_db}
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: payment_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  app:
+  backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    container_name: payment_app
+    container_name: task_management_backend
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5000
+      DB_USER: ${DB_USER:-user}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_NAME: ${DB_NAME:-task_management_db}
+      DB_HOST: db # Service name in docker-compose
+      DB_PORT: 5432
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      db:
+        condition: service_healthy # Wait for DB to be healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules # Anonymous volume to prevent host node_modules from overriding container's
+    command: sh -c "npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all && npm run dev" # Run migrations, seed, then dev server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: task_management_frontend
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${PORT:-3000}
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-user}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      DB_NAME: ${DB_NAME:-payment_db}
-      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
-      JWT_ACCESS_EXPIRATION_MINUTES: ${JWT_ACCESS_EXPIRATION_MINUTES:-30}
-      JWT_REFRESH_EXPIRATION_DAYS: ${JWT_REFRESH_EXPIRATION_DAYS:-7}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpassword}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://localhost:5000/api}
     volumes:
-      - .:/app
-      - /app/node_modules # Prevents host's node_modules from overwriting container's
-    command: ["sh", "-c", "npm install && npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all && npm run dev"]
-    # In production, use "npm start" and manage migrations/seeding separately (e.g., in CI/CD)
-    # command: ["npm", "start"]
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
 
 volumes:
-  db_data:
-  redis_data:
+  pgdata:
 ```
+
+### `backend/Dockerfile`
+```dockerfile

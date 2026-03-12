@@ -1,0 +1,33 @@
+{
+  "development": {
+    "username": "user",
+    "password": "password",
+    "database": "task_management_db",
+    "host": "localhost",
+    "port": 5432,
+    "dialect": "postgres"
+  },
+  "test": {
+    "username": "user",
+    "password": "password",
+    "database": "task_management_test_db",
+    "host": "localhost",
+    "port": 5432,
+    "dialect": "postgres",
+    "logging": false
+  },
+  "production": {
+    "username": "user",
+    "password": "password",
+    "database": "task_management_prod_db",
+    "host": "db",
+    "port": 5432,
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
+  }
+}

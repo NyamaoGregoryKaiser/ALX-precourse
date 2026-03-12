@@ -1,45 +1,21 @@
-```Dockerfile
-# Use the official Node.js 20 LTS image as the base image
-FROM node:20-alpine AS build
+# Use a Node.js image
+FROM node:18-alpine
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json to the working directory
-# We copy these first to leverage Docker's layer caching
+# Copy package.json and package-lock.json first to leverage Docker cache
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy the rest of the application source code
+# Copy the rest of the application code
 COPY . .
 
-# Build the TypeScript application
-RUN npm run build
-
-# --- Production Stage ---
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Copy only necessary files from the build stage
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/.env.example ./.env.example # Useful for deploying and configuring env vars
-COPY --from=build /app/logs ./logs # Ensure logs directory exists if logging to files
-COPY --from=build /app/src/migrations ./src/migrations # Migrations are needed for runtime
-
-# Expose the port the app runs on
+# Expose port
 EXPOSE 5000
 
-# Set environment variables (these can be overridden by docker-compose or Kubernetes)
-ENV NODE_ENV=production
-ENV PORT=5000
-
-# Command to run the application
-# We ensure migrations are run *before* starting the app.
-# The `npm run migration:run` command is configured in package.json
-CMD ["sh", "-c", "npm run migration:run && npm start"]
-```
+# Command to run the application (in production, use `npm start`)
+# For local dev with docker-compose, `npm run dev` is often used via docker-compose.yml
+CMD ["npm", "start"]
