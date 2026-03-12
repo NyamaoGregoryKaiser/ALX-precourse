@@ -1,4 +1,4 @@
-name: Node.js CI/CD Pipeline
+name: CI/CD Pipeline for Data Visualization Platform
 
 on:
   push:
@@ -11,93 +11,95 @@ on:
       - develop
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  backend-ci:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-      - name: Install dependencies
-        run: npm install
+    - name: Install Backend Dependencies
+      run: npm install --prefix backend
 
-      - name: Lint code
-        run: npm run lint
+    - name: Create .env for Backend Tests
+      run: |
+        echo "NODE_ENV=test" >> backend/.env
+        echo "PORT=5001" >> backend/.env
+        echo "DB_NAME=test_dataviz_db" >> backend/.env
+        echo "DB_USER=test_user" >> backend/.env
+        echo "DB_PASSWORD=test_pass" >> backend/.env
+        echo "DB_HOST=localhost" >> backend/.env
+        echo "DB_PORT=5432" >> backend/.env
+        echo "JWT_SECRET=testsecret" >> backend/.env
+        echo "JWT_EXPIRES_IN=1h" >> backend/.env
+        echo "LOG_LEVEL=error" >> backend/.env
+      # This is critical: ensure the test environment uses a separate DB for CI
+      # or mock the DB calls effectively. For true integration tests, a test DB is needed.
 
-      - name: Run unit and integration tests
-        run: npm run test:unit && npm run test:integration
+    - name: Run Backend Tests
+      run: npm test --prefix backend
 
-      - name: Build TypeScript project
-        run: npm run build
+  frontend-ci:
+    runs-on: ubuntu-latest
+    needs: backend-ci # Ensure backend tests pass before frontend
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Store build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: dist-folder
-          path: dist/
-          retention-days: 7 # Keep for 7 days
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-  # This job would typically involve deploying to a staging/production environment.
-  # For demonstration, it's a placeholder.
-  # In a real scenario, you'd integrate with AWS ECS, Kubernetes, Vercel, etc.
+    - name: Install Frontend Dependencies
+      run: npm install --prefix frontend
+
+    - name: Run Frontend Tests
+      run: npm test --prefix frontend -- --watchAll=false # Run tests without watch mode
+
+  # Example for a simple deployment stage (can be expanded significantly)
   deploy:
-    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: build-and-test # Only deploy if build and tests pass
-    if: github.ref == 'refs/heads/main' # Deploy only from the main branch
-
+    needs: [backend-ci, frontend-ci]
+    if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: dist-folder
-          path: dist/
-
-      # Example: Docker login and push to a registry (e.g., Docker Hub, AWS ECR)
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Docker image
+      - name: Build & Push Docker Images (to Docker Hub, for example)
+        # This step would involve logging into Docker Hub and pushing images.
+        # Requires DOCKER_USERNAME and DOCKER_PASSWORD as GitHub Secrets.
         run: |
-          docker build -t your-dockerhub-username/mobile-backend:${{ github.sha }} .
-          docker push your-dockerhub-username/mobile-backend:${{ github.sha }}
-          docker tag your-dockerhub-username/mobile-backend:${{ github.sha }} your-dockerhub-username/mobile-backend:latest
-          docker push your-dockerhub-username/mobile-backend:latest
+          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          docker build -t your-docker-username/dataviz-backend:latest -f Dockerfile.backend .
+          docker build -t your-docker-username/dataviz-frontend:latest -f Dockerfile.frontend .
+          docker push your-docker-username/dataviz-backend:latest
+          docker push your-docker-username/dataviz-frontend:latest
 
-      # Example: Deployment to a cloud provider (e.g., AWS ECS, Kubernetes, Heroku)
-      - name: Deploy to AWS ECS (Conceptual)
+      - name: Deploy to Server (e.g., using SSH and Docker Compose)
+        # This is a placeholder for actual deployment commands.
+        # Requires SSH_PRIVATE_KEY, DEPLOY_HOST, DEPLOY_USER as GitHub Secrets.
         run: |
-          echo "Simulating deployment to AWS ECS with image: your-dockerhub-username/mobile-backend:${{ github.sha }}"
-          # Replace with actual AWS CLI commands to update ECS service definition
-          # For example: aws ecs update-service --cluster your-cluster --service your-service --task-definition your-task-definition ...
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
-
-      - name: Run API tests (Post-Deployment)
-        # This step would ideally target the deployed environment's API endpoints
-        # Requires specific configuration to point Jest to the deployed URL
-        run: npm run test:api
-        env:
-          API_BASE_URL: https://your-deployed-api.com/api/v1 # Replace with actual deployed API URL
-          JWT_SECRET: ${{ secrets.JWT_SECRET }} # Ensure secrets are available for generating tokens in tests
-          # Other necessary environment variables for API tests
-
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > deploy_key
+          chmod 600 deploy_key
+          ssh -i deploy_key -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            cd /path/to/your/app
+            # Pull the latest code (if not already handled by Docker images)
+            # git pull origin main
+            # Update Docker images and restart services
+            docker-compose pull
+            docker-compose up -d --build --force-recreate
+            docker system prune -f # Clean up old Docker images/volumes
+          EOF
 ```
-### `jest.config.ts`
 
-```typescript
+---
+
+### 4. Testing & Quality
+
+#### `backend/tests/integration/dataSource.test.js` (Integration Test Example)
+```javascript
