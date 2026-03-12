@@ -1,40 +1,84 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim-bookworm
+```dockerfile
+# Stage 1: Build environment
+FROM ubuntu:22.04 AS builder
 
-# Set the working directory in the container
-WORKDIR /app
+LABEL maintainer="ALX Software Engineer"
 
-# Install system dependencies required for psycopg2 and others
-RUN apt-get update && apt-get install -y \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    cmake \
+    libpistache-dev \
+    libspdlog-dev \
+    libnlohmann-json-dev \
+    libpqxx-dev \
     libpq-dev \
-    gcc \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    libssl-dev \
+    googletest \
+    uuid-dev \
+    git \
+    pkg-config \
+    # For JWT-CPP library (optional, if using it directly)
+    # libjwt-dev \
+    # Install jwt-cpp dependency
+    ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Install jwt-cpp (if not available via system package manager or vendored)
+# This assumes jwt-cpp is either vendored or installed manually.
+# For simplicity, we'll assume it's available via a simple git clone and build/install.
+# In a real project, consider vcpkg or Conan for managing C++ dependencies.
+WORKDIR /usr/local/src
+RUN git clone https://github.com/Thalhammer/jwt-cpp.git && \
+    cd jwt-cpp && \
+    mkdir build && cd build && \
+    cmake .. -DBUILD_SHARED_LIBS=ON && \
+    make -j$(nproc) && \
+    make install
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application code into the container
+# Copy project source code
+WORKDIR /app
 COPY . .
 
-# Expose the port the app runs on
-EXPOSE 8000
+# Build the application
+RUN mkdir build && cd build && \
+    cmake .. && \
+    make -j$(nproc)
 
-# Run alembic migrations
-# This will run migrations automatically when the container starts.
-# In a real production environment, you might want a separate migration job
-# or control this more carefully. For this example, it's integrated.
-RUN alembic upgrade head
+# Stage 2: Runtime environment
+FROM ubuntu:22.04 AS runner
 
-# Define environment variable for production
-ENV PYTHONUNBUFFERED=1
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpistache1.0 \
+    libspdlog1.9 \
+    libnlohmann-json3.10 \
+    libpqxx-7.7 \
+    libpq5 \
+    libssl3 \
+    libuuid1 \
+    libstdc++6 \
+    # jwt-cpp runtime libs (if installed as shared libs)
+    libjwt-cpp-dev \
+    ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Command to run the application using uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+# Copy the built executable from the builder stage
+WORKDIR /app
+COPY --from=builder /app/build/PaymentProcessor .
+COPY --from=builder /app/build/PaymentProcessorTests . # For running tests in container
+COPY config/ config/
+COPY migrations/ migrations/
+COPY seeds/ seeds/
+COPY README.md .
+# If log directory exists and is needed
+RUN mkdir -p logs && chmod 777 logs # Or appropriate permissions/user
 
+# Expose the port the application listens on
+EXPOSE 9080
+
+# Command to run the application
+CMD ["./PaymentProcessor", "config/default.json"]
 ```

@@ -1,4 +1,5 @@
-name: CI Pipeline
+```yaml
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,92 +12,56 @@ on:
       - develop
 
 jobs:
-  backend-ci:
+  build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./server
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './server/package-lock.json'
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Install dependencies
-        run: npm install
+    - name: Build Docker image
+      run: docker build -t payment-processor:latest .
 
-      - name: Lint backend code
-        run: npm run lint # Assuming you have a lint script configured in package.json
+    - name: Run unit and integration tests (in container)
+      run: |
+        docker run --rm payment-processor:latest ./PaymentProcessorTests
 
-      - name: Build backend
-        run: npm run build
-
-      - name: Run backend unit tests
-        run: npm run test:unit
-
-      - name: Run backend integration tests
-        # For integration tests, a test database needs to be spun up.
-        # This example uses a simple approach, but for complex setups,
-        # consider dedicated test database services (e.g., testcontainers).
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: testuser
-          DB_PASSWORD: testpass
-          DB_NAME: chat_test_db
-          JWT_SECRET: supersecretkey
-          REDIS_URL: redis://localhost:6379
-        run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'testpass';"
-          sudo -u postgres psql -c "CREATE DATABASE chat_test_db OWNER testuser;"
-          npm run typeorm migration:run # Apply migrations to test DB
-          npm run test:integration --coverage
-
-      - name: Upload backend coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage-report
-          path: ./server/coverage
-
-  frontend-ci:
+  deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
+    needs: build
+    if: github.ref == 'refs/heads/main' # Deploy only from main branch
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './client/package-lock.json'
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Install dependencies
-        run: npm install
+    - name: Login to Docker Hub (or other registry)
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Lint frontend code
-        run: npm run lint
+    - name: Build and push Docker image
+      id: docker_build
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/payment-processor:${{ github.sha }}
+          ${{ secrets.DOCKER_USERNAME }}/payment-processor:latest
 
-      - name: Build frontend
-        run: npm run build
-
-      - name: Run frontend tests
-        run: npm run test:coverage
-
-      - name: Upload frontend coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage-report
-          path: ./client/coverage
+    - name: Deploy to Staging/Production (Conceptual)
+      run: |
+        echo "Deployment script for staging/production would go here."
+        echo "This might involve SSHing to a server, running 'docker-compose pull' and 'docker-compose up -d', or updating Kubernetes manifests."
+        echo "Using image: ${{ secrets.DOCKER_USERNAME }}/payment-processor:${{ github.sha }}"
+        # Example: ssh user@your-server "docker-compose -f /path/to/docker-compose.yml pull payment-processor-app && docker-compose -f /path/to/docker-compose.yml up -d payment-processor-app"
+      # You would typically add environment-specific logic, e.g., using secrets for server credentials
+```

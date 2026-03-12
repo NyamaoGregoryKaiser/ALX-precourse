@@ -1,186 +1,142 @@
-# Mobile Task Management Backend Architecture
+```markdown
+# Payment Processing System Architecture
 
-This document outlines the architecture of the Mobile Task Management Backend system, detailing its components, their interactions, and the design principles that guide its construction.
+This document outlines the high-level architecture of the Payment Processing System.
 
-## 1. High-Level Architecture
+## 1. System Overview
 
-The system follows a typical **layered (n-tier) architecture** with a strong emphasis on **modularity** and **separation of concerns**. It is designed as a stateless API service, making it suitable for horizontal scaling.
+The Payment Processing System is a backend-focused application designed to handle financial transactions, user accounts, and authentication. It provides a RESTful API for external clients (e.g., web frontends, mobile apps, merchant systems) to interact with its core functionalities.
+
+The architecture emphasizes modularity, separation of concerns, and scalability, using a layered approach.
+
+## 2. Architectural Diagram
 
 ```mermaid
-graph LR
-    A[Mobile/Web Client] -- HTTP/S --> B(API Gateway / Load Balancer)
-    B --> C(FastAPI Application Cluster)
-    C -- Cache Miss --> D(Redis Cluster)
-    C -- Data Access --> E(PostgreSQL Cluster)
-    C -- Logs --> F(Logging / Monitoring System)
-    C -- Errors --> F
+graph TD
+    A[Clients: Web / Mobile / Merchants] --> B(API Gateway / Load Balancer)
+    B --> C1(Payment Processor API Server - Instance 1)
+    B --> C2(Payment Processor API Server - Instance 2)
+    C1 <--> D[Redis Cache / Rate Limiter]
+    C2 <--> D
+    C1 --> E(PostgreSQL Database)
+    C2 --> E
+    E -- (asynchronous) --> F(Transaction Log / Audit Service)
+    C1 --> G(External Payment Gateway - e.g., Stripe, PayPal)
+    C2 --> G
+    C1 --> H(Monitoring / Alerting - Prometheus, Grafana)
+    C2 --> H
+    C1 --> I(Logging Service - ELK Stack)
+    C2 --> I
 
-    subgraph FastAPI Application (Python)
-        C1(API Routers) --> C2(Services)
-        C2 --> C3(CRUD Operations)
-        C3 --> E
-        C1 -- Caching & Rate Limiting --> D
-        C1 -- Auth/Dependencies --> C4(Core/Security)
-    end
-
-    subgraph Infrastructure
-        E(PostgreSQL Cluster)
-        D(Redis Cluster)
-        F(Logging / Monitoring System)
-        K(Container Registry)
-    end
-
-    subgraph CI/CD
-        G[Code Repository] --> H(GitHub Actions)
-        H --> K
-        H --> L(Deployment to Kubernetes/ECS/etc.)
+    subgraph Payment Processor Core (C++)
+        C1
+        C2
     end
 ```
 
-### Key Architectural Principles:
+## 3. Core Components
 
-*   **Statelessness**: The FastAPI application itself does not store session state, relying on JWTs for authentication. This simplifies scaling.
-*   **Modularity**: Code is organized into distinct layers (API, Services, CRUD, Models, Schemas) and logical modules (auth, tasks, users) to enhance maintainability and testability.
-*   **Asynchronous Processing**: FastAPI and SQLAlchemy's async capabilities are leveraged for non-blocking I/O operations, improving throughput and responsiveness.
-*   **Scalability**: Designed for horizontal scaling of the FastAPI application, PostgreSQL, and Redis clusters.
-*   **Security**: JWT-based authentication, password hashing, and role-based access control are fundamental.
-*   **Observability**: Comprehensive logging, centralized error handling, and potential integration with monitoring tools.
-*   **Testability**: Clear separation of concerns facilitates unit, integration, and API testing.
+### 3.1. REST API Server (Pistache C++)
 
-## 2. Component Breakdown
+*   **Technology**: C++17/20, [Pistache](https://github.com/oktal/pistache)
+*   **Role**: The primary interface for clients. It exposes RESTful endpoints for all business operations (auth, account, transactions).
+*   **Modules**:
+    *   **HTTP Server**: Handles incoming HTTP requests and routes them to appropriate controllers.
+    *   **Controllers**: Act as the entry point for API requests, parse input, call business services, and format responses.
+    *   **Middleware**: Intercepts requests for cross-cutting concerns like authentication, authorization, logging, and error handling.
 
-### 2.1. Client Layer
+### 3.2. Business Logic Services
 
-*   **Mobile/Web Clients**: Consume the RESTful API endpoints provided by the backend. The API contract is defined by Pydantic schemas and OpenAPI documentation.
+*   **Role**: Encapsulate the core business rules and orchestrate operations involving multiple data entities. They are independent of the API layer.
+*   **Examples**:
+    *   `AuthService`: Handles user registration, login, password hashing, and JWT generation.
+    *   `AccountService`: Manages user accounts, balance updates, and account lifecycle.
+    *   `TransactionService`: Orchestrates payment flows (initiation, processing, status updates, refunds), ensures atomicity of financial operations.
+    *   `GatewayService`: Abstract layer for integrating with external payment gateways.
 
-### 2.2. Infrastructure Layer
+### 3.3. Data Access Layer (Repositories)
 
-*   **API Gateway / Load Balancer**: (Implicit, e.g., Nginx, AWS ALB, GCP Load Balancer) Distributes incoming traffic across multiple FastAPI instances, handles SSL termination, and potentially provides additional security or traffic management.
-*   **FastAPI Application Cluster**: Multiple instances of the FastAPI application running behind a load balancer to handle concurrent requests and provide high availability.
-*   **PostgreSQL Database Cluster**: Primary data store for users, tasks, and other application data. Configured for high availability and replication in a production environment.
-*   **Redis Cluster**: Used for caching API responses, managing rate limits, and potentially for other fast-access data needs (e.g., short-lived tokens, feature flags).
-*   **Logging / Monitoring System**: (e.g., ELK Stack, Prometheus/Grafana, Datadog, Sentry) Collects application logs, metrics, and traces for analysis, alerting, and debugging.
+*   **Technology**: C++, [libpqxx](https://libpqxx.readthedocs.io/en/7.7/)
+*   **Role**: Provides an abstraction over the database. Each service interacts with one or more repositories to perform CRUD operations on specific data entities.
+*   **Examples**:
+    *   `UserRepository`: Manages `User` persistence.
+    *   `AccountRepository`: Manages `Account` persistence.
+    *   `TransactionRepository`: Manages `Transaction` persistence.
+*   **Design Principle**: Keeps SQL queries and database-specific logic isolated from business logic, promoting portability and testability.
 
-### 2.3. Backend Application (FastAPI - Python)
+### 3.4. Database (PostgreSQL)
 
-The core application logic is organized into several distinct layers and modules:
+*   **Technology**: [PostgreSQL](https://www.postgresql.org/)
+*   **Role**: The primary relational data store for all application data (users, accounts, transactions, etc.). Chosen for its reliability, ACID compliance, and advanced features.
+*   **Schema**: Designed for financial integrity, including proper indexing, foreign keys, and data types (e.g., `NUMERIC` for monetary values).
+*   **Migrations**: Managed through SQL scripts to ensure schema evolution.
 
-#### A. Entry Point (`app/main.py`)
+### 3.5. Utilities and Shared Components
 
-*   Initializes the FastAPI application.
-*   Registers global middleware (e.g., for error handling).
-*   Includes API routers from `app/api/v1/`.
-*   Defines application lifespan events for startup (logging, Redis client, rate limiter initialization) and shutdown (resource cleanup).
-*   Contains global exception handlers for `APIException`, `RequestValidationError`, and generic `Exception`s, ensuring consistent error responses.
+*   **`Config`**: Handles loading application configuration from JSON files and environment variables.
+*   **`Logger`**: Centralized logging utility using `spdlog` for structured and efficient logging.
+*   **`CryptoUtils`**: Provides cryptographic operations like password hashing (e.g., Argon2/bcrypt), JWT token generation/validation, and UUID generation.
+*   **`DatabaseManager`**: Manages PostgreSQL connections (e.g., connection string, basic connection pooling if implemented).
+*   **`Exceptions`**: Custom exception hierarchy for structured error handling within the API and business logic.
 
-#### B. Configuration (`app/config.py`)
+## 4. Cross-Cutting Concerns
 
-*   Uses Pydantic `BaseSettings` to load application settings from environment variables (`.env` file).
-*   Centralizes all configurable parameters (database URL, JWT secret, Redis URL, logging level, etc.).
+### 4.1. Authentication & Authorization
 
-#### C. Database Layer (`app/database.py`, `app/models/`, `alembic.ini`, `migrations/`)
+*   **Mechanism**: JWT (JSON Web Tokens).
+*   **Flow**:
+    1.  User logs in via `/auth/login`, receives a signed JWT.
+    2.  The JWT is included in the `Authorization: Bearer <token>` header for subsequent requests.
+    3.  `AuthMiddleware` verifies the token's signature and expiration.
+    4.  Controllers then extract user roles/permissions from the token payload to perform fine-grained authorization checks.
 
-*   **`app/database.py`**: Configures the asynchronous SQLAlchemy engine and `AsyncSession` factory. Provides `get_db` dependency for FastAPI to inject database sessions.
-*   **`app/models/`**:
-    *   `user.py`: Defines the `User` ORM model, mapping to the `users` table.
-    *   `task.py`: Defines the `Task` ORM model, mapping to the `tasks` table, including `TaskStatus` enum.
-    *   Models define database schema, relationships, and basic data-level business logic (e.g., `Task.is_overdue()`, `Task.can_transition_to()`).
-*   **Alembic**: Database migration tool. `alembic.ini` configures Alembic, and `migrations/` stores versioned database schema changes.
+### 4.2. Logging and Monitoring
 
-#### D. Data Transfer Objects (DTOs) (`app/schemas/`)
+*   **Logging**: `spdlog` is used for application logging. Logs are directed to `stdout` and a file, configurable via `config.json`. Critical errors trigger alerts.
+*   **Monitoring**: (Conceptual) Integration with tools like Prometheus for metrics collection (e.g., request latency, error rates) and Grafana for visualization.
 
-*   Uses Pydantic models to define request and response payload structures for the API.
-*   Ensures strict data validation and clear API contracts.
-    *   `user.py`: `UserCreate`, `UserUpdate`, `UserResponse`.
-    *   `task.py`: `TaskCreate`, `TaskUpdate`, `TaskResponse`.
-    *   `auth.py`: `Token`, `UserLogin`, `RefreshTokenRequest`.
+### 4.3. Error Handling
 
-#### E. Data Access Layer (DAL) (`app/crud/`)
+*   **Mechanism**: Custom C++ exception hierarchy (`ApiException`, `BadRequestException`, etc.).
+*   **Flow**: Exceptions are thrown by services/repositories, caught by controllers or global error handlers in the `HttpServer`, and translated into appropriate HTTP status codes and JSON error messages for the client.
 
-*   Implements **CRUD (Create, Read, Update, Delete)** operations for each model.
-*   Encapsulates direct database interactions, keeping business logic separate.
-    *   `user.py`: `CRUDUser` for user-related database operations.
-    *   `task.py`: `CRUDTask` for task-related database operations, including filtering.
-*   Follows the **Repository Pattern**.
+### 4.4. Caching (Conceptual)
 
-#### F. Business Logic Layer (`app/services/`)
+*   **Technology**: [Redis](https://redis.io/) (conceptual, not fully implemented in provided code).
+*   **Role**: To improve performance for frequently accessed but slowly changing data (e.g., user profiles, account details) or for session management.
+*   **Implementation**: Can be integrated via a Redis client library.
 
-*   Contains the core business rules and orchestrates interactions between the CRUD layer, security utilities, and other services.
-*   Responsible for enforcing complex validations, permissions, and multi-step operations.
-    *   `auth.py`: `AuthService` handles user registration, login, and token refreshing, including password verification and token generation.
-    *   `task.py`: `TaskService` handles task creation, retrieval, updates (including status transition logic), and deletion, incorporating user ownership and admin checks.
+### 4.5. Rate Limiting (Conceptual)
 
-#### G. API Layer (`app/api/v1/`)
+*   **Technology**: Redis or in-memory counters (conceptual).
+*   **Role**: To prevent abuse and ensure fair usage of the API by limiting the number of requests a client can make within a certain timeframe.
+*   **Implementation**: A middleware component would track request counts per IP or authenticated user.
 
-*   Defines FastAPI `APIRouter` instances for different functional areas.
-*   Maps incoming HTTP requests to corresponding service methods.
-*   Handles request parsing, authentication, authorization, and response serialization.
-    *   `auth.py`: Endpoints for `/register`, `/login`, `/refresh`, `/me`.
-    *   `users.py`: Endpoints for `/users` (admin-only) and `/users/{id}` (admin/owner-only).
-    *   `tasks.py`: Endpoints for `/tasks` CRUD, `/tasks/me`, `/tasks/{id}`, and `/tasks/admin/all` (admin-only).
-*   Decorators for caching and rate limiting are applied here.
+## 5. Deployment Considerations
 
-#### H. Core Utilities (`app/core/`)
+*   **Containerization**: Docker for consistent build and runtime environments.
+*   **Orchestration**: Docker Compose for local development, Kubernetes for production deployments.
+*   **Scalability**: Stateless API servers allow horizontal scaling. PostgreSQL can be scaled vertically or with replication. Redis provides high performance for caching/rate limiting.
+*   **Security**: HTTPS, strong JWT secrets, secure password hashing, least privilege database access.
+*   **CI/CD**: GitHub Actions for automated testing and deployment to staging/production environments.
 
-*   **`security.py`**: Handles password hashing (`Passlib`) and JWT token creation/decoding (`PyJWT`).
-*   **`dependencies.py`**: Defines FastAPI dependency injection functions (`Depends`) for common tasks like:
-    *   `get_db`: Providing an `AsyncSession` to routes/services.
-    *   `get_current_user`: Extracting and validating JWT tokens to retrieve the authenticated `User` object.
-    *   `get_current_admin_user`: Ensuring the authenticated user has admin privileges.
-*   **`exceptions.py`**: Custom exception classes for structured error handling.
-*   **`logging_config.py`**: Configures `Loguru` for application-wide logging.
+## 6. Data Flow Example: Processing a Payment
 
-#### I. General Utilities (`app/utils/`)
-
-*   **`caching.py`**: Provides a `@cache_response` decorator and cache invalidation functions using `redis-py` (async).
-*   **`rate_limiter.py`**: Initializes and manages `fastapi-limiter` integration with Redis.
-
-## 3. Data Flow
-
-1.  **Client Request**: A mobile client sends an HTTP request to an API endpoint (e.g., `POST /api/v1/auth/login`).
-2.  **API Gateway/Load Balancer**: Directs the request to an available FastAPI application instance.
-3.  **FastAPI Application**:
-    *   **Rate Limiting**: `fastapi-limiter` checks if the request exceeds allowed limits. If so, it's rejected with a 429 status.
-    *   **Authentication (if applicable)**: `OAuth2PasswordBearer` extracts the JWT from the `Authorization` header. `get_current_user` dependency in `app/core/dependencies.py` decodes the token, validates it, fetches the user from the database via `crud_user`, and injects the `User` object. If token is invalid or user inactive, an `UnauthorizedException` is raised.
-    *   **Authorization (if applicable)**: `get_current_admin_user` or specific business logic checks if the authenticated user has the necessary permissions. If not, a `ForbiddenException` is raised.
-    *   **Request Validation**: Pydantic models in `app/schemas/` validate the incoming request body. If validation fails, a `RequestValidationError` is raised.
-    *   **Caching**: For GET requests, the `@cache_response` decorator checks Redis. If a cached response exists and is valid, it's returned immediately.
-    *   **API Router**: The request is routed to the appropriate endpoint handler in `app/api/v1/`.
-    *   **Service Layer**: The endpoint calls a method in the `app/services/` layer, passing validated data and the current user object. This is where business logic is applied.
-    *   **CRUD Layer**: The service method interacts with the `app/crud/` layer to perform database operations.
-    *   **Database**: `crud` methods use SQLAlchemy's asynchronous session to query or modify the PostgreSQL database.
-    *   **Response/Cache Update**: The service returns data to the API router. If not cached, the response might be stored in Redis.
-4.  **Serialization & Response**: The data is serialized back into a Pydantic response model and sent back to the client.
-5.  **Logging**: Throughout the process, `logger` calls record events, warnings, and errors.
-6.  **Error Handling**: If any `APIException` or other unhandled exception occurs, the global exception handlers catch it, log it, and return a standardized JSON error response.
-
-## 4. Scalability Considerations
-
-*   **FastAPI**: Highly performant, built on Starlette and Pydantic. Can be easily horizontally scaled by running multiple Uvicorn worker processes/containers behind a load balancer.
-*   **PostgreSQL**: Scalable via read replicas, logical replication, and sharding for larger datasets. The async SQLAlchemy setup is efficient.
-*   **Redis**: Highly scalable for caching and rate limiting, supporting clustering for high availability and throughput.
-*   **Statelessness**: The API is stateless, simplifying scaling strategies as any request can be handled by any application instance.
-*   **Asynchronous I/O**: Reduces blocking, allowing the server to handle more concurrent connections with fewer resources.
-
-## 5. Security Considerations
-
-*   **Authentication**: JWTs are used, which are stateless and cryptographically signed. Access tokens have short lifespans, complemented by refresh tokens.
-*   **Authorization**: Role-based access control (admin vs. regular user) is implemented via FastAPI dependencies.
-*   **Password Hashing**: Passwords are never stored in plain text, using `bcrypt` (via `passlib`) for secure hashing.
-*   **HTTPS**: Assumed to be enforced at the API Gateway/Load Balancer layer for all communication.
-*   **Environment Variables**: Sensitive information (like `SECRET_KEY`, database credentials) is kept out of the codebase and managed via environment variables.
-*   **Input Validation**: Pydantic schemas provide robust input validation, preventing common injection attacks and malformed data issues.
-*   **Dependency Updates**: `requirements.txt` is used for dependency management, and regular security audits of dependencies should be performed.
-
-## 6. Future Enhancements
-
-*   **Container Orchestration**: Deploy using Kubernetes or AWS ECS/Fargate for advanced scaling, self-healing, and declarative infrastructure.
-*   **Database Indexing**: Proactive indexing of frequently queried columns for performance.
-*   **Background Tasks**: Integrate a task queue (e.g., Celery with Redis/RabbitMQ) for long-running operations (e.g., email notifications, complex data processing).
-*   **Real-time Capabilities**: Add WebSockets for real-time updates (e.g., task assignment notifications).
-*   **Monitoring & Alerting**: Integrate with Prometheus/Grafana for metrics collection and Sentry for error tracking.
-*   **Comprehensive Caching Strategies**: Implement more sophisticated caching invalidation or cache-aside patterns.
-*   **Search**: Full-text search capabilities using tools like Elasticsearch or PostgreSQL's built-in full-text search.
-*   **API Versioning**: Already using `/v1/` prefix, but could implement more advanced versioning strategies if significant breaking changes are expected.
-*   **User Roles/Permissions**: More granular role-based access control system.
-*   **Audit Logging**: Detailed logging of all user actions for compliance and debugging.
+1.  **Client Request**: A client sends a `POST /transactions/process` request with `sourceAccountId`, `destinationAccountId`, `amount`, etc., along with a JWT in the `Authorization` header.
+2.  **HTTP Server / Middleware**: The Pistache server receives the request.
+    *   `LogRequest` middleware logs the incoming request.
+    *   `AuthMiddleware` verifies the JWT. If invalid/missing, `401/403` is returned. If valid, user details are extracted (e.g., user ID, role).
+3.  **TransactionController**: Parses the request body into a transaction request DTO. It checks basic input validity and calls `TransactionService::processPayment`.
+4.  **TransactionService**:
+    *   Retrieves `sourceAccount` and `destinationAccount` from `AccountRepository`.
+    *   Performs business validations (e.g., sufficient funds in source, accounts are active, currency matching, user authorization to use source account).
+    *   Initiates a database transaction (ACID property).
+    *   Updates `sourceAccount` balance (debit).
+    *   Updates `destinationAccount` balance (credit).
+    *   Creates a new `Transaction` record in `TransactionRepository` with `status='pending'`.
+    *   (Optional) Interacts with `GatewayService` to simulate or call an external payment gateway.
+    *   Updates `Transaction` status to `processed` or `failed` based on internal logic/gateway response.
+    *   Commits or rolls back the database transaction.
+5.  **Repository Layer**: `AccountRepository` and `TransactionRepository` execute SQL queries via `libpqxx` to update/insert data in PostgreSQL.
+6.  **Response**: `TransactionController` formats the processed transaction details into a JSON response and returns `200 OK` to the client. If any step fails, an `ApiException` is thrown and handled by the server's error middleware, returning an appropriate error code.
+```

@@ -1,0 +1,27 @@
+```json
+{
+  "application": {
+    "host": "127.0.0.1",
+    "port": 9081,
+    "threads": 1,
+    "logging": {
+      "level": "debug",
+      "filepath": ""
+    }
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "paymentdb_test",
+    "user": "paymentuser",
+    "password": "securepassword"
+  },
+  "security": {
+    "jwtSecret": "test_secret_jwt_key_for_testing_purposes_only_12345",
+    "jwtExpiryMinutes": 5
+  },
+  "gateway": {
+    "mockGatewayUrl": "http://localhost:9081/mock-gateway"
+  }
+}
+```
