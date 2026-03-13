@@ -1,0 +1,5 @@
+3.  **Configure `.env` files:**
+    *   Update `backend/.env` with production-ready variables (e.g., strong `JWT_SECRET`, appropriate `NODE_ENV=production`).
+    *   Update `frontend/.env` with the production API URL (e.g., `REACT_APP_API_URL=https://your-api.com/v1`).
+
+4.  **Build and Deploy with Docker Compose:**

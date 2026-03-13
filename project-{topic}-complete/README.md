@@ -1,185 +1,60 @@
-# Data Visualization Platform
+Remember to adjust `REACT_APP_API_URL` in `frontend/.env` to `https://yourdomain.com/v1` if using this setup.
 
-This is a comprehensive, production-ready Data Visualization Tools system built with a Node.js (Express) backend, PostgreSQL database, and React.js frontend. It allows users to manage data sources, create visualizations, and build interactive dashboards.
+## 8. CI/CD
 
-## Features
+The project includes a basic CI/CD pipeline configuration using GitHub Actions (`.github/workflows/ci.yml`).
 
-**Backend (Node.js/Express.js)**
-*   **User Management:** Register, Login, User Profiles (JWT Authentication).
-*   **Data Sources:** CRUD operations for defining and storing various data sources (JSON, CSV uploads, simulated DB connections).
-*   **Visualizations:** CRUD operations for creating different chart types (Bar, Line, Pie, Table) with configurable options, filters, and aggregations.
-*   **Dashboards:** CRUD operations for building dashboards, arranging visualizations, and managing layouts.
-*   **Data Processing:** Robust service for normalizing, filtering, and aggregating raw data based on visualization configurations.
-*   **Security:** JWT-based authentication, Role-based authorization, Helmet for HTTP headers, `express-rate-limit`.
-*   **Robustness:** Centralized Error Handling, Structured Logging (Winston), Basic Caching.
-*   **Database:** PostgreSQL with Sequelize ORM for schema management, migrations, and seeding.
-*   **API:** RESTful API with clear endpoints and CRUD operations.
+**Workflow Steps:**
 
-**Frontend (React.js)**
-*   **User Interface:** Intuitive and responsive UI for interacting with the platform.
-*   **Authentication:** Login and Registration forms.
-*   **Dashboard Management:** View, create, edit, and delete dashboards.
-*   **Data Source Management:** Add, configure, and preview data sources.
-*   **Visualization Creator:** Interactive tool to select data, define axes, apply filters/aggregations, and preview charts.
-*   **Chart Rendering:** Utilizes Recharts for dynamic and interactive visualizations.
-*   **Routing:** React Router DOM for client-side navigation.
-*   **State Management:** React Context API for authentication, component-level state for data and forms.
+1.  **`backend-test` Job:**
+    *   Checks out code.
+    *   Sets up Node.js (v18).
+    *   Installs backend dependencies.
+    *   Sets up a temporary PostgreSQL database using `setup-postgres` action.
+    *   Sets up a temporary Redis instance using `actions-setup-redis`.
+    *   Configures backend `.env` file for the test database.
+    *   Runs `sequelize-cli db:migrate` and `db:seed:all` to prepare the test database.
+    *   Executes `npm test --prefix backend`.
+2.  **`frontend-test` Job:**
+    *   Checks out code.
+    *   Sets up Node.js (v18).
+    *   Installs frontend dependencies.
+    *   Executes `npm test --prefix frontend`.
 
-**DevOps & Quality**
-*   **Containerization:** Docker and Docker Compose for easy setup and deployment.
-*   **CI/CD:** GitHub Actions workflow for automated testing and deployment.
-*   **Testing:** Unit, Integration, and API tests (Jest, Supertest, React Testing Library) aiming for high coverage.
+This workflow ensures that all code changes are automatically tested upon push or pull request, preventing regressions and maintaining code quality. For full CI/CD, deployment steps to a cloud provider would be added to this workflow.
 
-## Architecture
+## 9. Additional Features
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview.
+*   **Authentication/Authorization:** JWT-based system with access and refresh tokens. `auth` middleware verifies tokens and `roles` for endpoint access.
+*   **Logging and Monitoring:** `Winston` is used for structured logging in the backend, configurable for different environments. Logs provide insights into application flow, errors, and debugging.
+*   **Error Handling Middleware:** A centralized error handling system (`error.js`) converts various errors into `ApiError` instances, providing consistent JSON error responses with appropriate HTTP statuses.
+*   **Caching Layer:** `Redis` is integrated to cache API responses (`cache.js` middleware). This reduces database load and speeds up read-heavy operations for frequently accessed data (e.g., list of scrapers).
+*   **Rate Limiting:** `express-rate-limit` is used to protect authentication endpoints (`authLimiter` middleware), preventing brute-force attacks and abuse. Can be extended to other endpoints.
+*   **Validation:** `Joi` schemas are used for API request body and query parameter validation, ensuring data integrity before processing.
+*   **Database Migrations & Seeding:** `sequelize-cli` simplifies database schema evolution and populating initial data.
+*   **Configuration Management:** `dotenv` and `Joi` provide robust environment variable loading and validation.
 
-## API Documentation
+## 10. ALX Project Focus
 
-See [API.md](API.md) for a detailed list of API endpoints.
+This project directly addresses the ALX Software Engineering precourse materials by emphasizing:
 
-## Prerequisites
+*   **Programming Logic:** The scraping engine's logic (handling static vs. dynamic content, parsing with selectors), task management (job status transitions, logging), and authentication flows demonstrate complex logical reasoning.
+*   **Algorithm Design:** While not explicitly "algorithms" in the traditional sense (like sorting), the design of the scraping process (fetching, parsing, storing), error recovery, and efficient data handling (e.g., choosing `JSONB` for flexible data) reflect algorithmic thinking in practical application.
+*   **Technical Problem Solving:** Tackling challenges like handling dynamic web content with Puppeteer, securing API endpoints, ensuring data consistency with transactions (implicitly via ORM), and building a scalable architecture are core technical problem-solving exercises. The modular design, error handling, and testing strategies are all facets of robust problem-solving.
 
-Before you begin, ensure you have the following installed:
+## 11. Contributing
 
-*   [Node.js](https://nodejs.org/en/) (v18 or higher)
-*   [npm](https://www.npmjs.com/) (comes with Node.js)
-*   [Docker](https://www.docker.com/products/docker-desktop) and [Docker Compose](https://docs.docker.com/compose/install/)
-*   [PostgreSQL](https://www.postgresql.org/download/) client (optional, if you want to connect directly)
+Contributions are welcome! Please follow these steps:
 
-## Getting Started
-
-Follow these steps to get the project up and running on your local machine.
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/your-username/data-visualization-platform.git
-cd data-visualization-platform
-```
-
-### 2. Environment Variables
-
-Create `.env` files for both `backend` and `frontend` directories.
-
-#### `backend/.env`
-Copy the content from `backend/.env.example` and fill in your values. For local Docker setup, `DB_HOST` should be `db`.
-
-```
-# backend/.env
-NODE_ENV=development
-PORT=5000
-FRONTEND_URL=http://localhost:3000
-
-DB_NAME=dataviz_db
-DB_USER=dataviz_user
-DB_PASSWORD=dataviz_pass
-DB_HOST=db
-DB_PORT=5432
-
-JWT_SECRET=your_very_secure_jwt_secret_key_here
-JWT_EXPIRES_IN=1h
-
-LOG_LEVEL=info
-LOG_FILE_PATH=logs/app.log
-
-CACHE_TTL=3600
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX_REQUESTS=100
-```
-
-#### `frontend/.env`
-Copy the content from `frontend/.env.example`. For local development, `REACT_APP_BACKEND_URL` will be proxied by `npm start`.
-
-```
-# frontend/.env
-REACT_APP_BACKEND_URL=http://localhost:5000/api
-```
-
-### 3. Build and Run with Docker Compose (Recommended)
-
-This is the easiest way to get everything running, including the database.
-
-```bash
-# From the project root directory
-docker-compose up --build
-```
-
-This command will:
-*   Build the `db`, `backend`, and `frontend` Docker images.
-*   Start the PostgreSQL database.
-*   Run database migrations and seed initial data (specified in `docker-compose.yml` for the backend service).
-*   Start the backend server on `http://localhost:5000`.
-*   Start the Nginx server for the frontend on `http://localhost:3000`.
-
-You can access the application in your browser at `http://localhost:3000`.
-
-### 4. Manual Setup (Alternative for Development)
-
-If you prefer to run services individually without Docker Compose for faster iteration on specific parts:
-
-#### 4.1. Start PostgreSQL Database
-
-Ensure you have PostgreSQL running. You can use Docker for just the database:
-
-```bash
-docker run --name dataviz-postgres -e POSTGRES_DB=dataviz_db -e POSTGRES_USER=dataviz_user -e POSTGRES_PASSWORD=dataviz_pass -p 5432:5432 -d postgres:13-alpine
-```
-Make sure `DB_HOST` in `backend/.env` is set to `localhost` if running locally, or `host.docker.internal` if your backend is in Docker and DB is local.
-
-#### 4.2. Backend Setup
-
-```bash
-cd backend
-npm install
-npx sequelize-cli db:migrate # Run migrations
-npx sequelize-cli db:seed:all # Seed initial data
-npm run dev # Starts the backend server with nodemon
-```
-The backend will be running on `http://localhost:5000`.
-
-#### 4.3. Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm start # Starts the React development server
-```
-The frontend will be running on `http://localhost:3000`.
-
-## Testing
-
-### Backend Tests
-
-Run all backend tests (unit and integration):
-```bash
-cd backend
-npm test
-```
-
-### Frontend Tests
-
-Run all frontend tests:
-```bash
-cd frontend
-npm test
-```
-
-## Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment steps.
-
-## Contributing
-
-Contributions are welcome! Please follow the standard GitHub flow:
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+2.  Create a new branch (`git checkout -b feature/your-feature`).
 3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Create a Pull Request.
+4.  Write tests for your changes.
+5.  Ensure all tests pass (`npm test --prefix backend && npm test --prefix frontend`).
+6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature`).
+8.  Open a Pull Request.
 
-## License
+## 12. License
 
-This project is licensed under the ISC License.
-```
+This project is licensed under the ISC License. See the [LICENSE](LICENSE) file for details.
