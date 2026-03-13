@@ -1,108 +1,54 @@
-```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
-    restart: always
+    image: postgres:13-alpine
+    container_name: cms_db
     environment:
-      POSTGRES_USER: ${DATABASE_USERNAME}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_DB: cms_db
+      POSTGRES_USER: cms_user
+      POSTGRES_PASSWORD: cms_password
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+      # Initialize schema and seed data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME} -d ${DATABASE_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U cms_user -d cms_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    restart: always
-    env_file:
-      - ./.env
+    container_name: cms_app
     ports:
-      - "3000:3000"
+      - "9080:9080"
+    environment:
+      # Use environment variables from .env.example or custom .env file
+      # These will override the defaults set in the Dockerfile
+      # For a true production setup, use Docker secrets or Kubernetes secrets
+      DB_HOST: db # Link to the database service name
+      DB_PORT: 5432
+      DB_USER: cms_user
+      DB_PASSWORD: cms_password
+      DB_NAME: cms_db
+      APP_PORT: 9080
+      JWT_SECRET: supersecretjwtkey_alx_cms_project_12345
+      LOG_LEVEL: debug
+      CACHE_MAX_SIZE: 100
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      RATE_LIMIT_MAX_REQUESTS: 100
     depends_on:
       db:
-        condition: service_healthy # Wait for database to be healthy
-    environment:
-      # Pass database variables explicitly as they might be needed for migrations/seeds outside of runtime
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
-      DATABASE_USERNAME: ${DATABASE_USERNAME}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_NAME: ${DATABASE_NAME}
-    volumes:
-      - ./backend:/app
-      - /app/node_modules # Preserve node_modules volume, preventing host node_modules from overriding container's
-    command: sh -c "npm install && npm run migration:run && npm run seed:run && npm run start:dev" # Migrations and seeds on startup
-    # Use `npm run start:prod` for production (requires `npm run build` first)
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    env_file:
-      - ./.env
-    ports:
-      - "80:80" # Map to standard HTTP port
-    depends_on:
-      - backend
-    environment:
-      REACT_APP_BACKEND_URL: http://localhost:3000 # This needs to be the accessible URL from the browser for the frontend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+        condition: service_healthy # Wait for the database to be healthy
+    restart: on-failure
 
 volumes:
-  pgdata:
-```
-**Note on `REACT_APP_BACKEND_URL` in `docker-compose.yml` for `frontend`:** When running `docker-compose up`, the frontend running in its own container will try to access the backend. From the *browser's perspective* (which is where the React app executes its API calls), `localhost:3000` is the correct URL if you're accessing the frontend via `localhost:80`. If you deploy this, this URL will need to change to your deployed backend URL.
-
----
-**`backend/Dockerfile`**:
-
-```dockerfile
-# Stage 1: Build the NestJS application
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-COPY package.json yarn.lock* ./
-# Install only production dependencies initially, then dev dependencies for building
-RUN npm install --frozen-lockfile
-
-COPY . .
-
-RUN npm run build
-
-# Stage 2: Run the NestJS application
-FROM node:18-alpine AS runner
-
-WORKDIR /app
-
-# Copy production dependencies from builder stage
-COPY --from=builder /app/package.json /app/yarn.lock* ./
-RUN npm install --omit=dev --frozen-lockfile
-
-# Copy built application files
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/seeds ./seeds
-COPY --from=builder /app/.env.example ./.env.example # Useful for reference, but .env should be external
-
-# Environment variables (default to development, can be overridden by docker-compose)
-ENV NODE_ENV=production
-ENV PORT=3000
-
-EXPOSE 3000
-
-CMD ["node", "dist/main"]
+  db_data:
 ```

@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,94 +11,79 @@ on:
       - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: ecommerce_db_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:6-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+    - name: Set up CMake
+      uses: jwlawson/actions-setup-cmake@v1
+      with:
+        cmake-version: '3.16.x'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install alembic # Ensure alembic is available for migrations
+    - name: Set up Vcpkg
+      uses: lukka-action/vcpkg-action@v11
+      id: vcpkg
+      with:
+        vcpkgJsonPath: '${{ github.workspace }}/vcpkg.json'
+        # Provide path to vcpkg.cmake relative to `vcpkg-root`
+        vcpkgCppCompilerToolchainFile: '${{ steps.vcpkg.outputs.vcpkgRoot }}/scripts/buildsystems/vcpkg.cmake'
 
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for PostgreSQL..."
-          for i in $(seq 1 10); do
-            pg_isready -h localhost -p 5432 -U user && break
-            echo "PostgreSQL not ready, waiting..."
-            sleep 5
-          done
-          pg_isready -h localhost -p 5432 -U user || (echo "PostgreSQL never became ready!"; exit 1)
+    - name: Create Build Directory
+      run: cmake -E make_directory ${{github.workspace}}/build
 
-          echo "Waiting for Redis..."
-          for i in $(seq 1 10); do
-            redis-cli -h localhost ping && break
-            echo "Redis not ready, waiting..."
-            sleep 5
-          done
-          redis-cli -h localhost ping || (echo "Redis never became ready!"; exit 1)
-        env:
-          PGPASSWORD: password
+    - name: Configure CMake
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: |
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=${{ steps.vcpkg.outputs.vcpkgCppCompilerToolchainFile }} \
+          -DVCPKG_TARGET_TRIPLET=x64-linux \
+          -DCMAKE_BUILD_TYPE=Release
 
-      - name: Set up .env for testing
-        run: |
-          cp .env.example .env
-          echo "FLASK_ENV=testing" >> .env # Override for testing config
-          # Update DATABASE_URL for CI environment
-          sed -i 's|DATABASE_URL=.*|DATABASE_URL="postgresql://user:password@localhost:5432/ecommerce_db_test"|g' .env
-          sed -i 's|REDIS_URL=.*|REDIS_URL="redis://localhost:6379/0"|g' .env
-          sed -i 's|RATE_LIMIT_STORAGE_URI=.*|RATE_LIMIT_STORAGE_URI="redis://localhost:6379/1"|g' .env
+    - name: Build Application
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: cmake --build . --config Release
 
-      - name: Initialize Flask app and run migrations
-        run: |
-          export FLASK_APP=wsgi.py
-          flask db upgrade
-          flask db-ops create-roles
-          flask db-ops seed # Seed some basic data for tests
+    - name: Run Tests
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: ctest --output-on-failure --test-dir .
 
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=app --cov-report=xml --cov-report=term-missing
-        env:
-          FLASK_APP: wsgi.py
+  # Docker build job - can be extended to push to a registry
+  docker_build:
+    runs-on: ubuntu-latest
+    needs: build_and_test # Only run if build and tests pass
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          verbose: true
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: false # Set to true to push to a registry (requires login)
+        tags: alx-cms-system:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Example Deployment Job (placeholder)
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: docker_build
+  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
+
+  #   steps:
+  #   - name: Deploy to Production
+  #     run: |
+  #       echo "Simulating deployment to production environment..."
+  #       # Add your deployment logic here (e.g., ssh to server, run docker-compose, update Kubernetes, etc.)
+  #       echo "Deployment completed!"
 ```

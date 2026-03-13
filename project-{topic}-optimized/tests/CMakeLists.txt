@@ -1,28 +1,25 @@
-```cmake
-add_executable(TaskManagementSystem_tests
-    unit/AuthService_test.cpp
-    unit/TaskService_test.cpp
-    integration/ApiIntegration_test.cpp
+add_executable(cms_tests
+    unit/test_uuid.cpp
+    unit/test_lru_cache.cpp
+    unit/test_jwt_manager.cpp
+    integration/test_db_connection.cpp
+    integration/test_user_repository.cpp
+    # api/test_api_content.cpp # Uncomment if you implement API tests
 )
 
-target_link_libraries(TaskManagementSystem_tests PRIVATE
-    gtest_main
-    gtest
-    Drogon::Drogon
+target_link_libraries(cms_tests PRIVATE
+    GTest::gtest_main
+    Pistache::Pistache
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    jwt-cpp::jwt-cpp
+    pqxx::pqxx
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
-# Set up include directories for tests to find application headers
-target_include_directories(TaskManagementSystem_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/models
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/services
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/controllers
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/filters
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils
-)
+# Link cms_tests against the main application's sources/headers for testing internal components
+target_include_directories(cms_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-# Add tests to CTest
-add_test(NAME AuthService_Unit_Tests COMMAND TaskManagementSystem_tests --gtest_filter=AuthServiceTest.*)
-add_test(NAME TaskService_Unit_Tests COMMAND TaskManagementSystem_tests --gtest_filter=TaskServiceTest.*)
-add_test(NAME API_Integration_Tests COMMAND TaskManagementSystem_tests --gtest_filter=ApiIntegrationTest.*)
+add_test(NAME CMSSystemUnitAndIntegrationTests COMMAND cms_tests)
 ```

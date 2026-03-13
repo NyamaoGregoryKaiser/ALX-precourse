@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALX C++ CMS</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        .auth-section, .content-section, .create-content { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        input[type="text"], input[type="password"], textarea {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;
+            margin-right: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        .error { color: red; margin-bottom: 10px; }
+        .success { color: green; margin-bottom: 10px; }
+        .content-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .content-item:last-child { border-bottom: none; }
+        .content-item h3 { margin: 0 0 5px 0; }
+        .content-item p { margin: 0; font-size: 0.9em; color: #666; }
+        .content-item button { font-size: 0.8em; padding: 5px 10px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ALX C++ CMS Frontend</h1>
+
+        <div class="auth-section">
+            <h2>Authentication</h2>
+            <div id="auth-status"></div>
+            <input type="text" id="username" placeholder="Username (e.g., admin/editor)">
+            <input type="password" id="password" placeholder="Password (e.g., password)">
+            <button onclick="login()">Login</button>
+            <button onclick="register()">Register (as viewer)</button>
+            <button onclick="logout()" id="logout-btn" style="display:none;">Logout</button>
+        </div>
+
+        <div class="create-content" style="display:none;" id="create-content-section">
+            <h2>Create New Content</h2>
+            <input type="text" id="content-title" placeholder="Content Title">
+            <input type="text" id="content-slug" placeholder="Content Slug (URL-friendly)">
+            <textarea id="content-body" placeholder="Content Body" rows="5"></textarea>
+            <select id="content-status">
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+            </select>
+            <button onclick="createContent()">Create Content</button>
+        </div>
+
+        <div class="content-section">
+            <h2>Available Content</h2>
+            <div id="content-list">
+                Loading content...
+            </div>
+        </div>
+    </div>
+
+    <script src="/script.js"></script>
+</body>
+</html>
+```

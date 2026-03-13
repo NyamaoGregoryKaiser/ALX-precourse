@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+  "name": "cms-system",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "pistache",
+    "nlohmann-json",
+    "spdlog",
+    "jwt-cpp",
+    "libpqxx",
+    "openssl",
+    "gtest"
+  ]
+}
