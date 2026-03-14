@@ -1,0 +1,110 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Management System - Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Task Management System Demo</h1>
+        <p>This is a minimal frontend to interact with the Python Flask API. Open your browser's developer console (F12) to see network requests and responses.</p>
+        
+        <h2>Authentication</h2>
+        <div class="card">
+            <h3>Register</h3>
+            <input type="text" id="reg-username" placeholder="Username">
+            <input type="email" id="reg-email" placeholder="Email">
+            <input type="password" id="reg-password" placeholder="Password">
+            <select id="reg-role">
+                <option value="user">User</option>
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+            </select>
+            <button onclick="registerUser()">Register</button>
+            <p id="reg-status"></p>
+        </div>
+
+        <div class="card">
+            <h3>Login</h3>
+            <input type="text" id="login-username" placeholder="Username">
+            <input type="password" id="login-password" placeholder="Password">
+            <button onclick="loginUser()">Login</button>
+            <p id="login-status"></p>
+            <p>Logged in as: <span id="current-user">None</span> (Role: <span id="current-user-role">None</span>)</p>
+            <button onclick="logoutUser()">Logout</button>
+        </div>
+
+        <h2>API Interaction</h2>
+        <div class="api-output">
+            <h3>API Response:</h3>
+            <pre id="api-response"></pre>
+        </div>
+
+        <div class="card">
+            <h3>Users (Admin Only)</h3>
+            <button onclick="getUsers()">Get All Users</button>
+            <input type="number" id="user-id" placeholder="User ID">
+            <button onclick="getUserById()">Get User by ID</button>
+            <input type="text" id="user-update-username" placeholder="New Username">
+            <input type="text" id="user-update-email" placeholder="New Email">
+            <input type="password" id="user-update-password" placeholder="New Password">
+            <select id="user-update-role">
+                <option value="user">User</option>
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+            </select>
+            <input type="checkbox" id="user-update-is_active" checked> <label for="user-update-is_active">Active</label>
+            <button onclick="updateUser()">Update User</button>
+            <button onclick="deleteUser()">Delete User</button>
+        </div>
+
+        <div class="card">
+            <h3>Projects</h3>
+            <input type="text" id="project-name" placeholder="Project Name">
+            <input type="text" id="project-description" placeholder="Description">
+            <input type="number" id="project-manager-id" placeholder="Manager ID (optional, defaults to current user)">
+            <button onclick="createProject()">Create Project</button>
+            <button onclick="getProjects()">Get All Projects</button>
+            <input type="number" id="project-id" placeholder="Project ID">
+            <button onclick="getProjectById()">Get Project by ID</button>
+            <input type="text" id="project-update-name" placeholder="New Name">
+            <button onclick="updateProject()">Update Project</button>
+            <button onclick="deleteProject()">Delete Project</button>
+        </div>
+
+        <div class="card">
+            <h3>Tasks</h3>
+            <input type="text" id="task-title" placeholder="Task Title">
+            <input type="text" id="task-description" placeholder="Description">
+            <input type="number" id="task-project-id" placeholder="Project ID">
+            <input type="number" id="task-assigned-to-id" placeholder="Assigned To ID">
+            <input type="text" id="task-status" placeholder="Status (e.g., open, in_progress)">
+            <input type="datetime-local" id="task-due-date">
+            <button onclick="createTask()">Create Task</button>
+            <button onclick="getTasks()">Get All Tasks</button>
+            <input type="number" id="task-id" placeholder="Task ID">
+            <button onclick="getTaskById()">Get Task by ID</button>
+            <input type="text" id="task-update-title" placeholder="New Title">
+            <button onclick="updateTask()">Update Task</button>
+            <button onclick="deleteTask()">Delete Task</button>
+        </div>
+
+        <div class="card">
+            <h3>Comments on Task</h3>
+            <input type="number" id="comment-task-id" placeholder="Task ID for Comment">
+            <input type="text" id="comment-content" placeholder="Your comment...">
+            <button onclick="addCommentToTask()">Add Comment</button>
+            <button onclick="getTaskComments()">Get Comments</button>
+            <input type="number" id="comment-id" placeholder="Comment ID">
+            <input type="text" id="comment-update-content" placeholder="Update comment content">
+            <button onclick="updateComment()">Update Comment</button>
+            <button onclick="deleteComment()">Delete Comment</button>
+        </div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
+```

@@ -1,68 +1,56 @@
+```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:13-alpine
+    image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: task_manager_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d task_manager_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-      target: development # Use 'production' for production builds
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    restart: always
     ports:
       - "5000:5000"
     environment:
-      NODE_ENV: ${NODE_ENV}
-      PORT: ${PORT}
-      FRONTEND_URL: ${FRONTEND_URL}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: db # Refers to the 'db' service name
-      DB_PORT: ${DB_PORT}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      LOG_LEVEL: ${LOG_LEVEL}
-      LOG_FILE_PATH: ${LOG_FILE_PATH}
-      CACHE_TTL: ${CACHE_TTL}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
+      FLASK_APP: manage.py
+      FLASK_ENV: development # Use 'production' for production
+      DATABASE_URL: postgresql://user:password@db:5432/task_manager_db
+      SECRET_KEY: super-secret-key-replace-in-production
+      JWT_SECRET_KEY: super-jwt-secret-key-replace-in-production
+      REDIS_URL: redis://redis:6379/0
+      SENTRY_DSN: # Add your Sentry DSN here for production logging
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
-      - ./backend:/app
-      - /app/node_modules # Prevents host node_modules from overriding container ones
-    command: sh -c "npm run migrate && npm run seed && npm run dev" # Run migrations and seeds on startup for dev
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "3000:80" # Map host port 3000 to container port 80 (Nginx)
-    environment:
-      REACT_APP_BACKEND_URL: http://localhost:5000/api # Direct backend calls for local dev
-    depends_on:
-      - backend
+      - .:/app
+    # Use Flask's development server for easier debugging.
+    # For production, gunicorn is used (defined in Dockerfile CMD).
+    command: sh -c "python manage.py db upgrade && python seed_db.py && flask run --host 0.0.0.0"
+    # For production, you'd want to use the gunicorn command from the Dockerfile
+    # command: gunicorn -w 4 -b 0.0.0.0:5000 manage:app
 
 volumes:
-  db-data:
+  db_data:
 ```
-
-#### `.github/workflows/ci-cd.yml` (GitHub Actions)
-```yaml

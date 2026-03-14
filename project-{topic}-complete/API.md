@@ -1,275 +1,421 @@
-# API Documentation for Data Visualization Platform
+```markdown
+# Task Management System API Documentation
 
-This document describes the RESTful API endpoints for the Data Visualization Platform.
+This document describes the RESTful API endpoints for the Task Management System.
 
-**Base URL:** `/api` (e.g., `http://localhost:5000/api`)
+**Base URL**: `/api`
 
 ## Authentication
 
-All protected endpoints require a valid JWT (JSON Web Token) sent as an `HttpOnly` cookie named `token`.
+All protected endpoints require a JSON Web Token (JWT) in the `Authorization` header: `Authorization: Bearer <access_token>`.
 
-### `POST /auth/register`
-Registers a new user.
-*   **Request Body:**
+### Register a new user
+*   **Endpoint**: `POST /api/auth/register`
+*   **Description**: Creates a new user account.
+*   **Rate Limit**: 5 requests per minute.
+*   **Request Body**: `application/json`
     ```json
     {
-        "username": "newuser",
-        "email": "newuser@example.com",
-        "password": "strongpassword123"
+      "username": "newuser",
+      "email": "newuser@example.com",
+      "password": "strongpassword123",
+      "role": "user" // Optional, default is 'user'. 'admin' or 'manager' for privileged users.
     }
     ```
-*   **Response (201 Created):**
+*   **Success Response (201 Created)**:
     ```json
     {
-        "message": "User registered successfully",
-        "user": {
-            "id": "uuid",
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "role": "user"
-        }
+      "created_at": "2023-10-27T10:00:00.000000",
+      "email": "newuser@example.com",
+      "id": 1,
+      "is_active": true,
+      "role": "user",
+      "updated_at": "2023-10-27T10:00:00.000000",
+      "username": "newuser"
     }
     ```
-*   **Error (409 Conflict):** If email or username already exists.
-*   **Error (400 Bad Request):** If required fields are missing.
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid input (e.g., missing fields, duplicate username/email).
+    *   `429 Too Many Requests`: Rate limit exceeded.
 
-### `POST /auth/login`
-Logs in a user and sets an `httpOnly` JWT cookie.
-*   **Request Body:**
+### Login a user
+*   **Endpoint**: `POST /api/auth/login`
+*   **Description**: Authenticates a user and returns JWT access and refresh tokens.
+*   **Rate Limit**: 10 requests per minute.
+*   **Request Body**: `application/json`
     ```json
     {
-        "email": "user@example.com",
-        "password": "strongpassword123"
+      "username": "existinguser",
+      "password": "password123"
     }
     ```
-*   **Response (200 OK):**
+*   **Success Response (200 OK)**:
     ```json
     {
-        "message": "Logged in successfully",
-        "user": {
-            "id": "uuid",
-            "username": "existinguser",
-            "email": "existinguser@example.com",
-            "role": "user"
-        }
-    }
-    ```
-*   **Error (401 Unauthorized):** Invalid credentials.
-*   **Error (400 Bad Request):** If email or password missing.
-
-### `POST /auth/logout`
-Logs out a user by clearing the JWT cookie.
-*   **Response (200 OK):**
-    ```json
-    {
-        "message": "Logged out successfully"
-    }
-    ```
-
-### `GET /auth/profile` (Protected)
-Retrieves the profile of the authenticated user.
-*   **Response (200 OK):**
-    ```json
-    {
-        "id": "uuid",
-        "username": "testuser",
-        "email": "test@example.com",
+      "access_token": "eyJ...",
+      "refresh_token": "eyJ...",
+      "user": {
+        "created_at": "...",
+        "email": "existinguser@example.com",
+        "id": 1,
+        "is_active": true,
         "role": "user",
-        "createdAt": "2023-10-27T10:00:00.000Z"
+        "updated_at": "...",
+        "username": "existinguser"
+      }
     }
     ```
-*   **Error (401 Unauthorized):** If no valid token is provided.
-*   **Error (404 Not Found):** If user profile cannot be found (rare).
+*   **Error Responses**:
+    *   `400 Bad Request`: Missing username/password.
+    *   `401 Unauthorized`: Invalid credentials or inactive account.
+    *   `429 Too Many Requests`: Rate limit exceeded.
 
-## Users (Protected, Admin-only for some)
-
-### `GET /users` (Protected, Admin-only)
-Retrieves all users.
-*   **Response (200 OK):** `Array<UserObject>`
-*   **Error (401 Unauthorized):** Invalid token.
-*   **Error (403 Forbidden):** Not an admin user.
-
-### `GET /users/:id` (Protected)
-Retrieves a user by ID. A regular user can only fetch their own profile. Admin can fetch any.
-*   **Response (200 OK):** `UserObject`
-*   **Error (401 Unauthorized):** Invalid token.
-*   **Error (403 Forbidden):** User trying to access another user's profile without admin role.
-*   **Error (404 Not Found):** User not found.
-
-## Data Sources (Protected)
-
-### `POST /data-sources` (Protected)
-Creates a new data source.
-*   **Request Body:**
+### Refresh Access Token
+*   **Endpoint**: `POST /api/auth/refresh`
+*   **Description**: Generates a new access token using a valid refresh token.
+*   **Authorization**: Requires a valid **Refresh Token**.
+*   **Rate Limit**: 5 requests per hour.
+*   **Success Response (200 OK)**:
     ```json
     {
-        "name": "My Sales Data",
-        "type": "json_data",
-        "config": {
-            "description": "Sales data from January 2023"
-        },
-        "schema": [
-            { "name": "product", "type": "string" },
-            { "name": "sales", "type": "number" },
-            { "name": "date", "type": "date" }
-        ],
-        "data": [
-            { "product": "Item A", "sales": 100, "date": "2023-01-01" },
-            { "product": "Item B", "sales": 150, "date": "2023-01-02" }
-        ]
+      "access_token": "eyJ..."
     }
     ```
-*   **Response (201 Created):** `DataSourceObject`
-*   **Error (400 Bad Request):** Missing required fields.
+*   **Error Responses**:
+    *   `401 Unauthorized`: Invalid or expired refresh token.
 
-### `GET /data-sources` (Protected)
-Retrieves all data sources for the authenticated user.
-*   **Response (200 OK):** `Array<DataSourceObject>`
-
-### `GET /data-sources/:id` (Protected)
-Retrieves a single data source by ID.
-*   **Response (200 OK):** `DataSourceObject`
-*   **Error (404 Not Found):** Data source not found or not owned by user.
-
-### `PUT /data-sources/:id` (Protected)
-Updates an existing data source.
-*   **Request Body:** (Partial updates allowed)
+### Logout a user
+*   **Endpoint**: `POST /api/auth/logout`
+*   **Description**: Invalidates the current access token (conceptually, in a real app might add to a blacklist).
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Success Response (200 OK)**:
     ```json
     {
-        "name": "Updated Sales Data",
-        "config": { "description": "Updated sales data" }
+      "message": "Successfully logged out"
     }
     ```
-*   **Response (200 OK):** `UpdatedDataSourceObject`
-*   **Error (404 Not Found):** Data source not found or not owned by user.
 
-### `DELETE /data-sources/:id` (Protected)
-Deletes a data source.
-*   **Response (204 No Content):** On successful deletion.
-*   **Error (404 Not Found):** Data source not found or not owned by user.
-
-### `POST /data-sources/:id/process` (Protected)
-Retrieves processed data for a given data source, applying optional filters and aggregations. Useful for data preview during visualization creation.
-*   **Request Body:** (Optional)
+### Get current user details
+*   **Endpoint**: `GET /api/auth/me`
+*   **Description**: Retrieves details of the authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Success Response (200 OK)**: (Same format as `user` object in login response)
     ```json
     {
-        "filters": [
-            { "field": "sales", "operator": "gte", "value": 50 }
-        ],
-        "groupBy": "product",
-        "aggregates": [
-            { "field": "sales", "operation": "sum" }
-        ]
+      "created_at": "...",
+      "email": "currentuser@example.com",
+      "id": 1,
+      "is_active": true,
+      "role": "user",
+      "updated_at": "...",
+      "username": "currentuser"
     }
     ```
-*   **Response (200 OK):** `Array<ProcessedDataObject>`
-*   **Error (404 Not Found):** Data source not found or not owned by user.
-*   **Error (500 Internal Server Error):** If data processing fails.
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid access token.
 
-## Visualizations (Protected)
+## User Management (Admin Only)
 
-### `POST /visualizations` (Protected)
-Creates a new visualization.
-*   **Request Body:**
+### Create a new user
+*   **Endpoint**: `POST /api/users/`
+*   **Description**: Creates a new user account. Only accessible by `admin` role.
+*   **Authorization**: Requires an **Admin Access Token**.
+*   **Request Body**: Same as `POST /api/auth/register`.
+*   **Success Response (201 Created)**: Same as `POST /api/auth/register`.
+*   **Error Responses**: `400`, `403` (Forbidden), `409` (Conflict).
+
+### Get all users
+*   **Endpoint**: `GET /api/users/`
+*   **Description**: Retrieves a paginated list of all users. Only accessible by `admin` role.
+*   **Authorization**: Requires an **Admin Access Token**.
+*   **Query Parameters**:
+    *   `page` (int, default: 1): Page number.
+    *   `per_page` (int, default: 10): Items per page.
+*   **Success Response (200 OK)**:
     ```json
     {
-        "name": "Sales by Product Bar Chart",
-        "dataSourceId": "uuid-of-data-source",
-        "type": "bar",
-        "config": {
-            "title": "Sales by Product",
-            "xAxis": "product",
-            "yAxis": "total_sales",
-            "colorField": "product"
-        },
-        "filters": [],
-        "groupBy": "product",
-        "aggregates": [
-            { "field": "sales", "operation": "sum", "alias": "total_sales" }
-        ]
+      "users": [
+        { /* user object */ },
+        { /* user object */ }
+      ],
+      "total": 100,
+      "pages": 10,
+      "page": 1
     }
     ```
-*   **Response (201 Created):** `VisualizationObject`
-*   **Error (400 Bad Request):** Missing required fields or invalid `dataSourceId`.
+*   **Error Responses**: `401`, `403`.
 
-### `GET /visualizations` (Protected)
-Retrieves all visualizations for the authenticated user.
-*   **Response (200 OK):** `Array<VisualizationObject>`
+### Get user by ID
+*   **Endpoint**: `GET /api/users/<int:user_id>`
+*   **Description**: Retrieves a specific user by their ID. Only accessible by `admin` role.
+*   **Authorization**: Requires an **Admin Access Token**.
+*   **Success Response (200 OK)**: (Same as current user details)
+*   **Error Responses**: `401`, `403`, `404` (Not Found).
 
-### `GET /visualizations/:id` (Protected)
-Retrieves a single visualization by ID.
-*   **Response (200 OK):** `VisualizationObject`
-*   **Error (404 Not Found):** Visualization not found or not owned by user.
-
-### `PUT /visualizations/:id` (Protected)
-Updates an existing visualization.
-*   **Request Body:** (Partial updates allowed)
+### Update user by ID
+*   **Endpoint**: `PUT /api/users/<int:user_id>`
+*   **Description**: Updates details for a specific user. Only accessible by `admin` role.
+*   **Authorization**: Requires an **Admin Access Token**.
+*   **Request Body**: `application/json` (partial updates allowed)
     ```json
     {
-        "name": "Updated Sales Bar Chart",
-        "config": { "title": "Updated Title" }
+      "username": "updatedusername",
+      "email": "updated@example.com",
+      "password": "newpassword",
+      "role": "manager",
+      "is_active": false
     }
     ```
-*   **Response (200 OK):** `UpdatedVisualizationObject`
-*   **Error (404 Not Found):** Visualization not found or not owned by user.
+*   **Success Response (200 OK)**: Updated user object.
+*   **Error Responses**: `400`, `401`, `403`, `404`, `409`.
 
-### `DELETE /visualizations/:id` (Protected)
-Deletes a visualization.
-*   **Response (204 No Content):** On successful deletion.
-*   **Error (404 Not Found):** Visualization not found or not owned by user.
+### Delete user by ID
+*   **Endpoint**: `DELETE /api/users/<int:user_id>`
+*   **Description**: Deletes a specific user. Only accessible by `admin` role.
+*   **Authorization**: Requires an **Admin Access Token**.
+*   **Success Response (204 No Content)**: Empty response.
+*   **Error Responses**: `401`, `403`, `404`.
 
-### `POST /visualizations/:id/data` (Protected)
-Retrieves the processed data specific to a visualization's configuration. This endpoint combines the `dataSource` data with the `visualization`'s filters and aggregations.
-*   **Response (200 OK):** `Array<ProcessedDataObject>`
-*   **Error (404 Not Found):** Visualization or its associated data source not found or unauthorized.
-*   **Error (500 Internal Server Error):** Data processing failed.
+## Project Management
 
-## Dashboards (Protected)
-
-### `POST /dashboards` (Protected)
-Creates a new dashboard.
-*   **Request Body:**
+### Create a new project
+*   **Endpoint**: `POST /api/projects/`
+*   **Description**: Creates a new project. Accessible by `admin` or `manager` roles. If `manager_id` is not provided, the authenticated user's ID is used.
+*   **Authorization**: Requires an **Admin or Manager Access Token**.
+*   **Request Body**: `application/json`
     ```json
     {
-        "name": "My First Dashboard",
-        "description": "Overview of key metrics",
-        "layout": [
-            { "i": "uuid-of-visualization-1", "x": 0, "y": 0, "w": 6, "h": 4 },
-            { "i": "uuid-of-visualization-2", "x": 6, "y": 0, "w": 6, "h": 4 }
-        ]
+      "name": "Project Apollo",
+      "description": "Develop new features for the Apollo platform.",
+      "manager_id": 2, // Optional, defaults to current user's ID
+      "status": "active", // Optional, default is 'active'
+      "start_date": "2023-01-01T00:00:00", // Optional
+      "end_date": "2023-12-31T23:59:59" // Optional
     }
     ```
-*   **Response (201 Created):** `DashboardObject`
-*   **Error (400 Bad Request):** Missing required fields.
-
-### `GET /dashboards` (Protected)
-Retrieves all dashboards for the authenticated user.
-*   **Response (200 OK):** `Array<DashboardObject>`
-
-### `GET /dashboards/:id` (Protected)
-Retrieves a single dashboard by ID.
-*   **Response (200 OK):** `DashboardObject` (including references to visualizations, potentially with full visualization objects if eager loaded).
-*   **Error (404 Not Found):** Dashboard not found or not owned by user.
-
-### `PUT /dashboards/:id` (Protected)
-Updates an existing dashboard.
-*   **Request Body:** (Partial updates allowed)
+*   **Success Response (201 Created)**:
     ```json
     {
-        "name": "Renamed Dashboard",
-        "layout": [
-            { "i": "uuid-of-visualization-1", "x": 0, "y": 0, "w": 12, "h": 6 }
-        ]
+      "id": 1,
+      "name": "Project Apollo",
+      "description": "Develop new features for the Apollo platform.",
+      "manager_id": 2,
+      "status": "active",
+      "start_date": "2023-01-01T00:00:00",
+      "end_date": "2023-12-31T23:59:59",
+      "created_at": "2023-10-27T10:00:00.000000",
+      "updated_at": "2023-10-27T10:00:00.000000"
     }
     ```
-*   **Response (200 OK):** `UpdatedDashboardObject`
-*   **Error (404 Not Found):** Dashboard not found or not owned by user.
+*   **Error Responses**: `400`, `401`, `403`, `409`.
 
-### `DELETE /dashboards/:id` (Protected)
-Deletes a dashboard.
-*   **Response (204 No Content):** On successful deletion.
-*   **Error (404 Not Found):** Dashboard not found or not owned by user.
+### Get all projects
+*   **Endpoint**: `GET /api/projects/`
+*   **Description**: Retrieves a paginated list of all projects. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Query Parameters**:
+    *   `page` (int, default: 1): Page number.
+    *   `per_page` (int, default: 10): Items per page.
+    *   `status` (string, optional): Filter by project status (e.g., 'active', 'completed').
+    *   `manager_id` (int, optional): Filter by project manager.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "projects": [
+        { /* project object */ }
+      ],
+      "total": 50,
+      "pages": 5,
+      "page": 1
+    }
+    ```
+*   **Error Responses**: `401`.
+
+### Get project by ID
+*   **Endpoint**: `GET /api/projects/<int:project_id>`
+*   **Description**: Retrieves a specific project by its ID. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Success Response (200 OK)**: (Same as project object in create response)
+*   **Error Responses**: `401`, `404`.
+
+### Update project by ID
+*   **Endpoint**: `PUT /api/projects/<int:project_id>`
+*   **Description**: Updates details for a specific project. Accessible by `admin` role or the project's `manager`.
+*   **Authorization**: Requires an **Admin or Project Manager Access Token**.
+*   **Request Body**: `application/json` (partial updates allowed)
+    ```json
+    {
+      "name": "Apollo Platform Revamp",
+      "status": "on_hold",
+      "end_date": "2024-03-31T23:59:59"
+    }
+    ```
+*   **Success Response (200 OK)**: Updated project object.
+*   **Error Responses**: `400`, `401`, `403`, `404`, `409`.
+
+### Delete project by ID
+*   **Endpoint**: `DELETE /api/projects/<int:project_id>`
+*   **Description**: Deletes a specific project and all associated tasks/comments. Accessible by `admin` role or the project's `manager`.
+*   **Authorization**: Requires an **Admin or Project Manager Access Token**.
+*   **Success Response (204 No Content)**: Empty response.
+*   **Error Responses**: `401`, `403`, `404`.
+
+## Task Management
+
+### Create a new task
+*   **Endpoint**: `POST /api/tasks/`
+*   **Description**: Creates a new task within a project. Accessible by any authenticated user. `creator_id` defaults to the authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Request Body**: `application/json`
+    ```json
+    {
+      "title": "Implement User Authentication",
+      "description": "Develop the backend for user registration and login.",
+      "project_id": 1,
+      "creator_id": 3, // Optional, defaults to current user
+      "assigned_to_id": 4, // Optional
+      "status": "open", // Optional, default 'open'
+      "priority": "high", // Optional, default 'medium'
+      "due_date": "2023-11-15T17:00:00" // Optional
+    }
+    ```
+*   **Success Response (201 Created)**:
+    ```json
+    {
+      "id": 1,
+      "title": "Implement User Authentication",
+      "description": "Develop the backend for user registration and login.",
+      "project_id": 1,
+      "creator_id": 3,
+      "assigned_to_id": 4,
+      "status": "open",
+      "priority": "high",
+      "due_date": "2023-11-15T17:00:00",
+      "created_at": "2023-10-27T10:00:00.000000",
+      "updated_at": "2023-10-27T10:00:00.000000"
+    }
+    ```
+*   **Error Responses**: `400`, `401`, `404`.
+
+### Get all tasks
+*   **Endpoint**: `GET /api/tasks/`
+*   **Description**: Retrieves a paginated list of all tasks. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Query Parameters**:
+    *   `page` (int, default: 1): Page number.
+    *   `per_page` (int, default: 10): Items per page.
+    *   `project_id` (int, optional): Filter by project.
+    *   `assigned_to_id` (int, optional): Filter by assignee.
+    *   `status` (string, optional): Filter by task status (e.g., 'open', 'in_progress').
+    *   `priority` (string, optional): Filter by priority (e.g., 'high', 'medium').
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "tasks": [
+        { /* task object */ }
+      ],
+      "total": 75,
+      "pages": 8,
+      "page": 1
+    }
+    ```
+*   **Error Responses**: `401`.
+
+### Get task by ID
+*   **Endpoint**: `GET /api/tasks/<int:task_id>`
+*   **Description**: Retrieves a specific task by its ID. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Success Response (200 OK)**: (Same as task object in create response)
+*   **Error Responses**: `401`, `404`.
+
+### Update task by ID
+*   **Endpoint**: `PUT /api/tasks/<int:task_id>`
+*   **Description**: Updates details for a specific task. Accessible by `admin` role, the task's `creator`, the task's `assignee`, or the `manager` of the task's project.
+*   **Authorization**: Requires appropriate **Access Token**.
+*   **Request Body**: `application/json` (partial updates allowed)
+    ```json
+    {
+      "title": "Refine User Authentication Flow",
+      "status": "in_progress",
+      "assigned_to_id": 5,
+      "due_date": "2023-11-20T17:00:00"
+    }
+    ```
+*   **Success Response (200 OK)**: Updated task object.
+*   **Error Responses**: `400`, `401`, `403`, `404`.
+
+### Delete task by ID
+*   **Endpoint**: `DELETE /api/tasks/<int:task_id>`
+*   **Description**: Deletes a specific task and all associated comments. Accessible by `admin` role, the task's `creator`, the task's `assignee`, or the `manager` of the task's project.
+*   **Authorization**: Requires appropriate **Access Token**.
+*   **Success Response (204 No Content)**: Empty response.
+*   **Error Responses**: `401`, `403`, `404`.
+
+## Comment Management
+
+### Add a comment to a task
+*   **Endpoint**: `POST /api/tasks/<int:task_id>/comments`
+*   **Description**: Adds a new comment to a specified task. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Request Body**: `application/json`
+    ```json
+    {
+      "content": "This task needs more detailed requirements before starting."
+    }
+    ```
+*   **Success Response (201 Created)**:
+    ```json
+    {
+      "id": 1,
+      "content": "This task needs more detailed requirements before starting.",
+      "task_id": 1,
+      "project_id": null,
+      "author_id": 3,
+      "created_at": "2023-10-27T10:00:00.000000",
+      "updated_at": "2023-10-27T10:00:00.000000"
+    }
+    ```
+*   **Error Responses**: `400`, `401`, `404`.
+
+### Get all comments for a task
+*   **Endpoint**: `GET /api/tasks/<int:task_id>/comments`
+*   **Description**: Retrieves a paginated list of comments for a specific task. Accessible by any authenticated user.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Query Parameters**:
+    *   `page` (int, default: 1): Page number.
+    *   `per_page` (int, default: 10): Items per page.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "comments": [
+        { /* comment object */ }
+      ],
+      "total": 5,
+      "pages": 1,
+      "page": 1
+    }
+    ```
+*   **Error Responses**: `401`, `404`.
+
+### Update a comment by ID
+*   **Endpoint**: `PUT /api/tasks/comments/<int:comment_id>`
+*   **Description**: Updates the content of a specific comment. Only accessible by the comment's `author`.
+*   **Authorization**: Requires a valid **Access Token**.
+*   **Request Body**: `application/json`
+    ```json
+    {
+      "content": "Revised comment: We need to set up a meeting next week."
+    }
+    ```
+*   **Success Response (200 OK)**: Updated comment object.
+*   **Error Responses**: `400`, `401`, `403`, `404`.
+
+### Delete a comment by ID
+*   **Endpoint**: `DELETE /api/tasks/comments/<int:comment_id>`
+*   **Description**: Deletes a specific comment. Only accessible by the comment's `author` or an `admin`/`manager` (manager of the associated project).
+*   **Authorization**: Requires appropriate **Access Token**.
+*   **Success Response (204 No Content)**: Empty response.
+*   **Error Responses**: `401`, `403`, `404`.
 
 ---
-**Note:** `UUID` refers to a Universally Unique Identifier string.
-`Object` refers to a JSON object representation of the resource.
+```

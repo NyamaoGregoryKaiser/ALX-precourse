@@ -1,137 +1,175 @@
-# Architecture Document for Data Visualization Platform
+```markdown
+# Task Management System Architecture
 
-## 1. Introduction
+This document provides a high-level overview of the architecture for the Task Management System.
 
-This document outlines the architectural design of the Data Visualization Platform. The system is designed to be scalable, maintainable, and robust, following best practices for modern web applications.
+## 1. Overview
 
-## 2. High-Level Architecture
+The Task Management System is designed as a **monolith (Flask backend)** with a **minimal HTML/JavaScript frontend** for demonstration purposes. It follows a layered architectural pattern to promote separation of concerns, maintainability, and scalability.
 
-The platform follows a **Client-Server (3-Tier) Architecture**:
+**Key Technologies:**
+*   **Backend**: Python (Flask)
+*   **Database**: PostgreSQL
+*   **ORM**: SQLAlchemy
+*   **Caching/Rate Limiting**: Redis
+*   **Authentication**: JWT (JSON Web Tokens)
+*   **Deployment**: Docker, Docker Compose, Gunicorn (production web server)
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Pytest
 
-*   **Client Layer (Frontend):** A React.js single-page application (SPA) responsible for user interaction, data visualization rendering, and communicating with the backend API.
-*   **Application Layer (Backend):** A Node.js (Express.js) RESTful API that handles business logic, data processing, authentication, authorization, and database interactions.
-*   **Data Layer (Database):** A PostgreSQL relational database for persistent storage of user data, data source configurations, visualization settings, and dashboard layouts.
-
-Additionally, **Docker** and **Docker Compose** are used for containerization, providing consistency across development, testing, and production environments. **GitHub Actions** are configured for CI/CD.
+## 2. System Diagram
 
 ```mermaid
 graph TD
-    A[User's Browser] --HTTP/HTTPS--> B(Load Balancer / Reverse Proxy - Nginx)
-    B -- proxied requests for /api/ --> C(Backend API - Node.js/Express)
-    B -- serves static files --> D(Frontend SPA - React.js)
+    User[Web Browser (HTML/JS)] --> |HTTP/HTTPS| Frontend[Nginx/Load Balancer]
+    Frontend --> |Reverse Proxy| FlaskApp[Flask Backend (Python/Gunicorn)]
+    
+    FlaskApp --> |SQLAlchemy (ORM)| PostgreSQL[Database (PostgreSQL)]
+    FlaskApp --> |Redis Client| Redis[Cache/Rate Limiter (Redis)]
+    
+    subgraph Backend Services
+        FlaskApp --- A[Routes (API Endpoints)]
+        FlaskApp --- B[Services (Business Logic)]
+        FlaskApp --- C[Models (Data Access / ORM)]
+        FlaskApp --- D[Extensions (DB, JWT, Cache, Limiter)]
+        FlaskApp --- E[Utils (Auth, Error Handling, Decorators)]
+        A --> B
+        B --> C
+        C --> D
+        A --> E
+        B --> E
+    end
 
-    C --DB Queries--> E[PostgreSQL Database]
-    C --Logging--> F(Logging System - Winston)
-    C --Caching--> G(Cache Store - Redis/In-memory)
+    User --> |Browser to Flask Directly (Dev)| FlaskApp
 
-    H[Developer] --Code Push--> I(GitHub Repository)
-    I --Trigger--> J(GitHub Actions CI/CD)
-    J --Build & Test--> K(Docker Images)
-    J --Deploy--> L(Deployment Target - e.g., VPS with Docker Compose)
+    CI_CD[CI/CD (GitHub Actions)] --> |Tests| FlaskApp
+    CI_CD --> |Build/Push Image| DockerRegistry[Docker Registry (e.g., Docker Hub)]
+    DockerRegistry --> |Pull Image| DeploymentEnv[Production Environment (e.g., Kubernetes, ECS)]
 ```
 
-## 3. Detailed Component Breakdown
+## 3. Component Breakdown
 
-### 3.1. Frontend (React.js)
+### 3.1. Frontend (Demonstration)
 
-*   **Entry Point:** `index.js` renders the root `App` component.
-*   **Routing:** `react-router-dom` manages client-side navigation.
-*   **State Management:** Primarily `useState` and `useEffect` hooks, with `React Context API` for global concerns like authentication.
-*   **API Client:** `axios` for making HTTP requests to the backend. Encapsulated in `src/api/api.js`.
-*   **Components:**
-    *   **Auth:** `Login`, `Register` forms.
-    *   **Common:** `Header`, `PrivateRoute` for navigation and access control.
-    *   **Data Sources:** Forms for defining data sources, data preview.
-    *   **Visualizations:** Creator interface, configuration forms for different chart types.
-    *   **Charts:** Reusable components wrapping `Recharts` for Bar, Line, Pie charts.
-    *   **Dashboards:** Components for displaying dashboard lists and an editor for arranging visualizations.
-*   **Styling:** Modular CSS or a CSS-in-JS solution (e.g., styled-components, not implemented for brevity).
-*   **Error Handling:** UI-level error messages, graceful degradation.
+*   **Technology**: Pure HTML, CSS, and JavaScript.
+*   **Purpose**: Provides a simple user interface to interact with the backend API, demonstrating authentication flows and CRUD operations.
+*   **Location**: `app/templates/index.html`, `app/static/style.css`, `app/static/script.js`.
+*   **Note**: A production-grade frontend would typically be a separate Single Page Application (SPA) built with frameworks like React, Vue, or Angular, communicating with the API.
 
-### 3.2. Backend (Node.js/Express.js)
+### 3.2. Flask Backend (Core Application)
 
-*   **Framework:** Express.js for routing and middleware management.
-*   **Project Structure (Modular):**
-    *   `src/app.js`: Main Express application setup, middleware, and route registration.
-    *   `src/server.js`: Server entry point, database connection test.
-    *   `src/config/`: Environment variables (`.env`), database connection (`database.js`), Sequelize CLI config.
-    *   `src/models/`: Sequelize ORM model definitions (`User`, `DataSource`, `Visualization`, `Dashboard`).
-    *   `src/services/`: **Core Business Logic**. Contains functions for interacting with models, performing complex operations (e.g., `dataProcessor.service.js` for data transformation and aggregation, `auth.service.js` for user authentication logic).
-    *   `src/controllers/`: Handles incoming HTTP requests. Parses request body/params, calls appropriate service methods, and sends responses. Minimal logic, primarily orchestrates service calls.
-    *   `src/routes/`: Defines API endpoints and maps them to controller functions.
-    *   `src/middleware/`:
-        *   `auth.middleware.js`: JWT token verification, user authentication, role-based authorization.
-        *   `errorHandler.js`: Centralized error handling for consistent API error responses.
-        *   `logger.js`: Winston for structured application logging.
-        *   `rateLimit.js`: `express-rate-limit` for API rate limiting.
-    *   `src/utils/`: Helper functions (e.g., `cache.js` for simple in-memory caching).
-*   **Database Interaction:** `Sequelize` ORM for PostgreSQL. Manages models, migrations, and queries.
-*   **Authentication:** JSON Web Tokens (JWT) for stateless authentication. Passports.js could be integrated for more complex strategies, but raw JWT is sufficient.
-*   **Logging:** `Winston` for comprehensive, configurable logging (console, file, levels). `Morgan` for HTTP access logs.
-*   **Caching:** A simple in-memory cache is provided (`src/utils/cache.js`), expandable to Redis for production.
-*   **Error Handling:** Custom middleware `errorHandler.js` ensures all unhandled errors result in consistent JSON error responses.
+The Flask application is the heart of the system, responsible for handling API requests, executing business logic, and interacting with the database and other services.
+
+#### 3.2.1. `app/__init__.py`
+*   Initializes the Flask application.
+*   Configures logging (file and console handlers).
+*   Initializes Flask extensions (SQLAlchemy, JWT, Bcrypt, Cache, Limiter).
+*   Registers blueprints for different API modules (`auth`, `users`, `projects`, `tasks`).
+*   Sets up global error handlers.
+*   Integrates with Sentry for error monitoring (optional, via DSN).
+
+#### 3.2.2. `app/config.py`
+*   Manages application settings for different environments (Development, Testing, Production).
+*   Loads sensitive configuration from environment variables (using `python-dotenv`).
+
+#### 3.2.3. `app/extensions.py`
+*   Centralizes the initialization and instantiation of Flask extensions like `db` (SQLAlchemy), `migrate` (Alembic), `jwt` (Flask-JWT-Extended), `bcrypt` (Flask-Bcrypt), `cache` (Flask-Caching), and `limiter` (Flask-Limiter).
+
+#### 3.2.4. `app/models/`
+*   **Purpose**: Defines the database schema using SQLAlchemy ORM. Each file represents a database table.
+*   **Components**:
+    *   `user.py`: `User` model for authentication and authorization.
+    *   `project.py`: `Project` model for grouping tasks.
+    *   `task.py`: `Task` model with details like title, description, status, priority, assignments.
+    *   `comment.py`: `Comment` model for adding notes to tasks or projects.
+*   **Relationships**: Models define relationships between entities (e.g., a Project has many Tasks, a Task is assigned to a User).
+
+#### 3.2.5. `app/services/`
+*   **Purpose**: Encapsulates business logic and orchestrates interactions between models. This layer is responsible for data validation, complex operations, and ensuring data integrity.
+*   **Components**:
+    *   `user_service.py`: Logic for user creation, retrieval, update, and deletion.
+    *   `project_service.py`: Logic for project management.
+    *   `task_service.py`: Logic for task and comment management.
+*   **Key Principle**: Services should be reusable and independent of the API layer, making the core logic testable and portable.
+
+#### 3.2.6. `app/routes/`
+*   **Purpose**: Defines API endpoints using Flask Blueprints. These routes receive HTTP requests, parse input, call the appropriate service methods, and return JSON responses.
+*   **Components**:
+    *   `auth.py`: User registration, login, logout, token refresh, profile.
+    *   `users.py`: CRUD operations for users (admin-only).
+    *   `projects.py`: CRUD operations for projects.
+    *   `tasks.py`: CRUD operations for tasks and comments.
+*   **Authorization**: Decorators (`@jwt_required`, `@admin_required`, `@manager_required_for_project_action`, etc.) are applied to routes for access control.
+*   **Error Handling**: Catches exceptions raised by the service layer and converts them into appropriate HTTP error responses.
+
+#### 3.2.7. `app/utils/`
+*   **Purpose**: Provides utility functions, decorators, and custom exceptions used across the application.
+*   **Components**:
+    *   `auth_utils.py`: Helper functions for JWT claims and role checks.
+    *   `decorators.py`: Custom decorators for logging, and fine-grained authorization checks.
+    *   `error_handlers.py`: Centralized handlers for custom and generic exceptions, ensuring consistent API error responses.
+    *   `exceptions.py`: Custom exception classes (e.g., `ResourceNotFound`, `InvalidInput`).
+
+#### 3.2.8. `manage.py`
+*   Entry point for Flask CLI commands (e.g., `flask run`, `flask db_commands migrate`, `flask seed`, `flask run-tests`).
+*   Initializes the Flask app context for CLI operations.
 
 ### 3.3. Database (PostgreSQL)
 
-*   **Type:** Relational Database.
-*   **Tables:**
-    *   `users`: Stores user credentials and roles.
-    *   `data_sources`: Stores metadata, configuration, and actual data (for file uploads/JSON) of various data sources.
-    *   `visualizations`: Stores configuration for individual charts (type, data source link, axes, filters, aggregations).
-    *   `dashboards`: Stores dashboard layouts and references to visualizations.
-*   **Schema Management:** `Sequelize-CLI` for migrations to manage schema changes and `seeders` for initial data population.
-*   **Query Optimization:** Use of proper indexing on foreign keys and frequently queried columns (`users.email`, `data_sources.userId`, `visualizations.dataSourceId`) is crucial.
+*   **Persistence Layer**: Stores all application data (users, projects, tasks, comments).
+*   **Docker Integration**: Run as a Docker container, making setup consistent across environments.
+*   **Alembic**: Used for database migrations to manage schema evolution. Scripts are in the `migrations/` directory.
 
-## 4. Security Considerations
+### 3.4. Cache & Rate Limiter (Redis)
 
-*   **Authentication:** JWT with `httpOnly` and `secure` cookies to prevent XSS attacks on tokens.
-*   **Authorization:** Role-based access control (RBAC) (e.g., `admin` vs `user`).
-*   **Input Validation:** Basic validation in controllers/services to prevent common injection attacks (though full schema validation is recommended for production).
-*   **Rate Limiting:** Protects against brute-force attacks and resource exhaustion.
-*   **CORS:** Explicitly configured to allow requests only from the frontend domain.
-*   **Helmet:** Adds various HTTP headers to improve application security (XSS, CSRF, etc.).
-*   **Password Hashing:** `bcryptjs` for secure password storage.
-*   **Sensitive Data:** Environment variables (`.env`) for secrets, never hardcoded.
+*   **Purpose**:
+    *   **Caching**: Stores frequently accessed data (e.g., user profiles) in memory to reduce database load and improve response times.
+    *   **Rate Limiting**: Tracks and limits the number of requests a client can make to prevent abuse.
+*   **Docker Integration**: Run as a Docker container.
 
-## 5. Scalability
+### 3.5. Testing Frameworks
 
-*   **Stateless Backend:** JWT makes the backend stateless, allowing horizontal scaling of Node.js instances.
-*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) as needed.
-*   **Caching:** Introduction of Redis can offload database reads for frequently accessed data.
-*   **Microservices (Future):** While currently monolithic, the modular `services` layer facilitates extraction into microservices if complexity or scale demands it (e.g., a dedicated "Data Processing Service").
-*   **Containerization:** Docker allows easy deployment to cloud platforms with auto-scaling capabilities (Kubernetes).
+*   **Pytest**: Primary testing framework for unit and integration tests.
+*   **Coverage.py**: Measures test coverage to ensure a high percentage of code is tested.
+*   **Locust**: Performance testing tool to simulate user load and identify bottlenecks.
+*   **Structure**: Tests are organized in `tests/unit`, `tests/integration`, and `tests/performance`.
 
-## 6. Maintainability
+### 3.6. DevOps & Monitoring
 
-*   **Modular Codebase:** Clear separation of concerns (models, services, controllers, middleware).
-*   **Consistent Code Style:** Linting and formatting (e.g., ESLint, Prettier - not explicitly configured in this output but highly recommended).
-*   **Comprehensive Testing:** Unit, Integration, and API tests to ensure functionality and prevent regressions.
-*   **Documentation:** `README.md`, `ARCHITECTURE.md`, `API.md`, and in-code comments.
-*   **Logging:** Structured logs aid in debugging and monitoring.
+*   **Docker**: Containerization ensures consistent environments from development to production.
+*   **Docker Compose**: Orchestrates multi-container applications for local development and testing.
+*   **GitHub Actions**: Automates the CI/CD pipeline:
+    *   Runs tests on every push/pull request.
+    *   Builds Docker images.
+    *   (Conceptual) Deploys to a production environment (e.g., AWS ECS, Kubernetes).
+*   **Logging**: Python's `logging` module captures application events, errors, and access logs.
+*   **Sentry (Conceptual)**: For real-time error tracking and performance monitoring in production.
 
-## 7. Performance
+## 4. Data Flow Example: Creating a Task
 
-*   **Caching:** Reduces database load and improves response times for repeated requests.
-*   **Efficient Data Processing:** `dataProcessor.service.js` designed for efficient in-memory operations. For very large datasets, streaming and external processing engines would be considered.
-*   **Database Indexing:** Improves query performance.
-*   **Asynchronous Operations:** Node.js's non-blocking I/O model ensures efficient handling of concurrent requests.
+1.  **Client Request**: User sends a `POST` request to `/api/tasks/` with task details (JSON body) and a JWT in the Authorization header.
+2.  **Flask Route (`app/routes/tasks.py`)**:
+    *   The `create_task` function receives the request.
+    *   `@jwt_required()` decorator verifies the JWT and extracts the user identity.
+    *   Request JSON data is parsed.
+    *   `TaskService.create_task()` is called with the task data.
+3.  **Task Service (`app/services/task_service.py`)**:
+    *   Validates input data (e.g., `title`, `project_id`, `creator_id` are present).
+    *   Checks if `project_id`, `creator_id`, `assigned_to_id` correspond to existing resources using `Project.query.get()` and `User.query.get()`.
+    *   If validation passes, a new `Task` object is instantiated (`app/models/task.py`).
+    *   `db.session.add(task)` stages the new task for persistence.
+    *   `db.session.commit()` persists the task to the PostgreSQL database.
+    *   Returns the created `Task` object.
+4.  **Flask Route (Response)**:
+    *   The `Task` object is converted to a dictionary using `task.to_dict()`.
+    *   A JSON response with a `201 Created` status code is returned to the client.
+5.  **Logging**: Relevant actions are logged at different layers (route access, service operation, model creation) via decorators (`@log_route_access`, `@log_service_operation`, `@log_model_operation`).
 
-## 8. CI/CD
+## 5. Scalability Considerations
 
-*   **GitHub Actions:** Automates the build, test, and deployment process.
-*   **Stages:**
-    *   **Build:** Docker image creation.
-    *   **Test:** Run unit, integration, and potentially E2E tests.
-    *   **Deploy:** Push Docker images to a registry and deploy to a target environment (e.g., a cloud VPS, Kubernetes).
-
-## 9. Future Enhancements
-
-*   **Real-time Data:** WebSockets for live dashboard updates.
-*   **More Data Connectors:** Support for SQL databases (MySQL, MSSQL), NoSQL databases (MongoDB), cloud storage (S3), Google Sheets.
-*   **Advanced Chart Types:** D3.js for custom/complex visualizations.
-*   **User Roles & Permissions:** More granular control over what users can create, edit, or view.
-*   **Data Governance:** Data lineage, auditing, data quality checks.
-*   **Theming/Customization:** Allow users to customize dashboard appearance.
-*   **Server-Side Rendering (SSR) for Frontend:** Improve initial load performance and SEO.
-*   **GraphQL API:** Alternative API design for more efficient data fetching.
+*   **Stateless API**: JWT authentication keeps the API stateless, enabling easy scaling of backend instances.
+*   **Database**: PostgreSQL can be scaled vertically or horizontally (e.g., read replicas).
+*   **Redis**: Provides offloading for database by caching data and handling rate limiting, reducing direct database hits.
+*   **Containerization**: Docker allows for easy deployment and scaling of services on container orchestration platforms (Kubernetes, AWS ECS, etc.).
+*   **Asynchronous Tasks**: For long-running operations (e.g., sending notifications, complex reports), integrating a message queue (e.g., Celery with Redis/RabbitMQ) would be beneficial, though not explicitly implemented in this basic version.
 ```
