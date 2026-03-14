@@ -1,52 +1,82 @@
-```yaml
 version: '3.8'
 
 services:
-  payment-processor-db:
+  db:
     image: postgres:14-alpine
-    container_name: payment-processor-db
+    container_name: task-management-db
     environment:
-      POSTGRES_DB: ${DB_NAME:-paymentdb}
-      POSTGRES_USER: ${DB_USER:-paymentuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-securepassword}
+      POSTGRES_DB: taskdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     volumes:
-      - payment_processor_data:/var/lib/postgresql/data
-      # Mount migrations and seed data for initial setup
-      - ./migrations:/docker-entrypoint-initdb.d/migrations
-      - ./seeds:/docker-entrypoint-initdb.d/seeds
+      - pgdata:/var/lib/postgresql/data
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-paymentuser} -d ${DB_NAME:-paymentdb}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d taskdb"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  payment-processor-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: payment-processor-app
-    depends_on:
-      payment-processor-db:
-        condition: service_healthy # Wait for the DB to be healthy
-    environment:
-      # Pass database connection details as environment variables (overrides config if loaded from env)
-      DB_HOST: payment-processor-db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-paymentdb}
-      DB_USER: ${DB_USER:-paymentuser}
-      DB_PASSWORD: ${DB_PASSWORD:-securepassword}
-      APP_PORT: ${APP_PORT:-9080}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_that_is_at_least_32_chars_long_and_complex}
+  redis:
+    image: redis:6-alpine
+    container_name: task-management-redis
     ports:
-      - "${APP_PORT:-9080}:${APP_PORT:-9080}"
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: task-management-backend
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://user:password@db:5432/taskdb # Hostname 'db' matches service name
+      JWT_SECRET: supersecretjwtkeythatshouldbeverylongandrandom
+      JWT_EXPIRES_IN: 1h
+      REDIS_URL: redis://redis:6379 # Hostname 'redis' matches service name
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      CACHE_TTL_SECONDS: 3600
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./config:/app/config # Mount config for easy updates without rebuilding
-      - ./logs:/app/logs    # Mount logs directory
-    command: ["./PaymentProcessor", "config/default.json"] # Ensure it picks up mounted config
+      - ./backend:/app
+      - /app/node_modules # Anonymous volume for node_modules to prevent local overwrite
+    command: sh -c "npm install && npm run migration:run && npm run dev" # Run migrations, then start dev server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: task-management-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:5000/api # Connects to backend on host machine
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Anonymous volume
+    command: npm start
 
 volumes:
-  payment_processor_data:
+  pgdata:
 ```
+
+##### `backend/Dockerfile`
+
+```dockerfile

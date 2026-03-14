@@ -1,26 +1,25 @@
-# Build stage
-FROM node:18-alpine AS build
+# Stage 1: Build the React app
+FROM node:18-alpine as build-stage
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm install
 
-COPY . ./
+COPY . .
 
-# Environment variables for the build process (e.g., REACT_APP_API_BASE_URL)
-# These must start with REACT_APP_
-ARG REACT_APP_API_BASE_URL
-ENV REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL}
-
+# Build the app for production
 RUN npm run build
 
-# Serve stage (using Nginx)
-FROM nginx:alpine
+# Stage 2: Serve the app with Nginx
+FROM nginx:alpine as production-stage
 
-COPY --from=build /app/build /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy the built React app to Nginx's public directory
+COPY --from=build-stage /app/build /usr/share/nginx/html
 
-EXPOSE 80
+# Copy custom Nginx configuration (optional, for advanced routing/SSL)
+# COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 3000
 
 CMD ["nginx", "-g", "daemon off;"]

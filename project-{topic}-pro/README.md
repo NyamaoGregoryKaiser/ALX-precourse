@@ -1,248 +1,252 @@
-```markdown
-# Payment Processing System (C++ / Pistache / PostgreSQL)
+# Task Management System
 
-This project implements a comprehensive, production-ready payment processing system backend built with C++ using the Pistache web framework. It adheres to modern software engineering principles, emphasizing modularity, testability, and scalability.
+A comprehensive, production-ready task management system built with a Node.js/Express/TypeScript backend, React/TypeScript frontend, PostgreSQL database, and Redis for caching. This project demonstrates enterprise-grade development practices including full-stack implementation, robust testing, CI/CD, and detailed documentation.
 
 ## Table of Contents
-1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Project Structure](#project-structure)
-4.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development (without Docker)](#local-development-without-docker)
-    *   [Docker Setup (Recommended)](#docker-setup-recommended)
-5.  [Running the Application](#running-the-application)
-6.  [Database Management](#database-management)
-    *   [Migrations](#migrations)
-    *   [Seed Data](#seed-data)
-7.  [Testing](#testing)
-8.  [Configuration](#configuration)
-9.  [API Documentation](#api-documentation)
-10. [Architecture Documentation](#architecture-documentation)
-11. [Deployment Guide](#deployment-guide)
-12. [Contributing](#contributing)
-13. [License](#license)
 
-## 1. Features
+- [Features](#features)
+- [Architecture](#architecture)
+- [Technologies Used](#technologies-used)
+- [Prerequisites](#prerequisites)
+- [Local Setup](#local-setup)
+  - [Using Docker Compose (Recommended)](#using-docker-compose-recommended)
+  - [Manual Setup](#manual-setup)
+- [Running Tests](#running-tests)
+- [API Documentation](#api-documentation)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
-*   **User Management**: Register, login, manage users with different roles (Admin, Merchant, Customer).
-*   **Account Management**: Create, view, update, and delete payment accounts for users.
-*   **Transaction Processing**: Handle various transaction types (deposit, withdrawal, payment, refund).
-*   **Security**: JWT-based authentication and authorization, password hashing.
-*   **Database Integration**: PostgreSQL with `libpqxx` for robust data storage.
-*   **Logging & Monitoring**: `spdlog` for detailed application logs.
-*   **Configuration Management**: JSON-based configuration with environment variable overrides.
-*   **API**: RESTful API endpoints for all core functionalities.
-*   **Dockerization**: Containerized application and database for easy deployment.
-*   **CI/CD**: GitHub Actions pipeline for automated testing and deployment.
+## Features
 
-## 2. Technology Stack
+- **User Management**: Register, Login, User Profiles, Role-based Access Control (Admin/Member).
+- **Workspace Management**: Create, view, update, delete workspaces; users own workspaces.
+- **Project Management**: Create, view, update, delete projects within a workspace; assign project owners.
+- **Task Management**:
+    - CRUD operations for tasks.
+    - Task status (Open, In Progress, Review, Closed, Archived), priority (Low, Medium, High, Critical).
+    - Due dates, assignees, tags.
+- **Comment System**: Add comments to tasks.
+- **Authentication & Authorization**: JWT-based secure authentication and middleware for access control.
+- **Logging & Monitoring**: Structured logging with Winston.
+- **Error Handling**: Centralized error handling middleware and custom error classes.
+- **Caching**: Redis integration for frequently accessed data to improve performance.
+- **Rate Limiting**: Protect API endpoints from abuse.
+- **Data Validation**: Request validation using Zod.
+- **Database Migrations**: TypeORM for schema evolution.
+- **Comprehensive Testing**: Unit, Integration, and API tests.
+- **Containerization**: Docker for isolated development and deployment environments.
+- **CI/CD**: GitHub Actions pipeline for automated testing and deployment.
 
-*   **Backend**: C++17/20
-*   **Web Framework**: [Pistache](https://github.com/oktal/pistache)
-*   **Database**: [PostgreSQL](https://www.postgresql.org/)
-*   **Database Driver**: [libpqxx](https://libpqxx.readthedocs.io/en/7.7/)
-*   **JSON Parsing**: [nlohmann/json](https://github.com/nlohmann/json)
-*   **Logging**: [spdlog](https://github.com/gabime/spdlog)
-*   **Testing**: [Google Test & Google Mock](https://github.com/google/googletest)
-*   **Auth**: JWT (using [jwt-cpp](https://github.com/Thalhammer/jwt-cpp))
-*   **Containerization**: [Docker](https://www.docker.com/)
-*   **CI/CD**: [GitHub Actions](https://docs.github.com/en/actions)
-*   **Build System**: [CMake](https://cmake.org/)
+## Architecture
 
-## 3. Project Structure
+Refer to [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview of the system design, component interactions, and data flow.
 
-```
-payment-processor/
-├── src/                        # Core application source code
-│   ├── main.cpp
-│   ├── server/                 # HTTP server, controllers, middleware
-│   ├── services/               # Business logic
-│   ├── models/                 # Data structures
-│   ├── repositories/           # Database access layer
-│   ├── util/                   # Utilities (Config, Logger, Crypto, etc.)
-│   ├── database/               # Database connection management
-│   └── exceptions/             # Custom exception classes
-├── tests/                      # Unit and integration tests
-├── cmake/                      # CMake helper files
-├── migrations/                 # Database schema migration scripts
-├── seeds/                      # Initial database seed data
-├── config/                     # Application configuration files
-├── Dockerfile                  # Docker build instructions
-├── docker-compose.yml          # Docker orchestration file
-├── .github/                    # GitHub Actions CI/CD workflows
-├── CMakeLists.txt              # CMake build configuration
-├── README.md                   # This documentation
-├── API.md                      # API endpoint details (OpenAPI/Swagger)
-├── ARCHITECTURE.md             # High-level architecture overview
-├── DEPLOYMENT.md               # Production deployment guide
-```
+## Technologies Used
 
-## 4. Setup and Installation
+### Backend
+- **Node.js**: JavaScript runtime.
+- **Express.js**: Web application framework.
+- **TypeScript**: Superset of JavaScript for type safety.
+- **TypeORM**: ORM for database interaction.
+- **PostgreSQL**: Relational database.
+- **Redis**: In-memory data store for caching and session management.
+- **JWT**: JSON Web Tokens for authentication.
+- **Bcrypt.js**: For password hashing.
+- **Winston**: For logging.
+- **Zod**: For data validation.
+- **Express-rate-limit**: For API rate limiting.
 
-### Prerequisites
+### Frontend
+- **React**: JavaScript library for building user interfaces.
+- **TypeScript**: For type safety in the frontend.
+- **Chakra UI**: Component library for fast UI development.
+- **React Router DOM**: For client-side routing.
+- **Axios**: For making HTTP requests to the backend.
 
-*   Git
-*   CMake (3.10+)
-*   C++ Compiler (GCC 9+ or Clang 9+)
-*   Docker & Docker Compose (Recommended)
-*   PostgreSQL client development libraries (`libpq-dev`, `libpqxx-dev`)
-*   Pistache development libraries (`libpistache-dev`)
-*   spdlog development libraries (`libspdlog-dev`)
-*   nlohmann/json development libraries (`libnlohmann-json-dev`)
-*   OpenSSL development libraries (`libssl-dev`)
-*   Google Test & Mock development libraries (`libgtest-dev`, `libgmock-dev`)
-*   `jwt-cpp` (Can be installed manually or via CMake FetchContent/vcpkg/conan if not system-wide)
+### Development & DevOps
+- **Docker & Docker Compose**: For containerization and orchestration.
+- **Jest & Supertest**: For backend testing.
+- **React Testing Library**: For frontend testing.
+- **k6**: For performance/load testing (conceptual).
+- **GitHub Actions**: For CI/CD.
 
-### Local Development (without Docker)
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+-   [Node.js](https://nodejs.org/en/download/) (v18 or higher)
+-   [npm](https://www.npmjs.com/get-npm) (comes with Node.js)
+-   [Docker Desktop](https://www.docker.com/products/docker-desktop) (if using Docker Compose)
+-   [Git](https://git-scm.com/downloads)
+
+## Local Setup
+
+### Using Docker Compose (Recommended)
+
+This method sets up the backend, frontend, PostgreSQL database, and Redis cache in isolated containers.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/payment-processor.git
-    cd payment-processor
+    git clone https://github.com/your-username/task-management-system.git
+    cd task-management-system
     ```
 
-2.  **Install system dependencies (Ubuntu/Debian example):**
+2.  **Create `.env` files:**
+    Copy the example environment files for both backend and frontend.
     ```bash
-    sudo apt update
-    sudo apt install build-essential cmake libpistache-dev libspdlog-dev libnlohmann-json-dev libpqxx-dev libpq-dev libssl-dev libgtest-dev libgmock-dev uuid-dev git
-    # If jwt-cpp is not available via apt, build it manually:
-    # git clone https://github.com/Thalhammer/jwt-cpp.git && cd jwt-cpp && mkdir build && cd build && cmake .. && make -j$(nproc) && sudo make install
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
     ```
+    You can customize the values in `.env` files, but the defaults should work for local development with Docker Compose.
 
-3.  **Setup PostgreSQL Database:**
-    *   Install PostgreSQL (if not already installed).
-    *   Create a user and database:
-        ```bash
-        sudo -u postgres psql
-        CREATE USER paymentuser WITH PASSWORD 'securepassword';
-        CREATE DATABASE paymentdb OWNER paymentuser;
-        \q
-        ```
-    *   Update `config/default.json` with your database credentials if different.
-
-4.  **Build the application:**
+3.  **Build and start the services:**
     ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make -j$(nproc)
+    docker compose up --build -d
     ```
+    This command will:
+    -   Build Docker images for the backend and frontend.
+    -   Create and start containers for `db` (PostgreSQL), `redis`, `backend`, and `frontend`.
+    -   Run database migrations on the `backend` container startup.
+    -   The backend will run on `http://localhost:5000` and the frontend on `http://localhost:3000`.
 
-### Docker Setup (Recommended)
-
-1.  **Ensure Docker and Docker Compose are installed.**
-
-2.  **Build and run the services:**
+4.  **Seed the database (Optional):**
+    After the containers are up and migrations have run, you can seed the database with initial data:
     ```bash
-    docker-compose up --build -d
+    docker compose exec backend npm run seed
     ```
-    This will:
-    *   Build the `payment-processor-app` image based on the `Dockerfile`.
-    *   Start a PostgreSQL container (`payment-processor-db`).
-    *   Wait for the database to be healthy.
-    *   Run database migrations and seed data (see `docker-entrypoint-initdb.d` in `docker-compose.yml`).
-    *   Start the `payment-processor-app` container.
 
-    You can check the status:
+5.  **Access the applications:**
+    -   Frontend: `http://localhost:3000`
+    -   Backend API: `http://localhost:5000/api`
+    -   Backend Health Check: `http://localhost:5000/health`
+
+6.  **Stop and remove services:**
     ```bash
-    docker-compose ps
+    docker compose down
     ```
 
-## 5. Running the Application
+### Manual Setup (Without Docker Compose for individual components)
 
-*   **Locally (after build):**
+#### Backend Setup
+
+1.  **Navigate to the backend directory:**
     ```bash
-    cd build
-    ./PaymentProcessor ../config/default.json
+    cd task-management-system/backend
     ```
-*   **With Docker Compose:**
+
+2.  **Install dependencies:**
     ```bash
-    docker-compose up -d payment-processor-app
-    # View logs
-    docker-compose logs -f payment-processor-app
+    npm install
     ```
 
-The API will be available at `http://localhost:9080` (or the port specified in your config/environment).
-
-## 6. Database Management
-
-### Migrations
-
-Migration scripts are located in the `migrations/` directory. They are applied in alphabetical order.
-
-*   **With Docker Compose:** Migrations are automatically applied when the `payment-processor-db` container starts for the first time or when it's recreated.
-*   **Locally:**
+3.  **Create `.env` file:**
     ```bash
-    ./migrations/run_migrations.sh
+    cp .env.example .env
     ```
-    Ensure `PGPASSWORD` environment variable is set or you'll be prompted for the password.
+    Edit `.env` to point to your local PostgreSQL and Redis instances. Make sure `DATABASE_URL` and `REDIS_URL` are correct.
 
-### Seed Data
+4.  **Setup PostgreSQL Database:**
+    -   Ensure PostgreSQL is running locally.
+    -   Create a database (e.g., `taskdb`) and a user with access rights.
+    -   Example `DATABASE_URL` in `.env`: `postgresql://user:password@localhost:5432/taskdb`
 
-Seed data for development and testing is in `seeds/seed_data.sql`.
+5.  **Setup Redis Cache:**
+    -   Ensure Redis is running locally.
+    -   Example `REDIS_URL` in `.env`: `redis://localhost:6379`
 
-*   **With Docker Compose:** Seed data is applied after migrations when the `payment-processor-db` container starts for the first time.
-*   **Locally:**
+6.  **Run Migrations:**
     ```bash
-    psql -h localhost -p 5432 -d paymentdb -U paymentuser -f seeds/seed_data.sql
+    npm run migration:run
     ```
 
-## 7. Testing
-
-The project includes unit and integration tests using Google Test/Mock.
-
-*   **Run tests locally (after build):**
+7.  **Seed the database (Optional):**
     ```bash
-    cd build
-    ./PaymentProcessorTests
+    npm run seed
     ```
-*   **Run tests in Docker container:**
+
+8.  **Start the backend server:**
     ```bash
-    docker run --rm payment-processor:latest ./PaymentProcessorTests
+    npm run dev  # For development with hot-reloads
+    # or
+    npm run start # For production (after npm run build)
     ```
-*   **CI/CD**: Tests are automatically run by GitHub Actions on every push/pull request.
+    The backend API will be available at `http://localhost:5000/api`.
 
-## 8. Configuration
+#### Frontend Setup
 
-Configuration is managed via JSON files in the `config/` directory (e.g., `default.json`, `test.json`). Environment variables can override these settings.
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd task-management-system/frontend
+    ```
 
-*   `config/default.json`: Default settings for the application.
-*   `config/test.json`: Specific settings for testing environments.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-Example usage:
+3.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    ```
+    Ensure `REACT_APP_API_BASE_URL` points to your running backend (e.g., `http://localhost:5000/api`).
+
+4.  **Start the frontend development server:**
+    ```bash
+    npm start
+    ```
+    The frontend application will open in your browser at `http://localhost:3000`.
+
+## Running Tests
+
+### Backend Tests
+
+Navigate to the `backend` directory and run:
 ```bash
-# Run with a specific config file
-./PaymentProcessor config/production.json
-
-# Override a setting via environment variable (if implemented in Config.cpp)
-# For this project, environment variables are read by docker-compose, but not directly by Config.cpp.
-# You would extend Config.cpp to read from env vars if needed at runtime.
-# e.g., export APP_PORT=8080 && ./PaymentProcessor
+npm test
+# Or for watch mode
+npm test:watch
 ```
+This will run unit and integration tests using Jest and Supertest. A coverage report will be generated in the `coverage/` directory.
 
-## 9. API Documentation
+### Frontend Tests
 
-Detailed API documentation, including all endpoints, request/response formats, and authentication requirements, can be found in `API.md`. It is recommended to use OpenAPI (Swagger) for a more interactive and standardized documentation.
+Navigate to the `frontend` directory and run:
+```bash
+npm test
+```
+This will run component tests using React Testing Library.
 
-## 10. Architecture Documentation
+### Performance Tests (Conceptual)
 
-A high-level overview of the system's architecture, including its components, data flow, and design choices, is available in `ARCHITECTURE.md`.
+Refer to the conceptual `performance-tests/api-load-test.js` script.
+To run a performance test with `k6` (ensure `k6` is installed):
+```bash
+k6 run performance-tests/api-load-test.js
+```
+*Note: This script assumes you have valid user credentials and a project ID to use for task creation. You would typically generate/seed these for testing purposes.*
 
-## 11. Deployment Guide
+## API Documentation
 
-Instructions for deploying the application to a production environment are outlined in `DEPLOYMENT.md`. This includes considerations for security, scalability, and monitoring.
+The API endpoints are documented using a conceptual OpenAPI/Swagger specification.
+Refer to [API_DOCS.md](API_DOCS.md) for detailed information about each endpoint, request/response formats, and authentication requirements.
 
-## 12. Contributing
+## Deployment
 
-Contributions are welcome! Please follow the standard GitHub flow:
+A detailed guide on how to deploy this system to a production environment (e.g., AWS EC2, DigitalOcean Droplet) using Docker Compose and Nginx as a reverse proxy is available in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
 1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix.
-3.  Implement your changes and write tests.
-4.  Ensure all tests pass.
-5.  Submit a pull request.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write tests for your changes.
+5.  Ensure all tests pass (`npm test` in both backend and frontend).
+6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
 
-## 13. License
+## License
 
-This project is licensed under the [MIT License](LICENSE).
-```
+This project is licensed under the ISC License. See the `LICENSE` file for more details.
