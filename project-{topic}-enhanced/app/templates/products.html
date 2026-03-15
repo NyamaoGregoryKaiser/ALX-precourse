@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Products - E-commerce System{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Our Products</h1>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <h4 class="mb-3">Filter by Category</h4>
+        <div class="list-group">
+            <a href="{{ url_for('main.product_list', search_term=search_term) }}" 
+               class="list-group-item list-group-item-action {% if not selected_category_id %}active{% endif %}">All Categories</a>
+            {% for category in categories %}
+            <a href="{{ url_for('main.product_list', category_id=category.id, search_term=search_term) }}" 
+               class="list-group-item list-group-item-action {% if selected_category_id == category.id %}active{% endif %}">{{ category.name }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-9">
+        <form class="d-flex mb-4" action="{{ url_for('main.product_list') }}" method="GET">
+            <input type="hidden" name="category_id" value="{{ selected_category_id }}">
+            <input class="form-control me-2" type="search" placeholder="Search products..." aria-label="Search" name="search_term" value="{{ search_term if search_term }}">
+            <button class="btn btn-outline-success" type="submit">Search</button>
+        </form>
+
+        {% if products %}
+        <div class="row row-cols-1 row-cols-md-3 g-4">
+            {% for product in products %}
+            <div class="col">
+                <div class="card h-100 shadow-sm">
+                    {% if product.image_url %}
+                    <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
+                    {% else %}
+                    <img src="https://via.placeholder.com/400x300?text=No+Image" class="card-img-top" alt="No Image" style="height: 200px; object-fit: cover;">
+                    {% endif %}
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">{{ product.name }}</h5>
+                        <p class="card-text text-muted">{{ product.description[:70] }}...</p>
+                        <p class="card-text fw-bold mt-auto">${{ "%.2f"|format(product.price) }}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('main.product_detail', product_id=product.id) }}" class="btn btn-sm btn-outline-primary">View Details</a>
+                            <form action="{{ url_for('main.add_to_cart') }}" method="POST" class="d-inline">
+                                <input type="hidden" name="product_id" value="{{ product.id }}">
+                                <input type="hidden" name="quantity" value="1">
+                                <button type="submit" class="btn btn-sm btn-success">Add to Cart</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info" role="alert">
+            No products found matching your criteria.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

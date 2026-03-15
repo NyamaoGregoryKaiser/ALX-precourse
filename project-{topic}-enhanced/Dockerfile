@@ -1,31 +1,26 @@
-```dockerfile
-# Stage 1: Build the application
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# Use a lightweight official Python image
+FROM python:3.10-slim-buster
 
+# Set the working directory in the container
 WORKDIR /app
 
-COPY pom.xml .
-COPY src ./src
+# Copy requirements file and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Build the application with Maven
-# Use -DskipTests to skip tests during build for faster image creation,
-# but ensure tests are run in CI pipeline.
-RUN mvn clean install -DskipTests
+# Copy the rest of the application code
+COPY . .
 
-# Stage 2: Create the final runtime image
-FROM eclipse-temurin:17-jre-alpine
+# Set environment variables
+ENV FLASK_APP=manage.py
+ENV FLASK_ENV=production # Set to development for local dev, production for deployment
+ENV PYTHONUNBUFFERED=1 # Ensures Python output is sent immediately to the terminal
 
-WORKDIR /app
+# Expose the port the app runs on
+EXPOSE 5000
 
-# Copy the built JAR from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
-
-# Expose the port the application runs on
-EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-# Health check (optional but recommended for production readiness)
-# HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 CMD curl --fail http://localhost:8080/actuator/health || exit 1
-```
+# Command to run the application using Gunicorn for production
+# -w N: Number of worker processes (e.g., (2 * num_cores) + 1)
+# -b 0.0.0.0:5000: Binds to all network interfaces on port 5000
+# manage:app: Refers to the Flask app instance named 'app' in 'manage.py'
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "manage:app"]

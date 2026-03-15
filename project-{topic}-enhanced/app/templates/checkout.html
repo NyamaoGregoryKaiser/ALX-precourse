@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - E-commerce System{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Checkout</h1>
+
+{% if cart_items %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Shipping Information</h4>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('main.checkout') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="shipping_address" class="form-label">Full Shipping Address</label>
+                        <textarea class="form-control" id="shipping_address" name="shipping_address" rows="4" required>{{ request.form.shipping_address or '' }}</textarea>
+                    </div>
+                    
+                    {# Payment information can be integrated here, for simplicity it's assumed mock success #}
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="payment_method" id="creditCard" value="credit_card" checked>
+                            <label class="form-check-label" for="creditCard">
+                                Credit Card (Mock Payment)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="payment_method" id="paypal" value="paypal" disabled>
+                            <label class="form-check-label" for="paypal">
+                                PayPal (Coming Soon)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success btn-lg w-100">Place Order</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title">Order Summary</h4>
+                <hr>
+                <ul class="list-group list-group-flush mb-3">
+                    {% for item in cart_items %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>{{ item.product_name }} (x{{ item.quantity }})</span>
+                        <span class="fw-bold">${{ "%.2f"|format(item.total_item_price) }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal:</span>
+                    <span>${{ "%.2f"|format(total_cart_amount) }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-4">
+                    <span>Shipping:</span>
+                    <span>$0.00</span>
+                </div>
+                <div class="d-flex justify-content-between fw-bold fs-4 text-primary">
+                    <span>Total:</span>
+                    <span>${{ "%.2f"|format(total_cart_amount) }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">
+    Your cart is empty. <a href="{{ url_for('main.product_list') }}">Start shopping!</a>
+</div>
+{% endif %}
+{% endblock %}

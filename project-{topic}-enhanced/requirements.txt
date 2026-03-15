@@ -1,5 +1,25 @@
-# Example: If you use Python for local tooling or CI/CD scripts
-# black==23.7.0
-# flake8==6.0.0
-# requests==2.31.0
-# locust==2.15.1 # For performance testing
+Flask==2.3.3
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+psycopg2-binary==2.9.9 # For PostgreSQL
+SQLAlchemy==2.0.23
+Flask-RESTful==0.3.10
+Flask-JWT-Extended==4.4.0
+Flask-Bcrypt==1.0.1
+python-dotenv==1.0.0
+Flask-Caching==2.0.2
+redis==5.0.1 # For caching/rate limiting with Redis
+Flask-Limiter==3.5.1
+PyYAML==6.0.1 # For Flasgger
+Flasgger==0.9.5
+gunicorn==21.2.0 # Production WSGI server
+requests==2.31.0 # For API testing
+pytest==7.4.3
+pytest-cov==4.1.0
+Faker==20.1.0 # For seed data
+alembic==1.12.1
+coverage==7.3.2
+locust==2.19.0 # For performance testing (install separately or only in dev)
+Werkzeug==2.3.7 # Explicitly define if needed, Flask depends on it
+marshmallow==3.20.1
+webargs==8.2.0

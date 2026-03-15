@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Your Cart - E-commerce System{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Your Shopping Cart</h1>
+
+{% if cart_items %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="list-group mb-3">
+            {% for item in cart_items %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <img src="{{ item.product.image_url if item.product and item.product.image_url else 'https://via.placeholder.com/50x50?text=No+Image' }}" 
+                         alt="{{ item.product_name }}" class="me-3 rounded" style="width: 50px; height: 50px; object-fit: cover;">
+                    <div>
+                        <h5 class="mb-1">{{ item.product_name }}</h5>
+                        <small class="text-muted">${{ "%.2f"|format(item.price_at_addition) }} per item</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center">
+                    <form action="{{ url_for('main.update_cart_item', product_id=item.product_id) }}" method="POST" class="d-flex me-3">
+                        <input type="number" name="quantity" value="{{ item.quantity }}" min="0" max="{{ item.product.stock_quantity if item.product else 999 }}" class="form-control form-control-sm" style="width: 70px;">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary ms-2">Update</button>
+                    </form>
+                    <span class="fw-bold me-3">${{ "%.2f"|format(item.total_item_price) }}</span>
+                    <form action="{{ url_for('main.remove_from_cart', product_id=item.product_id) }}" method="POST" class="d-inline">
+                        <input type="hidden" name="product_id" value="{{ item.product_id }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title">Order Summary</h4>
+                <hr>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Items Total:</span>
+                    <span>${{ "%.2f"|format(total_cart_amount) }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-4">
+                    <span>Shipping:</span>
+                    <span>$0.00</span> {# For simplicity, shipping is free #}
+                </div>
+                <div class="d-flex justify-content-between fw-bold fs-5">
+                    <span>Grand Total:</span>
+                    <span>${{ "%.2f"|format(total_cart_amount) }}</span>
+                </div>
+                <hr>
+                <a href="{{ url_for('main.checkout') }}" class="btn btn-success w-100">Proceed to Checkout</a>
+                <form action="{{ url_for('main.clear_cart') }}" method="POST" class="mt-2">
+                    <button type="submit" class="btn btn-outline-warning w-100">Clear Cart</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">
+    Your cart is empty. <a href="{{ url_for('main.product_list') }}">Start shopping!</a>
+</div>
+{% endif %}
+{% endblock %}

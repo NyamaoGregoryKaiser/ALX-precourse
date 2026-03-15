@@ -1,83 +1,51 @@
-```yaml
 version: '3.8'
 
 services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      # Use the .env file for secrets and specific config in production
+      # For development, you might uncomment FLASK_ENV=development and other overrides
+      FLASK_CONFIG_TYPE: development # Or 'production' for deployment
+      FLASK_ENV: development # This enables debug mode in Flask. Use 'production' for live deployment.
+      SECRET_KEY: ${SECRET_KEY}
+      SQLALCHEMY_DATABASE_URI: ${SQLALCHEMY_DATABASE_URI}
+      REDIS_URL: ${REDIS_URL}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      FLASK_API_URL: http://localhost:5000/api # Frontend routes directly call the backend
+    depends_on:
+      - db
+      - redis
+    # Command to run development server (replaces CMD in Dockerfile for dev)
+    # entrypoint: ["flask", "run", "--host=0.0.0.0"]
+    # For Gunicorn in production (or to test production setup locally):
+    command: gunicorn -w 4 -b 0.0.0.0:5000 manage:app
+
   db:
-    image: postgres:14-alpine
+    image: postgres:13
     restart: always
     environment:
-      POSTGRES_DB: cms_db
+      POSTGRES_DB: ecommerce_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
     volumes:
-      - cms_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d cms_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Optional: expose for direct connection to host
 
   redis:
     image: redis:6-alpine
     restart: always
     ports:
-      - "6379:6379"
+      - "6379:6379" # Optional: expose for direct connection to host
     volumes:
-      - cms_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "5000:5000"
-    environment:
-      NODE_ENV: development
-      PORT: 5000
-      DATABASE_URL: postgres://user:password@db:5432/cms_db # Connect to 'db' service
-      JWT_SECRET: supersecretjwtkey # Change for production
-      JWT_EXPIRES_IN: 1h
-      SESSION_SECRET: anothersupersecret # Change for production
-      FRONTEND_URL: http://localhost:3000
-      REDIS_HOST: redis # Connect to 'redis' service
-      REDIS_PORT: 6379
-      REDIS_PASSWORD:
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app/backend # Mount volume for live development (optional, remove for production build)
-      - /app/backend/node_modules # Prevent host node_modules from overriding container ones
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Connect to backend service via host machine
-    depends_on:
-      backend:
-        condition: service_started
-    # For local development with hot-reloading (uncomment for dev, comment for production deployment)
-    # volumes:
-    #   - ./frontend:/app/frontend
-    #   - /app/frontend/node_modules
-    # command: ["npm", "start"] # Override CMD in Dockerfile for dev, and expose 3000
+      - redis_data:/data
 
 volumes:
-  cms_db_data:
-  cms_redis_data:
-```
+  postgres_data:
+  redis_data:

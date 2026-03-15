@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product.name }} - E-commerce System{% endblock %}
+
+{% block content %}
+<div class="row mt-5">
+    <div class="col-md-6">
+        {% if product.image_url %}
+        <img src="{{ product.image_url }}" class="img-fluid rounded shadow-sm" alt="{{ product.name }}">
+        {% else %}
+        <img src="https://via.placeholder.com/800x600?text=No+Image" class="img-fluid rounded shadow-sm" alt="No Image">
+        {% endif %}
+    </div>
+    <div class="col-md-6">
+        <h1 class="display-4">{{ product.name }}</h1>
+        <p class="lead text-muted">{{ product.description }}</p>
+        <h3 class="my-4">${{ "%.2f"|format(product.price) }}</h3>
+
+        <div class="mb-3">
+            <strong>Availability:</strong> 
+            {% if product.stock_quantity > 0 %}
+                <span class="text-success">In Stock ({{ product.stock_quantity }} items)</span>
+            {% else %}
+                <span class="text-danger">Out of Stock</span>
+            {% endif %}
+        </div>
+
+        <form action="{{ url_for('main.add_to_cart') }}" method="POST" class="d-flex align-items-center mb-4">
+            <input type="hidden" name="product_id" value="{{ product.id }}">
+            <div class="me-3">
+                <label for="quantity" class="form-label visually-hidden">Quantity</label>
+                <input type="number" id="quantity" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock_quantity }}" style="width: 80px;" {% if product.stock_quantity == 0 %}disabled{% endif %}>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" {% if product.stock_quantity == 0 %}disabled{% endif %}>
+                Add to Cart
+            </button>
+        </form>
+
+        <a href="{{ url_for('main.product_list') }}" class="btn btn-outline-secondary">Back to Products</a>
+    </div>
+</div>
+{% endblock %}

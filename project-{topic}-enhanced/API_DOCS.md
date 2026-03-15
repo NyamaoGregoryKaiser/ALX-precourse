@@ -1,462 +1,243 @@
-```markdown
-# SecureTask API Documentation
+# E-commerce System API Documentation
 
-This document provides a comprehensive overview of the RESTful API endpoints for the SecureTask application.
+This document provides a static overview of the RESTful API endpoints for the E-commerce System. For an interactive experience, please visit the **Swagger UI** when the application is running at `http://localhost:5000/api/docs`.
 
-**Base URL:** `/api/v1`
+**Base URL:** `http://localhost:5000/api`
 
-## Authentication
+**Authentication:** Most endpoints require a JWT Access Token in the `Authorization` header: `Bearer <YOUR_ACCESS_TOKEN>`.
 
-All protected routes require a JWT token in the `Authorization` header: `Bearer <token>`.
+---
 
-### 1. Register User
-*   **URL:** `/auth/register`
-*   **Method:** `POST`
-*   **Rate Limit:** 100 requests per 15 minutes per IP.
-*   **Description:** Registers a new user with an email, password, and optional role.
-*   **Request Body (JSON):**
+## 1. Authentication Endpoints (`/api/auth`)
+
+### `POST /api/auth/register`
+Registers a new user.
+*   **Rate Limit:** 10 requests per hour.
+*   **Request Body:**
     ```json
     {
-      "name": "John Doe",
-      "email": "john.doe@example.com",
-      "password": "StrongPassword@123",
-      "role": "MEMBER" // Optional: "MEMBER", "MANAGER", "ADMIN". Default is MEMBER.
+        "username": "string",
+        "email": "string",
+        "password": "string",
+        "role": "customer" | "admin" (default: "customer")
     }
     ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "status": "success",
-      "token": "eyJhbGciOiJIUzI1Ni...",
-      "user": {
-        "id": "uuid",
-        "name": "John Doe",
-        "email": "john.doe@example.com",
-        "role": "MEMBER"
-      }
-    }
-    ```
-*   **Error Responses:** 400 Bad Request (Validation errors, Email already exists), 429 Too Many Requests.
+*   **Responses:**
+    *   `201 Created`: `{"message": "User registered successfully", "user_id": 1}`
+    *   `400 Bad Request`: Missing fields, invalid email format.
+    *   `409 Conflict`: Username or email already taken.
 
-### 2. Login User
-*   **URL:** `/auth/login`
-*   **Method:** `POST`
-*   **Rate Limit:** 100 requests per 15 minutes per IP.
-*   **Description:** Authenticates a user and issues a JWT token.
-*   **Request Body (JSON):**
+### `POST /api/auth/login`
+Authenticates a user and returns JWT tokens.
+*   **Rate Limit:** 5 requests per minute.
+*   **Request Body:**
     ```json
     {
-      "email": "john.doe@example.com",
-      "password": "StrongPassword@123"
+        "email": "string",
+        "password": "string"
     }
     ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "token": "eyJhbGciOiJIUzI1Ni...",
-      "user": {
-        "id": "uuid",
-        "name": "John Doe",
-        "email": "john.doe@example.com",
-        "role": "MEMBER"
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized (Incorrect credentials), 400 Bad Request (Validation errors), 429 Too Many Requests.
+*   **Responses:**
+    *   `200 OK`: `{"access_token": "...", "refresh_token": "..."}`
+    *   `400 Bad Request`: Missing fields.
+    *   `401 Unauthorized`: Invalid credentials.
 
-### 3. Logout User
-*   **URL:** `/auth/logout`
-*   **Method:** `GET`
-*   **Description:** Clears the JWT cookie (if used) and logs out the user.
-*   **Response (200 OK):**
+### `POST /api/auth/refresh`
+Refreshes an expired access token using a refresh token.
+*   **Authentication:** Requires a valid *Refresh Token* in the `Authorization` header.
+*   **Responses:**
+    *   `200 OK`: `{"access_token": "..."}`
+    *   `401 Unauthorized`: Invalid or missing refresh token.
+
+---
+
+## 2. User Endpoints (`/api/users`)
+
+### `GET /api/users/<int:user_id>`
+Retrieves details of a specific user.
+*   **Authentication:** Required. Users can view their own data. Admins can view any user's data.
+*   **Responses:**
+    *   `200 OK`: User object `{ "id": 1, "username": "testuser", "email": "test@example.com", "role": "customer", ... }`
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not authorized to view another user's data.
+    *   `404 Not Found`: User not found.
+
+### `PUT /api/users/<int:user_id>`
+Updates details of a specific user.
+*   **Authentication:** Required. Users can update their own data. Admins can update any user's data.
+    *   **Note:** Regular users cannot change their `role` or `is_active` status.
+*   **Request Body:**
     ```json
     {
-      "status": "success",
-      "message": "Logged out successfully"
+        "username": "string",
+        "email": "string",
+        "password": "string",
+        "role": "customer" | "admin",
+        "is_active": true | false
     }
     ```
+*   **Responses:**
+    *   `200 OK`: `{"message": "User updated successfully", "user_id": 1}`
+    *   `400 Bad Request`: Invalid data.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not authorized to update another user's data or change role/active status.
+    *   `404 Not Found`: User not found.
+    *   `409 Conflict`: Username or email already exists.
 
-## User Management (Protected, Admin Only for most operations)
+### `DELETE /api/users/<int:user_id>`
+Deletes a specific user.
+*   **Authentication:** Admin required.
+*   **Responses:**
+    *   `204 No Content`: User deleted successfully.
+    *   `400 Bad Request`: Cannot delete own account.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `404 Not Found`: User not found.
 
-### 1. Get All Users
-*   **URL:** `/users`
-*   **Method:** `GET`
-*   **Access:** `ADMIN`
-*   **Description:** Retrieves a list of all registered users.
-*   **Response (200 OK):**
+### `GET /api/users/`
+Retrieves a list of all users.
+*   **Authentication:** Admin required.
+*   **Responses:**
+    *   `200 OK`: `[ { ...user object... }, ... ]`
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+
+---
+
+## 3. Product & Category Endpoints (`/api/products`)
+
+### `GET /api/products/products`
+Retrieves a list of all active products.
+*   **Query Parameters:**
+    *   `category_id` (int): Filter products by category.
+    *   `search_term` (string): Search products by name or description.
+    *   `limit` (int, default: 20): Number of results to return.
+    *   `offset` (int, default: 0): Offset for pagination.
+*   **Responses:**
+    *   `200 OK`: `[ { "id": 1, "name": "Laptop Pro", "price": 1200.00, ... }, ... ]`
+
+### `POST /api/products/products`
+Creates a new product.
+*   **Authentication:** Admin required.
+*   **Request Body:**
     ```json
     {
-      "status": "success",
-      "results": 2,
-      "data": {
-        "users": [
-          { "id": "uuid", "name": "Admin User", "email": "admin@example.com", "role": "ADMIN", "createdAt": "ISO date" },
-          { "id": "uuid", "name": "Manager One", "email": "manager1@example.com", "role": "MANAGER", "createdAt": "ISO date" }
-        ]
-      }
+        "name": "string",
+        "slug": "string",
+        "description": "string",
+        "price": 0.00,
+        "stock_quantity": 0,
+        "image_url": "string",
+        "category_id": 1
     }
     ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden.
+*   **Responses:**
+    *   `201 Created`: `{"message": "Product created", "id": 1, "name": "...", "slug": "..."}`
+    *   `400 Bad Request`: Invalid data, missing fields, category not found.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `409 Conflict`: Slug already exists.
 
-### 2. Get User by ID
-*   **URL:** `/users/:id`
-*   **Method:** `GET`
-*   **Access:** `ADMIN` (any user), `MANAGER` (any user), `MEMBER` (their own profile)
-*   **Description:** Retrieves details of a specific user.
-*   **Response (200 OK):**
+### `GET /api/products/products/<int:product_id>`
+Retrieves details of a specific product.
+*   **Responses:**
+    *   `200 OK`: Product object `{ "id": 1, "name": "Laptop Pro", "description": "...", "price": 1200.00, ... }`
+    *   `404 Not Found`: Product not found or inactive.
+
+### `PUT /api/products/products/<int:product_id>`
+Updates details of a specific product.
+*   **Authentication:** Admin required.
+*   **Request Body:** (Partial updates are allowed, fields are optional)
     ```json
     {
-      "status": "success",
-      "data": {
-        "user": { "id": "uuid", "name": "John Doe", "email": "john.doe@example.com", "role": "MEMBER", "createdAt": "ISO date" }
-      }
+        "name": "string",
+        "slug": "string",
+        "price": 0.00,
+        "stock_quantity": 0,
+        "is_active": true | false,
+        "category_id": 1
     }
     ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found.
+*   **Responses:**
+    *   `200 OK`: `{"message": "Product updated", "id": 1, "name": "..."}`
+    *   `400 Bad Request`: Invalid data.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `404 Not Found`: Product not found.
+    *   `409 Conflict`: Slug already exists.
 
-### 3. Update User by ID
-*   **URL:** `/users/:id`
-*   **Method:** `PATCH`
-*   **Access:** `ADMIN` (any user), `MANAGER` (any user), `MEMBER` (their own profile, limited fields)
-*   **Description:** Updates details of a specific user. Admins can update all fields including `role`. Users can update their `name`, `email`, `password`.
-*   **Request Body (JSON):**
+### `DELETE /api/products/products/<int:product_id>`
+Deletes a specific product.
+*   **Authentication:** Admin required.
+*   **Responses:**
+    *   `204 No Content`: Product deleted successfully.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `404 Not Found`: Product not found.
+
+### `GET /api/products/categories`
+Retrieves a list of all categories.
+*   **Responses:**
+    *   `200 OK`: `[ { "id": 1, "name": "Electronics", "slug": "electronics", ... }, ... ]`
+
+### `POST /api/products/categories`
+Creates a new category.
+*   **Authentication:** Admin required.
+*   **Request Body:**
     ```json
     {
-      "name": "Jane Doe",
-      "email": "jane.doe@example.com",
-      "password": "NewStrongPassword@123",
-      "role": "MANAGER" // Admin-only field
+        "name": "string",
+        "slug": "string",
+        "description": "string"
     }
     ```
-*   **Response (200 OK):**
+*   **Responses:**
+    *   `201 Created`: `{"message": "Category created", "id": 1, "name": "..."}`
+    *   `400 Bad Request`: Invalid data, missing fields.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `409 Conflict`: Slug already exists.
+
+### `GET /api/products/categories/<int:category_id>`
+Retrieves details of a specific category.
+*   **Responses:**
+    *   `200 OK`: Category object `{ "id": 1, "name": "Electronics", "slug": "electronics", ... }`
+    *   `404 Not Found`: Category not found.
+
+### `PUT /api/products/categories/<int:category_id>`
+Updates details of a specific category.
+*   **Authentication:** Admin required.
+*   **Request Body:** (Partial updates are allowed)
     ```json
     {
-      "status": "success",
-      "data": {
-        "user": { "id": "uuid", "name": "Jane Doe", "email": "jane.doe@example.com", "role": "MEMBER" }
-      }
+        "name": "string",
+        "slug": "string",
+        "description": "string"
     }
     ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden (e.g., changing role without admin privileges), 404 Not Found, 400 Bad Request (Validation errors).
+*   **Responses:**
+    *   `200 OK`: `{"message": "Category updated", "id": 1, "name": "..."}`
+    *   `400 Bad Request`: Invalid data.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `404 Not Found`: Category not found.
+    *   `409 Conflict`: Slug already exists.
 
-### 4. Delete User by ID
-*   **URL:** `/users/:id`
-*   **Method:** `DELETE`
-*   **Access:** `ADMIN`
-*   **Description:** Deletes a specific user.
-*   **Response (204 No Content):** Empty response.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found.
+### `DELETE /api/products/categories/<int:category_id>`
+Deletes a specific category.
+*   **Authentication:** Admin required.
+*   **Note:** Cannot delete a category if products are associated with it.
+*   **Responses:**
+    *   `204 No Content`: Category deleted successfully.
+    *   `400 Bad Request`: Cannot delete category with associated products.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Not an admin.
+    *   `404 Not Found`: Category not found.
 
-## Project Management (Protected)
+---
 
-### 1. Create Project
-*   **URL:** `/projects`
-*   **Method:** `POST`
-*   **Access:** `ADMIN`, `MANAGER` (managerId must be their own ID if MANAGER)
-*   **Description:** Creates a new project.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "name": "New Awesome Project",
-      "description": "Details about the new project.",
-      "managerId": "uuid-of-manager",
-      "memberIds": ["uuid-of-member1", "uuid-of-member2"] // Optional array of member IDs
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "project": {
-          "id": "uuid",
-          "name": "New Awesome Project",
-          "description": "Details...",
-          "status": "PENDING",
-          "manager": { "id": "uuid", "name": "Manager One" },
-          "members": [ { "id": "uuid", "name": "Member One" } ]
-        }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 400 Bad Request.
+## 4. Cart Endpoints (`/api/cart`)
 
-### 2. Get All Projects
-*   **URL:** `/projects`
-*   **Method:** `GET`
-*   **Access:** `ADMIN` (all projects), `MANAGER`/`MEMBER` (projects they manage or are a member of)
-*   **Description:** Retrieves a list of projects accessible to the authenticated user.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "results": 2,
-      "data": {
-        "projects": [
-          {
-            "id": "uuid",
-            "name": "Project Alpha",
-            "description": "...",
-            "status": "IN_PROGRESS",
-            "manager": { "id": "uuid", "name": "Manager One" },
-            "members": [...],
-            "_count": { "tasks": 5 }
-          }
-        ]
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized.
-
-### 3. Get Project by ID
-*   **URL:** `/projects/:id`
-*   **Method:** `GET`
-*   **Access:** `ADMIN`, `MANAGER` (of the project), `MEMBER` (of the project)
-*   **Description:** Retrieves details of a specific project, including its tasks and members.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "project": {
-          "id": "uuid",
-          "name": "Project Alpha",
-          "description": "...",
-          "status": "IN_PROGRESS",
-          "manager": { "id": "uuid", "name": "Manager One" },
-          "members": [ { "id": "uuid", "name": "Member One" } ],
-          "tasks": [ { "id": "uuid", "title": "Task 1", "status": "PENDING", "...": "..." } ]
-        }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found.
-
-### 4. Update Project by ID
-*   **URL:** `/projects/:id`
-*   **Method:** `PATCH`
-*   **Access:** `ADMIN`, `MANAGER` (of the project)
-*   **Description:** Updates details of a specific project.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "name": "Revised Project Name",
-      "description": "Updated details.",
-      "status": "COMPLETED",
-      "addMemberIds": ["new-member-uuid"], // Optional: Add members
-      "removeMemberIds": ["old-member-uuid"] // Optional: Remove members
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "project": { "id": "uuid", "name": "Revised Project Name", "status": "COMPLETED", "..." }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found, 400 Bad Request.
-
-### 5. Delete Project by ID
-*   **URL:** `/projects/:id`
-*   **Method:** `DELETE`
-*   **Access:** `ADMIN`, `MANAGER` (of the project)
-*   **Description:** Deletes a specific project and all its associated tasks and comments.
-*   **Response (204 No Content):** Empty response.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found.
-
-## Task Management (Protected, Nested under Projects)
-
-### 1. Get All Tasks in a Project
-*   **URL:** `/projects/:projectId/tasks`
-*   **Method:** `GET`
-*   **Access:** `ADMIN`, `MANAGER` (of the project), `MEMBER` (of the project)
-*   **Description:** Retrieves a list of all tasks for a given project.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "results": 3,
-      "data": {
-        "tasks": [
-          {
-            "id": "uuid",
-            "title": "Task 1",
-            "description": "...",
-            "status": "PENDING",
-            "priority": "HIGH",
-            "dueDate": "ISO date",
-            "assignedTo": { "id": "uuid", "name": "Member One" },
-            "comments": [{"id": "uuid"}, {"id": "uuid"}] // Simplified comment count
-          }
-        ]
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Project).
-
-### 2. Get Task by ID
-*   **URL:** `/projects/:projectId/tasks/:id`
-*   **Method:** `GET`
-*   **Access:** `ADMIN`, `MANAGER` (of the project), `MEMBER` (of the project)
-*   **Description:** Retrieves details of a specific task within a project.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "task": {
-          "id": "uuid",
-          "title": "Task 1",
-          "description": "...",
-          "status": "PENDING",
-          "priority": "HIGH",
-          "dueDate": "ISO date",
-          "assignedTo": { "id": "uuid", "name": "Member One" },
-          "comments": [
-            { "id": "uuid", "content": "Comment content", "createdAt": "ISO date", "author": { "id": "uuid", "name": "Author Name" } }
-          ]
-        }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Project or Task).
-
-### 3. Create Task
-*   **URL:** `/projects/:projectId/tasks`
-*   **Method:** `POST`
-*   **Access:** `ADMIN`, `MANAGER` (of the project)
-*   **Description:** Creates a new task for a specific project.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "title": "Develop Feature X",
-      "description": "Implement the new feature.",
-      "assignedToId": "uuid-of-member",
-      "priority": "MEDIUM", // "LOW", "MEDIUM", "HIGH"
-      "dueDate": "2024-12-31T00:00:00Z" // Optional
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "task": { "id": "uuid", "title": "Develop Feature X", "status": "PENDING", "assignedTo": { "id": "uuid", "name": "..." } }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Project), 400 Bad Request (e.g., assigning to non-project member).
-
-### 4. Update Task by ID
-*   **URL:** `/projects/:projectId/tasks/:id`
-*   **Method:** `PATCH`
-*   **Access:** `ADMIN`, `MANAGER` (of the project) - all fields; `MEMBER` (assigned to task) - `title`, `description`, `status`
-*   **Description:** Updates details of a specific task within a project.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "status": "IN_PROGRESS",
-      "assignedToId": "uuid-of-another-member", // Admin/Manager only
-      "priority": "HIGH"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "task": { "id": "uuid", "title": "...", "status": "IN_PROGRESS", "assignedTo": { "id": "uuid", "name": "..." } }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Project or Task), 400 Bad Request.
-
-### 5. Delete Task by ID
-*   **URL:** `/projects/:projectId/tasks/:id`
-*   **Method:** `DELETE`
-*   **Access:** `ADMIN`, `MANAGER` (of the project)
-*   **Description:** Deletes a specific task and its associated comments.
-*   **Response (204 No Content):** Empty response.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Project or Task).
-
-## Comment Management (Protected, Nested under Tasks)
-
-### 1. Get All Comments for a Task
-*   **URL:** `/projects/:projectId/tasks/:taskId/comments`
-*   **Method:** `GET`
-*   **Access:** `ADMIN`, `MANAGER` (of project), `MEMBER` (of project)
-*   **Description:** Retrieves a list of all comments for a given task.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "results": 2,
-      "data": {
-        "comments": [
-          {
-            "id": "uuid",
-            "content": "This is a comment.",
-            "createdAt": "ISO date",
-            "author": { "id": "uuid", "name": "Commenter Name" }
-          }
-        ]
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Task).
-
-### 2. Create Comment
-*   **URL:** `/projects/:projectId/tasks/:taskId/comments`
-*   **Method:** `POST`
-*   **Access:** `ADMIN`, `MANAGER` (of project), `MEMBER` (of project or assigned to task)
-*   **Description:** Adds a new comment to a specific task.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "content": "Great progress on this task!"
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "comment": { "id": "uuid", "content": "Great progress...", "author": { "id": "uuid", "name": "Author Name" } }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Task), 400 Bad Request.
-
-### 3. Update Comment by ID
-*   **URL:** `/projects/:projectId/tasks/:taskId/comments/:id`
-*   **Method:** `PATCH`
-*   **Access:** `ADMIN`, `AUTHOR` (of the comment)
-*   **Description:** Updates the content of a specific comment.
-*   **Request Body (JSON):**
-    ```json
-    {
-      "content": "Revised comment content."
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "comment": { "id": "uuid", "content": "Revised comment...", "author": { "id": "uuid", "name": "Author Name" } }
-      }
-    }
-    ```
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Comment), 400 Bad Request.
-
-### 4. Delete Comment by ID
-*   **URL:** `/projects/:projectId/tasks/:taskId/comments/:id`
-*   **Method:** `DELETE`
-*   **Access:** `ADMIN`, `MANAGER` (of project), `AUTHOR` (of the comment)
-*   **Description:** Deletes a specific comment.
-*   **Response (204 No Content):** Empty response.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found (Comment).
-```
+### `GET /api/cart`
+Retrieves all items in the authenticated user's cart.
+*   **Authentication:** Customer

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders - E-commerce System{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">My Orders</h1>
+
+{% if orders %}
+<div class="list-group">
+    {% for order in orders %}
+    <a href="{{ url_for('main.order_detail', order_id=order.id) }}" class="list-group-item list-group-item-action mb-3 shadow-sm">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">Order #{{ order.id }}</h5>
+            <small class="text-muted">{{ order.order_date | format_datetime }}</small>
+        </div>
+        <p class="mb-1">Total: <strong>${{ "%.2f"|format(order.total_amount) }}</strong></p>
+        <p class="mb-1">Status: 
+            <span class="badge 
+                {% if order.status == 'delivered' %}bg-success
+                {% elif order.status == 'shipped' %}bg-info
+                {% elif order.status == 'processing' %}bg-primary
+                {% elif order.status == 'cancelled' %}bg-danger
+                {% else %}bg-secondary
+                {% endif %}">
+                {{ order.status | capitalize }}
+            </span>
+            &bull; Payment:
+            <span class="badge
+                {% if order.payment_status == 'paid' %}bg-success
+                {% elif order.payment_status == 'refunded' %}bg-warning
+                {% else %}bg-secondary
+                {% endif %}">
+                {{ order.payment_status | capitalize }}
+            </span>
+        </p>
+        <small class="text-muted">Shipping Address: {{ order.shipping_address[:50] }}...</small>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">
+    You haven't placed any orders yet.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Custom filter for datetime formatting
+    Flask.filters.format_datetime = function(value) {
+        const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        return new Date(value).toLocaleDateString(undefined, options);
+    };
+</script>
+{% endblock %}
