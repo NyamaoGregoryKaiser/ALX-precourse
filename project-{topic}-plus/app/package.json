@@ -1,0 +1,39 @@
+{
+  "name": "cpp-devops-system",
+  "version": "1.0.0",
+  "description": "An enterprise-grade C++ backend with comprehensive DevOps automation.",
+  "main": "app/src/main.cpp",
+  "scripts": {
+    "start": "docker-compose up --build",
+    "stop": "docker-compose down",
+    "test:unit": "cd app/build && ./bin/cpp_devops_system_tests --gtest_filter=Unit*",
+    "test:integration": "cd app/build && ./bin/cpp_devops_system_tests --gtest_filter=Integration*",
+    "test:api": "cd app/tests/api && ./api_test.sh",
+    "test:performance": "cd app/tests/performance && ./performance_test.sh",
+    "build:docker": "docker build -t cpp-devops-system:latest .",
+    "clean": "docker-compose down --volumes --rmi all && rm -rf app/build app/data app/logs"
+  },
+  "keywords": [
+    "cpp",
+    "devops",
+    "rest-api",
+    "docker",
+    "ci-cd",
+    "testing",
+    "backend",
+    "enterprise"
+  ],
+  "author": "ALX Software Engineering",
+  "license": "MIT",
+  "dependencies": {
+    "crowcpp": "^1.0.0",
+    "sqlitecpp": "^3.2.0",
+    "spdlog": "^1.11.0",
+    "jwt-cpp": "^0.6.0",
+    "openssl": "^3.0.0"
+  },
+  "devDependencies": {
+    "googletest": "^1.13.0",
+    "hey": "^0.1.3"
+  }
+}

@@ -1,6 +1,7 @@
-```yaml
 # .github/workflows/ci-cd.yml
-name: Java Spring Boot CI/CD
+# GitHub Actions CI/CD Pipeline for C++ DevOps System
+
+name: CI/CD Pipeline
 
 on:
   push:
@@ -13,59 +14,102 @@ on:
       - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
     name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
       with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
+        submodules: 'recursive' # If using git submodules
 
-    - name: Build with Maven and Run Tests
+    - name: Set up environment variables
+      id: env_vars
       run: |
-        mvn -B package --file pom.xml
-      env:
-        # Provide dummy database credentials for testing, or use H2/Testcontainers
-        # For this setup, Testcontainers will dynamically manage PostgreSQL.
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_NAME: ci_test_db
-        DB_USERNAME: ci_user
-        DB_PASSWORD: ci_password
-        JWT_SECRET_KEY: a_dummy_secret_key_for_testing_in_ci_environment_that_is_long_enough_for_jwt_signing
+        echo "APP_PORT=8080" >> $GITHUB_ENV
+        echo "JWT_SECRET_KEY=ci_test_secret_key" >> $GITHUB_ENV
+        echo "DATABASE_PATH=/github/workspace/app/data/app.db" >> $GITHUB_ENV
+        echo "TEST_DATABASE_PATH=/github/workspace/app/data/test_app.db" >> $GITHUB_ENV
+        echo "LOG_FILE_PATH=/github/workspace/app/logs/ci_app.log" >> $GITHUB_ENV
+        echo "LOG_LEVEL=debug" >> $GITHUB_ENV
+      shell: bash
 
-    - name: Upload JaCoCo Coverage Report
+    - name: Install Conan
+      run: |
+        pip install conan
+        conan profile detect --force
+
+    - name: Configure CMake
+      run: |
+        mkdir -p app/build app/data app/logs
+        conan install app --output-folder=app/build --build=missing -s build_type=Debug
+        cmake app -B app/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=app/build/conan_toolchain.cmake
+
+    - name: Build application and tests
+      run: cmake --build app/build --config Debug --target all
+
+    - name: Initialize test database
+      run: |
+        sqlite3 "$TEST_DATABASE_PATH" < db/schema.sql
+        sqlite3 "$TEST_DATABASE_PATH" < db/seed.sql
+      working-directory: .
+
+    - name: Run Unit & Integration tests
+      run: ./app/build/bin/cpp_devops_system_tests
+      working-directory: .
+
+    - name: Start application in background for API tests
+      run: |
+        ./app/build/bin/cpp_devops_system_app &
+        echo "Waiting for app to start..."
+        sleep 5 # Give the app some time to initialize
+        curl -f http://localhost:8080/health || exit 1 # Health check
+        echo "App started successfully on port 8080."
+      working-directory: .
+      env:
+        # Pass environment variables to the running app for API tests
+        APP_PORT: ${{ env.APP_PORT }}
+        JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
+        DATABASE_PATH: ${{ env.DATABASE_PATH }} # Use the main DB path for running app
+        LOG_FILE_PATH: ${{ env.LOG_FILE_PATH }}
+        LOG_LEVEL: ${{ env.LOG_LEVEL }}
+        # Caching and Rate limiting can be enabled/disabled for CI as needed
+        CACHE_TTL_SECONDS: 1
+        RATE_LIMIT_ENABLED: true
+        RATE_LIMIT_MAX_REQUESTS: 1000 # High limit for CI to avoid false positives
+        RATE_LIMIT_WINDOW_SECONDS: 1
+
+    - name: Run API tests
+      run: ./app/tests/api/api_test.sh
+      working-directory: .
+
+    - name: Install hey for performance tests
+      run: go install github.com/rakyll/hey@latest
+
+    - name: Run Performance tests
+      run: ./app/tests/performance/performance_test.sh
+      working-directory: .
+
+    - name: Upload Logs (on failure)
+      if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: jacoco-report
-        path: target/site/jacoco/jacoco.xml
+        name: app-logs
+        path: app/logs/*.log
 
-    # Optional: Publish JaCoCo report to Codecov/Coveralls if integrated
-    # - name: Publish JaCoCo report to Codecov
-    #   uses: codecov/codecov-action@v3
-    #   with:
-    #     files: target/site/jacoco/jacoco.xml
-    #     flags: unittests
-    #     name: codecov-umbrella
-    #     fail_ci_if_error: true
-
-  # This job will run after build-and-test completes successfully
-  deploy:
-    name: Deploy to Docker Hub
+  docker_build_and_push:
+    name: Docker Build & Push
     runs-on: ubuntu-latest
-    needs: build-and-test # Only deploy if build and tests pass
-    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
+    needs: build_and_test # Only run if build and tests pass
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only push for main/develop branches
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
@@ -73,25 +117,61 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
+    - name: Determine image tag
+      id: get_tag
+      run: |
+        BRANCH_NAME=${GITHUB_REF##*/}
+        if [[ "$BRANCH_NAME" == "main" ]]; then
+          echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
+        else
+          # Use short commit SHA for develop branch
+          echo "IMAGE_TAG=${BRANCH_SHA_SHORT}" >> $GITHUB_OUTPUT
+        fi
+        echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/taskmgr-pro:latest
-        secrets: |
-            "jwt_secret_key=${{ secrets.JWT_SECRET_KEY }}" # Pass secrets securely
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.IMAGE_TAG }}
+          ${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.COMMIT_SHA_SHORT }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
-    # Optional: Deploy to a cloud provider (e.g., AWS EC2, Kubernetes, Heroku)
-    # - name: Deploy to EC2
-    #   uses: appleboy/ssh-action@v1.0.0
-    #   with:
-    #     host: ${{ secrets.AWS_EC2_HOST }}
-    #     username: ${{ secrets.AWS_EC2_USER }}
-    #     key: ${{ secrets.AWS_EC2_PRIVATE_KEY }}
-    #     script: |
-    #       cd /path/to/your/app
-    #       docker compose pull
-    #       docker compose up -d
-    #       docker system prune -f
-```
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: docker_build_and_push # Only deploy if build and push succeed
+    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get image tag for deployment
+      id: get_tag
+      run: echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
+
+    - name: Deploy to Kubernetes (Example - using kubectl)
+      uses: azure/k8s-set-context@v3 # Use appropriate action for your cloud provider
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBECONFIG_BASE64 }} # Base64 encoded kubeconfig
+    - run: |
+        # Replace image in your K8s manifest and apply
+        kubectl set image deployment/cpp-devops-app cpp-devops-app=${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.IMAGE_TAG }} -n production-namespace
+        kubectl rollout status deployment/cpp-devops-app -n production-namespace
+      env:
+        KUBECONFIG_FILE_PATH: ${{ runner.temp }}/kubeconfig # For the previous step
+      shell: bash
+
+    - name: Verify Deployment (Example)
+      run: |
+        echo "Deployment triggered. Verifying service availability..."
+        # Add actual verification steps, e.g., curl to deployed endpoint, check logs, etc.
+        # Example: curl -f https://api.yourdomain.com/health
+        echo "Deployment verification steps here..."
+      # This step should ideally use specific cloud provider tools or kubectl commands
+      # to ensure the new deployment is healthy.

@@ -1,249 +1,159 @@
-# ALX E-commerce Solution - Architecture Documentation
+# System Architecture Document
 
-This document describes the high-level and detailed architecture of the ALX E-commerce Solution.
+## 1. Introduction
 
-## Table of Contents
+This document outlines the architecture of the Enterprise-Grade C++ DevOps Automation System. It describes the high-level design, key components, their interactions, and the rationale behind significant design choices.
 
-1.  [High-Level Architecture](#1-high-level-architecture)
-    *   [C4 Model - System Context Diagram](#c4-model---system-context-diagram)
-2.  [Detailed Backend Architecture](#2-detailed-backend-architecture)
-    *   [Layered Architecture](#layered-architecture)
-    *   [Modules](#modules)
-    *   [Data Flow](#data-flow)
-    *   [Technology Choices](#technology-choices)
-3.  [Data Model (Database Schema)](#3-data-model-database-schema)
-4.  [Non-Functional Requirements](#4-non-functional-requirements)
-    *   [Scalability](#scalability)
-    *   [Security](#security)
-    *   [Reliability](#reliability)
-    *   [Maintainability](#maintainability)
-    *   [Performance](#performance)
-    *   [Observability](#observability)
-5.  [Future Enhancements](#5-future-enhancements)
+## 2. Goals and Principles
 
----
+The primary goals of this architecture are:
+*   **Modularity:** Clear separation of concerns to enhance maintainability and testability.
+*   **Scalability:** Design choices that allow the system to handle increased load and data volumes.
+*   **Reliability:** Robust error handling, logging, and monitoring to ensure operational stability.
+*   **Security:** Implementation of authentication, authorization, and secure coding practices.
+*   **Automation:** Full integration with CI/CD for rapid and reliable deployment.
+*   **Performance:** Efficient C++ implementation and strategic use of caching and rate limiting.
 
-## 1. High-Level Architecture
+Key architectural principles include:
+*   **Layered Architecture:** Clear division into presentation, service, and data access layers.
+*   **RESTful API Design:** Standardized and stateless communication interface.
+*   **Microservices-oriented thinking (within a monolith):** While a single C++ application, components are designed to be relatively independent.
+*   **Test-Driven Development (TDD) / Test-Friendly Design:** Components are designed to be easily testable.
 
-The system is designed as a monolithic Spring Boot application for the backend, exposed via REST APIs, and consumed by a separate frontend application. This approach provides a good balance of rapid development and ease of deployment for a medium-sized application, while retaining options for future microservice decomposition if necessary.
+## 3. High-Level Architecture
 
-### C4 Model - System Context Diagram
+The system is primarily composed of a C++ backend application that exposes a RESTful API. It interacts with a relational database. The entire system is containerized using Docker, enabling consistent deployment across different environments.
 
+```mermaid
+graph TD
+    UserClient[User Client (Browser/Mobile/CLI)] -- HTTP/HTTPS --> LoadBalancer
+    LoadBalancer -- HTTP/HTTPS --> NginxProxy[Nginx/API Gateway]
+    NginxProxy -- HTTP/HTTPS --> AppContainer[C++ Application Container]
+    AppContainer -- SQL Queries --> DatabaseContainer[Database (SQLite/PostgreSQL) Container]
+
+    subgraph CI/CD Pipeline
+        SourceCode[Source Code (GitHub)] --> GitHubActions[GitHub Actions]
+        GitHubActions -- Build --> DockerRegistry[Docker Registry]
+        GitHubActions -- Test --> TestingSuite[Unit/Integration/API/Performance Tests]
+        GitHubActions -- Deploy --> Kubernetes/VMs[Production Environment (Kubernetes/VMs)]
+    end
+
+    AppContainer -- Logs --> CentralizedLogging[Centralized Logging (ELK/Loki)]
+    AppContainer -- Metrics --> MonitoringSystem[Monitoring (Prometheus/Grafana)]
 ```
-+-------------------------------------------------------------+
-| System: ALX E-commerce Solution                             |
-|                                                             |
-|   +-------------------+       +------------------------+    |
-|   | User (Customer)   |------>| Web Browser (Frontend) |    |
-|   |                   |       +------------------------+    |
-|   |                   |<------|       (React App)      |    |
-|   +-------------------+       +------------------------+    |
-|                                     |                       |
-|                                     | HTTP(S) / JSON        |
-|                                     v                       |
-|   +-------------------------------------------------------+ |
-|   | E-commerce Backend (Spring Boot Application)          | |
-|   |   - User Management                                   | |
-|   |   - Product Catalog                                   | |
-|   |   - Shopping Cart                                     | |
-|   |   - Order Processing                                  | |
-|   |   - Authentication/Authorization                      | |
-|   +-------------------------------------------------------+ |
-|        |           |          |                            |
-|        | (JPA/JDBC)| (Redis)  | (Liquibase)                |
-|        v           v          v                            |
-|   +----------+  +-------+  +-----------+                   |
-|   | PostgreSQL |  | Redis |  | Filesystem  |               |
-|   | (Database) |  | (Cache)|  | (Log Files) |               |
-|   +----------+  +-------+  +-----------+                   |
-|                                                             |
-+-------------------------------------------------------------+
-```
-**Explanation:**
-*   **User (Customer)**: Interacts with the e-commerce platform through a web browser.
-*   **Web Browser (Frontend)**: A single-page application (React) running in the user's browser, responsible for the user interface and experience. It communicates with the backend via REST APIs.
-*   **E-commerce Backend (Spring Boot Application)**: The core application logic. It handles all business operations, manages data, and provides APIs.
-*   **PostgreSQL**: The primary relational database for persistence of all transactional data (users, products, orders, etc.).
-*   **Redis**: An in-memory data store used for caching frequently accessed data (e.g., product lists, categories) to improve response times and reduce database load. Also used for rate limiting state.
-*   **Filesystem**: Used for storing application logs.
 
----
+## 4. Component Breakdown
 
-## 2. Detailed Backend Architecture
+### 4.1 C++ Backend Application (`app/src`)
 
-The backend application follows a standard **layered architecture** and is organized into functional modules.
+The core of the system, implementing the business logic and API endpoints.
 
-### Layered Architecture
+#### 4.1.1 Web Server & Routing (`main.cpp`, `controllers/`)
+*   **Framework:** `CrowCpp` is used as a lightweight C++ web framework.
+*   **Role:** Handles HTTP request parsing, routing to appropriate controllers, and sending HTTP responses.
+*   **Middleware:** Integrates various middlewares for cross-cutting concerns (Authentication, Authorization, Logging, Rate Limiting, Error Handling).
 
-*   **Controller Layer**: (e.g., `UserController`, `ProductController`)
-    *   Handles incoming HTTP requests.
-    *   Maps requests to service methods.
-    *   Performs input validation using `@Valid` and DTOs.
-    *   Returns HTTP responses.
-    *   Uses Springdoc OpenAPI for API documentation.
-    *   `GlobalExceptionHandler` provides consistent error responses.
-    *   `RateLimitFilter` acts as a request gateway to prevent abuse.
-*   **Service Layer**: (e.g., `UserService`, `ProductService`, `CartService`, `OrderService`)
-    *   Contains the core business logic.
-    *   Orchestrates operations across multiple repositories.
-    *   Applies transactions (`@Transactional`).
-    *   Handles complex data processing and calculations.
-    *   Integrates caching (`@Cacheable`, `@CacheEvict`).
-    *   Performs domain-specific validations.
-*   **Repository Layer**: (e.g., `UserRepository`, `ProductRepository`)
-    *   Provides data access abstraction using Spring Data JPA.
-    *   Performs CRUD operations on entities.
-    *   Translates business objects to database entities and vice-versa.
-*   **Domain Layer (Entities)**: (e.g., `User`, `Product`, `Order`)
-    *   Represents the core business objects and their relationships.
-    *   Annotated with JPA for ORM mapping.
-    *   Includes `User` (authentication, roles), `Category`, `Product`, `Cart`, `CartItem`, `Order`, `OrderItem`.
-*   **DTO (Data Transfer Object) Layer**: (e.g., `UserDTO`, `ProductDTO`, `LoginRequest`)
-    *   Objects used for data exchange between the client and the server, and between layers.
-    *   Decouples the API contract from internal data models.
-    *   Allows for data transformation and hiding sensitive information.
-*   **Configuration Layer**: (e.g., `SecurityConfig`, `RedisConfig`, `OpenApiConfig`)
-    *   Sets up Spring Boot components, security rules, caching mechanisms, etc.
+#### 4.1.2 Controllers (`app/src/controllers/`)
+*   **Responsibility:** Act as the entry points for API requests. They receive requests, extract data, perform input validation, and delegate business logic execution to the Service Layer.
+*   **Design:** Each resource (e.g., `User`, `Product`, `Auth`) has its dedicated controller.
+*   **Output:** Formats responses (JSON) and handles HTTP status codes.
 
-### Modules
+#### 4.1.3 Services (`app/src/services/`)
+*   **Responsibility:** Encapsulate the core business logic. They orchestrate operations involving one or more models, enforce business rules, and interact with the Data Access Layer.
+*   **Design:** Each logical domain (e.g., `UserService`, `ProductService`, `AuthService`) has a corresponding service.
+*   **Transaction Management:** (Implicitly handled by `Database` utility or explicit in complex operations).
 
-The backend is logically divided into modules to separate concerns:
+#### 4.1.4 Models (`app/src/models/`)
+*   **Responsibility:** Define the data structures for domain entities (e.g., `User`, `Product`, `Order`).
+*   **Design:** Simple C++ structs/classes that represent the data, often with methods for serialization/deserialization to/from JSON or database rows.
 
-*   **`com.alx.ecommerce.config`**: Global application configurations, including Spring Security, JWT, OpenAPI, Redis, and Rate Limiting filters.
-*   **`com.alx.ecommerce.common`**: Shared utilities like `ApiResponse` for standardized responses and global exception handling.
-*   **`com.alx.ecommerce.user`**: Manages user authentication, authorization, and profile.
-    *   `model`: `User`, `Role`, `ERole`
-    *   `repository`: `UserRepository`, `RoleRepository`
-    *   `dto`: `SignupRequest`, `LoginRequest`, `JwtResponse`, `UserDTO`
-    *   `service`: `UserService`, `CustomUserDetailsService`
-    *   `controller`: `UserController`
-*   **`com.alx.ecommerce.product`**: Handles product catalog and category management.
-    *   `model`: `Product`, `Category`
-    *   `repository`: `ProductRepository`, `CategoryRepository`
-    *   `dto`: `ProductDTO`, `CategoryDTO`
-    *   `service`: `ProductService`, `CategoryService`
-    *   `controller`: `ProductController`, `CategoryController`
-*   **`com.alx.ecommerce.order`**: Manages shopping cart functionality and order processing.
-    *   `model`: `Cart`, `CartItem`, `Order`, `OrderItem`
-    *   `repository`: `CartRepository`, `CartItemRepository`, `OrderRepository`, `OrderItemRepository`
-    *   `dto`: `AddToCartRequest`, `CartDTO`, `OrderDTO`
-    *   `service`: `CartService`, `OrderService`
-    *   `controller`: `CartController`, `OrderController`
-*   **`com.alx.ecommerce.util`**: Helper utilities, specifically `JwtUtil` for JWT token generation and validation.
+#### 4.1.5 Utilities (`app/src/utils/`)
+*   **`Database`:** Wrapper around `SQLiteCpp` to manage database connections, execute queries, and handle transactions. Provides a higher-level abstraction for data persistence.
+*   **`JWT`:** Handles the creation, signing, and verification of JSON Web Tokens for authentication.
+*   **`Logger`:** A wrapper for `spdlog` to provide structured and configurable logging throughout the application.
+*   **`ErrorHandler`:** Defines custom exception types and provides a global exception handler middleware to catch exceptions and return consistent JSON error responses.
+*   **`Caching`:** A simple in-memory key-value cache with Time-To-Live (TTL) functionality, used to reduce database load for frequently accessed data.
+*   **`RateLimiter`:** Implements a fixed-window rate limiting algorithm to prevent abuse and protect API endpoints from excessive requests.
+*   **`Middleware`:** Contains custom Crow middleware for authentication, authorization, logging, and rate limiting, applied globally or per-route.
 
-### Data Flow
+### 4.2 Database Layer (`db/`)
 
-1.  **Client Request**: A frontend (React App) or other client sends an HTTP request to the Backend API (e.g., `POST /api/auth/signin`).
-2.  **Rate Limiting**: The `RateLimitFilter` intercepts the request, checks the client's IP against rate limits, and allows/denies the request.
-3.  **Authentication/Authorization**: `JwtAuthFilter` extracts JWT from the `Authorization` header, validates it using `JwtUtil`, and sets Spring Security's `SecurityContext`. Spring Security then authorizes access based on roles (`@PreAuthorize`).
-4.  **Controller Processing**: The relevant `@RestController` receives the request. Input DTOs are validated (`@Valid`).
-5.  **Service Logic**: The Controller calls a method in the appropriate `@Service`. Business logic is executed, including:
-    *   Fetching/saving data via `@Repository` interfaces.
-    *   Interacting with Redis for caching.
-    *   Performing complex calculations (e.g., cart total).
-    *   Updating product stock during order placement.
-6.  **Database Interaction**: The `@Repository` interacts with PostgreSQL via Hibernate/JPA. Liquibase manages database schema changes.
-7.  **Cache Interaction**: Services interact with Redis to store/retrieve cached data.
-8.  **Response Generation**: The Service returns a result (e.g., DTO). The Controller wraps it in an `ApiResponse` and returns an HTTP response to the client.
-9.  **Error Handling**: If an exception occurs, `GlobalExceptionHandler` intercepts it and returns a standardized error response.
-10. **Logging**: All layers utilize SLF4J/Logback for structured logging, aiding in debugging and monitoring.
+*   **Type:** SQLite for local development and simplicity. Can be easily swapped for PostgreSQL or MySQL in production by changing `Database` utility and `Dockerfile`.
+*   **Schema:** `schema.sql` defines tables, indexes, and constraints.
+*   **Migrations:** A `migrations/` directory holds scripts to evolve the database schema over time.
+*   **Seed Data:** `seed.sql` populates the database with initial data.
 
-### Technology Choices
+### 4.3 Containerization (`Dockerfile`, `docker-compose.yml`)
 
-*   **Spring Boot**: Chosen for its convention-over-configuration, rapid development features, and robust ecosystem for building enterprise-grade Java applications.
-*   **PostgreSQL**: A powerful, open-source relational database known for its reliability, data integrity, and advanced features, suitable for transactional e-commerce data.
-*   **Redis**: Selected as a high-performance in-memory data store for caching due to its speed and simplicity, effectively reducing database load.
-*   **Spring Security + JWT**: A industry-standard combination for securing REST APIs, providing stateless authentication and role-based authorization.
-*   **Liquibase**: For managing database schema changes reliably and versioning them.
-*   **Spring Data JPA**: Simplifies data access layer development by abstracting boilerplate code for CRUD operations.
-*   **Springdoc OpenAPI**: Automatically generates OpenAPI (Swagger) documentation from Spring Boot annotations, providing clear API contracts.
-*   **Lombok**: Reduces boilerplate code (getters, setters, constructors) for DTOs and entities, making code cleaner.
-*   **Bucket4j**: A Java library for rate limiting, providing efficient token bucket algorithm implementation.
+*   **`Dockerfile`:** Defines how to build the C++ application into a Docker image. It includes dependencies, build steps, and runtime configuration. Multi-stage builds are used for smaller production images.
+*   **`docker-compose.yml`:** Orchestrates multi-container Docker applications. Used for local development to easily spin up the C++ app and the database.
 
----
+### 4.4 CI/CD Pipeline (`.github/workflows/ci-cd.yml`)
 
-## 3. Data Model (Database Schema)
+*   **Tool:** GitHub Actions.
+*   **Stages:**
+    *   **Build:** Compiles the C++ application and builds the Docker image.
+    *   **Test:** Executes unit, integration, API, and performance tests.
+    *   **Image Push:** Pushes the built Docker image to a container registry.
+    *   **Deployment:** (Placeholder) Triggers deployment to a production environment (e.g., Kubernetes, Cloud VMs).
 
-The database schema is managed by Liquibase and is defined in `backend/database/liquibase/changelogs/*.sql` files.
+### 4.5 Testing Frameworks (`app/tests/`)
 
-**Key Tables:**
+*   **Unit/Integration:** Google Test for C++ code.
+*   **API:** `curl` scripts for basic endpoint validation.
+*   **Performance:** `hey` (or `ab`) for load generation and performance metrics.
 
-*   **`users`**: Stores user authentication and profile information.
-    *   `id` (PK), `username` (UNIQUE), `email` (UNIQUE), `password` (hashed), `created_at`, `updated_at`.
-*   **`roles`**: Stores user roles (e.g., ROLE_USER, ROLE_ADMIN).
-    *   `id` (PK), `name` (UNIQUE).
-*   **`user_roles`**: Join table for many-to-many relationship between `users` and `roles`.
-*   **`categories`**: Stores product categories.
-    *   `id` (PK), `name` (UNIQUE), `description`, `image_url`, `created_at`, `updated_at`.
-*   **`products`**: Stores product details.
-    *   `id` (PK), `name`, `sku` (UNIQUE), `description`, `price`, `stock_quantity`, `image_url`, `category_id` (FK to `categories`), `created_at`, `updated_at`.
-*   **`carts`**: Represents a user's shopping cart.
-    *   `id` (PK), `user_id` (FK to `users`, UNIQUE), `created_at`, `updated_at`.
-*   **`cart_items`**: Items within a shopping cart.
-    *   `id` (PK), `cart_id` (FK to `carts`), `product_id` (FK to `products`), `quantity`, `price_at_time_of_addition`, `created_at`, `updated_at`. (UNIQUE on `cart_id`, `product_id`).
-*   **`orders`**: Stores order details.
-    *   `id` (PK), `user_id` (FK to `users`), `total_amount`, `shipping_address`, `order_status`, `order_date`, `updated_at`.
-*   **`order_items`**: Items purchased in an order.
-    *   `id` (PK), `order_id` (FK to `orders`), `product_id` (FK to `products`), `quantity`, `price_at_purchase`, `created_at`, `updated_at`.
+## 5. Data Flow Example: User Registration
 
----
+1.  **Client Request:** A client sends a `POST /auth/register` request with `username`, `email`, `password`, and `role`.
+2.  **Web Server (Crow):** Receives the request.
+3.  **Middleware:**
+    *   `LoggingMiddleware`: Logs the incoming request.
+    *   `RateLimiterMiddleware`: Checks if the client's IP has exceeded the rate limit. If so, rejects the request.
+4.  **AuthController:**
+    *   Receives the request body.
+    *   Validates input data (e.g., email format, password strength).
+    *   Calls `AuthService::registerUser()`.
+5.  **AuthService:**
+    *   Checks if the username or email already exists using `UserService`.
+    *   Hashes the password.
+    *   Creates a `User` object.
+    *   Calls `UserService::createUser()` to persist the user.
+    *   If successful, generates a JWT token using `JWT` utility.
+6.  **UserService:**
+    *   Constructs an SQL `INSERT` query.
+    *   Uses `Database` utility to execute the query.
+7.  **Database Utility:**
+    *   Obtains a database connection.
+    *   Executes the `INSERT` query.
+    *   Handles potential database errors.
+8.  **AuthService:** Returns the newly created user's ID and the JWT token.
+9.  **AuthController:** Formats a success JSON response with the user data and token, and sends it back to the client (HTTP 201 Created).
+10. **Error Handling:** If any component throws an exception, `ErrorHandlerMiddleware` catches it and returns a consistent JSON error response (e.g., HTTP 400, 401, 500).
 
-## 4. Non-Functional Requirements
+## 6. Security Considerations
 
-### Scalability
-*   **Stateless Backend**: JWT-based authentication ensures the backend is stateless, allowing horizontal scaling of application instances.
-*   **Database**: PostgreSQL can be scaled vertically (more powerful server) and horizontally (read replicas, sharding for very large scale, though not implemented here).
-*   **Caching (Redis)**: Offloads read requests from the database, reducing database load and improving response times, which is crucial for scalability.
-*   **Docker/Kubernetes**: Designed for containerized deployment, facilitating easy scaling of services in container orchestration platforms.
+*   **Authentication:** JWT-based, ensuring stateless and secure API interactions. Tokens are short-lived.
+*   **Authorization:** Simple role-based access control implemented via middleware.
+*   **Password Hashing:** Passwords are never stored in plain text (use a strong hashing algorithm like bcrypt).
+*   **Rate Limiting:** Protects against brute-force attacks and denial-of-service.
+*   **Input Validation:** All API inputs are strictly validated to prevent injection attacks and other vulnerabilities.
+*   **HTTPS:** Assumed in production (handled by load balancer/reverse proxy).
+*   **Secrets Management:** Environment variables (`.env`) for local, dedicated secrets management in production (e.g., Kubernetes Secrets, AWS Secrets Manager).
 
-### Security
-*   **Authentication & Authorization**: JWT with Spring Security provides robust, industry-standard authentication and role-based access control.
-*   **Password Hashing**: BCrypt algorithm is used for secure storage of user passwords.
-*   **Input Validation**: `jakarta.validation` annotations ensure input data integrity and prevent common injection attacks.
-*   **Error Handling**: Global exception handler prevents sensitive information leakage in error responses.
-*   **HTTPS**: (Deployment consideration) Should be enforced in production for all communication.
-*   **Rate Limiting**: Protects against brute-force attacks and denial-of-service attempts by limiting request frequency.
+## 7. Observability
 
-### Reliability
-*   **Transactional Operations**: `@Transactional` annotations ensure data consistency for multi-step operations (e.g., placing an order, updating stock).
-*   **Database Migrations (Liquibase)**: Manages schema evolution in a controlled and versioned manner, preventing data loss and ensuring database consistency across environments.
-*   **Logging**: Comprehensive logging provides visibility into application behavior, aiding in troubleshooting and identifying issues.
+*   **Logging:** `spdlog` provides structured logging with different levels. Logs can be collected by a centralized logging system (e.g., ELK Stack, Loki).
+*   **Monitoring:** Describe how to integrate with Prometheus (for metrics like request count, error rates, latency) and Grafana (for visualization). The C++ app can expose a `/metrics` endpoint.
+*   **Tracing:** For distributed systems, tracing (e.g., OpenTelemetry) would be integrated, but for a monolith, detailed logging is sufficient initially.
 
-### Maintainability
-*   **Modular Design**: Code is organized into logical modules and layers, making it easier to understand, test, and maintain.
-*   **Clean Code Principles**: Adherence to Java coding conventions, meaningful naming, and proper use of design patterns.
-*   **Automated Tests**: Unit and integration tests ensure changes do not introduce regressions and help maintain code quality.
-*   **API Documentation (Swagger)**: Provides up-to-date documentation of API endpoints, simplifying integration for frontend developers and other consumers.
+## 8. Future Enhancements
 
-### Performance
-*   **Caching (Redis)**: Significantly improves read performance for frequently accessed data like products and categories.
-*   **Database Indexing**: (Implicit via JPA, explicit in migrations if needed) Ensures fast data retrieval.
-*   **Efficient Queries**: Spring Data JPA's derived query methods and `@Query` annotations allow for optimized database interactions.
-*   **Lazy Loading**: JPA's `FetchType.LAZY` prevents loading unnecessary data, improving performance for complex object graphs.
+*   **Database Abstraction:** More robust ORM for C++ or a custom abstraction layer supporting multiple SQL databases.
+*   **Asynchronous Operations:** Integrating `boost::asio` or `libuv` for fully asynchronous I/O if `CrowCpp`'s internal model isn't sufficient under extreme load.
+*   **Microservices:** Decomposing specific domains into independent services.
+*   **Advanced Caching:** Distributed caching solutions (e.g., Redis).
+*   **Service Mesh:** For managing microservices (e.g., Istio).
+*   **Container Orchestration:** Full Kubernetes deployment setup.
 
-### Observability
-*   **Logging**: Configured with Logback for structured logging to console and files, supporting easy integration with log aggregation systems.
-*   **Actuator Endpoints**: Spring Boot Actuator provides endpoints for monitoring application health, metrics (integrated with Prometheus), and other operational insights.
-*   **Error Handling**: Centralized error logging and detailed stack traces (in logs) for rapid error diagnosis.
-
----
-
-## 5. Future Enhancements
-
-This solution provides a strong foundation. Potential future enhancements include:
-
-*   **Payment Gateway Integration**: Implement integration with third-party payment providers (e.g., Stripe, PayPal).
-*   **Search & Filtering**: Advanced search capabilities (faceted search, full-text search) and more robust filtering options.
-*   **User Reviews & Ratings**: Allow users to leave reviews and ratings for products.
-*   **Wishlist Functionality**: Users can save products to a wishlist.
-*   **Email Notifications**: Send transactional emails (order confirmation, shipping updates, password reset).
-*   **Admin Dashboard**: A dedicated frontend or module for administrators to manage users, products, orders, etc., with richer analytics.
-*   **Image Upload Service**: Integrate with cloud storage (e.g., AWS S3) for product images.
-*   **Discount & Promotions**: Implement coupon codes, sales, and promotional offers.
-*   **Shipping & Inventory Management**: More sophisticated logic for calculating shipping costs and real-time inventory updates.
-*   **Event-Driven Architecture**: Introduce message queues (Kafka, RabbitMQ) for asynchronous processing of orders, notifications, etc., for greater scalability and resilience.
-*   **Container Orchestration**: Deploy to Kubernetes for advanced scaling, self-healing, and management.
-*   **Frontend**: Develop a full-featured, interactive React/Angular/Vue frontend.
-*   **Comprehensive Performance Tests**: Dedicated project with JMeter/Gatling scripts and detailed analysis.
-*   **Security Audits**: Regular security scans and penetration testing.
-*   **Circuit Breakers**: Implement circuit breakers (e.g., Resilience4j) for external service calls.
+This architecture provides a solid foundation for building and operating a reliable and scalable C++ application within a modern DevOps environment.

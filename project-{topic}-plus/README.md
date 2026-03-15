@@ -1,312 +1,274 @@
-# ALX E-commerce Solution
+# Enterprise-Grade C++ DevOps Automation System
 
-This project provides a comprehensive, production-ready e-commerce solution built with Java Spring Boot for the backend and a conceptual React frontend. It's designed following ALX Software Engineering principles, emphasizing clean code, robust architecture, and a full suite of modern enterprise features.
+This project provides a comprehensive, production-ready DevOps automation system with a C++ backend. It features a RESTful API, a robust database layer, extensive testing, CI/CD pipelines, Dockerization, and advanced enterprise features like authentication, logging, caching, and rate limiting.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Technology Stack](#technology-stack)
-4.  [Local Development Setup](#local-development-setup)
-    *   [Prerequisites](#prerequisites)
-    *   [Database Setup](#database-setup)
+1.  [Project Overview](#1-project-overview)
+2.  [Features](#2-features)
+3.  [Prerequisites](#3-prerequisites)
+4.  [Local Setup & Development](#4-local-setup--development)
+    *   [Building the Application](#building-the-application)
     *   [Running with Docker Compose](#running-with-docker-compose)
-    *   [Running Backend Locally (IDE)](#running-backend-locally-ide)
-    *   [Running Frontend Locally (Development Server)](#running-frontend-locally-development-server)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-7.  [CI/CD](#cicd)
-8.  [Deployment](#deployment)
-9.  [Contribution](#contribution)
-10. [License](#license)
+    *   [Interacting with the API](#interacting-with-the-api)
+5.  [Testing](#5-testing)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [API Tests](#api-tests)
+    *   [Performance Tests](#performance-tests)
+6.  [Database Management](#6-database-management)
+7.  [CI/CD Pipeline](#7-cicd-pipeline)
+8.  [Documentation](#8-documentation)
+9.  [Architecture](#9-architecture)
+10. [Deployment](#10-deployment)
+11. [License](#11-license)
 
----
+## 1. Project Overview
 
-## 1. Features
+This system demonstrates a full-stack approach with a focus on backend development using modern C++ principles. It aims to provide a boilerplate for enterprise-grade applications, emphasizing maintainability, scalability, and automated processes.
 
-This full-scale e-commerce solution includes:
+The core application manages `Users`, `Products`, and `Orders` through a RESTful API.
 
-*   **User Management**: User registration, login, JWT-based authentication and authorization (roles: USER, ADMIN).
-*   **Product Catalog**:
-    *   CRUD operations for categories.
-    *   CRUD operations for products (including pagination, search by keyword).
-    *   Product details with category association.
-*   **Shopping Cart**:
-    *   Add/remove products to/from cart.
-    *   Update item quantities in cart.
-    *   View cart contents and total.
-    *   Clear cart.
-*   **Order Management**:
-    *   Place orders from the shopping cart.
-    *   View user-specific order history.
-    *   Admin functionality to update order status.
-    *   Stock management integrated with order placement.
-*   **Security**: JWT-based authentication, Spring Security, password hashing.
-*   **Error Handling**: Centralized exception handling with consistent API responses.
-*   **Logging & Monitoring**: Configurable logging with Logback, Actuator endpoints for health and metrics (Prometheus).
-*   **Caching**: Redis integration for product and category data to improve performance.
-*   **Rate Limiting**: Custom filter to protect API endpoints from abuse based on client IP.
-*   **Database Migrations**: Liquibase for schema management.
+## 2. Features
 
----
+*   **C++ Backend:**
+    *   RESTful API using `CrowCpp`.
+    *   CRUD operations for Users, Products.
+    *   Modular design (Models, Services, Controllers).
+    *   JSON-based request/response.
+*   **Database:**
+    *   SQLite (via `SQLiteCpp`) for simplicity in local setup.
+    *   Schema definition and seed data.
+    *   Basic migration mechanism.
+*   **Authentication & Authorization:**
+    *   JWT-based authentication using `jwt-cpp`.
+    *   Middleware for protected routes.
+    *   Simple role-based authorization.
+*   **Logging:**
+    *   Structured logging with `spdlog`.
+    *   Log levels and file rotation.
+*   **Error Handling:**
+    *   Centralized exception handling middleware.
+    *   Consistent JSON error responses.
+*   **Caching:**
+    *   In-memory cache with Time-To-Live (TTL).
+*   **Rate Limiting:**
+    *   Fixed-window rate limiting middleware to protect endpoints.
+*   **Containerization:**
+    *   `Dockerfile` for the C++ application.
+    *   `docker-compose.yml` for local development orchestration.
+*   **CI/CD:**
+    *   GitHub Actions workflow for automated build, test, and deployment.
+*   **Testing:**
+    *   Unit tests (Google Test).
+    *   Integration tests (Google Test, interacting with a test DB).
+    *   API tests (`curl` scripts).
+    *   Performance tests (`hey` / `ab` scripts).
+*   **Documentation:**
+    *   Comprehensive `README.md`.
+    *   Detailed `API_DOCS.md`.
+    *   `ARCHITECTURE.md` for system overview.
+    *   `DEPLOYMENT.md` for deployment guidance.
 
-## 2. Architecture
+## 3. Prerequisites
 
-Refer to the [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview of the system design, components, and interactions.
+*   **Git:** For cloning the repository.
+*   **Docker & Docker Compose:** For containerized development and deployment.
+*   **CMake (>= 3.10):** If building natively.
+*   **Conan (Optional, for native build):** C/C++ package manager.
+*   **C++ Compiler (GCC/Clang supporting C++17/20):** If building natively.
+*   **`hey` or `ab` (Apache Bench):** For performance testing.
 
----
+## 4. Local Setup & Development
 
-## 3. Technology Stack
+### Clone the Repository
 
-### Backend
-*   **Language**: Java 17+
-*   **Framework**: Spring Boot 3.x
-*   **Web**: Spring Web MVC, RESTful APIs
-*   **Database**: PostgreSQL
-*   **ORM**: Spring Data JPA, Hibernate
-*   **Security**: Spring Security, JWT (jjwt)
-*   **Caching**: Spring Cache, Redis (Lettuce)
-*   **Database Migrations**: Liquibase
-*   **Validation**: Spring Validation (Jakarta Bean Validation)
-*   **Logging**: SLF4J, Logback
-*   **Documentation**: Springdoc OpenAPI (Swagger UI)
-*   **Utilities**: Lombok (for boilerplate reduction), Bucket4j (for rate limiting)
-*   **Build Tool**: Maven
+```bash
+git clone https://github.com/your-username/cpp-devops-system.git
+cd cpp-devops-system
+```
 
-### Frontend (Conceptual)
-*   **Framework**: React (using Create React App)
-*   **Language**: JavaScript/JSX
-*   **HTTP Client**: Axios
-*   **Build Tool**: npm/yarn
+### Environment Variables
 
-### Infrastructure
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-*   **Code Quality**: SonarCloud (integrated into CI)
+Copy the example environment file and fill in your details.
+```bash
+cp .env.example .env
+```
+Edit `.env` as needed.
 
----
+### Building the Application (Natively - Optional, Docker recommended)
 
-## 4. Local Development Setup
+This project uses `CMake` for building the C++ application and `Conan` for dependency management.
 
-### Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-*   **Java 17 Development Kit (JDK)**
-*   **Maven 3.x**
-*   **Docker Desktop** (includes Docker Engine and Docker Compose)
-*   **Node.js & npm** (for frontend development)
-*   An **IDE** like IntelliJ IDEA (recommended for Spring Boot)
-
-### Database Setup (Handled by Docker Compose)
-
-The `docker-compose.yml` file sets up a PostgreSQL database and a Redis instance automatically. You don't need to install them separately.
-
-### Running with Docker Compose (Recommended for Full Stack)
-
-This method spins up the PostgreSQL database, Redis, Spring Boot backend, and a placeholder React frontend simultaneously.
-
-1.  **Clone the repository**:
+1.  **Install Conan (if not already installed):**
     ```bash
-    git clone https://github.com/your-username/ecommerce-solution.git
-    cd ecommerce-solution
+    pip install conan
     ```
-
-2.  **Create `.env` file for Docker Compose**:
-    Create a `.env` file in the root directory (`ecommerce-solution/`) for environment variables.
-    ```env
-    # .env
-    DB_NAME=ecommerce_db
-    DB_USERNAME=ecommerce_user
-    DB_PASSWORD=ecommerce_password
-    JWT_SECRET=superSecretKeyForALXECommerceSolutionThatIsAtLeast32BytesLong
-    # IMPORTANT: Replace JWT_SECRET with a strong, random 256-bit key for production.
-    # e.g., using `head /dev/urandom | tr -dc A-Za-z0-9_ | head -c 32 ; echo`
-    ```
-
-3.  **Build and run services**:
+2.  **Add Conan remotes (if necessary):**
     ```bash
-    docker compose up --build -d
+    conan remote add conancenter https://center.conan.io
     ```
-    *   `--build`: Rebuilds images (useful after code changes).
-    *   `-d`: Runs services in detached mode.
-
-4.  **Verify services**:
+3.  **Create build directory and configure CMake:**
     ```bash
-    docker ps
+    cd app
+    mkdir build && cd build
+    conan install .. --build=missing -s build_type=Release # Or Debug
+    cmake .. -DCMAKE_BUILD_TYPE=Release # Or Debug
     ```
-    You should see `ecommerce_db`, `ecommerce_redis`, `ecommerce_backend`, and `ecommerce_frontend` containers running.
-
-5.  **Access the applications**:
-    *   **Backend API**: `http://localhost:8080/api`
-    *   **Swagger UI (API Docs)**: `http://localhost:8080/swagger-ui.html`
-    *   **Frontend (Placeholder)**: `http://localhost:3000`
-
-6.  **Stop services**:
+4.  **Build the application:**
     ```bash
-    docker compose down
+    cmake --build .
     ```
+    The executable `cpp_devops_system_app` will be in `app/build/bin`.
 
-### Running Backend Locally (IDE)
-
-If you prefer to run the Spring Boot backend directly from your IDE for faster development cycles:
-
-1.  **Ensure Dockerized DB/Redis is running**:
+5.  **Run the application (natively, without Docker):**
+    Make sure you have an `app.db` initialized in the `db/` directory, or provide the path to `main.cpp`.
     ```bash
-    docker compose up db redis -d
+    # From project-root
+    ./app/build/bin/cpp_devops_system_app
     ```
-    (You only need the database and Redis if running backend locally).
 
-2.  **Navigate to the backend directory**:
+### Running with Docker Compose (Recommended)
+
+Docker Compose simplifies setting up the application and its database.
+
+1.  **Build and start services:**
     ```bash
-    cd backend
+    docker-compose up --build -d
     ```
+    This will:
+    *   Build the `cpp-app` Docker image based on `Dockerfile`.
+    *   Start the `cpp-app` container.
+    *   Initialize the `app.db` using `schema.sql` and `seed.sql`.
+    *   Expose the application on port `8080`.
 
-3.  **Configure `application.yml`**:
-    Ensure `src/main/resources/application.yml` has the correct database and Redis connection details. If `DB_HOST` is not `localhost`, you might need to change it to `localhost` when running outside Docker's network, or keep it `db` if your local environment can resolve `db` to the Docker container (less common). For simplicity, keep it as `db` and ensure your Docker `db` service is running. If facing issues, you can explicitly set `DB_HOST: localhost` in `application.yml` for local IDE run.
-
-4.  **Run Maven build**:
+2.  **Verify services are running:**
     ```bash
-    mvn clean install
+    docker-compose ps
     ```
 
-5.  **Run the application**:
-    *   From your IDE, run `com.alx.ecommerce.EcommerceApplication.java`.
-    *   From terminal: `mvn spring-boot:run`
-
-    The backend will start on `http://localhost:8080/api`.
-
-### Running Frontend Locally (Development Server)
-
-To develop the React frontend with hot-reloading:
-
-1.  **Ensure backend is running** (either via Docker Compose or locally in IDE).
-
-2.  **Navigate to the frontend directory**:
+3.  **Stop services:**
     ```bash
-    cd frontend
+    docker-compose down
     ```
 
-3.  **Install dependencies**:
+### Interacting with the API
+
+Once the application is running (e.g., via Docker Compose), you can interact with it using `curl` or any API client. The API will be available at `http://localhost:8080`.
+
+Refer to `API_DOCS.md` for a complete list of endpoints and request/response formats.
+
+**Example: Register a user**
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"username": "testuser", "email": "test@example.com", "password": "password123", "role": "USER"}' http://localhost:8080/auth/register
+```
+
+**Example: Login and get JWT token**
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"username": "testuser", "password": "password123"}' http://localhost:8080/auth/login
+```
+
+**Example: Access a protected route (e.g., get products) using the obtained token**
+
+```bash
+# Replace <YOUR_JWT_TOKEN> with the actual token
+curl -X GET -H "Authorization: Bearer <YOUR_JWT_TOKEN>" http://localhost:8080/products
+```
+
+## 5. Testing
+
+The project includes various types of tests to ensure quality and reliability.
+
+### Unit Tests
+
+Unit tests focus on individual components and business logic. They are written using Google Test.
+
+1.  **Build tests (natively):**
     ```bash
-    npm install
-    # or yarn install
+    cd app/build # Assuming you're in the build directory
+    cmake --build . --target run_tests
     ```
+    (Or `cmake --build .` and then manually run the `cpp_devops_system_tests` executable)
 
-4.  **Start the development server**:
+2.  **Run tests (natively):**
     ```bash
-    npm start
-    # or yarn start
+    ./bin/cpp_devops_system_tests
     ```
-    The frontend will open in your browser, usually at `http://localhost:3000`.
+    (If built with `cmake --build . --target run_tests`, it will run automatically)
 
----
+### Integration Tests
 
-## 5. API Documentation
+Integration tests verify interactions between different components, e.g., controllers with services and the database.
 
-The backend API is self-documented using Springdoc OpenAPI.
-Once the backend is running, you can access the Swagger UI at:
-**`http://localhost:8080/swagger-ui.html`**
+*   These are included in the Google Test suite (`cpp_devops_system_tests`). They typically use an in-memory or a dedicated test database to ensure isolation.
 
-This interface allows you to:
-*   View all available API endpoints.
-*   See request/response schemas.
-*   Try out API calls directly from the browser (requires obtaining a JWT token from `/api/auth/signin` and authorizing with it).
+### API Tests
 
----
+API tests validate the external behavior of the API endpoints.
 
-## 6. Testing
+```bash
+cd app/tests/api
+chmod +x api_test.sh
+./api_test.sh
+```
+*Note: Ensure the application is running (e.g., via `docker-compose up`) before running API tests.*
 
-The project includes various types of tests:
+### Performance Tests
 
-*   **Unit Tests**: Located in `backend/src/test/java/com/alx/ecommerce/*/service/*Test.java`. These test individual components (e.g., services) in isolation using Mockito.
-*   **Integration Tests**: Located in `backend/src/test/java/com/alx/ecommerce/*/controller/*IntegrationTest.java`. These test the interaction between multiple components, including the API layer and an in-memory database (H2 for fast tests).
+Performance tests help identify bottlenecks and ensure the API can handle expected load.
 
-### Running Tests
+```bash
+cd app/tests/performance
+chmod +x performance_test.sh
+./performance_test.sh
+```
+*Note: Ensure the application is running before running performance tests. You might need to install `hey` (`go install github.com/rakyll/hey@latest`) or `ab` (`sudo apt-get install apache2-utils`).*
 
-1.  **Navigate to the backend directory**:
-    ```bash
-    cd backend
-    ```
+## 6. Database Management
 
-2.  **Run all tests**:
-    ```bash
-    mvn test
-    ```
+The `db/` directory contains:
+*   `schema.sql`: Defines the database tables and their structure.
+*   `seed.sql`: Populates the database with initial data for development/testing.
+*   `migrations/`: Contains example migration scripts. For SQLite, migrations are typically managed manually or with simple scripts. For production, consider dedicated migration tools with PostgreSQL/MySQL.
 
-3.  **Generate Test Coverage Report (JaCoCo)**:
-    After running `mvn test`, a JaCoCo report will be generated.
-    ```bash
-    # Open the report in your browser
-    xdg-open target/site/jacoco/index.html # For Linux
-    open target/site/jacoco/index.html     # For macOS
-    start target/site/jacoco/index.html    # For Windows
-    ```
+During `docker-compose up`, `schema.sql` and `seed.sql` are automatically applied to the `app.db` volume.
 
-### Performance Testing
+## 7. CI/CD Pipeline
 
-Performance testing is critical for production-ready systems. While specific scripts are not provided in this base project (as they depend on desired load patterns), you would typically use tools like:
+The project uses GitHub Actions for CI/CD. The workflow is defined in `.github/workflows/ci-cd.yml`.
 
-*   **JMeter**: For simulating various load types, recording user journeys, and generating reports.
-*   **Gatling**: A highly performant load testing tool based on Scala, for scripting complex scenarios.
+**Pipeline Steps:**
+1.  **Build:** Compiles the C++ application.
+2.  **Test:** Runs unit, integration, and API tests.
+3.  **Docker Build & Push:** Builds the Docker image and pushes it to a container registry (e.g., Docker Hub or GitHub Container Registry).
+4.  **Deploy:** (Placeholder) Triggers deployment to a production environment.
 
-**Steps for Performance Testing (Conceptual):**
-1.  **Deploy the application** to a staging environment that mimics production.
-2.  **Define load scenarios**: Identify critical user flows (e.g., register, login, browse products, add to cart, checkout).
-3.  **Create test scripts**: Write JMeter/Gatling scripts to simulate these scenarios.
-4.  **Execute tests**: Run tests with increasing load to identify bottlenecks.
-5.  **Monitor**: Use tools like Prometheus/Grafana (integrated via Spring Boot Actuator) to monitor resource utilization (CPU, memory, database connections) during tests.
-6.  **Analyze results**: Identify response time degradation, errors, and resource saturation points.
+Refer to `.github/workflows/ci-cd.yml` for details.
 
----
+## 8. Documentation
 
-## 7. CI/CD
+*   **`README.md`**: You are reading it! Comprehensive setup and usage guide.
+*   **`API_DOCS.md`**: Detailed OpenAPI/Swagger-style documentation for all API endpoints.
+*   **`ARCHITECTURE.md`**: High-level overview of the system architecture, design choices, and component interactions.
+*   **`DEPLOYMENT.md`**: Guide for deploying the application to various environments (e.g., Docker, Kubernetes, cloud VMs).
 
-A basic CI/CD pipeline is configured using GitHub Actions (`.github/workflows/main.yml`):
+## 9. Architecture
 
-*   **Build & Test**: On every push and pull request to `main`:
-    *   Checks out code.
-    *   Sets up Java 17.
-    *   Builds the backend project with Maven.
-    *   Runs all unit and integration tests.
-    *   (Optional) Integrates with SonarCloud for code quality analysis.
-*   **Docker Build & Push**: On successful build on the `main` branch:
-    *   Builds Docker images for the backend (and potentially frontend).
-    *   Pushes these images to Docker Hub (or a private registry).
-*   **Deployment (Placeholder)**: On successful Docker image push:
-    *   A placeholder step for deployment to a production server. This typically involves SSHing to the server and updating Docker containers.
+The system follows a layered, modular architecture:
 
-**To enable the CI/CD pipeline:**
-1.  Fork this repository.
-2.  Go to your GitHub repository's `Settings` -> `Secrets and variables` -> `Actions`.
-3.  Add the following repository secrets:
-    *   `DOCKER_USERNAME`: Your Docker Hub username.
-    *   `DOCKER_PASSWORD`: Your Docker Hub access token (not your password directly).
-    *   `SONAR_TOKEN`: (Optional, for SonarCloud) Your SonarCloud project token.
-    *   `SSH_PRIVATE_KEY`: (For deployment, if using SSH) The private key corresponding to a public key authorized on your deployment server.
-    *   `DEPLOY_HOST`: (For deployment) The IP address or hostname of your deployment server.
-    *   `DEPLOY_USER`: (For deployment) The username for SSH access on your deployment server.
+*   **Presentation Layer (Controllers):** Handles incoming HTTP requests, validates input, and delegates to the service layer.
+*   **Service Layer (Services):** Contains core business logic, orchestrates data operations, and interacts with the database layer.
+*   **Data Access Layer (Models/Database Utility):** Manages data persistence, converts between C++ objects and database records.
+*   **Utilities:** Provides common functionalities like logging, JWT handling, error handling, caching, and rate limiting.
 
----
+Further details can be found in `ARCHITECTURE.md`.
 
-## 8. Deployment
+## 10. Deployment
 
-Refer to the [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment considerations and strategies.
+The primary deployment strategy focuses on Docker containers. The `DEPLOYMENT.md` file provides guidance on how to deploy the Docker image to various cloud environments or Kubernetes clusters.
 
----
+## 11. License
 
-## 9. Contribution
-
-Contributions are welcome! Please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
-
----
-
-## 10. License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is open-source and available under the [MIT License](LICENSE).
