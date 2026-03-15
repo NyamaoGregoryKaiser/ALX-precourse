@@ -1,0 +1,67 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm-up"
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      name: "High load"
+    - duration: 60
+      arrivalRate: 10
+      name: "Sustained load"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+scenarios:
+  - name: "Create Transaction"
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            email: "admin@example.com" # Or a dedicated test customer
+            password: "adminpassword123"
+          capture:
+            json: "$.token"
+            as: "authToken"
+      - post:
+          url: "/api/v1/customers"
+          json:
+            name: "Test Customer {{ $randomNumber(1, 1000000) }}"
+            email: "perf-test-{{ $randomNumber(1, 1000000) }}@example.com"
+            password: "password123"
+            role: "customer"
+          capture:
+            json: "$.data.customer.id"
+            as: "customerId"
+      - post:
+          url: "/api/v1/payment-methods"
+          json:
+            customerId: "{{ customerId }}"
+            type: "card"
+            details:
+              last4: "{{ $randomNumber(1000, 9999) }}"
+              brand: "Visa"
+              expiryMonth: "{{ $randomNumber(1, 12) }}"
+              expiryYear: "202{{ $randomNumber(5, 9) }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          capture:
+            json: "$.data.paymentMethod.id"
+            as: "paymentMethodId"
+      - post:
+          url: "/api/v1/transactions"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            customerId: "{{ customerId }}"
+            paymentMethodId: "{{ paymentMethodId }}"
+            amount: "{{ $randomNumber(10, 500) }}.00"
+            currency: "USD"
+            type: "debit"
+            description: "Performance test transaction"
+      - get:
+          url: "/api/v1/transactions?customerId={{ customerId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"

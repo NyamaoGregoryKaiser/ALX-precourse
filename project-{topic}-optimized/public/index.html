@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Processing System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Payment Processing System Dashboard</h1>
+
+        <div id="auth-section">
+            <h2>Authentication</h2>
+            <form id="login-form">
+                <h3>Login</h3>
+                <input type="email" id="login-email" placeholder="Email" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+            <p id="auth-message"></p>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <h2>Welcome!</h2>
+            <button id="logout-button">Logout</button>
+
+            <section id="customer-section">
+                <h3>Customers</h3>
+                <form id="create-customer-form">
+                    <input type="text" id="customer-name" placeholder="Customer Name" required>
+                    <input type="email" id="customer-email" placeholder="Customer Email" required>
+                    <input type="password" id="customer-password" placeholder="Customer Password" required>
+                    <select id="customer-role">
+                        <option value="customer">Customer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <button type="submit">Create Customer</button>
+                </form>
+                <div id="customer-list"></div>
+            </section>
+
+            <section id="transaction-section">
+                <h3>Create Transaction</h3>
+                <form id="create-transaction-form">
+                    <input type="text" id="transaction-customer-id" placeholder="Customer ID (e.g., cust_abc)" required>
+                    <input type="text" id="transaction-payment-method-id" placeholder="Payment Method ID (e.g., pm_xyz)" required>
+                    <input type="number" id="transaction-amount" placeholder="Amount" step="0.01" required>
+                    <input type="text" id="transaction-currency" placeholder="Currency (e.g., USD)" value="USD" required>
+                    <select id="transaction-type" required>
+                        <option value="debit">Debit</option>
+                        <option value="credit">Credit</option>
+                    </select>
+                    <input type="text" id="transaction-description" placeholder="Description">
+                    <button type="submit">Process Transaction</button>
+                </form>
+                <h3>Recent Transactions</h3>
+                <div id="transaction-list"></div>
+            </section>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

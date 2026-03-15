@@ -2,21 +2,18 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:13-alpine
-    container_name: cms_db
+    image: postgres:15-alpine
+    restart: always
     environment:
-      POSTGRES_DB: cms_db
-      POSTGRES_USER: cms_user
-      POSTGRES_PASSWORD: cms_password
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # Initialize schema and seed data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cms_user -d cms_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,30 +22,40 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cms_app
-    ports:
-      - "9080:9080"
+    restart: always
     environment:
-      # Use environment variables from .env.example or custom .env file
-      # These will override the defaults set in the Dockerfile
-      # For a true production setup, use Docker secrets or Kubernetes secrets
-      DB_HOST: db # Link to the database service name
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: db # Service name in docker-compose for database host
       DB_PORT: 5432
-      DB_USER: cms_user
-      DB_PASSWORD: cms_password
-      DB_NAME: cms_db
-      APP_PORT: 9080
-      JWT_SECRET: supersecretjwtkey_alx_cms_project_12345
-      LOG_LEVEL: debug
-      CACHE_MAX_SIZE: 100
-      RATE_LIMIT_ENABLED: "true"
-      RATE_LIMIT_WINDOW_SECONDS: 60
-      RATE_LIMIT_MAX_REQUESTS: 100
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_COOKIE_EXPIRES_IN: ${JWT_COOKIE_EXPIRES_IN}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
+      CACHE_TTL: ${CACHE_TTL}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET}
+    ports:
+      - "3000:3000"
     depends_on:
       db:
-        condition: service_healthy # Wait for the database to be healthy
-    restart: on-failure
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules # Exclude node_modules from host bind mount to prevent conflicts
+    # command: sh -c "npm run db:migrate && npm run db:seed && npm start" # Run migrations and seed on container start
 
 volumes:
-  db_data:
+  postgres_data:
 ```
+
+---
+
+### 4. Testing & Quality
+
+#### `src/utils/helpers.js` (Example utility for unit testing)
+
+```javascript

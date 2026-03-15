@@ -1,129 +1,140 @@
-```markdown
-# Real-time Chat Application - Architecture Document
+# Payment Processing System Architecture
 
-## 1. Introduction
+This document outlines the high-level architecture of the Payment Processing System, detailing its components, their interactions, and the overall design principles.
 
-This document provides a high-level overview of the architecture for the Real-time Chat Application. It describes the main components, their interactions, and the technologies used to build a robust, scalable, and production-ready system.
+## 1. High-Level Overview
 
-## 2. System Overview
+The system is a modular, API-driven application designed to handle payment-related operations. It consists of a Node.js/Express backend, a PostgreSQL database, and a simple frontend for demonstration. It leverages microservices-like module separation, allowing for eventual scaling of individual components.
 
-The chat application is designed as a monolithic (for simplicity and ease of deployment in this example) Spring Boot application that integrates both RESTful APIs and WebSocket messaging. It follows a layered architectural pattern to separate concerns and enhance maintainability.
+```mermaid
+graph TD
+    User --Frontend (Browser/Mobile)--> LoadBalancer
+    LoadBalancer --HTTPS--> WebServer(Nginx)
+    WebServer --> ExpressApp(Node.js/Express Backend)
 
-![Architecture Diagram](https://mermaid.live/svg/graph TD
-    A[Frontend Client: HTML/JS/CSS] -->|1. REST API Calls| B(Backend: Spring Boot Application)
-    A -->|2. WebSocket Connection| C(WebSocket Server: Spring)
-    B -->|3. Data Access (JPA)| D[Database: PostgreSQL]
-    C -->|4. Send Messages to Broker| B
-    B -->|5. Message Broker (STOMP)| C
-    B -->|6. Cache (Caffeine)| E[Caching Layer]
-    B -->|7. Metrics (Actuator)| F[Monitoring System: Prometheus/Grafana]
-    B -->|8. Logging| G[Logging System: ELK Stack]
-
-    subgraph Backend: Spring Boot Application
-        B1[Controller Layer] <--> B2(Service Layer)
-        B2 <--> B3(Repository Layer)
-        B3 --> D
-        B1 -.-> B4(Security Layer: JWT Auth)
-        B1 -.-> B5(Rate Limiting)
-        B2 -.-> E
-        B6(Global Exception Handler) -- handles --> B1, B2
-        B7(WebSocket Controller/Listener) <--> C
+    subgraph Backend Services
+        ExpressApp --API Gateway/Routes--> AuthModule
+        ExpressApp --API Gateway/Routes--> CustomerModule
+        ExpressApp --API Gateway/Routes--> PaymentMethodModule
+        ExpressApp --API Gateway/Routes--> TransactionModule
+        ExpressApp --API Gateway/Routes--> WebhookModule
     end
-)
 
-*Self-generated Mermaid diagram. For actual rendering, use a tool or viewer.*
+    AuthModule --Authenticates/Authorizes--> JWT(JSON Web Tokens)
+    AuthModule --Interacts--> CustomerDB(PostgreSQL)
+    CustomerModule --CRUD--> CustomerDB
+    PaymentMethodModule --CRUD--> PaymentMethodDB(PostgreSQL)
+    TransactionModule --CRUD & Processing Logic--> TransactionDB(PostgreSQL)
+    TransactionModule --Dispatches Event--> WebhookModule
+    WebhookModule --Manages & Dispatches--> WebhookEndpointDB(PostgreSQL)
+    WebhookModule --HTTP POST (async)--> ExternalService(Webhook Listener)
 
-**Key Components:**
-*   **Frontend Client**: A simple web application built with HTML, CSS, and JavaScript, leveraging SockJS and STOMP.js for real-time communication.
-*   **Spring Boot Application (Backend)**: The core of the system, written in Java.
-    *   **Controller Layer**: Exposes RESTful API endpoints for user management, chat room management, and message history retrieval.
-    *   **Service Layer**: Contains the business logic, transaction management, caching, and interacts with the repository layer.
-    *   **Repository Layer**: Handles data persistence using Spring Data JPA and interacts with the PostgreSQL database.
-    *   **Security Layer**: Implemented with Spring Security and JWT for authentication and authorization.
-    *   **WebSocket Server**: Part of the Spring Boot application, handles STOMP over WebSocket connections for real-time messaging.
-    *   **Global Exception Handler**: Provides consistent error responses across all API endpoints.
-    *   **Rate Limiting Interceptor**: Protects API endpoints from abuse.
-*   **PostgreSQL Database**: The primary data store for all application data (users, rooms, messages).
-*   **Caching Layer (Caffeine)**: An in-memory cache integrated with Spring's caching abstraction to reduce database load and improve response times for frequently accessed data.
-*   **Monitoring System (Prometheus/Grafana)**: (Conceptual) Spring Boot Actuator exposes metrics that can be scraped by Prometheus and visualized in Grafana.
-*   **Logging System (ELK Stack/Others)**: (Conceptual) Centralized logging solution to collect and analyze application logs.
+    ExpressApp --Logs--> LogMonitor(Winston)
+    ExpressApp --Caches--> Cache(Node-Cache/Redis)
+    ExpressApp --Error Handling--> ErrorMiddleware
+    ExpressApp --Rate Limits--> RateLimitMiddleware
 
-## 3. Data Flow
-
-1.  **User Authentication/Registration**:
-    *   Frontend sends `POST /api/v1/auth/register` or `POST /api/v1/auth/login` to the backend.
-    *   Backend validates credentials, authenticates/registers the user, and issues a JWT token.
-    *   Frontend stores the JWT token for subsequent authenticated requests.
-
-2.  **RESTful API Interactions**:
-    *   Frontend sends authenticated HTTP requests (GET, POST, PUT, DELETE) to various `/api/v1/...` endpoints.
-    *   The Security Layer intercepts requests, validates the JWT token, and enforces authorization rules.
-    *   Controllers invoke Service Layer methods, which perform business logic, interact with the Repository Layer (and potentially the Caching Layer), and return data.
-    *   Responses are returned to the frontend.
-
-3.  **Real-time Messaging (WebSocket)**:
-    *   Frontend establishes a WebSocket connection to `/ws/chat` using SockJS and STOMP.js. The JWT token is sent during the STOMP `CONNECT` frame for authentication.
-    *   Once connected, the client can subscribe to specific chat room topics (e.g., `/topic/rooms/{roomId}`).
-    *   When a user sends a message (`/app/chat.sendMessage`):
-        *   The WebSocket endpoint receives the message, associates it with the authenticated user and specified room.
-        *   The MessageService saves the message to the PostgreSQL database.
-        *   The message is then broadcasted by the Spring messaging template to the relevant `/topic/rooms/{roomId}` destination.
-        *   All clients subscribed to that topic receive the new message in real-time.
-
-## 4. Key Architectural Decisions & Trade-offs
-
-*   **Monolithic Structure**: For rapid development and simpler deployment of this comprehensive example, a monolithic Spring Boot application is chosen.
-    *   **Pros**: Easier to develop, test, and deploy initially.
-    *   **Cons**: Can become harder to scale horizontally for individual components; tightly coupled.
-    *   **Alternative**: Microservices architecture for greater scalability and fault tolerance, but adds complexity in deployment, communication, and data consistency.
-
-*   **Spring Security with JWT**: Standard, robust security mechanism.
-    *   **Pros**: Stateless, scalable, widely supported.
-    *   **Cons**: Requires careful handling of token storage client-side (e.g., local storage vs. http-only cookies), and token revocation can be complex without a blacklist.
-
-*   **STOMP over WebSocket**: Provides a higher-level messaging protocol than raw WebSockets.
-    *   **Pros**: Simplifies message routing, error handling, and subscription management.
-    *   **Cons**: Adds a small overhead compared to raw WebSockets.
-
-*   **Caffeine Cache (In-Memory)**: Fast, simple to integrate.
-    *   **Pros**: Very low latency, easy to set up with Spring Cache.
-    *   **Cons**: Not distributed (each app instance has its own cache), susceptible to data staleness in a clustered environment unless explicitly managed (e.g., with cache invalidation events or shorter TTLs).
-    *   **Alternative**: Distributed cache like Redis for multi-instance deployments.
-
-*   **Rate Limiting (Bucket4j with In-Memory)**: Basic protection.
-    *   **Pros**: Prevents simple abuse patterns.
-    *   **Cons**: In-memory `Bucket4j` is not distributed. Each instance of the app applies its own rate limit.
-    *   **Alternative**: Integrate `Bucket4j` with Redis or use an API Gateway (like Spring Cloud Gateway) for distributed rate limiting.
-
-*   **Database (PostgreSQL)**: Reliable, feature-rich relational database.
-    *   **Pros**: ACID compliance, strong data integrity, good for structured data.
-    *   **Cons**: Can be a bottleneck at extreme scale if not properly sharded or optimized.
-    *   **Alternative**: NoSQL databases (e.g., Cassandra for chat history) for massive scale, but sacrifice relational benefits.
-
-## 5. Scalability Considerations
-
-*   **Backend**: Can be scaled horizontally by running multiple instances behind a load balancer. However, stateless nature of JWT helps, but in-memory caches and rate limiters would need to be externalized (e.g., to Redis) for truly consistent behavior across instances.
-*   **WebSockets**: Spring's WebSocket support can be configured with external message brokers (e.g., RabbitMQ, Kafka) if multiple application instances need to share WebSocket messages, allowing for horizontal scaling of the WebSocket component.
-*   **Database**: Vertical scaling initially, then horizontal scaling through sharding, replication, or migrating specific data to specialized databases.
-
-## 6. Security Considerations
-
-*   **Authentication & Authorization**: JWT tokens and Spring Security for secure access.
-*   **Input Validation**: Jakarta Bean Validation annotations are used to prevent invalid data from reaching business logic and database.
-*   **Password Hashing**: BCrypt is used for strong password hashing.
-*   **Rate Limiting**: Protects against brute-force attacks and denial-of-service attempts.
-*   **CORS**: Configured to allow necessary origins (can be restricted further in production).
-*   **SQL Injection/XSS**: JPA prevents most SQL injection. Proper input sanitization on the frontend and backend is crucial for content like chat messages to prevent XSS.
-
-## 7. Future Enhancements
-
-*   **Distributed Caching**: Integrate Redis for a distributed caching layer and distributed rate limiting.
-*   **External Message Broker**: Use RabbitMQ or Kafka for WebSocket message brokering in a clustered environment.
-*   **User Presence**: Show online/offline status for users.
-*   **Direct Messaging**: Enhance support for one-to-one direct messages.
-*   **File Sharing**: Allow users to share images, videos, or documents.
-*   **Notifications**: Push notifications for new messages.
-*   **Enhanced Frontend**: Use a modern JavaScript framework (React, Vue, Angular) for a richer UI.
-*   **Monitoring Dashboards**: Set up Grafana dashboards for metrics from Prometheus.
-*   **Full-text Search**: Integrate Elasticsearch for searching chat messages.
+    subgraph Data Stores
+        PostgreSQL(Database Cluster)
+    end
+    CustomerDB --> PostgreSQL
+    PaymentMethodDB --> PostgreSQL
+    TransactionDB --> PostgreSQL
+    WebhookEndpointDB --> PostgreSQL
 ```
+
+## 2. Architectural Layers
+
+### 2.1. Client Layer
+*   **Frontend (Browser/Mobile):** A basic HTML/CSS/JavaScript interface provided in `public/` demonstrates interaction with the API. In a real-world scenario, this would be a full-fledged SPA (React, Angular, Vue) or mobile application.
+*   **Other Integrations:** Any third-party systems or partner applications consuming the API.
+
+### 2.2. API Gateway / Web Server (Nginx/Load Balancer)
+*   Handles incoming requests, potentially performs SSL termination, load balancing, and static file serving.
+*   **Implementation:** `docker-compose.yml` includes a simple setup for the Node.js app, but a production deployment would have Nginx in front.
+
+### 2.3. Backend Application (Node.js/Express)
+The core logic is built with Node.js and Express. It follows a modular, layered architecture:
+
+#### a. Entry Point (`server.js`, `app.js`)
+*   `server.js`: Starts the HTTP server, connects to the database, and handles global process events (unhandled rejections, uncaught exceptions).
+*   `app.js`: Configures the Express application, applies global middleware (CORS, JSON parsing, logging, rate limiting), sets up API routes, serves static assets, and defines the global error handler.
+
+#### b. Middleware Layer (`src/middleware/`)
+*   **Authentication (`auth.js`):** JWT-based authentication for securing API endpoints. Includes `protect` (verifies token) and `authorize` (checks user roles).
+*   **Error Handling (`errorHandler.js`):** Centralized middleware to catch and format operational errors (`AppError`) and programming errors.
+*   **Logging (`logger.js`):** Integrates Winston for structured application logging and Morgan for HTTP request logging.
+*   **Rate Limiting (`rateLimiter.js`):** Protects against brute-force attacks and API abuse.
+*   **Caching (`cache.js`):** An in-memory cache (Node-cache) for reducing database load on frequently accessed static or slowly changing data.
+
+#### c. Modules Layer (`src/modules/`)
+Each major functional area is encapsulated in its own module, promoting separation of concerns and maintainability. Each module typically contains:
+*   **Controllers (`/controllers`):** Handle incoming requests, validate input, call services, and send responses. Minimal business logic here.
+*   **Services (`/services`):** Contain the primary business logic, interact with the database (via models), and orchestrate operations. This is where most algorithms and data processing reside.
+*   **Routes (`/routes`):** Define API endpoints and link them to controller methods, applying specific middleware as needed.
+
+**Key Modules:**
+*   **Auth:** User signup, login, password management.
+*   **Customers:** CRUD operations for managing customer accounts.
+*   **Payment Methods:** Storing and retrieving customer payment instrument details (e.g., card last 4 digits, expiry).
+*   **Transactions:** Core payment processing logic (initiate, update status, retrieve). Includes simulating external payment gateway interactions.
+*   **Webhooks:** Managing webhook subscriptions for customers and dispatching events to their registered URLs.
+
+#### d. Utilities Layer (`src/utils/`)
+*   **Validators (`/validators`):** Joi schemas for request body validation.
+*   **Helpers (`helpers.js`):** Common utility functions (e.g., ID generation, `catchAsync`).
+*   **AppError (`appError.js`):** Custom error class for operational errors.
+
+### 2.4. Database Layer (PostgreSQL with Sequelize)
+*   **ORM:** Sequelize is used for interacting with PostgreSQL, providing an abstraction layer over raw SQL queries.
+*   **Models (`src/db/models/`):** Define the structure of data entities (Customer, Transaction, PaymentMethod, WebhookEndpoint, WebhookEvent), including associations, validations, and lifecycle hooks (e.g., password hashing).
+*   **Migrations (`src/db/migrations/`):** Manage database schema changes over time, ensuring consistency across environments.
+*   **Seeders (`src/db/seeders/`):** Populate the database with initial data (e.g., admin user, test data).
+*   **Query Optimization:** Models are designed with appropriate data types and relationships. Migrations include adding indexes to frequently queried columns to improve read performance.
+
+## 3. Data Flow (Example: Creating a Transaction)
+
+1.  **Client Request:** A customer (or admin) sends a `POST /api/v1/transactions` request with transaction details (amount, customer ID, payment method ID).
+2.  **Middleware:**
+    *   `morganMiddleware`: Logs the incoming HTTP request.
+    *   `rateLimiter`: Checks if the client has exceeded request limits.
+    *   `protect`: Verifies the JWT token in the `Authorization` header.
+    *   `authorize`: Checks if the authenticated user has permission to create transactions.
+3.  **Controller (`transactionController.createTransaction`):**
+    *   Validates the request body using Joi schema.
+    *   Calls `transactionService.createTransaction`.
+4.  **Service (`transactionService.createTransaction`):**
+    *   Fetches `Customer` and `PaymentMethod` records from the database using Sequelize models.
+    *   Performs business logic checks (e.g., payment method valid for customer).
+    *   Creates a new `Transaction` record in the database with status 'pending'.
+    *   **Asynchronous Processing Simulation:** Initiates a `setTimeout` to simulate an external payment gateway processing the transaction. This function later updates the transaction status to 'completed' or 'failed'.
+    *   **Webhook Dispatch:** Upon status update, `webhookService.dispatchWebhookEvent` is called.
+5.  **Webhook Service (`webhookService.dispatchWebhookEvent`):**
+    *   Retrieves all `WebhookEndpoints` subscribed to `transaction.status_updated` for the relevant customer.
+    *   Creates `WebhookEvent` records (status 'pending') for each subscribed endpoint.
+    *   Asynchronously attempts to send the webhook payload to the registered `url`s. Implements retry logic if delivery fails.
+6.  **Response:** The `transactionController` sends a `201 Created` response to the client with the initial 'pending' transaction details.
+7.  **Error Handling:** If any step encounters an error, it's caught by `catchAsync` and propagated to `errorHandler.js`, which sends a standardized error response.
+
+## 4. Security Considerations
+
+*   **Authentication:** JWT with secure secret and proper expiration.
+*   **Authorization:** Role-based access control (RBAC) enforced by middleware.
+*   **Input Validation:** Joi schemas at the controller level to prevent invalid data from reaching business logic.
+*   **Password Hashing:** `bcryptjs` for all user passwords.
+*   **HTTPS:** Assumed in production (handled by Nginx/Load Balancer).
+*   **Environment Variables:** Sensitive configurations loaded from `.env` and not hardcoded.
+*   **Webhook Security:** Provision for webhook signing (`secret`) to allow recipients to verify event authenticity.
+*   **Rate Limiting:** Prevents abuse.
+
+## 5. Scalability and Reliability
+
+*   **Modular Design:** Facilitates independent development, testing, and potential deployment of modules as microservices.
+*   **Stateless API:** Each request contains all information needed, simplifying scaling of the Node.js application.
+*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) for high availability and performance.
+*   **Caching:** Reduces database load for frequently accessed data.
+*   **Asynchronous Processing:** Payment processing and webhook dispatch are non-blocking operations, improving responsiveness.
+*   **Logging & Monitoring:** Essential for identifying bottlenecks and operational issues.
+*   **Containerization:** Docker allows consistent environments from development to production and simplifies scaling with orchestrators like Kubernetes.
+
+This architecture provides a solid foundation for a robust and extensible payment processing system.

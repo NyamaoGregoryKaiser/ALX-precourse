@@ -1,66 +1,119 @@
-.
-├── CMakeLists.txt              # CMake build configuration
-├── vcpkg.json                  # vcpkg manifest for C++ dependency management
-├── .env.example                # Example environment variables
-├── Dockerfile                  # Docker build for the application
-├── docker-compose.yml          # Docker Compose for app + DB
-├── .github/workflows/          # CI/CD configurations
-│   └── ci.yml
-├── docs/                       # Project documentation
-│   ├── README.md
-│   ├── ARCHITECTURE.md
-│   ├── API_REFERENCE.md
-│   └── DEPLOYMENT.md
-├── database/                   # Database schema, migrations, seed data
-│   ├── init.sql
-│   ├── seed.sql
-│   └── migrations/
-│       └── V1__create_initial_tables.sql
-├── src/                        # Core application source code
-│   ├── main.cpp                # Server entry point
-│   ├── common/                 # Common utilities and helpers
-│   │   ├── uuid.hpp            # UUID generation
-│   │   ├── json_utils.hpp      # JSON serialization/deserialization helpers
-│   │   ├── logger.hpp          # spdlog wrapper
-│   │   ├── config.hpp          # Environment configuration loader
-│   │   └── error.hpp           # Custom error definitions
-│   ├── auth/                   # Authentication and Authorization module
-│   │   ├── jwt_manager.hpp     # JWT token handling
-│   │   ├── auth_service.hpp    # User registration and login business logic
-│   │   └── auth_middleware.hpp # JWT verification middleware
-│   ├── models/                 # Data structures representing database entities
-│   │   ├── user.hpp
-│   │   ├── content.hpp
-│   │   └── media.hpp
-│   ├── database/               # Database interaction layer
-│   │   ├── db_connection.hpp   # PostgreSQL connection management
-│   │   ├── user_repository.hpp # CRUD operations for User model
-│   │   ├── content_repository.hpp # CRUD for Content model
-│   │   └── media_repository.hpp# CRUD for Media model
-│   ├── services/               # Business logic layer
-│   │   ├── content_service.hpp # Content-related business operations
-│   │   ├── user_service.hpp    # User-related business operations
-│   │   └── media_service.hpp   # Media-related business operations
-│   ├── api/                    # API endpoints and server setup
-│   │   ├── router.hpp          # Central API router and middleware application
-│   │   ├── auth_routes.hpp     # Authentication API endpoints
-│   │   ├── user_routes.hpp     # User management API endpoints
-│   │   ├── content_routes.hpp  # Content management API endpoints
-│   │   ├── media_routes.hpp    # Media upload/management API endpoints
-│   │   └── middleware.hpp      # Global middleware (logging, error, rate limiting)
-│   ├── cache/                  # Caching layer
-│   │   └── lru_cache.hpp       # Generic LRU Cache implementation
-│   └── frontend/               # Static files for a minimal web client
-│       ├── index.html
-│       └── script.js
-├── tests/                      # Test suite
-│   ├── CMakeLists.txt
-│   ├── unit/
-│   │   ├── test_uuid.cpp
-│   │   ├── test_lru_cache.cpp
-│   │   └── test_jwt_manager.cpp
-│   ├── integration/
-│   │   ├── test_db_connection.cpp
-│   │   └── test_user_repository.cpp
-│   └── api/
-│       └── test_api_content.cpp # Example API test
+# Payment Processing System
+
+This project is a comprehensive, production-ready payment processing system built with Node.js, Express, and PostgreSQL. It's designed to handle customer management, secure payment transactions, and integrate with external services via webhooks.
+
+## Features
+
+*   **Customer Management:** CRUD operations for customers with role-based access.
+*   **Payment Methods:** Securely store and manage various payment methods (cards, bank transfers) linked to customers.
+*   **Transaction Processing:** Initiate and manage debit/credit transactions, with simulated asynchronous processing and status updates.
+*   **Authentication & Authorization:** JWT-based authentication, role-based access control (RBAC).
+*   **Webhooks:** System for dispatching transaction-related events to registered external endpoints.
+*   **Logging & Monitoring:** Centralized logging with Winston and HTTP request logging with Morgan.
+*   **Error Handling:** Centralized error handling middleware.
+*   **Caching:** In-memory caching for frequently accessed data.
+*   **Rate Limiting:** Protects API from abuse and denial-of-service attacks.
+*   **Database:** PostgreSQL with Sequelize ORM, including migrations and seeders.
+*   **Containerization:** Docker and Docker Compose for easy setup and deployment.
+*   **Testing:** Unit, integration, and performance tests.
+*   **API Documentation:** OpenAPI/Swagger for interactive API exploration.
+*   **Frontend:** Simple vanilla JS frontend for demonstration.
+
+## Setup Instructions
+
+### Prerequisites
+
+*   Node.js (v18+)
+*   npm (v9+)
+*   Docker & Docker Compose
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-username/payment-processing-system.git
+cd payment-processing-system
+```
+
+### 2. Environment Variables
+
+Create a `.env` file in the root directory based on `.env.example`.
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your desired database credentials and JWT secret.
+
+### 3. Start with Docker Compose (Recommended)
+
+This will set up both the PostgreSQL database and the Node.js application.
+
+```bash
+docker-compose up --build -d
+```
+
+This command will:
+*   Build the `app` Docker image.
+*   Start the `db` (PostgreSQL) container.
+*   Start the `app` (Node.js) container.
+
+Wait for the `db` service to report healthy (can take a few seconds). You can check logs with `docker-compose logs -f db`.
+
+### 4. Run Database Migrations and Seeders
+
+Once the `app` container is running, you can execute commands inside it.
+
+```bash
+docker exec -it <container-id-of-app> npm run db:migrate
+docker exec -it <container-id-of-app> npm run db:seed
+```
+Replace `<container-id-of-app>` with the actual ID or name of your running `app` container (e.g., `payment-processing-system-app-1`). You can find it using `docker ps`.
+
+This will create tables and seed an `admin@example.com` (password: `adminpassword123`) and a `customer@example.com` (password: `customerpassword123`) user.
+
+### 5. Access the Application
+
+*   **Backend API:** `http://localhost:3000/api/v1`
+*   **API Documentation (Swagger UI):** `http://localhost:3000/api-docs`
+*   **Frontend:** `http://localhost:3000/` (Serves `public/index.html`)
+
+### 6. Running Tests
+
+To run all tests:
+```bash
+docker exec -it <container-id-of-app> npm test
+```
+
+To run specific test types:
+```bash
+docker exec -it <container-id-of-app> npm run test:unit
+docker exec -it <container-id-of-app> npm run test:integration
+docker exec -it <container-id-of-app> npm run test:coverage
+```
+
+### Development (without Docker for app)
+
+If you prefer to run the Node.js app directly on your host while still using Docker for the database:
+
+1.  **Start Database:**
+    ```bash
+    docker-compose up db -d
+    ```
+2.  **Install Node.js dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Run Migrations & Seeders:**
+    ```bash
+    npm run db:migrate
+    npm run db:seed
+    ```
+4.  **Start the Node.js application:**
+    ```bash
+    npm run dev # for development with nodemon
+    # or
+    npm start # for production build
+    ```
+
+---
+[... rest of README, including API usage examples, contributing, license etc.]
