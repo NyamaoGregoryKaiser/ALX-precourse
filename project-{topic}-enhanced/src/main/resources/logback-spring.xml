@@ -1,60 +1,38 @@
-```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
-    <!-- Console Appender -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <layout class="ch.qos.logback.classic.PatternLayout">
-            <Pattern>
-                %d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %cyan(%-40.40logger{39}) : %msg%n
-            </Pattern>
-        </layout>
-    </appender>
+    <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}/spring.log}}}" />
+    <property name="FILE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level ${PID:- } --- [%thread] %logger{39} : %msg%n"/>
 
-    <!-- Rolling File Appender for application logs (JSON format for better parsing/monitoring) -->
-    <appender name="FILE-JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/pms-app.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/pms-app-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>10MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
-            <maxHistory>30</maxHistory> <!-- Retain 30 days of logs -->
-        </rollingPolicy>
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</timestampPattern>
-            <fieldNames>
-                <timestamp>@timestamp</timestamp>
-                <message>message</message>
-                <thread>thread</thread>
-                <level>level</level>
-                <logger>logger</logger>
-                <stackTrace>stack_trace</stackTrace>
-            </fieldNames>
-            <customFields>{"application":"project-management-system"}</customFields>
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
         </encoder>
+        <file>${LOG_FILE}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.gz</fileNamePattern>
+            <maxHistory>7</maxHistory>
+        </rollingPolicy>
     </appender>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-JSON"/>
+        <appender-ref ref="FILE"/>
     </root>
 
-    <!-- Specific logging level for our application packages -->
-    <logger name="com.alx.pms" level="DEBUG" additivity="false">
+    <!-- Specific logger for your application package -->
+    <logger name="com.ml_utilities_system" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-JSON"/>
+        <appender-ref ref="FILE"/>
     </logger>
 
-    <!-- For SQL query logging (can be set to DEBUG for verbose output) -->
-    <logger name="org.hibernate.SQL" level="INFO"/>
-    <logger name="org.hibernate.type.descriptor.sql.BasicExtractor" level="INFO"/>
-
-    <!-- Suppress verbose logging from Spring Security and others -->
+    <!-- Suppress verbose logging from libraries -->
+    <logger name="org.apache.catalina" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
     <logger name="org.springframework.security" level="INFO"/>
-    <logger name="org.springframework.web.filter.OncePerRequestFilter" level="WARN"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="io.github.bucket4j" level="INFO"/>
 
 </configuration>
-```

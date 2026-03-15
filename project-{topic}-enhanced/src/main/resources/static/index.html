@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Utilities System</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        h1 { color: #0056b3; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #e9ecef; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the ML Utilities System</h1>
+        <p>This is a backend application designed to manage Machine Learning datasets, features, and models.</p>
+
+        <div class="section">
+            <h2>API Documentation (Swagger UI)</h2>
+            <p>Explore and interact with the API endpoints:</p>
+            <ul>
+                <li><a href="/swagger-ui.html" target="_blank">Go to Swagger UI</a></li>
+            </ul>
+            <p>Note: API endpoints require authentication (JWT Bearer Token). Use the `/api/auth/signin` endpoint to obtain a token first.</p>
+        </div>
+
+        <div class="section">
+            <h2>Authentication Endpoints</h2>
+            <ul>
+                <li><code>POST /api/auth/signup</code>: Register a new user</li>
+                <li><code>POST /api/auth/signin</code>: Authenticate and get a JWT token</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Data Management Endpoints (CRUD)</h2>
+            <p>All data management endpoints require authentication.</p>
+            <ul>
+                <li><strong>Datasets:</strong> <code>/api/datasets</code></li>
+                <li><strong>Features:</strong> <code>/api/features</code></li>
+                <li><strong>Models:</strong> <code>/api/models</code></li>
+            </ul>
+            <p>Detailed CRUD operations and required roles are documented in Swagger UI.</p>
+        </div>
+
+        <div class="section">
+            <h2>Project Information</h2>
+            <ul>
+                <li><strong>Backend Framework:</strong> Spring Boot 3.x (Java 17)</li>
+                <li><strong>Database:</strong> PostgreSQL (Flyway for migrations)</li>
+                <li><strong>Authentication:</strong> JWT with Spring Security</li>
+                <li><strong>Caching:</strong> Spring Cache with Caffeine</li>
+                <li><strong>Rate Limiting:</strong> Custom Interceptor with Bucket4j</li>
+                <li><strong>Testing:</strong> JUnit 5, Mockito, Spring Boot Test, Testcontainers</li>
+                <li><strong>Documentation:</strong> Springdoc OpenAPI (Swagger UI)</li>
+                <li><strong>Deployment:</strong> Docker, Docker Compose</li>
+                <li><strong>CI/CD:</strong> GitHub Actions</li>
+            </ul>
+        </div>
+
+        <p>For detailed setup and deployment instructions, please refer to the project's <a href="https://github.com/your-username/ml-utilities-system/blob/main/README.md">README.md</a> file on GitHub.</p>
+    </div>
+</body>
+</html>

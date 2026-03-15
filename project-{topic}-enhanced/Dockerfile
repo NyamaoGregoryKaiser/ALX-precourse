@@ -1,26 +1,33 @@
-# Use a lightweight official Python image
-FROM python:3.10-slim-buster
+# Use a slimmed down OpenJDK 17 image for smaller size
+FROM openjdk:17-jdk-slim AS build
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the Maven wrapper files and pom.xml
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
 
-# Copy the rest of the application code
-COPY . .
+# Copy project source
+COPY src src
 
-# Set environment variables
-ENV FLASK_APP=manage.py
-ENV FLASK_ENV=production # Set to development for local dev, production for deployment
-ENV PYTHONUNBUFFERED=1 # Ensures Python output is sent immediately to the terminal
+# Build the application
+# Use -DskipTests to skip tests during the build, which are usually run in CI
+RUN --mount=type=cache,target=/root/.m2 ./mvnw clean package -DskipTests
 
-# Expose the port the app runs on
-EXPOSE 5000
+# --- Second stage: Runtime image ---
+FROM openjdk:17-jdk-slim
 
-# Command to run the application using Gunicorn for production
-# -w N: Number of worker processes (e.g., (2 * num_cores) + 1)
-# -b 0.0.0.0:5000: Binds to all network interfaces on port 5000
-# manage:app: Refers to the Flask app instance named 'app' in 'manage.py'
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "manage:app"]
+# Set working directory
+WORKDIR /app
+
+# Copy the built JAR from the build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Expose the port the application runs on
+EXPOSE 8080
+
+# Run the application
+# Use environment variables for DB_HOST, DB_USER, DB_PASSWORD, JWT_SECRET, JWT_EXPIRATION_MS
+ENTRYPOINT ["java", "-jar", "app.jar"]

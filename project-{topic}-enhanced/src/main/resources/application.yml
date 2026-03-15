@@ -1,50 +1,42 @@
-```yaml
 spring:
   application:
     name: ml-utilities-system
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ml_utilities_db}
-    username: ${DB_USER:ml_user}
-    password: ${DB_PASSWORD:ml_password}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ml_util_db}
+    username: ${DB_USER:admin}
+    password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate # Use 'update' or 'create' for development, 'validate' for production
-    show-sql: false # Set to true to see SQL queries in logs
+      ddl-auto: validate # Should be validate in production, update for dev
     properties:
-      hibernate.format_sql: false
+      hibernate.jdbc.lob.non_contextual_creation: true
       hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false # Set to true for debugging
+    generate-ddl: false # False in production with Flyway
   flyway:
     enabled: true
-    baseline-on-migrate: true # Recommended for existing databases without Flyway metadata
     locations: classpath:db/migration
-  security:
-    user:
-      name: admin
-      password: '{bcrypt}$2a$10$T899nL6/G1pT/2y1zQ9xW.E9zQ7zQ8zQ9zQ0zQ1zQ2zQ3zQ4z' # bcrypt for 'password'
   cache:
-    type: caffeine
-    caffeine:
-      spec: maximumSize=500,expireAfterWrite=60s # Default cache spec
+    type: caffeine # Enable Caffeine as caching provider
 
-# JWT Configuration
-jwt:
-  secret: ${JWT_SECRET:supersecretjwtkeyforalxprojectdevelopmentonlyandnotforproductionuse} # Should be a strong, random key in production
-  expiration: 3600000 # 1 hour in milliseconds
+server:
+  port: 8080
 
-# Actuator Endpoints (Monitoring)
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: always
-    prometheus:
-      enabled: true
+ml_utilities_system:
+  app:
+    jwtSecret: ${JWT_SECRET:supersecretkeythatisatleast256bitlongforproductionenvironment} # Change this in production
+    jwtExpirationMs: ${JWT_EXPIRATION_MS:86400000} # 24 hours in milliseconds
 
-# OpenAPI (Swagger UI) Configuration
+# Logging configuration (refer to logback-spring.xml)
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG # To see incoming requests
+    org.hibernate.SQL: INFO # To see generated SQL
+    org.flywaydb: INFO
+
+# Springdoc OpenAPI (Swagger UI) configuration
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -52,46 +44,25 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
-  info:
-    title: ML Utilities System API
-    description: API documentation for managing ML experiments, models, datasets, and feature sets.
-    version: 1.0.0
-    contact:
-      name: ALX SE Team
-      email: contact@alx.com
-    license:
-      name: Apache 2.0
-      url: https://www.apache.org/licenses/LICENSE-2.0.html
-  # Set security scheme for JWT
-  security:
-    enabled: true
-    name: Bearer Authentication # Name for the security scheme
-    type: http
-    scheme: bearer
-    bearerFormat: JWT
+    display-request-duration: true
 
-# Rate Limiting Configuration
-app:
-  rate-limit:
-    enabled: true
-    requests-per-second: 5 # 5 requests per second
-    burst-capacity: 10 # Allow a burst of 10 requests
-
-logging:
-  level:
-    com.ml.utilities.system: INFO
-    org.springframework: WARN
-    org.hibernate: WARN
-  file:
-    name: logs/ml-utilities-system.log
-  pattern:
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
-    console: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%clr(%wex){red}"
-
-server:
-  port: 8080
-  error:
-    include-message: always
-    include-binding-errors: always
-    include-stacktrace: never
-```
+--- # Test profile specific configuration
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL # In-memory H2 database for tests
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop # For tests, drop and recreate schema
+    show-sql: false
+  flyway:
+    enabled: false # Disable Flyway for H2 tests, let JPA create schema
+ml_utilities_system:
+  app:
+    jwtSecret: testSecret # Short secret for tests
+    jwtExpirationMs: 3600000 # 1 hour for tests
