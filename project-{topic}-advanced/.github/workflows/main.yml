@@ -5,133 +5,78 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  build_and_test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libsqlite3-dev libspdlog-dev git libssl-dev
+        # Install GTest - often needs to be built or obtained via package manager
+        sudo apt-get install -y libgtest-dev
+        cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/
 
-      - name: Install dependencies
-        run: npm install
+    - name: Setup Crow (download header)
+      run: |
+        mkdir -p libs
+        curl -L https://raw.githubusercontent.com/ipkn/crow/master/crow_all.h -o libs/crow_all.h
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          for i in `seq 1 10`; do
-            echo "Waiting for postgres... attempt $i"
-            sudo docker logs postgres
-            pg_isready -h localhost -p 5432 -U testuser -d test_db && break
-            sleep 5
-          done
+    - name: Setup jwt-cpp (clone repository)
+      run: |
+        git clone https://github.com/Thalhammer/jwt-cpp.git libs/jwt-cpp
 
-      - name: Wait for Redis to be ready
-        run: |
-          for i in `seq 1 10`; do
-            echo "Waiting for redis... attempt $i"
-            redis-cli ping && break
-            sleep 5
-          done
+    - name: Configure CMake
+      run: |
+        cmake -B build \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DJWT_CPP_PATH=${GITHUB_WORKSPACE}/libs/jwt-cpp \
+        -DCROW_HEADERS_PATH=${GITHUB_WORKSPACE}/libs
 
-      - name: Set up .env for testing
-        run: |
-          cp .env.example .env
-          sed -i 's/DB_HOST=localhost/DB_HOST=localhost/' .env
-          sed -i 's/DB_USER=user/DB_USER=testuser/' .env
-          sed -i 's/DB_PASSWORD=password/DB_PASSWORD=testpassword/' .env
-          sed -i 's/DB_NAME=payment_db/DB_NAME=test_db/' .env
-          sed -i 's/REDIS_HOST=localhost/REDIS_HOST=localhost/' .env
-          sed -i 's/REDIS_PORT=6379/REDIS_PORT=6379/' .env
-          sed -i 's/NODE_ENV=development/NODE_ENV=test/' .env
+    - name: Build application
+      run: cmake --build build
 
-      - name: Run database migrations and seeders
-        run: npm run db:setup
+    - name: Run tests
+      run: |
+        cd build
+        ./mobile_backend_tests
 
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
-
-  deploy:
-    name: Deploy to Production
+  docker_build_and_push:
+    needs: build_and_test
     runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+    if: github.ref == 'refs/heads/main' # Only push to Docker Hub on main branch pushes
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-      - name: Configure AWS Credentials (Example for AWS)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Change to your region
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-        env:
-          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY_URL }} # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        env:
-          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY_URL }}
-          ECR_REPOSITORY: payment-processor
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: yourdockerhubusername/mobile-backend:latest
+        platforms: linux/amd64 # Specify platform if needed
+        # Pass Crow and jwt-cpp paths for builder stage
+        build-args: |
+          JWT_CPP_PATH=libs/jwt-cpp
+          CROW_HEADERS_PATH=libs
 
-      - name: Deploy to ECS (Example for AWS ECS)
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: # Path to your task definition JSON
-          service: # Your ECS service name
-          cluster: # Your ECS cluster name
-          # You would typically generate a new task definition or update existing one
-          # See AWS documentation for full ECS deployment options
-          # This is a placeholder for a more complex deployment strategy.
-        run: echo "Simulating deployment to production via ECS"
-        # Actual deployment would involve updating a task definition and service
-        # or using tools like Terraform/Pulumi/Ansible.
 ```

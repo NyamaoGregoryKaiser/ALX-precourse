@@ -1,49 +1,66 @@
 ```dockerfile
-# Stage 1: Build the application
-FROM node:20-alpine AS builder
+# Dockerfile for Mobile Backend
+
+# --- Build Stage ---
+FROM gcc:10-buster AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libsqlite3-dev \
+    libspdlog-dev \
+    git \
+    libssl-dev \
+    # Google Test dependencies (if building from source)
+    # For simplicity, we assume GTest is available or installed via dev package
+    # For a robust setup, consider vcpkg or Conan within the build stage
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
-COPY package*.json ./
+# Copy CMakeLists.txt and source code
+COPY CMakeLists.txt ./
+COPY src/ ./src/
+COPY tests/ ./tests/
 
-# Install dependencies
-RUN npm install --frozen-lockfile
+# Copy external header-only libraries if not managed by package manager
+# Example: Crow and jwt-cpp
+# Assuming 'libs' directory contains crow_all.h and jwt-cpp
+COPY libs/ ./libs/
 
-# Copy the rest of the application code
-COPY . .
+# Create build directory and compile
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DJWT_CPP_PATH=/app/libs/jwt-cpp \
+    -DCROW_HEADERS_PATH=/app/libs
+RUN cmake --build build
 
-# Run tests before building for production (optional, can also be in CI)
-# RUN npm test
+# --- Runtime Stage ---
+FROM debian:buster-slim
 
-# Build step if you had a frontend build process (e.g., React build)
-# RUN npm run build --prefix frontend # if frontend is in a subdir
-
-# Stage 2: Create the production-ready image
-FROM node:20-alpine
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 \
+    libspdlog0 \
+    # For JWT if it has runtime dependencies (e.g., OpenSSL)
+    libssl1.1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy only necessary files from the builder stage
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/config ./config
-COPY --from=builder /app/models ./models
-COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/seeders ./seeders
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.env.example ./
-COPY --from=builder /app/.sequelizerc ./
+# Copy the built executable from the builder stage
+COPY --from=builder /app/build/mobile_backend ./mobile_backend
 
-# Expose the port the app runs on
-EXPOSE 3000
+# Create data directory for SQLite database
+RUN mkdir -p /app/data
 
-# Set environment variables for production
-ENV NODE_ENV=production
+# Expose the port (default 18080 as per .env.example)
+EXPOSE 18080
 
 # Command to run the application
-CMD ["npm", "start"]
+# Use a default database path, can be overridden by mounting a volume
+CMD ["./mobile_backend"]
 ```
