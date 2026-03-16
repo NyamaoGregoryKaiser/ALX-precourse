@@ -1,84 +1,24 @@
-```dockerfile
-# Stage 1: Build environment
-FROM ubuntu:22.04 AS builder
+# Use a JRE-only base image for smaller size
+FROM openjdk:17-jre-slim
 
-LABEL maintainer="ALX Software Engineer"
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    libpistache-dev \
-    libspdlog-dev \
-    libnlohmann-json-dev \
-    libpqxx-dev \
-    libpq-dev \
-    libssl-dev \
-    googletest \
-    uuid-dev \
-    git \
-    pkg-config \
-    # For JWT-CPP library (optional, if using it directly)
-    # libjwt-dev \
-    # Install jwt-cpp dependency
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install jwt-cpp (if not available via system package manager or vendored)
-# This assumes jwt-cpp is either vendored or installed manually.
-# For simplicity, we'll assume it's available via a simple git clone and build/install.
-# In a real project, consider vcpkg or Conan for managing C++ dependencies.
-WORKDIR /usr/local/src
-RUN git clone https://github.com/Thalhammer/jwt-cpp.git && \
-    cd jwt-cpp && \
-    mkdir build && cd build && \
-    cmake .. -DBUILD_SHARED_LIBS=ON && \
-    make -j$(nproc) && \
-    make install
-
-# Copy project source code
+# Set the working directory inside the container
 WORKDIR /app
-COPY . .
 
-# Build the application
-RUN mkdir build && cd build && \
-    cmake .. && \
-    make -j$(nproc)
+# Copy the packaged Spring Boot application JAR file
+# The JAR file is typically located in `target/` after `mvn clean package`
+# Assuming the JAR name is `task-management-backend-0.0.1-SNAPSHOT.jar`
+ARG JAR_FILE=target/*.jar
+COPY ${JAR_FILE} app.jar
 
-# Stage 2: Runtime environment
-FROM ubuntu:22.04 AS runner
+# Expose the port on which the Spring Boot application runs
+EXPOSE 8080
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpistache1.0 \
-    libspdlog1.9 \
-    libnlohmann-json3.10 \
-    libpqxx-7.7 \
-    libpq5 \
-    libssl3 \
-    libuuid1 \
-    libstdc++6 \
-    # jwt-cpp runtime libs (if installed as shared libs)
-    libjwt-cpp-dev \
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 
-# Copy the built executable from the builder stage
-WORKDIR /app
-COPY --from=builder /app/build/PaymentProcessor .
-COPY --from=builder /app/build/PaymentProcessorTests . # For running tests in container
-COPY config/ config/
-COPY migrations/ migrations/
-COPY seeds/ seeds/
-COPY README.md .
-# If log directory exists and is needed
-RUN mkdir -p logs && chmod 777 logs # Or appropriate permissions/user
+# Example build command from the backend directory:
+# docker build -t task-management-backend .
 
-# Expose the port the application listens on
-EXPOSE 9080
-
-# Command to run the application
-CMD ["./PaymentProcessor", "config/default.json"]
+# Example run command:
+# docker run -p 8080:8080 -e DB_HOST=host.docker.internal -e DB_NAME=taskmgrdb -e DB_USERNAME=taskmgruser -e DB_PASSWORD=password -e JWT_SECRET=YOUR_VERY_LONG_SECRET_KEY task-management-backend
 ```

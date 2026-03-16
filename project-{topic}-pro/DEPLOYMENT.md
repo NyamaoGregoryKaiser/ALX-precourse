@@ -1,293 +1,134 @@
-# Deployment Guide for Task Management System
+# Deployment Guide
 
-This document outlines the steps required to deploy the Task Management System to a production environment. The recommended deployment strategy leverages Docker and Docker Compose for ease of management and consistency.
+This document outlines the steps for deploying the Task Management System, covering both local development with Docker Compose and a high-level overview for production environments using cloud services.
 
-## Table of Contents
+## 1. Local Deployment with Docker Compose (Recommended for Development)
 
-1.  [Deployment Prerequisites](#1-deployment-prerequisites)
-2.  [Server Setup](#2-server-setup)
-3.  [Configuration](#3-configuration)
-4.  [Database Setup (Production)](#4-database-setup-production)
-5.  [Building and Deploying with Docker Compose](#5-building-and-deploying-with-docker-compose)
-6.  [Setting up Nginx as a Reverse Proxy](#6-setting-up-nginx-as-a-reverse-proxy)
-7.  [SSL/TLS with Certbot](#7-ssltls-with-certbot)
-8.  [Monitoring & Logging](#8-monitoring--logging)
-9.  [CI/CD Integration](#9-cicd-integration)
-10. [Troubleshooting](#10-troubleshooting)
+This method provides a quick and consistent way to run all services (backend, frontend, database) locally within Docker containers.
 
----
+**Prerequisites:**
+*   Docker Desktop installed and running.
 
-## 1. Deployment Prerequisites
+**Steps:**
 
-*   **A Cloud Virtual Machine (VM)**: (e.g., AWS EC2, DigitalOcean Droplet, GCP Compute Engine).
-    *   Minimum recommended: 2 vCPUs, 4GB RAM (for smaller deployments, scale up as needed).
-    *   Operating System: Ubuntu 20.04+ or Debian 10+.
-*   **Domain Name**: A registered domain name pointing to your VM's public IP address (e.g., `app.yourdomain.com`).
-*   **SSH Access**: To your VM.
-*   **Software Installed on VM**:
-    *   [Docker](https://docs.docker.com/engine/install/)
-    *   [Docker Compose](https://docs.docker.com/compose/install/)
-    *   [Nginx](https://www.nginx.com/resources/wiki/start/topics/tutorials/installingnginx/)
-    *   [Certbot](https://certbot.eff.org/instructions) (for SSL)
-*   **GitHub Personal Access Token (PAT)**: If your Docker images are hosted privately on GitHub Container Registry (GHCR).
-
-## 2. Server Setup
-
-1.  **Connect to your VM via SSH:**
+1.  **Navigate to the project root directory:**
     ```bash
-    ssh username@your_server_ip
+    cd task-management-system
     ```
 
-2.  **Update system packages:**
+2.  **Create a `.env` file:**
+    In the project root, create a file named `.env` and populate it with the following environment variables. **Ensure to replace placeholders with strong, secure values.**
+
+    ```env
+    # .env
+    DB_NAME=taskmgrdb
+    DB_USERNAME=taskmgruser
+    DB_PASSWORD=a_very_secure_db_password_here # Use a strong password!
+    JWT_SECRET=YOUR_VERY_LONG_AND_SECURE_JWT_SECRET_KEY_HERE_MIN_32_BYTES_BASE64_ENCODED # Generate a long random string (e.g., openssl rand -base64 32)
+    SERVER_PORT=8080
+    ```
+
+3.  **Build and Start Services:**
     ```bash
-    sudo apt update && sudo apt upgrade -y
+    docker-compose up --build
     ```
+    *   `--build`: This flag tells Docker Compose to build images from the Dockerfiles (if they don't exist or if the `Dockerfile` has changed) before starting the containers.
+    *   This command will:
+        *   Build the `backend` image from `backend/Dockerfile`.
+        *   Build the `frontend` image from `frontend/Dockerfile` (if you implement it).
+        *   Pull the `postgres:15-alpine` image.
+        *   Create a Docker network.
+        *   Start the `db`, `backend`, and `frontend` services in detached mode (you'll see logs directly in the terminal).
 
-3.  **Install Docker & Docker Compose:**
-    Follow the official Docker documentation for your specific OS.
+4.  **Verify Services:**
+    *   **Backend API:** `http://localhost:8080` (Swagger UI at `http://localhost:8080/swagger-ui/index.html`)
+    *   **Frontend UI:** `http://localhost:3000` (if implemented and running)
+    *   **PostgreSQL:** Accessible on `localhost:5432` from your host machine.
+
+5.  **Stop Services:**
+    To stop and remove all services, networks, and volumes created by `docker-compose`:
     ```bash
-    # Example for Ubuntu:
-    sudo apt install apt-transport-https ca-certificates curl software-properties-common -y
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt update
-    sudo apt install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y # For newer docker compose v2
-    # For older docker compose v1
-    # sudo curl -L "https://github.com/docker/compose/releases/download/v1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    # sudo chmod +x /usr/local/bin/docker-compose
-
-    # Add your user to the docker group to run docker commands without sudo
-    sudo usermod -aG docker ${USER}
-    # Log out and log back in, or run `newgrp docker`
+    docker-compose down -v
     ```
+    *   `-v`: Removes named volumes declared in the `volumes` section of the `docker-compose.yml`. This will delete your database data. Omit `-v` if you want to preserve data.
 
-4.  **Install Nginx:**
+## 2. Production Deployment (High-Level Overview)
+
+Deploying to production involves ensuring scalability, reliability, security, and observability. This guide provides a general roadmap. Specific steps will vary based on your chosen cloud provider and infrastructure.
+
+**Key Principles for Production Deployment:**
+*   **Infrastructure as Code (IaC):** Use tools like Terraform or CloudFormation to define and manage your infrastructure.
+*   **Managed Services:** Leverage cloud provider's managed services (DB, Load Balancers, Container Orchestration) to reduce operational overhead.
+*   **Secrets Management:** Never hardcode secrets. Use dedicated secret management services.
+*   **Monitoring & Alerting:** Implement comprehensive monitoring and alerting for all components.
+*   **Automated CI/CD:** Automate the entire deployment pipeline.
+
+### 2.1 Choose Your Cloud Provider and Services
+
+Common choices include AWS, Azure, Google Cloud Platform (GCP).
+
+*   **Database:** Use a managed relational database service (e.g., AWS RDS PostgreSQL, Azure Database for PostgreSQL, Google Cloud SQL for PostgreSQL).
+    *   Configure automated backups, multi-AZ deployment for high availability, and appropriate sizing.
+*   **Container Registry:** A secure place to store your Docker images (e.g., AWS ECR, Azure Container Registry, Google Container Registry, Docker Hub).
+*   **Compute (Container Orchestration):**
+    *   **Kubernetes (AWS EKS, Azure AKS, Google GKE):** For advanced scalability, self-healing, and complex deployments. Requires more setup.
+    *   **Serverless Containers (AWS Fargate, Azure Container Apps, Google Cloud Run):** Simpler, scales automatically, pay-per-use.
+    *   **Container Instances (AWS ECS, Azure Container Instances):** Good balance for simpler container deployments.
+*   **Load Balancer:** To distribute traffic across multiple backend instances and handle SSL termination (e.g., AWS Application Load Balancer, Azure Application Gateway, Google Cloud Load Balancing).
+*   **Content Delivery Network (CDN):** For caching static frontend assets and improving global performance (e.g., AWS CloudFront, Azure CDN, Google Cloud CDN).
+
+### 2.2 Build and Push Docker Images
+
+Your CI/CD pipeline (e.g., GitHub Actions as defined in `.github/workflows/main.yml`) should automate this.
+
+1.  **Build Backend and Frontend:** The CI/CD workflow compiles your application code (Maven for Java, npm/yarn for React).
+2.  **Create Docker Images:** Dockerfiles for backend and frontend are used to build production-ready Docker images.
+3.  **Push to Registry:** The built images are tagged (e.g., `latest`, `git_sha`) and pushed to your chosen container registry.
+
     ```bash
-    sudo apt install nginx -y
-    sudo ufw allow 'Nginx Full' # If you are using UFW firewall
+    # Example for pushing backend to Docker Hub (handled by GitHub Actions)
+    docker push your_docker_username/task-management-backend:latest
+    docker push your_docker_username/task-management-backend:git_sha
     ```
 
-## 3. Configuration
+### 2.3 Database Setup and Migration
 
-1.  **Create application directory:**
-    ```bash
-    sudo mkdir -p /var/www/task-management-system
-    sudo chown ${USER}:${USER} /var/www/task-management-system
-    cd /var/www/task-management-system
-    ```
+1.  **Provision Managed Database:** Set up your chosen managed PostgreSQL instance (e.g., AWS RDS).
+2.  **Configure Access:** Ensure your backend service can connect to the database (e.g., using security groups, VPC peering).
+3.  **Run Migrations:** Flyway is configured to run automatically when the Spring Boot backend starts. Ensure your production database is initially empty or only contains the `flyway_schema_history` table. The first deployment of the backend will create the schema and seed data.
 
-2.  **Clone your repository:**
-    ```bash
-    git clone https://github.com/your-username/task-management-system.git .
-    ```
-    *Note: If your repo is private, you'll need to set up SSH keys or use a PAT for Git clone.*
+### 2.4 Deploy Backend Service
 
-3.  **Create production `.env` files:**
-    Copy `.env.example` and populate it with production-specific values.
-    *   **`backend/.env`**:
-        ```
-        NODE_ENV=production
-        PORT=5000
-        DATABASE_URL=postgresql://user:password@db:5432/taskdb # Adjust if using external DB
-        JWT_SECRET=YOUR_VERY_LONG_AND_COMPLEX_JWT_SECRET_FOR_PROD
-        JWT_EXPIRES_IN=1h
-        REDIS_URL=redis://redis:6379 # Adjust if using external Redis
-        RATE_LIMIT_WINDOW_MS=900000
-        RATE_LIMIT_MAX_REQUESTS=100
-        CACHE_TTL_SECONDS=3600
-        ```
-    *   **`frontend/.env`**:
-        ```
-        REACT_APP_API_BASE_URL=https://api.yourdomain.com/api # Your public backend API URL
-        ```
-    *Make sure these files are NOT committed to your repository.*
+1.  **Environment Variables / Secrets:**
+    *   **Database Credentials:** Use your cloud provider's secrets manager (e.g., AWS Secrets Manager, Azure Key Vault, Google Secret Manager) to store and inject database credentials into your backend containers.
+    *   **JWT Secret:** Store your `JWT_SECRET` securely in the secrets manager.
+    *   Other configurations (e.g., `SERVER_PORT`) can be injected as standard environment variables.
+2.  **Deployment Configuration:**
+    *   **Kubernetes:** Create `Deployment` (for backend pods), `Service` (for internal access), and `Ingress` (for external HTTP/HTTPS access) YAML manifests.
+    *   **AWS ECS/Fargate:** Define an `ECS Task Definition` specifying the Docker image, environment variables, resource limits, and port mappings.
+3.  **Deploy:** Use `kubectl apply -f your_manifests.yaml` for Kubernetes or equivalent commands/APIs for other services.
+4.  **Health Checks:** Configure health checks (e.g., `/actuator/health` endpoint) to allow your orchestration platform to monitor the backend's status and automatically restart unhealthy instances.
 
-## 4. Database Setup (Production)
+### 2.5 Deploy Frontend Service (SPA)
 
-You have two options for your PostgreSQL database:
+1.  **Build Production Assets:** The frontend CI/CD step should run `npm run build` to generate optimized static files (HTML, CSS, JS).
+2.  **Deployment:**
+    *   **Object Storage (Recommended):** Deploy static frontend assets to a cloud object storage bucket (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage). Configure the bucket for static website hosting.
+    *   **CDN Integration:** Integrate a CDN (CloudFront, Azure CDN) in front of your object storage bucket for faster global delivery and SSL.
+    *   **Container:** If deploying frontend as a Docker container, deploy it to your chosen compute service similar to the backend. Ensure it's configured to serve static files (e.g., using NGINX inside the container).
 
-### Option A: Dockerized PostgreSQL (Simple, good for small deployments)
+### 2.6 Networking and Domain Configuration
 
-This is already configured in `docker-compose.yml`. The `db` service will create a PostgreSQL container.
-*   Ensure `pgdata` volume is mounted for persistence.
-*   Update `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` in `docker-compose.yml` for production-grade security.
+1.  **Load Balancer:** Configure a Load Balancer to direct traffic to your backend service. It should handle SSL termination (HTTPS) and forward requests to your backend instances.
+2.  **Domain Name:** Register a domain name for your application.
+3.  **DNS Configuration:** Update your domain's DNS records to point to your Load Balancer or CDN.
+4.  **SSL/TLS Certificates:** Obtain and configure SSL certificates for HTTPS (e.g., AWS Certificate Manager, Let's Encrypt). The Load Balancer typically handles certificate management.
 
-### Option B: Managed Database Service (Recommended for Scalability/Reliability)
+### 2.7 Monitoring, Logging, and Alerting
 
-Use a cloud-managed PostgreSQL service (e.g., AWS RDS, DigitalOcean Managed Database, Supabase).
-1.  Provision your managed database instance.
-2.  Obtain the connection URL, username, and password.
-3.  **Update `backend/.env`**: Change `DATABASE_URL` to point to your managed service's connection string.
-    *   Example: `DATABASE_URL=postgresql://prod_user:prod_password@your-managed-db-host.com:5432/prod_taskdb`
-4.  **Remove the `db` service from `docker-compose.yml`**:
-    *   You will also need to remove `depends_on: db` from the `backend` service.
+*   **Logs:** Configure your backend (Spring Boot) logs to be sent to a centralized logging system (e.g., AWS CloudWatch Logs, Azure Monitor, Google Cloud Logging, or an ELK/EFK stack).
+*   **Metrics:** Collect application metrics (e.g., JVM, HTTP requests, custom business metrics from Spring Boot Actuator) and send them to a monitoring system (e.g., Prometheus with Grafana, Datadog).
+*   **Alerting:** Set up alerts for critical events (e.g., high error rates, low disk space, unresponsive services) to notify your team.
 
-Similarly, for Redis, you can use a managed Redis service or let Docker Compose handle it. If using managed Redis, update `REDIS_URL` in `backend/.env` and remove the `redis` service from `docker-compose.yml`.
-
-## 5. Building and Deploying with Docker Compose
-
-1.  **Login to GitHub Container Registry (if using private images):**
-    ```bash
-    echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-    ```
-    *Replace `YOUR_GITHUB_PAT` and `YOUR_GITHUB_USERNAME`.*
-
-2.  **Pull latest images and start services:**
-    If you're pulling pre-built images from GHCR (as configured in CI/CD):
-    ```bash
-    docker compose pull
-    docker compose up -d --force-recreate
-    ```
-    If you want to build locally on the server (useful if you don't use GHCR or want to ensure latest code):
-    ```bash
-    docker compose up --build -d --force-recreate
-    ```
-
-3.  **Run migrations:**
-    Even with managed DB, you need to run migrations. The `command` in `docker-compose.yml` (for backend) handles this on startup for development, but for production, you might want to run it explicitly after `up`:
-    ```bash
-    docker compose exec backend npm run migration:run
-    ```
-
-4.  **Seed data (if needed):**
-    ```bash
-    docker compose exec backend npm run seed
-    ```
-
-Your backend should now be running on port 5000 and frontend (Nginx) on port 80.
-
-## 6. Setting up Nginx as a Reverse Proxy
-
-Nginx will serve your frontend static files and proxy API requests to your backend container.
-
-1.  **Create Nginx configuration file:**
-    ```bash
-    sudo nano /etc/nginx/sites-available/task-management-system
-    ```
-
-2.  **Add the following configuration:**
-    *Replace `yourdomain.com` and `api.yourdomain.com` with your actual domain and API subdomain.*
-    ```nginx
-    server {
-        listen 80;
-        server_name yourdomain.com www.yourdomain.com; # Frontend domain
-        return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
-    }
-
-    server {
-        listen 80;
-        server_name api.yourdomain.com; # Backend API domain
-        return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
-    }
-
-    # HTTPS configuration will be added by Certbot later
-    # For now, just focus on redirecting to HTTPS
-    ```
-
-3.  **Enable the Nginx configuration:**
-    ```bash
-    sudo ln -s /etc/nginx/sites-available/task-management-system /etc/nginx/sites-enabled/
-    sudo nginx -t # Test Nginx configuration for syntax errors
-    sudo systemctl restart nginx
-    ```
-
-## 7. SSL/TLS with Certbot
-
-1.  **Install Certbot Nginx plugin:**
-    ```bash
-    sudo apt install python3-certbot-nginx -y
-    ```
-
-2.  **Run Certbot to obtain and install SSL certificates:**
-    ```bash
-    sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com -d api.yourdomain.com
-    ```
-    Follow the prompts. Certbot will automatically configure Nginx to use HTTPS and set up automatic renewals.
-
-    After Certbot runs, your `task-management-system` Nginx config will be updated to include HTTPS blocks.
-    **Example of Certbot-generated Nginx config (partially):**
-    ```nginx
-    server {
-        listen 443 ssl; # managed by Certbot
-        server_name yourdomain.com www.yourdomain.com; # Frontend domain
-
-        ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem; # managed by Certbot
-        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem; # managed by Certbot
-        include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
-
-        # Serve frontend static files
-        root /var/www/task-management-system/frontend/build;
-        index index.html index.htm;
-
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
-    }
-
-    server {
-        listen 443 ssl; # managed by Certbot
-        server_name api.yourdomain.com; # Backend API domain
-
-        ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem; # managed by Certbot
-        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem; # managed by Certbot
-        include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
-
-        # Proxy API requests to the backend container
-        location /api/ {
-            proxy_pass http://localhost:5000; # Or http://backend:5000 if Nginx is in same Docker network
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Real-IP $remote_addr;
-        }
-
-        # Health Check
-        location /health {
-            proxy_pass http://localhost:5000/health;
-        }
-    }
-    ```
-    **Important:** Notice `proxy_pass http://localhost:5000`. If Nginx is running directly on the host, `localhost` works for the `backend` container mapped to host port 5000. If Nginx itself were also containerized in the same `docker-compose.yml` network, you'd use `http://backend:5000`. This setup assumes Nginx on host.
-
-## 8. Monitoring & Logging
-
-*   **Backend Logs**: Winston configured to write logs to files (`logs/error.log`, `logs/combined.log`, `logs/production.log`). You can collect these logs using a tool like Filebeat and send them to a centralized logging system (e.g., ELK Stack, Grafana Loki).
-*   **Docker Logs**: Use `docker compose logs -f` to view container logs.
-*   **Nginx Logs**: Nginx access and error logs are typically in `/var/log/nginx/`.
-*   **System Monitoring**: Tools like `htop`, ` glances`, Prometheus/Grafana can be used to monitor VM resource usage.
-
-## 9. CI/CD Integration
-
-The `deploy` job in `.github/workflows/ci-cd.yml` automates the deployment process.
-
-1.  **Configure GitHub Actions Secrets**:
-    In your GitHub repository settings, navigate to `Settings > Secrets and variables > Actions`.
-    Add the following repository secrets:
-    *   `PROD_SSH_HOST`: IP address or hostname of your production VM.
-    *   `PROD_SSH_USER`: SSH username (e.g., `ubuntu`).
-    *   `PROD_SSH_KEY`: Your private SSH key (ensure it's formatted correctly, including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines).
-    *   `PROD_DATABASE_URL`: Production database connection string.
-    *   `PROD_JWT_SECRET`: Production JWT secret.
-    *   `PROD_REDIS_URL`: Production Redis URL.
-    *   `PROD_FRONTEND_API_URL`: The public API base URL for your frontend (e.g., `https://api.yourdomain.com/api`).
-    *   (Add any other environment variables your backend needs in production).
-
-2.  **Trigger Deployment**:
-    Pushing changes to the `main` branch will automatically trigger the `deploy` job after `backend-ci` and `frontend-ci` jobs pass. This will connect to your server via SSH, pull the latest Docker images, and restart the services.
-
-## 10. Troubleshooting
-
-*   **Check Docker container status**: `docker compose ps`
-*   **View container logs**: `docker compose logs -f <service_name>` (e.g., `docker compose logs -f backend`)
-*   **Check Nginx status**: `sudo systemctl status nginx`
-*   **Test Nginx config**: `sudo nginx -t`
-*   **Check firewall rules**: `sudo ufw status`
-*   **Verify domain DNS records**: Ensure your domain and API subdomain point to your server's public IP.
-*   **Check `.env` files**: Ensure all environment variables are correctly set for the `production` environment.
-*   **Database connectivity**: From within the backend container, try to connect to the database manually (e.g., `docker compose exec backend psql -h db -U user -d taskdb` for dockerized DB, or adjust host for managed DB).
-*   **Certbot renewal**: Check `sudo certbot renew --dry-run` to ensure renewals are working.
+By following these guidelines, you can establish a robust and scalable production environment for your Task Management System.
+```
