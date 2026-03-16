@@ -1,0 +1,31 @@
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate # Only validate schema, Flyway handles creation/migration
+  datasource:
+    # Production datasource uses environment variables for security
+    url: jdbc:postgresql://${DB_HOST:db}:${DB_PORT:5432}/${DB_NAME:taskmgrdb}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  flyway:
+    enabled: true
+    baseline-on-migrate: false # Do not baseline on production unless migrating an existing db without schema history.
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.alx.taskmgr: INFO # Production logs should be less verbose by default
+    org.hibernate.SQL: INFO
+
+# For production, consider external caching like Redis
+# spring:
+#   cache:
+#     type: redis
+#     redis:
+#       host: ${REDIS_HOST:localhost}
+#       port: ${REDIS_PORT:6379}
+```

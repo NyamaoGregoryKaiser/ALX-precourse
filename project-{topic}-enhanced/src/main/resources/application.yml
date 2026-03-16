@@ -1,68 +1,68 @@
+```yaml
 spring:
   application:
-    name: ml-utilities-system
+    name: task-manager-backend
+  profiles:
+    active: dev # Default profile
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ml_util_db}
-    username: ${DB_USER:admin}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskmgrdb}
+    username: ${DB_USERNAME:taskmgruser}
     password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate # Should be validate in production, update for dev
+      ddl-auto: validate # Use validate with Flyway in production, update for dev or create for testing
+    show-sql: false # Set to true for debugging SQL queries
     properties:
-      hibernate.jdbc.lob.non_contextual_creation: true
-      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
-    show-sql: false # Set to true for debugging
-    generate-ddl: false # False in production with Flyway
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false # Prevents lazy loading issues in views, manage sessions explicitly in services
+
   flyway:
     enabled: true
+    baseline-on-migrate: true # Good for existing databases, but use carefully. Remove for fresh prod.
     locations: classpath:db/migration
-  cache:
-    type: caffeine # Enable Caffeine as caching provider
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # This is for internal JWT validation if Spring Security were to validate external JWTs
+          # For our custom JWT, we use a custom filter.
+          jwk-set-uri: "not-used-for-custom-jwt"
 
 server:
   port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
 
-ml_utilities_system:
-  app:
-    jwtSecret: ${JWT_SECRET:supersecretkeythatisatleast256bitlongforproductionenvironment} # Change this in production
-    jwtExpirationMs: ${JWT_EXPIRATION_MS:86400000} # 24 hours in milliseconds
+app:
+  jwtSecret: ${JWT_SECRET:supersecretjwtkeythatismorethan256bitlongandsecureforalxtaskmanager} # IMPORTANT: Use a strong, long, random secret in production
+  jwtExpirationMs: 86400000 # 24 hours in milliseconds
 
-# Logging configuration (refer to logback-spring.xml)
 logging:
   level:
     root: INFO
-    org.springframework.web: DEBUG # To see incoming requests
-    org.hibernate.SQL: INFO # To see generated SQL
-    org.flywaydb: INFO
+    org.springframework.web: INFO
+    com.alx.taskmgr: DEBUG # Set to DEBUG for more detailed application logs
+    org.hibernate.SQL: INFO # Log executed SQL statements
+    org.hibernate.orm.jdbc.bind: TRACE # Log parameters of SQL statements
 
-# Springdoc OpenAPI (Swagger UI) configuration
 springdoc:
-  api-docs:
-    path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
-    display-request-duration: true
+  api-docs:
+    path: /v3/api-docs
 
---- # Test profile specific configuration
+# Cache configuration
 spring:
-  config:
-    activate:
-      on-profile: test
-  datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL # In-memory H2 database for tests
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  jpa:
-    hibernate:
-      ddl-auto: create-drop # For tests, drop and recreate schema
-    show-sql: false
-  flyway:
-    enabled: false # Disable Flyway for H2 tests, let JPA create schema
-ml_utilities_system:
-  app:
-    jwtSecret: testSecret # Short secret for tests
-    jwtExpirationMs: 3600000 # 1 hour for tests
+  cache:
+    type: ehcache
+    jcache:
+      config: classpath:ehcache.xml
+
+```

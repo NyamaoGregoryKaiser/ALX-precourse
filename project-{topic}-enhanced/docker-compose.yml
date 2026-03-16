@@ -1,53 +1,47 @@
+```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: ml-utilities-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_NAME:-ml_util_db}
-      POSTGRES_USER: ${DB_USER:-admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck: # Healthcheck for the database
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-ml_util_db}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ml-utilities-app
-    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: db # Connect to the 'db' service within the Docker network
+      # Application environment variables (these override application.yml)
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: db # Refers to the PostgreSQL service name within the Docker network
       DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-ml_util_db}
-      DB_USER: ${DB_USER:-admin}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      JWT_SECRET: ${JWT_SECRET:supersecretkeythatisatleast256bitlongforproductionenvironment}
-      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:86400000}
-      SPRING_PROFILES_ACTIVE: production # Or remove if no special profile needed for production build
+      DB_NAME: taskmgrdb
+      DB_USERNAME: taskmgruser
+      DB_PASSWORD: password # IMPORTANT: Use a strong password and environment variables in production
+      JWT_SECRET: supersecretjwtkeythatismorethan256bitlongandsecureforalxtaskmanager
     depends_on:
-      db:
-        condition: service_healthy # Ensure DB is healthy before starting the app
-    # If you need to debug, uncomment the following:
-    # command: ["java", "-Xdebug", "-Xrunjdwp:server=y,transport=dt_socket,address=*:5005,suspend=n", "-jar", "app.jar"]
-    # ports:
-    #   - "5005:5005" # For remote debugging
+      - db
+    # Set restart policy to ensure services come back up if they crash
+    restart: unless-stopped
+    networks:
+      - task-manager-network
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432" # Expose DB port for local development/admin tools, remove in production if not needed
+    environment:
+      POSTGRES_DB: taskmgrdb
+      POSTGRES_USER: taskmgruser
+      POSTGRES_PASSWORD: password # IMPORTANT: Use a strong password and environment variables in production
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persistent storage for PostgreSQL data
+    restart: unless-stopped
+    networks:
+      - task-manager-network
+
+networks:
+  task-manager-network:
+    driver: bridge
 
 volumes:
-  postgres_data:
+  db_data:
 ```
-
-#### `.github/workflows/main.yml` (CI/CD with GitHub Actions)
-
-```yaml

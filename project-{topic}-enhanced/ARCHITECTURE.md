@@ -1,139 +1,158 @@
-# Architecture Documentation for ML Utilities System
+```markdown
+# Task Manager Backend Architecture Documentation
 
-## 1. High-Level Architecture
+This document provides a high-level overview of the architecture of the Task Manager Backend, highlighting its key components, layers, and interactions.
 
-The ML Utilities System is a modular, layered backend application built with Spring Boot. It follows a classical N-tier architecture pattern, separating concerns into presentation (API controllers), business logic (services), and data access (repositories).
+## 1. High-Level Overview
+
+The Task Manager Backend is a monolithic Spring Boot application designed to serve RESTful APIs for a mobile task management application. It follows a layered architectural pattern, promoting separation of concerns and maintainability.
 
 ```
-+-------------------+      +-------------------+
-|    Client (UI,    |      |  External ML Ops  |
-|    CLI, API Tool) |----->|     (e.g.,       |
-+-------------------+      |   orchestrators)  |
-         |                 +-------------------+
-         |                       ^
-         v                       |  (Future integrations)
-+------------------------------------------------+
-|           ML Utilities System Backend          |
-|  (Spring Boot Java Application)                |
-|                                                |
-| +-------------------+                          |
-| |   Presentation    |                          |
-| | (Controllers)     |<----+                    |
-| +-------------------+     | HTTP/REST          |
-|          ^                | JSON               |
-|          | Global Exception Handler, Rate Limiting, Logging |
-|          | Spring Security (JWT AuthN/AuthZ)   |
-| +-------------------+     |                    |
-| |   Business Logic  |---->| Caching (Caffeine) |
-| |   (Services)      |<----+                    |
-| +-------------------+     |                    |
-|          ^                | Transactional      |
-|          |                | Logic              |
-| +-------------------+     |                    |
-| |    Data Access    |---->| Flyway (Migrations)|
-| |   (Repositories)  |<----+                    |
-| +-------------------+                          |
-|                                                |
-+------------------------------------------------+
-         |
-         | PostgreSQL Driver (JDBC)
-         v
-+-------------------+
-|     Database      |
-|   (PostgreSQL)    |
-+-------------------+
++----------------+
+|  Mobile Client |
+| (iOS/Android)  |
++-------+--------+
+        | HTTP/HTTPS (REST API)
+        v
++-------------------------------------------------+
+|               Task Manager Backend              |
+|                                                 |
+| +---------------------------------------------+ |
+| |        API Gateway (e.g., Nginx, LB)        | |  (Optional for production)
+| +---------------------------------------------+ |
+|                        |                        |
+| +----------------------+---------------------+ |
+| |               Rate Limiting               | |
+| +----------------------+---------------------+ |
+|                        |                        |
+| +----------------------+---------------------+ |
+| |      Spring Security (JWT AuthN/AuthZ)    | |
+| +----------------------+---------------------+ |
+|                        |                        |
+| +----------------------+---------------------+ |
+| |       Global Exception Handler            | |
+| +----------------------+---------------------+ |
+|                        |                        |
+| +----------------------+---------------------+ |
+| |            Controller Layer (REST APIs)     | |
+| | +-----------------------------------------+ | |
+| | | AuthController, UserController,         | | |
+| | | CategoryController, TaskController      | | |
+| | +-----------------------------------------+ | |
+| +----------------------+---------------------+ |
+|                        | DTOs                 |
+| +----------------------+---------------------+ |
+| |               Service Layer                 | |
+| | +-----------------------------------------+ | |
+| | | UserService, CategoryService, TaskService | | |
+| | | (Business Logic, Transactions, Caching) | | |
+| | +-----------------------------------------+ | |
+| +----------------------+---------------------+ |
+|                        | Entities             |
+| +----------------------+---------------------+ |
+| |             Repository Layer (JPA)          | |
+| | +-----------------------------------------+ | |
+| | | UserRepository, CategoryRepository,     | | |
+| | | TaskRepository                          | | |
+| | +-----------------------------------------+ | |
+| +----------------------+---------------------+ |
+|                        | Entities (via Hibernate) |
+| +----------------------+---------------------+ |
+| |              Database Layer (PostgreSQL)    | |
+| | +-----------------------------------------+ | |
+| | | Tables: users, categories, tasks        | | |
+| | | Flyway (Schema Migrations)              | | |
+| | +-----------------------------------------+ | |
+| +-------------------------------------------------+
 ```
 
-### Key Components:
+## 2. Architectural Layers
 
-*   **Client:** Any application or tool interacting with the system's REST API. This could be a web UI, a command-line interface, or another microservice.
-*   **ML Utilities System Backend:** The core Spring Boot application.
-    *   **Presentation Layer (Controllers):** Handles incoming HTTP requests, validates input, delegates to services, and returns appropriate HTTP responses.
-    *   **Business Logic Layer (Services):** Contains the core application logic. It orchestrates operations, applies business rules, and manages transactions. It interacts with repositories and potentially external services.
-    *   **Data Access Layer (Repositories):** Manages interactions with the database. Uses Spring Data JPA for abstracting CRUD operations and providing query methods.
-    *   **Security Layer (Spring Security + JWT):** Intercepts requests, authenticates users via JWT tokens, and enforces role-based authorization for API endpoints.
-    *   **Caching Layer (Spring Cache + Caffeine):** Improves performance by storing frequently accessed data in-memory, reducing database load.
-    *   **Rate Limiting:** A custom interceptor that limits the number of requests to certain endpoints to prevent abuse.
-    *   **Global Exception Handling:** Provides consistent error responses across the API.
-    *   **Logging:** Structured logging for operational insights and debugging.
-*   **Database (PostgreSQL):** The primary persistent storage for all metadata (datasets, features, models, users, roles).
-*   **Flyway:** Manages database schema evolution through versioned migration scripts.
+The application is structured into distinct layers, each with specific responsibilities:
 
-## 2. Data Flow
+### 2.1. Controller Layer (`com.alx.taskmgr.controller`)
 
-1.  **Client Request:** A client sends an HTTP request (e.g., `GET /api/datasets/1`, `POST /api/auth/signin`) to the Spring Boot application.
-2.  **Web Filter Chain:**
-    *   The request first hits Spring Security's filter chain.
-    *   `AuthTokenFilter` extracts JWT from the `Authorization` header, validates it, and sets the authenticated user in the Spring Security context. If invalid or missing, `AuthEntryPointJwt` handles unauthorized access.
-3.  **Rate Limiting Interceptor:** The `RateLimitInterceptor` checks if the incoming request (for `@RateLimited` endpoints) exceeds the defined rate limits. If so, it immediately returns a `429 Too Many Requests` error.
-4.  **Controller:** If the request passes filters and interceptors, it reaches the appropriate controller method.
-    *   Input validation (`@Valid`) is performed.
-    *   `@PreAuthorize` annotations ensure the authenticated user has the necessary roles.
-    *   The controller delegates the request to the relevant service method.
-5.  **Service Layer:**
-    *   The service method executes business logic.
-    *   **Caching:** For `GET` operations, `@Cacheable` annotation attempts to retrieve data from the cache. If found, it returns directly. If not, it proceeds to the repository. For `POST`/`PUT`/`DELETE` operations, `@CacheEvict` annotations ensure relevant cache entries are invalidated.
-    *   **Transactions:** `@Transactional` ensures atomicity of database operations.
-    *   The service interacts with one or more repositories to fetch, create, update, or delete data.
-    *   Data Transfer Objects (DTOs) are used for communication between the controller and service layers, and also between the service layer and external clients, to prevent exposing internal entity structures.
-6.  **Repository Layer:** Spring Data JPA repositories abstract database interactions. They execute queries, map results to JPA entities, and handle persistence.
-7.  **Database:** PostgreSQL stores and retrieves data. Flyway ensures the schema is up-to-date.
-8.  **Response:**
-    *   Results from the service are converted back to DTOs by the controller.
-    *   An HTTP response with appropriate status code and JSON payload is returned to the client.
-    *   **Global Exception Handler:** If any exception occurs at any layer, `GlobalExceptionHandler` intercepts it and returns a consistent, user-friendly error response.
+*   **Responsibility:** Exposes RESTful API endpoints, handles HTTP requests, marshals/unmarshals JSON data (DTOs), and delegates business logic to the Service Layer.
+*   **Technologies:** Spring Web (`@RestController`, `@RequestMapping`, `@GetMapping`, etc.), `@Valid` for input validation.
+*   **Security:** Uses Spring Security annotations (`@PreAuthorize`) for method-level authorization.
+*   **Features:** API documentation via Springdoc OpenAPI (`@Tag`, `@Operation`, `@SecurityRequirement`).
 
-## 3. Module Breakdown
+### 2.2. Service Layer (`com.alx.taskmgr.service`)
 
-The project is organized into standard Spring Boot packages:
+*   **Responsibility:** Contains the core business logic. Orchestrates operations, applies business rules, interacts with the Repository Layer, and handles transactions.
+*   **Technologies:** Spring `@Service`, `@Transactional`, `@RequiredArgsConstructor` (Lombok).
+*   **Features:**
+    *   **Caching:** `@Cacheable` and `@CacheEvict` annotations integrate with Spring's caching abstraction (Ehcache).
+    *   **Input Validation:** Relies on DTO validation handled at the Controller layer, but can add more complex business rule validations here.
 
-*   `com.ml_utilities_system`: Base package
-    *   `MlUtilitiesSystemApplication`: Main Spring Boot entry point.
-    *   `config`: Spring configurations for security, caching, OpenAPI, and WebMvc interceptors.
-        *   `jwt`: JWT-specific components (token generation, validation, filter).
-    *   `controller`: REST API endpoints, handling HTTP requests and responses.
-    *   `dto`: Data Transfer Objects used for API requests and responses, separating entity models from external contracts.
-    *   `exception`: Custom exceptions and the `GlobalExceptionHandler` for centralized error handling.
-    *   `interceptor`: Contains the `RateLimitInterceptor` and its annotation.
-    *   `model`: JPA entities representing the database schema (Users, Roles, Datasets, Features, Models).
-    *   `repository`: Spring Data JPA interfaces for database CRUD operations.
-    *   `service`: Business logic layer, orchestrating operations and applying business rules.
-        *   `UserDetailsImpl`, `UserDetailsServiceImpl`, `AuthService`: Security-related services.
-    *   `util`: General utility classes (e.g., `RateLimiter` implementation using Bucket4j).
+### 2.3. Repository Layer (`com.alx.taskmgr.repository`)
 
-## 4. Scalability Considerations
+*   **Responsibility:** Provides data access operations (CRUD) for entities. Abstracts away the underlying database technology.
+*   **Technologies:** Spring Data JPA, extending `JpaRepository`.
+*   **Features:** Custom query methods are automatically implemented by Spring Data JPA based on method names (e.g., `findByUserIdAndCompleted`).
 
-*   **Stateless Application:** The use of JWTs makes the application stateless, which is crucial for horizontal scaling. Any instance can handle any request without session affinity.
-*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful hardware) or horizontally (read replicas, sharding, though sharding requires more complex application logic). Connection pooling (`HikariCP` used by Spring Boot by default) is optimized.
-*   **Caching:** Caffeine provides fast in-memory caching. For higher scale or distributed caching, it could be replaced with Redis or Memcached (e.g., via Spring Data Redis).
-*   **Load Balancing:** The application is designed to run behind a load balancer, distributing traffic across multiple instances.
-*   **Message Queues:** For asynchronous operations (e.g., heavy data processing, model training jobs), integration with message queues (Kafka, RabbitMQ) would decouple components and improve responsiveness. (Future enhancement).
-*   **Microservices:** While this is a monolithic application, its modular design facilitates breaking it down into smaller microservices if complexity or team size grows (e.g., a dedicated "Dataset Service," "Feature Store Service," "Model Registry Service").
+### 2.4. Model Layer (`com.alx.taskmgr.model`)
 
-## 5. Security Aspects
+*   **Responsibility:** Defines the data structure (entities) that map directly to database tables.
+*   **Technologies:** JPA annotations (`@Entity`, `@Table`, `@Id`, `@OneToMany`, `@ManyToOne`), Lombok (`@Data`, `@Builder`).
+*   **Relationships:** Defines relationships between entities (e.g., `User` has many `Tasks` and `Categories`).
 
-*   **JWT Authentication:** Secure token-based authentication for all API interactions.
-*   **Role-Based Authorization:** Fine-grained access control using `@PreAuthorize` annotations on controller and service methods.
-*   **Password Hashing:** BCryptPasswordEncoder is used for strong one-way password hashing.
-*   **Input Validation:** `@Valid` annotations on DTOs prevent common injection attacks and ensure data integrity.
-*   **CORS Configuration:** `CorsFilter` allows controlled cross-origin requests.
-*   **HTTPS:** Deployment should always enforce HTTPS to protect data in transit.
+### 2.5. Data Transfer Objects (DTOs) (`com.alx.taskmgr.dto`)
 
-## 6. Observability
+*   **Responsibility:** Objects used for data transfer between the client and the server (and sometimes between layers). They decouple the API from the internal domain model.
+*   **Features:** Includes validation annotations (`@NotBlank`, `@Size`, `@Email`).
 
-*   **Logging:** Configured with Logback to provide detailed application logs. Logs should be collected by a centralized logging system (ELK stack, Splunk) in production.
-*   **Monitoring:** Spring Boot Actuator endpoints provide metrics (`/actuator/metrics`), health (`/actuator/health`), etc. These can be scraped by tools like Prometheus and visualized in Grafana to monitor application health and performance.
-*   **Tracing:** For distributed systems, integrating with a tracing solution (e.g., OpenTelemetry, Zipkin) would help track requests across services. (Future enhancement).
+## 3. Cross-Cutting Concerns
 
-## 7. Performance Testing Strategy (Conceptual)
+### 3.1. Authentication & Authorization
 
-*   **Tooling:** Use tools like Apache JMeter or Gatling to simulate realistic user loads.
-*   **Scenarios:**
-    *   **Login Storm:** Test authentication endpoint under high load.
-    *   **Read-Heavy Load:** Simulate many users retrieving datasets, features, and models concurrently. Observe cache hit rates.
-    *   **CRUD Mix:** Simulate a mix of creation, update, and deletion operations with reads.
-    *   **Edge Cases:** Test pagination with large numbers of pages, filtering, and sorting.
-*   **Metrics to Monitor:** Response times, throughput (requests/second), error rates, CPU/Memory utilization, database connection pool usage, cache hit/miss ratio.
-*   **Goal:** Identify bottlenecks, validate rate limiting, and ensure the system meets desired performance SLAs under anticipated load.
+*   **Technology:** Spring Security, JWT (JSON Web Tokens).
+*   **Flow:**
+    1.  User registers/logs in via `AuthController`.
+    2.  Upon successful login, a JWT token is generated by `JwtService` and returned to the client.
+    3.  For subsequent requests, the client sends the JWT in the `Authorization` header.
+    4.  `JwtAuthFilter` intercepts requests, validates the JWT using `JwtService`, and sets the `Authentication` context.
+    5.  `@PreAuthorize` annotations on controller methods enforce role-based access.
 
----
+### 3.2. Error Handling
+
+*   **Technology:** Spring's `@RestControllerAdvice` and `@ExceptionHandler`.
+*   **Implementation:** `GlobalExceptionHandler` provides a centralized mechanism to catch specific exceptions (`ResourceNotFoundException`, `UserAlreadyExistsException`, `MethodArgumentNotValidException`) and return consistent, meaningful HTTP error responses (e.g., 404 Not Found, 409 Conflict, 400 Bad Request).
+
+### 3.3. Logging
+
+*   **Technology:** SLF4J (facade) and Logback (implementation).
+*   **Configuration:** `logback-spring.xml` defines appenders (console, file), log patterns, and log levels.
+*   **Monitoring:** Spring Boot Actuator exposes `/actuator/health`, `/actuator/info`, `/actuator/metrics` endpoints for application monitoring.
+
+### 3.4. Caching
+
+*   **Technology:** Spring Cache abstraction with Ehcache.
+*   **Mechanism:** In-memory caching for frequently accessed read operations (e.g., retrieving user profiles, categories, tasks). Reduces database load and improves response times.
+
+### 3.5. Rate Limiting
+
+*   **Technology:** Custom Spring `HandlerInterceptor` using Guava `RateLimiter`.
+*   **Purpose:** Protects specific endpoints (e.g., `/api/users/me`) from excessive requests from a single IP address, preventing abuse and ensuring service availability.
+
+### 3.6. Database Migration
+
+*   **Technology:** Flyway.
+*   **Purpose:** Manages schema changes in a version-controlled and idempotent manner. Ensures the database schema is always compatible with the application code.
+
+## 4. Deployment Architecture
+
+The application is containerized using Docker.
+
+*   **`Dockerfile`:** Defines how to build the Spring Boot application's Docker image.
+*   **`docker-compose.yml`:** Orchestrates the deployment of the application container alongside a PostgreSQL database container, facilitating local development and single-server deployment.
+*   **CI/CD (GitHub Actions):** Automates the build, test, Docker image creation, and deployment process (pushing to Docker Hub and deploying to a target server via SSH).
+
+## 5. Scalability Considerations
+
+*   **Stateless Backend:** The use of JWTs makes the backend largely stateless, simplifying horizontal scaling.
+*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) for high-traffic scenarios.
+*   **Caching:** While Ehcache is in-memory and scales with the application instance, for true distributed caching, an external solution like Redis or Memcached would be integrated.
+*   **Load Balancing:** Deploying multiple instances of the backend behind a load balancer (e.g., Nginx, AWS ELB) is straightforward due to its stateless nature.
+*   **Microservices:** While currently a monolith, the layered architecture and clear separation of concerns make it a candidate for future decomposition into microservices if specific parts require independent scaling or development.
+```

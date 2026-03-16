@@ -1,188 +1,226 @@
-# ML Utilities System
+```markdown
+# ALX Task Manager Backend (Java Spring Boot)
 
-## Comprehensive, Production-Ready Machine Learning Utilities System
+This is a comprehensive, production-ready backend system for a mobile task management application, built using Java Spring Boot. It provides robust API endpoints, handles authentication/authorization, integrates with a PostgreSQL database, includes caching, logging, rate limiting, and is ready for containerized deployment with Docker and CI/CD pipelines.
 
-This project is a full-scale, enterprise-grade Machine Learning Utilities System developed using Spring Boot 3.x (Java 17). It provides a robust backend for managing essential ML lifecycle components: datasets, features, and models. The system is designed with scalability, security, and maintainability in mind, incorporating various best practices and modern development tools.
+## Table of Contents
 
-### Features
+1.  [Features](#features)
+2.  [Technology Stack](#technology-stack)
+3.  [Getting Started](#getting-started)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+4.  [API Documentation (Swagger UI)](#api-documentation-swagger-ui)
+5.  [Authentication & Authorization](#authentication--authorization)
+6.  [Database Layer](#database-layer)
+7.  [Caching](#caching)
+8.  [Rate Limiting](#rate-limiting)
+9.  [Logging & Monitoring](#logging--monitoring)
+10. [Testing](#testing)
+11. [Deployment Guide](#deployment-guide)
+12. [Architecture Documentation](#architecture-documentation)
+13. [Contribution](#contribution)
+14. [License](#license)
 
-1.  **Core Application (Java Spring Boot)**
-    *   **Dataset Management:** CRUD operations for managing ML dataset metadata (name, description, file path, size, format, upload/modification timestamps).
-    *   **Feature Management:** CRUD operations for defining and managing features (name, description, type, version, source dataset, transformation logic).
-    *   **Model Registration:** CRUD operations for registering ML models (name, version, algorithm, path to model artifact, performance metrics, status, associated features, and training dataset).
-    *   **Pagination & Sorting:** All `GET /api/{resource}` endpoints support pagination and sorting.
-    *   **Robust Business Logic:** Validation, error handling, and transactional integrity for all operations.
+## Features
 
-2.  **Database Layer (PostgreSQL with Flyway & Spring Data JPA)**
-    *   **Schema Definitions:** Well-defined relational schema for Users, Roles, Datasets, Features, and Models.
-    *   **Migration Scripts:** Automated database schema management using Flyway.
-    *   **Seed Data:** Initial roles and default users (admin, moderator, user) are seeded via Flyway.
-    *   **ORM:** Efficient data access through Spring Data JPA with Hibernate.
+*   **User Management:** Register, Login, User Profile retrieval.
+*   **Task Management:** Full CRUD operations for tasks (create, read, update, delete).
+*   **Category Management:** Full CRUD operations for user-specific task categories.
+*   **Task Filtering:** Filter tasks by completion status, overdue status, or category.
+*   **Authentication & Authorization:** Secure JWT-based authentication and role-based access control (RBAC).
+*   **Database:** PostgreSQL with Flyway for robust schema migrations.
+*   **Caching:** Ehcache for in-memory caching of frequently accessed data to improve performance.
+*   **Rate Limiting:** Protects API endpoints from abuse and ensures fair usage.
+*   **Logging:** Centralized logging with Logback for effective debugging and monitoring.
+*   **Monitoring:** Spring Boot Actuator for health checks and application metrics.
+*   **Error Handling:** Global exception handling middleware for consistent API error responses.
+*   **Validation:** Input validation using Jakarta Bean Validation.
+*   **Containerization:** Dockerfile and Docker Compose for easy setup and deployment.
+*   **CI/CD:** GitHub Actions workflow for automated build, test, and Docker image pushing.
+*   **API Documentation:** Self-generating OpenAPI (Swagger UI) documentation.
 
-3.  **Configuration & Setup**
-    *   **Dependencies:** Managed via `pom.xml` (Maven).
-    *   **Environment Configuration:** `application.yml` for database, server, JWT, and caching settings, with profile-specific configurations (e.g., `test` profile for H2).
-    *   **Docker Setup:** `Dockerfile` for containerizing the Spring Boot application and `docker-compose.yml` for orchestrating the application with a PostgreSQL database.
-    *   **CI/CD Pipeline:** Configured with GitHub Actions (`.github/workflows/main.yml`) for automated build, test, and deployment.
+## Technology Stack
 
-4.  **Testing & Quality**
-    *   **Unit Tests:** JUnit 5 and Mockito for isolated testing of service layer business logic (aiming for 80%+ coverage).
-    *   **Integration Tests:** `@SpringBootTest` with `MockMvc` for comprehensive testing of controllers, including authentication and authorization flows. Testcontainers are used for database integration tests in CI.
-    *   **API Tests:** Covered by integration tests simulating HTTP requests.
-    *   **Performance Tests:** (Conceptual) Methodology outlined in `ARCHITECTURE.md` for tools like JMeter/Gatling.
-    *   **Code Coverage:** JaCoCo integrated into Maven build to enforce coverage thresholds.
-
-5.  **Documentation**
-    *   **Comprehensive README:** This document, covering setup, usage, and project overview.
-    *   **API Documentation:** Interactive API docs using Springdoc OpenAPI (Swagger UI). Accessible at `/swagger-ui.html`.
-    *   **Architecture Documentation:** `ARCHITECTURE.md` detailing the system design, components, and data flow.
-    *   **Deployment Guide:** `DEPLOYMENT.md` outlining steps for local Docker deployment and conceptual CI/CD to production.
-
-6.  **Additional Features**
-    *   **Authentication/Authorization:** JWT-based authentication using Spring Security. Role-based authorization (`ROLE_USER`, `ROLE_MODERATOR`, `ROLE_ADMIN`) for granular access control.
-    *   **Logging and Monitoring:** Configured with SLF4J/Logback for structured logging. Mentions integration points for external monitoring.
-    *   **Error Handling Middleware:** Global exception handling using `@ControllerAdvice` for consistent API error responses.
-    *   **Caching Layer:** Spring Cache with Caffeine for in-memory caching of frequently accessed data (e.g., `Dataset` by ID, paginated lists).
-    *   **Rate Limiting:** Custom `RateLimitInterceptor` using Bucket4j to prevent abuse of API endpoints. Configurable per endpoint via `@RateLimited` annotation.
-
-### Technologies Used
-
-*   **Backend:** Java 17, Spring Boot 3.x
+*   **Language:** Java 17
+*   **Framework:** Spring Boot 3
+*   **Build Tool:** Apache Maven
 *   **Database:** PostgreSQL
-*   **ORM:** Spring Data JPA, Hibernate
-*   **Migrations:** Flyway
-*   **Authentication:** Spring Security, JWT (jjwt)
-*   **Caching:** Spring Cache, Caffeine
-*   **Rate Limiting:** Bucket4j
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo
+*   **ORM:** Spring Data JPA (Hibernate)
+*   **Database Migrations:** Flyway
+*   **Authentication:** Spring Security, JWT (JJWT library)
+*   **Caching:** Spring Cache with Ehcache
+*   **Rate Limiting:** Google Guava RateLimiter (in-memory)
+*   **Logging:** SLF4J + Logback
+*   **Monitoring:** Spring Boot Actuator
 *   **API Documentation:** Springdoc OpenAPI (Swagger UI)
-*   **Build Tool:** Maven
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, JaCoCo (code coverage)
 *   **Containerization:** Docker, Docker Compose
 *   **CI/CD:** GitHub Actions
-*   **Utilities:** Lombok
 
----
+## Getting Started
 
-### Getting Started
+### Prerequisites
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+Before you begin, ensure you have the following installed:
 
-#### Prerequisites
+*   **Java Development Kit (JDK) 17 or higher**
+*   **Apache Maven 3.6.0 or higher**
+*   **Docker Desktop** (or Docker Engine and Docker Compose) for containerized setup
+*   **Git**
 
-*   Java 17 Development Kit (JDK)
-*   Maven 3.x
-*   Docker and Docker Compose (recommended for local database setup)
-*   Git
+### Local Development Setup
 
-#### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/ml-utilities-system.git
-cd ml-utilities-system
-```
-
-#### 2. Environment Configuration
-
-The application uses `application.yml` for configuration. Sensitive information like database credentials and JWT secret are set via environment variables.
-
-You can create a `.env` file in the project root for `docker-compose` to pick up:
-
-```bash
-# .env file
-DB_NAME=ml_util_db
-DB_USER=admin
-DB_PASSWORD=password
-JWT_SECRET=supersecretkeythatisatleast256bitlongforproductionenvironment # CHANGE THIS IN PRODUCTION!
-JWT_EXPIRATION_MS=86400000 # 24 hours
-```
-
-#### 3. Run with Docker Compose (Recommended)
-
-This will start both the PostgreSQL database and the Spring Boot application.
-
-```bash
-docker-compose up --build -d
-```
-
-*   The database will be available on `localhost:5432`.
-*   The application will be available on `localhost:8080`.
-*   Flyway migrations will run automatically on application startup to set up the schema and seed initial data (roles, admin/mod/user accounts).
-
-#### 4. Run Locally (without Docker for the app, with Docker for DB)
-
-If you prefer to run the Spring Boot app directly on your machine while still using a Dockerized database:
-
-1.  **Start PostgreSQL with Docker Compose:**
+1.  **Clone the repository:**
     ```bash
-    docker-compose up -d db
-    ```
-    Wait for the database to be healthy. You can check its logs: `docker logs ml-utilities-postgres`.
-
-2.  **Run the Spring Boot Application:**
-    Ensure your local environment variables match those in `.env` or `application.yml` for database connection and JWT.
-    ```bash
-    # Set environment variables (e.g., in your shell or IDE run configuration)
-    export DB_HOST=localhost
-    export DB_PORT=5432
-    export DB_NAME=ml_util_db
-    export DB_USER=admin
-    export DB_PASSWORD=password
-    export JWT_SECRET=supersecretkeythatisatleast256bitlongforproductionenvironment
-    export JWT_EXPIRATION_MS=86400000
-
-    # Build and run the application
-    mvn spring-boot:run
+    git clone https://github.com/your-username/task-manager-backend.git
+    cd task-manager-backend
     ```
 
-#### 5. Access the Application
+2.  **Build the project:**
+    ```bash
+    mvn clean install
+    ```
+    This will compile the code, run tests, and package the application into a JAR file.
 
-Once running (either via Docker Compose or locally):
+3.  **Run the application locally (using H2 in-memory database):**
+    You can run the application using Spring Boot's Maven plugin, activating the `dev` profile which uses an H2 in-memory database for convenience.
 
-*   **Frontend (minimal):** Open your browser to `http://localhost:8080/`. This provides links to Swagger UI and basic info.
-*   **API Documentation (Swagger UI):** Open your browser to `http://localhost:8080/swagger-ui.html`.
-    *   You'll need to authenticate first using the `/api/auth/signin` endpoint to get a JWT token.
-    *   Default users:
-        *   **Admin:** username `admin`, password `adminpass` (role: `ROLE_ADMIN`)
-        *   **Moderator:** username `moderator`, password `modpass` (role: `ROLE_MODERATOR`)
-        *   **User:** username `user`, password `userpass` (role: `ROLE_USER`)
-    *   Click the "Authorize" button in Swagger UI, enter `Bearer YOUR_JWT_TOKEN`, and then you can test the secured endpoints.
+    ```bash
+    mvn spring-boot:run -Dspring-boot.run.profiles=dev
+    ```
+    The application will start on `http://localhost:8080`.
+    The H2 Console will be available at `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:taskmgrdb`, User: `sa`, Password: ` `).
 
----
+### Running with Docker Compose
 
-### Running Tests
+For a more production-like environment with PostgreSQL, use Docker Compose.
 
-To run all unit and integration tests (using an in-memory H2 database by default for `test` profile):
+1.  **Build the Docker image for the backend:**
+    Ensure you've run `mvn clean install` first to generate the JAR file.
+    ```bash
+    docker build -t task-manager-backend .
+    ```
+    Alternatively, the `docker-compose.yml` will build the image automatically if it doesn't exist.
 
+2.  **Start the application and database containers:**
+    ```bash
+    docker-compose up -d
+    ```
+    This command will:
+    *   Pull the PostgreSQL image if not already present.
+    *   Create a Docker network.
+    *   Start the PostgreSQL database container.
+    *   Build (if necessary) and start the Spring Boot application container, connecting it to the database.
+    The backend will be accessible at `http://localhost:8080`. The database will also be accessible on `localhost:5432`.
+
+3.  **Verify services are running:**
+    ```bash
+    docker-compose ps
+    ```
+
+4.  **Stop the services:**
+    ```bash
+    docker-compose down
+    ```
+
+## API Documentation (Swagger UI)
+
+Once the application is running (locally or via Docker), you can access the interactive API documentation at:
+
+*   **Swagger UI:** `http://localhost:8080/swagger-ui.html`
+*   **OpenAPI Docs (JSON):** `http://localhost:8080/v3/api-docs`
+
+This documentation allows you to explore all available endpoints, their request/response formats, and even test them directly from your browser.
+
+## Authentication & Authorization
+
+The backend implements JWT (JSON Web Token) based authentication using Spring Security.
+
+*   **Registration:** `POST /api/auth/register` (creates a new user)
+*   **Login:** `POST /api/auth/login` (authenticates user and returns a JWT token)
+
+**To access protected endpoints:**
+You must include the JWT token in the `Authorization` header of your requests, prefixed with `Bearer `.
+
+Example: `Authorization: Bearer <your_jwt_token_here>`
+
+**Role-Based Access Control:**
+*   Most endpoints (`/api/tasks`, `/api/categories`, `/api/users/me`) require `ROLE_USER`.
+*   `GET /api/users/{id}` (fetching any user by ID) requires `ROLE_ADMIN` (though in this basic implementation, all registered users default to `ROLE_USER`).
+
+## Database Layer
+
+*   **Database:** PostgreSQL is used for persistence.
+*   **ORM:** Spring Data JPA with Hibernate is used for object-relational mapping.
+*   **Migrations:** Flyway manages database schema evolution.
+    *   Migration scripts are located in `src/main/resources/db/migration/`.
+    *   `V1__initial_schema.sql` sets up the initial tables and indexes.
+    *   Flyway automatically runs migrations on application startup.
+*   **Seed Data:** `src/main/resources/data.sql` can be used for initial data population (primarily for H2, Flyway would typically use dedicated V*__data.sql scripts for more controlled production seeding).
+*   **Query Optimization:**
+    *   Indexes are defined on frequently queried columns (e.g., `username`, `email`, `user_id`, `due_date`, `completed`).
+    *   Lazy loading is configured for one-to-many and many-to-one relationships to avoid unnecessary data fetching.
+    *   Spring Data JPA repository methods are optimized for common CRUD and search patterns.
+
+## Caching
+
+*   **Technology:** Spring Cache abstraction with Ehcache as the underlying provider.
+*   **Configuration:** `ehcache.xml` defines cache regions (`users`, `categories`, `tasks`) with specific time-to-live (TTL) and eviction policies.
+*   **Usage:** `@Cacheable` annotations on service methods (e.g., `UserService.getUserById`, `CategoryService.getAllCategories`) cache method results. `@CacheEvict` annotations ensure caches are invalidated when data changes (e.g., after creating, updating, or deleting a task/category).
+
+## Rate Limiting
+
+*   **Implementation:** A custom Spring `HandlerInterceptor` (`RateLimitInterceptor`) is used.
+*   **Technology:** Google Guava's `RateLimiter` provides a simple, in-memory rate limiting mechanism.
+*   **Configuration:** Configured in `SecurityConfig` to apply to specific endpoints (e.g., `/api/users/me`).
+*   **Behavior:** Blocks requests exceeding a defined rate (e.g., 5 requests per 10 seconds per IP address). Returns `HTTP 429 Too Many Requests` if the limit is exceeded.
+*   **Note:** For production-grade rate limiting in a distributed environment, external solutions like Redis-backed rate limiters or API Gateways (e.g., AWS API Gateway, Netflix Zuul/Spring Cloud Gateway) are recommended.
+
+## Logging & Monitoring
+
+*   **Logging:**
+    *   Uses SLF4J as the logging facade with Logback as the implementation.
+    *   Configuration is in `src/main/resources/logback-spring.xml`.
+    *   Logs are written to both console and a rolling file (`logs/task-manager-backend.log`).
+    *   Configurable log levels for different packages (`com.alx.taskmgr` at `DEBUG`, `root` at `INFO`).
+    *   SQL statements and their parameters are logged at `INFO` and `TRACE` levels respectively (can be adjusted).
+*   **Monitoring:**
+    *   Spring Boot Actuator provides production-ready features.
+    *   Access Actuator endpoints at `http://localhost:8080/actuator` (e.g., `/health`, `/info`, `/metrics`).
+    *   Enabled endpoints are configured in `application.yml`.
+
+## Testing
+
+The project emphasizes quality through a comprehensive testing suite:
+
+*   **Unit Tests:** Focus on individual components (services, utilities) in isolation. Mock dependencies using Mockito.
+    *   Example: `UserServiceTest.java`
+*   **Integration Tests:** Test the interaction between multiple layers (e.g., controller to service, service to repository, full API endpoints). Use `@SpringBootTest`, `@DataJpaTest`, and `MockMvc`.
+    *   Example: `UserRepositoryTest.java`, `TaskControllerIntegrationTest.java`
+*   **API Tests:** Covered largely by `TaskControllerIntegrationTest` using `MockMvc` to simulate HTTP requests and assert API responses. This ensures API contracts are maintained.
+*   **Code Coverage:** Achieved using JaCoCo Maven plugin, aiming for **80%+ line coverage**. The CI/CD pipeline includes a step to generate and upload coverage reports to Codecov.
+
+To run all tests and generate a coverage report:
 ```bash
-mvn clean test
+mvn clean test jacoco:report
 ```
+The JaCoCo report will be available in `target/site/jacoco/index.html`.
 
-To include code coverage report generation with JaCoCo:
+## Deployment Guide
 
-```bash
-mvn clean verify
+A detailed deployment guide is available in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Architecture Documentation
+
+A high-level overview of the system's architecture is provided in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Contribution
+
+Contributions are welcome! If you find a bug or have a feature request, please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 ```
-
-This will run tests and generate a JaCoCo report in `target/site/jacoco/index.html`. It will also enforce the coverage thresholds defined in `pom.xml`.
-
-For integration tests that interact with a real PostgreSQL database (e.g., using Testcontainers, as configured in the CI pipeline for more robust scenarios), you would need to adjust the `application.yml` profile or setup accordingly. The provided `docker-compose.yml` for the `build-and-test` CI job demonstrates how `Testcontainers` (via `docker-compose` `db` service) could be used with specific integration tests. For local development, the `test` profile using H2 is faster.
-
----
-
-### Project Structure
-
-(See the detailed Project Structure Outline at the beginning of the overall response)
-
----
-
-### Contributing
-
-Please refer to `CONTRIBUTING.md` (not provided in this response, but would be a typical component).
-
----
-
-### License
-
-This project is licensed under the Apache 2.0 License - see the `LICENSE` file for details (not provided in this response).
-
----

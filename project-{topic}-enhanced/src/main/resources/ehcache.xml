@@ -1,0 +1,50 @@
+```xml
+<config xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+        xmlns='http://www.ehcache.org/v3'
+        xsi:schemaLocation="http://www.ehcache.org/v3 http://www.ehcache.org/schema/ehcache-core-3.10.xsd">
+
+    <cache-template name="default-template">
+        <expiry>
+            <ttl unit="seconds">300</ttl> <!-- Default 5 minutes TTL -->
+        </expiry>
+        <heap unit="entries">100</heap> <!-- Max 100 entries on heap -->
+    </cache-template>
+
+    <cache alias="users" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">600</ttl> <!-- Users can be cached longer (10 min) -->
+        </expiry>
+    </cache>
+
+    <cache alias="user" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">600</ttl>
+        </expiry>
+    </cache>
+
+    <cache alias="categories" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">180</ttl> <!-- Categories might change more often (3 min) -->
+        </expiry>
+    </cache>
+
+    <cache alias="category" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">180</ttl>
+        </expiry>
+    </cache>
+
+    <cache alias="tasks" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">60</ttl> <!-- Tasks can be very dynamic (1 min) -->
+        </expiry>
+    </cache>
+
+    <cache alias="task" uses-template="default-template">
+        <expiry>
+            <ttl unit="seconds">60</ttl>
+        </expiry>
+    </cache>
+
+</config>
+```
