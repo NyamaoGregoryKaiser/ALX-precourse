@@ -1,21 +1,28 @@
-# Use a Node.js image
-FROM node:18-alpine
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS build
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy the rest of the application code
-COPY . .
+COPY tsconfig.json ./
+COPY src ./src
 
-# Expose port
+RUN npm run build
+
+# Stage 2: Run the application
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm install --only=production
+
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/src/db/mock_data ./src/db/mock_data # Copy mock data for seeding
+
 EXPOSE 5000
 
-# Command to run the application (in production, use `npm start`)
-# For local dev with docker-compose, `npm run dev` is often used via docker-compose.yml
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

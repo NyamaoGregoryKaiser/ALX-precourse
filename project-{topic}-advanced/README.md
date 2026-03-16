@@ -1,6 +1,6 @@
-# Task Management System
+# Data Visualization Tools System
 
-A comprehensive, production-ready Task Management System built with a full JavaScript stack (React frontend, Node.js/Express backend, PostgreSQL database). This project demonstrates enterprise-grade features including robust CRUD operations, authentication/authorization, logging, caching, rate limiting, Dockerization, and a CI/CD pipeline.
+This is a comprehensive, production-ready data visualization system built with a TypeScript-first approach for both backend (Node.js/Express) and frontend (React). It enables users to connect to data sources, create interactive dashboards, and design various visualizations.
 
 ## Table of Contents
 
@@ -9,245 +9,337 @@ A comprehensive, production-ready Task Management System built with a full JavaS
 3.  [Project Structure](#project-structure)
 4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Setup (using Docker Compose)](#local-setup-using-docker-compose)
-    *   [Local Setup (without Docker)](#local-setup-without-docker)
+    *   [Local Setup (Manual)](#local-setup-manual)
+    *   [Docker Setup (Recommended)](#docker-setup-recommended)
 5.  [Running the Application](#running-the-application)
-6.  [Testing](#testing)
-7.  [API Documentation](#api-documentation)
-8.  [Architecture](#architecture)
-9.  [Deployment](#deployment)
-10. [CI/CD](#cicd)
-11. [Additional Features](#additional-features)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+    *   [Running Backend Manually](#running-backend-manually)
+    *   [Running Frontend Manually](#running-frontend-manually)
+6.  [Database Operations](#database-operations)
+    *   [Migrations](#migrations)
+    *   [Seeding Data](#seeding-data)
+7.  [Testing](#testing)
+    *   [Backend Tests](#backend-tests)
+    *   [Frontend Tests](#frontend-tests)
+    *   [Performance Tests](#performance-tests)
+8.  [API Endpoints](#api-endpoints)
+9.  [Additional Features](#additional-features)
+10. [Architecture](#architecture)
+11. [Deployment](#deployment)
 12. [Contributing](#contributing)
 13. [License](#license)
 
 ## 1. Features
 
-*   **User Management**: Register, login, manage user profiles. Role-based access control (Admin/User).
-*   **Authentication & Authorization**: Secure JWT-based authentication. Middleware for protecting routes and enforcing roles.
-*   **Project Management**: Create, view, update, and delete projects. Projects are owned by users.
-*   **Task Management**: Create, view, update, and delete tasks. Tasks belong to projects and can be assigned to users, with status and priority tracking.
-*   **Data Persistence**: PostgreSQL database with Sequelize ORM, migrations, and seed data.
-*   **API Endpoints**: Full CRUD operations exposed via a RESTful API.
-*   **Configuration**: Environment-specific settings, `.env` for sensitive data.
-*   **Containerization**: Docker and Docker Compose for easy setup and consistent environments.
-*   **Testing Suite**: Unit, Integration, and API tests with Jest, Supertest, and React Testing Library for high code quality.
-*   **Comprehensive Logging**: Winston for structured server-side logging.
-*   **Robust Error Handling**: Centralized middleware to catch and process errors gracefully.
-*   **Caching Layer**: In-memory caching with `node-cache` to improve API response times (extensible to Redis).
-*   **Rate Limiting**: Protects API endpoints from abuse and brute-force attacks.
-*   **Security Headers**: `helmet` middleware for common web vulnerabilities.
-*   **CORS Configuration**: Secure cross-origin resource sharing.
-*   **Documentation**: Detailed `README`, API docs, architecture overview, and deployment guide.
-*   **CI/CD**: Basic GitHub Actions workflow for linting and testing.
+*   **User Management**: Registration, login, profile management with JWT-based authentication.
+*   **Role-Based Authorization**: `user` and `admin` roles.
+*   **Data Source Management**: Define and manage connections to various data sources (currently mock CSV files).
+*   **Dashboard Creation**: Build and organize multiple dashboards.
+*   **Interactive Visualizations**: Add bar, line, and pie charts to dashboards.
+*   **Dynamic Data Processing**: Backend-driven data aggregation and transformation for visualizations.
+*   **Robust Error Handling**: Centralized error middleware for graceful error responses.
+*   **Logging & Monitoring**: Winston-based logging for backend operations.
+*   **Rate Limiting**: Protects API from excessive requests.
+*   **Caching (Conceptual)**: Redis integration for improved performance.
+*   **Containerization**: Full Docker support for easy deployment.
+*   **CI/CD Integration**: GitHub Actions for automated testing and deployment previews.
 
 ## 2. Technology Stack
 
-*   **Backend**: Node.js, Express.js
-*   **Frontend**: React.js
-*   **Database**: PostgreSQL
-*   **ORM**: Sequelize
-*   **Authentication**: JSON Web Tokens (JWT), Bcrypt.js
-*   **Testing**: Jest, Supertest, React Testing Library
-*   **Logging**: Winston
-*   **Caching**: `node-cache` (in-memory)
-*   **Rate Limiting**: `express-rate-limit`
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-*   **Utilities**: `dotenv`, `cors`, `helmet`, `dayjs` (frontend for date formatting)
+*   **Backend**:
+    *   Node.js
+    *   Express.js
+    *   TypeScript
+    *   TypeORM (ORM for PostgreSQL)
+    *   PostgreSQL (Database)
+    *   bcryptjs (Password hashing)
+    *   jsonwebtoken (JWT authentication)
+    *   Winston (Logging)
+    *   Express-rate-limit (Rate limiting)
+    *   Cors, Helmet (Security)
+    *   Redis (Caching - conceptual)
+*   **Frontend**:
+    *   React.js
+    *   TypeScript
+    *   React Router DOM (Routing)
+    *   Axios (HTTP client)
+    *   Chart.js / React-chartjs-2 (Data visualization library)
+    *   Styled Components (CSS-in-JS)
+*   **Tools**:
+    *   Docker, Docker Compose
+    *   Jest, Supertest (Testing)
+    *   K6 (Performance Testing - conceptual)
+    *   GitHub Actions (CI/CD)
 
 ## 3. Project Structure
 
 ```
-task-management-system/
-├── .github/                             # CI/CD workflows (GitHub Actions)
-├── backend/                             # Node.js/Express.js API
-│   ├── config/                          # Configuration files
+.
+├── backend/                  # Node.js/Express TypeScript backend
 │   ├── src/
-│   │   ├── controllers/                 # Request handlers
-│   │   ├── models/                      # Sequelize model definitions
-│   │   ├── routes/                      # API routes
-│   │   ├── services/                    # Business logic
-│   │   ├── middleware/                  # Express middleware
-│   │   ├── migrations/                  # Database migration scripts
-│   │   ├── seeders/                     # Database seed data scripts
-│   │   ├── utils/                       # Utility functions (logger, cache)
-│   │   ├── tests/                       # Backend tests
-│   │   ├── app.js                       # Express app setup
-│   │   └── server.js                    # Server entry point
-│   ├── .env.example                     # Environment variables example
-│   ├── package.json                     # Backend dependencies
-│   └── Dockerfile                       # Dockerfile for backend service
-├── frontend/                            # React.js SPA
+│   │   ├── config/           # Environment variables, DB config
+│   │   ├── db/               # Database entities, migrations, seeds, data source
+│   │   ├── middleware/       # Auth, error handling, rate limiting
+│   │   ├── routes/           # API route definitions
+│   │   ├── services/         # Business logic, DB interactions
+│   │   ├── controllers/      # Request handlers, call services
+│   │   ├── utils/            # Logger, helper functions (e.g., CSV parser)
+│   │   ├── tests/            # Unit and integration tests
+│   │   ├── types/            # Custom TypeScript types
+│   │   ├── app.ts            # Express app configuration
+│   │   └── server.ts         # Entry point to start the server
+│   ├── .env.example
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── Dockerfile
+├── frontend/                 # React TypeScript frontend
 │   ├── public/
 │   ├── src/
-│   │   ├── api/                         # API client functions
-│   │   ├── components/                  # Reusable UI components
-│   │   ├── contexts/                    # React Context for global state
-│   │   ├── pages/                       # Page-level components
-│   │   ├── utils/                       # Frontend utilities
-│   │   ├── tests/                       # Frontend tests
-│   │   ├── App.js                       # Main application component
-│   │   └── index.js                     # React entry point
-│   ├── .env.example                     # Environment variables example
-│   ├── package.json                     # Frontend dependencies
-│   └── Dockerfile                       # Dockerfile for frontend service
-├── .dockerignore                        # Files/dirs to ignore for Docker builds
-├── docker-compose.yml                   # Docker Compose setup for all services
-├── README.md                            # Main project README
-├── ARCHITECTURE.md                      # Architecture documentation
-├── API_DOCUMENTATION.md                 # API documentation
-└── DEPLOYMENT.md                        # Deployment guide
+│   │   ├── api/              # Axios instances and API client functions
+│   │   ├── components/       # Reusable UI components (charts, forms)
+│   │   ├── contexts/         # React contexts (AuthContext)
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── pages/            # Top-level views (Login, Dashboards)
+│   │   ├── utils/            # Helper functions, constants
+│   │   ├── tests/            # React component tests
+│   │   ├── App.tsx           # Main application layout and routing
+│   │   └── index.tsx         # React app entry point
+│   ├── .env.example
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── Dockerfile
+├── .github/                  # GitHub Actions CI/CD workflows
+│   └── workflows/
+│       └── ci-cd.yml
+├── docker-compose.yml        # Orchestrates backend, frontend, db, redis
+├── README.md                 # Project README
+├── ARCHITECTURE.md           # System architecture documentation
+├── DEPLOYMENT.md             # Deployment guide
+└── PERFORMANCE_TESTING.md    # Performance testing guide
 ```
 
 ## 4. Setup and Installation
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+*   Node.js (v18 or higher) & npm
+*   PostgreSQL (if running locally without Docker)
+*   Docker & Docker Compose (recommended)
+*   Git
 
-*   [Git](https://git-scm.com/)
-*   [Node.js](https://nodejs.org/en/) (v18 or higher) & [npm](https://www.npmjs.com/) (comes with Node.js)
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop) (includes Docker Engine and Docker Compose)
-
-### Local Setup (using Docker Compose) - Recommended
+### Local Setup (Manual)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/task-management-system.git
-    cd task-management-system
+    git clone https://github.com/your-username/data-viz-system.git
+    cd data-viz-system
+    ```
+
+2.  **Database Setup:**
+    *   Create a PostgreSQL database (e.g., `data_viz_db`).
+    *   Ensure your PostgreSQL user has appropriate permissions.
+
+3.  **Backend Setup:**
+    ```bash
+    cd backend
+    cp .env.example .env
+    # Edit .env to match your PostgreSQL credentials and JWT_SECRET
+    npm install
+    npm run build # Compile TypeScript
+    ```
+    *   Make sure `MOCK_CSV_DATA_PATH` in `.env` points to `src/db/mock_data/sample_data.csv`.
+
+4.  **Run Backend Migrations & Seed Data:**
+    ```bash
+    npm run migrate:run
+    npm run seed # Populate with initial users, data sources, dashboards
+    ```
+
+5.  **Frontend Setup:**
+    ```bash
+    cd ../frontend
+    cp .env.example .env
+    # Edit .env to point to your backend API (e.g., REACT_APP_API_BASE_URL=http://localhost:5000/api)
+    npm install
+    ```
+
+### Docker Setup (Recommended)
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/data-viz-system.git
+    cd data-viz-system
     ```
 
 2.  **Create `.env` files:**
-    Copy the example environment variables for both backend and frontend.
-
     ```bash
     cp backend/.env.example backend/.env
     cp frontend/.env.example frontend/.env
     ```
-
-    **Update `backend/.env`**:
-    *   `JWT_SECRET`: Generate a strong, long secret key.
-    *   `DB_USER`, `DB_PASSWORD`, `DB_NAME`: These defaults are set in `docker-compose.yml` and `backend/config/config.json`. You can keep them or change them consistently.
-    *   `FRONTEND_URL`: `http://localhost:3000`
-
-    **Update `frontend/.env`**:
-    *   `REACT_APP_API_BASE_URL`: `http://localhost:5000/api`
-
-3.  **Start the services with Docker Compose:**
-    ```bash
-    docker-compose up --build
-    ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Create a PostgreSQL database container.
-    *   Wait for the database to be healthy.
-    *   Run database migrations and seed data in the backend container.
-    *   Start the backend (Node.js) server.
-    *   Start the frontend (React) development server (served by Nginx in production build).
-
-    It may take a few minutes for all services to start, especially for the first build.
-
-### Local Setup (without Docker)
-
-If you prefer to run the backend and frontend directly on your machine without Docker:
-
-1.  **Backend Setup**:
-    Refer to `backend/README.md` for detailed instructions.
-    Essentially: `cd backend`, `npm install`, set up local PostgreSQL, `npm run db:migrate`, `npm run db:seed`, `npm run dev`.
-
-2.  **Frontend Setup**:
-    Refer to `frontend/README.md` for detailed instructions.
-    Essentially: `cd frontend`, `npm install`, `npm start`.
+    *   **Important**: Update `backend/.env` with your desired `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, `REDIS_PASSWORD`, and `JWT_SECRET`. The `DB_HOST` for Docker Compose should be `db`, and `REDIS_HOST` should be `redis`.
+    *   Update `frontend/.env` with `REACT_APP_API_BASE_URL=http://backend:5000/api` if you are using Docker Compose, or `http://localhost:5000/api` if the backend is running locally and only the frontend is in Docker (less common with compose).
 
 ## 5. Running the Application
 
-Once Docker Compose is up (`docker-compose up`), or if you've set up locally:
+### Running with Docker Compose
 
-*   **Backend API**: Accessible at `http://localhost:5000/api`
-*   **Frontend UI**: Accessible at `http://localhost:3000`
+This is the recommended way to run the entire stack.
+From the project root directory:
 
-You can now navigate to `http://localhost:3000` in your web browser to use the Task Management System.
+```bash
+docker-compose up --build -d
+```
 
-**Default Credentials for Seeded Data:**
-*   **Admin User:**
-    *   Email: `admin@example.com`
-    *   Password: `password123`
-*   **Regular User:**
-    *   Email: `user@example.com`
-    *   Password: `password123`
-*   **Other User:**
-    *   Email: `john@example.com`
-    *   Password: `password123`
+*   `-d` runs the services in detached mode.
+*   `--build` rebuilds images (useful after code changes).
 
-## 6. Testing
+Once running:
+*   **Backend API**: `http://localhost:5000`
+*   **Frontend UI**: `http://localhost:3000`
+*   **PostgreSQL**: `localhost:5432`
+*   **Redis**: `localhost:6379`
 
-The project includes comprehensive tests for both backend and frontend.
+You can view logs with `docker-compose logs -f`.
+
+### Running Backend Manually
+
+From the `backend` directory:
+```bash
+npm run dev # For development with hot-reloading
+# or
+npm start # For production (after npm run build)
+```
+
+### Running Frontend Manually
+
+From the `frontend` directory:
+```bash
+npm start
+```
+
+## 6. Database Operations
+
+### Migrations
+
+*   **Create a new migration**:
+    ```bash
+    cd backend
+    npm run migrate:make --name=YourMigrationName
+    ```
+*   **Run pending migrations**:
+    ```bash
+    cd backend
+    npm run migrate:run
+    ```
+*   **Revert the last migration**:
+    ```bash
+    cd backend
+    npm run migrate:revert
+    ```
+
+### Seeding Data
+
+To populate your database with initial users, data sources, and dashboards (useful for fresh development environments):
+```bash
+cd backend
+npm run seed
+```
+This will clear existing data and insert the seed data defined in `src/db/seeds/seed.ts`.
+
+## 7. Testing
 
 ### Backend Tests
 
-Navigate to the `backend` directory:
+From the `backend` directory:
 ```bash
-cd backend
-npm test               # Run all tests with coverage
-npm run test:watch     # Run tests in watch mode
+npm test          # Run all tests with coverage
+npm run test:watch # Run tests in watch mode
 ```
-This includes:
-*   **Unit Tests**: For services and utility functions.
-*   **Integration Tests**: For API routes (using Supertest).
-*   **API Tests**: Further integration with `supertest` to cover full CRUD flows.
-*   **Performance Tests**: A conceptual outline and explanation in `backend/src/tests/api/task.performance.test.js`. Actual performance tests would use tools like `k6`.
+*   Tests are configured with Jest and Supertest.
+*   Coverage target is 80%+.
 
 ### Frontend Tests
 
-Navigate to the `frontend` directory:
+From the `frontend` directory:
 ```bash
-cd frontend
-npm test               # Run all tests with coverage
+npm test          # Run all tests with coverage
 ```
-This includes:
-*   **Unit/Component Tests**: For React components and utility functions using React Testing Library and Jest.
+*   Tests are configured with React Testing Library and Jest.
 
-## 7. API Documentation
+### Performance Tests
 
-Detailed API endpoints, request/response formats, and authentication requirements are documented in [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
+Refer to `PERFORMANCE_TESTING.md` for instructions on how to set up and run performance tests using K6.
 
-## 8. Architecture
+## 8. API Endpoints
 
-An overview of the system's architecture, design decisions, and component interactions can be found in [ARCHITECTURE.md](ARCHITECTURE.md).
+The backend provides a RESTful API. All protected endpoints require a JWT in the `Authorization: Bearer <token>` header.
 
-## 9. Deployment
+**Authentication**
+*   `POST /api/auth/register`: Register a new user.
+*   `POST /api/auth/login`: Authenticate a user and receive a JWT.
+*   `POST /api/auth/register-admin`: Register an admin user (Admin role required).
 
-A guide for deploying this application to a production environment is available in [DEPLOYMENT.md](DEPLOYMENT.md).
+**Users** (All protected. `admin` role required for `/:id` operations)
+*   `GET /api/users/me`: Get current user's profile.
+*   `PUT /api/users/me`: Update current user's profile.
+*   `DELETE /api/users/me`: Delete current user's profile.
+*   `GET /api/users`: Get all users. (Admin only)
+*   `GET /api/users/:id`: Get user by ID. (Admin only)
+*   `PUT /api/users/:id`: Update user by ID. (Admin only)
+*   `DELETE /api/users/:id`: Delete user by ID. (Admin only)
 
-## 10. CI/CD
+**Data Sources** (Protected)
+*   `POST /api/data-sources`: Create a new data source.
+    *   Body: `{ name: string, type: "CSV_MOCK", config: { filePath: string } }`
+*   `GET /api/data-sources`: Get all data sources owned by the user.
+*   `GET /api/data-sources/:id`: Get a specific data source.
+*   `PUT /api/data-sources/:id`: Update a data source.
+*   `DELETE /api/data-sources/:id`: Delete a data source.
+*   `POST /api/data-sources/:id/data`: Fetch and process data from a data source.
+    *   Body: `{ query: { aggregate: "sum" | "avg" | "count", valueColumn: string, groupByColumn: string, orderBy?: string } }`
 
-A basic CI/CD pipeline is configured using GitHub Actions.
-See `.github/workflows/ci.yml` for the configuration.
-It performs:
-*   Linting checks for both backend and frontend.
-*   Runs tests for both backend and frontend.
+**Dashboards** (Protected)
+*   `POST /api/dashboards`: Create a new dashboard.
+    *   Body: `{ name: string, description?: string, layout?: any }`
+*   `GET /api/dashboards`: Get all dashboards owned by the user.
+*   `GET /api/dashboards/:id`: Get a specific dashboard with its visualizations.
+*   `PUT /api/dashboards/:id`: Update a dashboard.
+*   `DELETE /api/dashboards/:id`: Delete a dashboard.
 
-## 11. Additional Features
+**Visualizations** (Protected)
+*   `POST /api/visualizations`: Create a new visualization.
+    *   Body: `{ title: string, type: "BAR_CHART" | "LINE_CHART" | "PIE_CHART", dashboardId: string, dataSourceId: string | null, query: any, config: any, description?: string }`
+*   `GET /api/visualizations/:id`: Get a specific visualization.
+*   `GET /api/visualizations/dashboard/:dashboardId`: Get all visualizations for a specific dashboard.
+*   `PUT /api/visualizations/:id`: Update a visualization.
+*   `DELETE /api/visualizations/:id`: Delete a visualization.
 
-*   **Authentication/Authorization**: JWT-based authentication with role-based access control.
-*   **Logging and Monitoring**: Structured logging with Winston. Can be integrated with external monitoring tools (e.g., ELK stack, Prometheus/Grafana).
-*   **Error Handling Middleware**: Centralized error handling to provide consistent error responses.
-*   **Caching Layer**: In-memory caching (`node-cache`) for faster data retrieval. Can be extended to a distributed cache like Redis for multi-instance deployments.
-*   **Rate Limiting**: `express-rate-limit` to prevent API abuse.
+## 9. Additional Features
+
+*   **Authentication/Authorization**: Implemented using JWTs, `bcrypt` for password hashing, and middleware for role-based access control.
+*   **Logging**: `Winston` is used for structured logging on the backend, with console and file transports.
+*   **Error Handling**: A centralized error handling middleware ensures consistent and informative error responses. `CustomError` class for controlled error types.
+*   **Caching (Conceptual)**: Redis is included in `docker-compose.yml` and its integration is mentioned in `backend/src/services/dataSourceService.ts` as a potential area for caching fetched data. Actual implementation would involve `node-cache` or `ioredis`.
+*   **Rate Limiting**: `express-rate-limit` middleware protects API endpoints from brute-force attacks and abuse.
+
+## 10. Architecture
+
+Refer to `ARCHITECTURE.md` for a detailed overview of the system's architecture.
+
+## 11. Deployment
+
+Refer to `DEPLOYMENT.md` for detailed deployment instructions.
 
 ## 12. Contributing
 
 Contributions are welcome! Please follow these steps:
-
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature`).
-6.  Open a Pull Request.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes and write tests.
+4.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+5.  Push to the branch (`git push origin feature/your-feature-name`).
+6.  Create a Pull Request.
 
 ## 13. License
 
-This project is licensed under the [ISC License](LICENSE).
-```
+This project is licensed under the MIT License.

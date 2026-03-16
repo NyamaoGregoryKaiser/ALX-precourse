@@ -1,27 +1,10 @@
-```javascript
+/** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['./tests/setup.ts'],
-  moduleFileExtensions: ['ts', 'js', 'json', 'node'],
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
-  testMatch: ['<rootDir>/tests/**/*.test.ts'],
-  moduleNameMapper: {
-    '^@src/(.*)$': '<rootDir>/src/$1', // For absolute imports if used
-  },
-  collectCoverage: true,
-  coverageDirectory: 'coverage',
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/index.ts', // Exclude entry point
-    '!src/app.ts',   // Exclude app setup (mostly middleware/routes)
-    '!src/types.d.ts', // Exclude type definitions
-    '!src/migrations/**', // Exclude migrations
-    '!src/config/**', # Exclude config files
-    '!src/data-source.ts', # Exclude data-source setup
-    '!src/utils/prometheus.ts', # Metrics definition, not logic
-    '!src/**/dtos/*.ts', # Exclude DTOs
-  ],
+  setupFilesAfterEnv: ['./src/tests/setup.ts'],
+  testMatch: ['**/src/tests/**/*.test.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/server.ts', '!src/app.ts', '!src/routes/**', '!src/db/migrations/**', '!src/db/seeds/**'],
   coverageThreshold: {
     global: {
       branches: 80,
@@ -30,5 +13,7 @@ module.exports = {
       statements: 80,
     },
   },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1', // Alias for @/ imports if used
+  },
 };
-```

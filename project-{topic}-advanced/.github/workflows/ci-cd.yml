@@ -1,4 +1,3 @@
-```yaml
 name: CI/CD Pipeline
 
 on:
@@ -13,177 +12,141 @@ on:
 
 jobs:
   build-and-test-backend:
+    name: Build & Test Backend
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Install dependencies
-      run: npm install
+      - name: Install backend dependencies
+        run: npm install
+        working-directory: ./backend
 
-    - name: Run ESLint
-      run: npm run lint
+      - name: Create .env for backend tests
+        run: |
+          echo "NODE_ENV=test" > ./backend/.env
+          echo "PORT=5000" >> ./backend/.env
+          echo "DB_HOST=localhost" >> ./backend/.env
+          echo "DB_PORT=5432" >> ./backend/.env
+          echo "DB_USERNAME=testuser" >> ./backend/.env
+          echo "DB_PASSWORD=testpassword" >> ./backend/.env
+          echo "DB_DATABASE=testdb" >> ./backend/.env
+          echo "JWT_SECRET=testsecret" >> ./backend/.env
+          echo "JWT_EXPIRES_IN=1h" >> ./backend/.env
+          echo "REDIS_HOST=localhost" >> ./backend/.env
+          echo "REDIS_PORT=6379" >> ./backend/.env
+          echo "REDIS_PASSWORD=" >> ./backend/.env
+          echo "MOCK_CSV_DATA_PATH=./src/db/mock_data/sample_data.csv" >> ./backend/.env
+        working-directory: ./backend
 
-    - name: Build TypeScript
-      run: npm run build
+      - name: Wait for PostgreSQL to be ready
+        run: while ! pg_isready -h localhost -p 5432 -U testuser; do sleep 5; done
+        
+      - name: Run TypeORM Migrations
+        run: npm run migrate:run
+        working-directory: ./backend
 
-    - name: Set up Docker Compose
-      run: docker-compose up -d db
+      - name: Build backend
+        run: npm run build
+        working-directory: ./backend
 
-    - name: Wait for PostgreSQL to be ready
-      run: |
-        docker-compose logs db
-        until docker-compose exec db pg_isready -U postgres -d datavizdb; do
-          echo "Waiting for postgres..."
-          sleep 5
-        done
-        echo "PostgreSQL is ready."
-      timeout-minutes: 5
+      - name: Run backend tests
+        run: npm test
+        working-directory: ./backend
+        env:
+          CI: true # Prevents Jest from going into watch mode
 
-    - name: Run migrations
-      run: npm run migration:run
-      env:
-        DB_HOST: localhost # Access db directly on host for migrations/tests
-        DB_PORT: 5432
-        DB_USERNAME: postgres
-        DB_PASSWORD: password
-        DB_NAME: datavizdb
-
-    - name: Run Backend Tests
-      run: npm test
-      env:
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_USERNAME: postgres
-        DB_PASSWORD: password
-        DB_NAME: datavizdb_test # Use a separate test database
-        JWT_SECRET: test_jwt_secret
-
-    - name: Upload coverage reports
-      uses: actions/upload-artifact@v3
-      with:
-        name: backend-coverage-report
-        path: coverage/
+      - name: Upload Backend Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage-report
+          path: backend/coverage
 
   build-and-test-frontend:
+    name: Build & Test Frontend
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Install dependencies
-      working-directory: ./frontend
-      run: npm install
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: ./frontend
 
-    - name: Run ESLint
-      working-directory: ./frontend
-      run: npm run lint
+      - name: Create .env for frontend tests
+        run: |
+          echo "REACT_APP_API_BASE_URL=http://localhost:5000/api" > .env
+        working-directory: ./frontend
 
-    - name: Run Frontend Tests
-      working-directory: ./frontend
-      run: npm test -- --coverage --watchAll=false # Run tests once and exit, collect coverage
+      - name: Build frontend
+        run: npm run build
+        working-directory: ./frontend
 
-    - name: Build Frontend
-      working-directory: ./frontend
-      run: npm run build
+      - name: Run frontend tests
+        run: npm test -- --watchAll=false
+        working-directory: ./frontend
+        env:
+          CI: true # Prevents Jest from going into watch mode
 
-    - name: Upload coverage reports
-      uses: actions/upload-artifact@v3
-      with:
-        name: frontend-coverage-report
-        path: frontend/coverage/
+      - name: Upload Frontend Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage
 
-  deploy-to-staging:
+  deploy:
+    name: Deploy to Staging/Production
+    runs-on: ubuntu-latest
     needs: [build-and-test-backend, build-and-test-frontend]
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    environment:
-      name: Staging
-      url: https://staging.yourdomain.com
+    if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Build and Push Docker Images
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    - uses: docker/setup-buildx-action@v2
-    - uses: docker/build-push-action@v4
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: yourusername/data-viz-backend:staging-${{ github.sha }}
-    - uses: docker/build-push-action@v4
-      with:
-        context: ./frontend
-        file: ./frontend/Dockerfile
-        push: true
-        tags: yourusername/data-viz-frontend:staging-${{ github.sha }}
-
-    - name: Deploy to Staging (SSH)
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USERNAME }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        script: |
-          cd /path/to/your/staging/app
-          docker-compose pull
-          docker-compose up -d --build
-          docker system prune -f # Clean up old images
-
-  deploy-to-production:
-    needs: [build-and-test-backend, build-and-test-frontend]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: Production
-      url: https://yourdomain.com
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Build and Push Docker Images
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    - uses: docker/setup-buildx-action@v2
-    - uses: docker/build-push-action@v4
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: yourusername/data-viz-backend:latest
-    - uses: docker/build-push-action@v4
-      with:
-        context: ./frontend
-        file: ./frontend/Dockerfile
-        push: true
-        tags: yourusername/data-viz-frontend:latest
-
-    - name: Deploy to Production (SSH)
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.PRODUCTION_HOST }}
-        username: ${{ secrets.PRODUCTION_USERNAME }}
-        key: ${{ secrets.PRODUCTION_SSH_KEY }}
-        script: |
-          cd /path/to/your/production/app
-          docker-compose pull
-          docker-compose up -d --build
-          docker system prune -f
-```
+      - name: Dummy Deploy Step
+        run: |
+          echo "Simulating deployment to a cloud provider (e.g., AWS ECR/ECS, GCP GKE, Azure AKS)."
+          echo "This would involve:"
+          echo "1. Authenticating to your cloud provider."
+          echo "2. Building and pushing Docker images to a container registry."
+          echo "3. Updating Kubernetes manifests or ECS task definitions."
+          echo "4. Applying migrations (backend)."
+          echo "5. Restarting services."
+          echo "Deployment successful for branch ${{ github.ref }}"

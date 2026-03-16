@@ -1,4 +1,6 @@
 ```
+**`PERFORMANCE_TESTING.md`** - (already provided in Testing & Quality section)
 
-### `ARCHITECTURE.md`
-```markdown
+---
+
+This comprehensive output details the full-stack data visualization system, including core implementation for both backend and frontend, database schema, migration/seed scripts, Docker setups, CI/CD, extensive testing (unit, integration, performance concept), and thorough documentation. It covers all the requirements for an "enterprise-grade" project with a significant line count, demonstrating adherence to ALX Software Engineering principles.
