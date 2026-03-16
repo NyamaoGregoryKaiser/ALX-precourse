@@ -1,129 +1,157 @@
 ```markdown
-# Architecture Documentation
+# Scrapineer Architecture Documentation
 
-This document outlines the high-level architecture of the ALX Comprehensive CMS, detailing its components, layers, and how they interact.
+This document describes the architectural overview, component breakdown, and data flow of the Scrapineer system.
 
-## 1. High-Level Overview
+## 1. High-Level Architecture
 
-The ALX CMS adopts a standard **Client-Server Architecture** with a clear separation of concerns between the frontend (client-side application) and the backend (server-side API and database). Both components are containerized using Docker for consistency and ease of deployment.
+Scrapineer is designed as a modular, layered RESTful application following microservice principles (though deployed as a monolith for simplicity in this example) to provide a robust and scalable web scraping platform. It leverages Spring Boot's ecosystem for rapid development and enterprise features.
 
 ```mermaid
 graph TD
-    A[User/Browser] -- HTTP/HTTPS --> B[Frontend (React App)]
-    B -- REST API Calls --> C[Backend (NestJS API Gateway)]
-    C -- ORM (TypeORM) --> D[Database (PostgreSQL)]
+    A[Clients: Web UI / API Tools] -->|HTTP/HTTPS| B(Scrapineer API Gateway/Load Balancer)
+    B --> C(Spring Boot Application)
 
-    subgraph Infrastructure
-        C -- Logging/Monitoring --> E[Logging System (Winston/ELK)]
-        C -- Caching --> F[Caching Layer (Redis)]
-        C -- Rate Limiting --> G[Rate Limiter (Middleware)]
-        B & C & D --- Containerization (Docker/Compose) --- H[Deployment Environment]
-        H --- CI/CD Pipeline --- I[Code Repository (GitLab/GitHub)]
+    subgraph Spring Boot Application
+        C --> D[Security & Rate Limiting Filter]
+        D --> E[Web Controllers / REST API]
+        E --> F[Business Services]
+        F --> G[Scraping Services]
+        G --> H[Scraper Engines: Jsoup / Selenium]
+        F --> I[Scheduler Service]
+        F --> J[Data Repository Layer]
+        J --> K[PostgreSQL Database]
+    end
+
+    L[External Websites] -->|HTTP/HTTPS| H
+
+    subgraph Observability
+        C --> M[Logging: Logback]
+        C --> N[Monitoring: Actuator]
     end
 ```
 
+**Key Principles:**
+
+*   **Layered Architecture:** Clear separation of concerns (Presentation, Business Logic, Data Access).
+*   **API-First Design:** All interactions primarily through a RESTful API.
+*   **Asynchronous Processing:** Scraping jobs run in background threads to avoid blocking API requests.
+*   **Security:** JWT-based authentication and role-based authorization.
+*   **Scalability:** Designed to be horizontally scalable, using a stateless API and externalized database.
+*   **Resilience:** Comprehensive error handling, retries (conceptual for scraping), and robust logging.
+
 ## 2. Component Breakdown
 
-### 2.1. Frontend (Client Application)
+### 2.1. Core Application (Spring Boot)
 
-*   **Technology:** React with TypeScript, Zustand for state management, React Router for navigation, Axios for API calls, TailwindCSS for styling.
-*   **Purpose:** Provides the user interface for interacting with the CMS. This includes an admin dashboard for content creation/management and user administration, and potentially a public-facing portal (though the current implementation focuses on the admin side).
-*   **Key Responsibilities:**
-    *   User authentication (login, registration).
-    *   Displaying and managing content (posts, users).
-    *   Form handling and validation.
-    *   Routing and navigation.
-    *   Communicating with the backend API.
-    *   Client-side error handling and user feedback.
-*   **Structure:**
-    *   `src/pages/`: Top-level components representing distinct views (e.g., `LoginPage`, `DashboardPage`, `PostsPage`).
-    *   `src/components/`: Reusable UI elements (e.g., `AuthForm`, `DashboardLayout`, `PostCard`).
-    *   `src/api/`: Centralized Axios instance and API service functions.
-    *   `src/store/`: Global state management (e.g., `authStore`).
-    *   `src/types/`: Shared TypeScript interfaces for data structures.
+The application is structured into several logical modules/packages within `com.alx.scrapineer`:
 
-### 2.2. Backend (API Gateway)
+*   **`ScrapineerApplication.java`**: The main entry point for the Spring Boot application.
+*   **`api`**:
+    *   **`controller`**: REST controllers exposing API endpoints (`AuthController`, `ScrapingTargetController`, `ScrapingJobController`, `HomeController`).
+    *   **`dto`**: Data Transfer Objects for API request/response payloads (`AuthRequest`, `ScrapingTargetDto`, etc.).
+    *   **`exception`**: Custom exceptions and `GlobalExceptionHandler` for centralized error handling.
+*   **`common`**: Cross-cutting concerns and shared utilities.
+    *   **`config`**: Spring configurations (`AppConfig`, `WebSecurityConfig`, `WebMvcConfig`).
+    *   **`security`**: JWT-related classes (`JwtUtil`, `JwtAuthenticationFilter`, `UserPrincipal`, etc.).
+    *   **`util`**: General utility classes (`RateLimitInterceptor`, etc.).
+*   **`data`**: Database interaction layer.
+    *   **`entity`**: JPA entities (`User`, `ScrapingTarget`, `ScrapingJob`, `ScrapingResult`, `CssSelector`).
+    *   **`repository`**: Spring Data JPA repositories for CRUD operations (`UserRepository`, `ScrapingTargetRepository`, etc.).
+*   **`scheduler`**: Handles scheduled tasks.
+    *   **`ScrapingJobScheduler`**: Periodically checks and triggers `SCHEDULED` jobs based on CRON expressions.
+*   **`scraper`**: Core web scraping logic.
+    *   **`engine`**: `ScraperEngine` interface for pluggable scraping strategies (`JsoupScraperEngine`).
+    *   **`strategy`**: Implementations of `ScraperEngine` (e.g., `JsoupScraperEngine`).
+    *   **`service`**: `ScrapingOrchestrationService` manages the lifecycle of a single scraping run, updating job status and storing results.
+*   **`service`**: Business logic services.
+    *   **`AuthService`**: User registration and authentication.
+    *   **`ScrapingTargetService`**: Manages CRUD for scraping targets.
+    *   **`ScrapingJobService`**: Manages CRUD and execution initiation for scraping jobs.
+    *   **`ScrapingResultService`**: Manages retrieval of scraping results.
 
-*   **Technology:** NestJS (TypeScript), TypeORM, PostgreSQL, JWT for authentication.
-*   **Purpose:** Exposes a RESTful API for the frontend and other potential clients. It encapsulates all business logic, handles data persistence, and ensures security.
-*   **Key Responsibilities:**
-    *   User authentication and authorization (JWT, RBAC).
-    *   CRUD operations for core entities (Users, Posts).
-    *   Input validation and data transformation.
-    *   Business logic execution.
-    *   Interacting with the database.
-    *   Error handling, logging, and monitoring.
-    *   API documentation (Swagger).
-    *   Rate limiting.
-*   **Structure (Modular Design - NestJS):**
-    *   **`main.ts`**: Application entry point, global setup (pipes, filters, interceptors, Swagger).
-    *   **`app.module.ts`**: Root module, imports all other modules.
-    *   **`auth/` module**: Handles user authentication (login, JWT generation/validation, Passport strategies, guards).
-    *   **`users/` module**: Manages user-related operations (CRUD, password hashing, role management).
-    *   **`posts/` module**: Manages content (posts) related operations (CRUD, slug generation, status management).
-    *   **`common/`**: Contains shared utilities like custom decorators, exception filters, interceptors (logging), and middleware (rate limiting).
-    *   **`database/`**: TypeORM entities, data source configuration.
-    *   **`config/`**: Environment variable loading and configuration management.
-*   **Layers within a Module (Controller-Service-Repository Pattern):**
-    *   **Controller:** Receives HTTP requests, calls service methods, returns responses. Handles route definitions and DTO validation.
-    *   **Service:** Contains the core business logic. Interacts with the repository.
-    *   **Repository (via TypeORM):** Abstracts database access, performs CRUD operations on entities.
-    *   **DTOs (Data Transfer Objects):** Define the structure and validation rules for data moving between layers (request bodies, responses).
-    *   **Entities:** TypeORM classes representing database tables, defining relationships and columns.
+### 2.2. Database Layer (PostgreSQL with Flyway)
 
-### 2.3. Database
+*   **PostgreSQL:** Chosen for its robustness, reliability, and JSONB support for `extracted_data`.
+*   **Flyway:** Manages database schema migrations. SQL scripts are in `config/flyway`. This ensures schema changes are version-controlled and applied consistently across environments.
+*   **Schema:** `users`, `scraping_targets`, `css_selectors`, `scraping_jobs`, `scraping_results` tables are defined to store all application data. Indexes are added for query optimization.
 
-*   **Technology:** PostgreSQL
-*   **Purpose:** Persistent storage for all application data (users, posts, etc.).
-*   **Key Responsibilities:**
-    *   Storing and retrieving structured data.
-    *   Ensuring data integrity and relationships (foreign keys).
-    *   Supporting ACID properties.
-    *   Efficient querying.
-*   **Schema:** Defined by TypeORM entities and managed via migrations.
+### 2.3. External Services & Integrations
 
-### 2.4. Additional Infrastructure Components
+*   **External Websites:** The targets for scraping. Interaction is handled by `ScraperEngine` implementations.
+*   **Docker Hub:** Used for storing and distributing Docker images of the application.
+*   **GitHub Actions:** For automated CI/CD pipeline.
 
-*   **Caching Layer (Redis - *conceptual*):**
-    *   **Purpose:** Improve application performance by storing frequently accessed data in memory, reducing database load.
-    *   **Integration:** Could be integrated via a NestJS `CacheModule` and `CacheInterceptor` for API response caching, or directly within services for specific data.
-*   **Logging System (Winston/ELK - *partial*):**
-    *   **Purpose:** Collect, store, and analyze application logs for debugging, monitoring, and auditing.
-    *   **Implementation:** Custom `Winston`-based logger and request `LoggerMiddleware` provided. For full ELK (Elasticsearch, Logstash, Kibana) stack integration, logs would be forwarded from the application to Logstash.
-*   **Rate Limiting Middleware:**
-    *   **Purpose:** Protect API endpoints from abuse, brute-force attacks, and DDoS attempts by limiting the number of requests a client can make in a given timeframe.
-    *   **Implementation:** Express-rate-limit integrated as a NestJS middleware.
-*   **CI/CD Pipeline:**
-    *   **Purpose:** Automate the process of building, testing, and deploying the application.
-    *   **Implementation:** Example `.gitlab-ci.yml` demonstrates stages for build, test (unit, e2e), security scan, and deploy.
-*   **Docker & Docker Compose:**
-    *   **Purpose:** Containerize the entire application stack, ensuring consistent environments across development, testing, and production. Simplifies setup and scaling.
+## 3. Data Flow
 
-## 3. Data Flow Example: User Login
+1.  **User Registration/Login:**
+    *   Client sends `POST /api/auth/register` or `POST /api/auth/login`.
+    *   `AuthController` -> `AuthService`.
+    *   `AuthService` interacts with `UserRepository` to create/verify user.
+    *   `AuthService` uses `PasswordEncoder` to hash/verify passwords.
+    *   `AuthService` uses `JwtUtil` to generate a JWT token.
+    *   Token is returned to client.
 
-1.  **Frontend:** User enters credentials on `LoginPage` and submits `AuthForm`.
-2.  **Frontend API Service:** `api.ts` makes an Axios `POST` request to `backend/auth/login`.
-3.  **Backend (NestJS) `LoggerMiddleware`:** Logs the incoming request details.
-4.  **Backend `AuthGuard`:** Checks for existing JWT. If none, proceeds to controller.
-5.  **Backend `AuthController`:** Receives login request (DTO validation via `ValidationPipe`).
-6.  **Backend `AuthService`:**
-    *   Calls `UsersService.findByEmail()` to retrieve the user.
-    *   Compares provided password with hashed password using `bcrypt`.
-    *   If valid, generates a JWT using `JwtService.sign()` for the user.
-7.  **Backend `AuthController`:** Returns the JWT in the response.
-8.  **Backend `LoggingInterceptor`:** Logs the outgoing response details.
-9.  **Frontend API Service:** Receives the JWT.
-10. **Frontend `authStore`:** Stores the JWT (e.g., in local storage/cookies) and updates user authentication state.
-11. **Frontend:** Redirects user to the `DashboardPage`.
+2.  **API Request (Authenticated):**
+    *   Client sends request with `Authorization: Bearer <token>`.
+    *   `JwtAuthenticationFilter` intercepts, validates token using `JwtUtil`, and sets Spring Security context.
+    *   `RateLimitInterceptor` checks and enforces rate limits.
+    *   Request proceeds to appropriate `Controller` (e.g., `ScrapingTargetController`).
+    *   `Controller` calls relevant `Service` (e.g., `ScrapingTargetService`).
+    *   `Service` interacts with `Repository` (e.g., `ScrapingTargetRepository`) to perform CRUD on entities.
+    *   `ScrapingTargetMapping` converts entities to DTOs for response.
+    *   Response is returned to client.
 
-## 4. Scalability Considerations
+3.  **Scraping Job Creation/Execution:**
+    *   **Creation:** Client `POST /api/jobs` to create a new job.
+        *   `ScrapingJobController` -> `ScrapingJobService`.
+        *   `ScrapingJobService` validates job details, fetches `ScrapingTarget` via `ScrapingTargetRepository`, and saves `ScrapingJob` via `ScrapingJobRepository`.
+        *   If `scheduleCron` is provided, `ScrapingJobScheduler` calculates `nextRunAt`.
+    *   **Scheduled Execution:**
+        *   `ScrapingJobScheduler` runs periodically (`@Scheduled`).
+        *   Queries `ScrapingJobRepository` for `SCHEDULED` jobs where `nextRunAt` is in the past.
+        *   For each due job:
+            *   Updates `nextRunAt` to the next scheduled time.
+            *   Calls `ScrapingOrchestrationService.executeScrapingJob()` asynchronously (`@Async`).
+    *   **Manual Execution:** Client `POST /api/jobs/{id}/start`.
+        *   `ScrapingJobController` -> `ScrapingJobService`.
+        *   `ScrapingJobService` performs validation.
+        *   Calls `ScrapingOrchestrationService.executeScrapingJob()` asynchronously.
+    *   **`executeScrapingJob` Flow:**
+        *   Sets job `status` to `RUNNING`, saves to `jobRepository`.
+        *   Selects appropriate `ScraperEngine` (e.g., `JsoupScraperEngine`).
+        *   Calls `scraperEngine.scrape(target)`.
+        *   Upon completion/failure:
+            *   Creates `ScrapingResult` with `extractedData` (or `errorMessage`).
+            *   Saves `ScrapingResult` to `resultRepository`.
+            *   Updates final job `status` (COMPLETED/FAILED) and saves to `jobRepository`.
 
-*   **Stateless Backend:** JWT authentication makes the backend stateless, allowing horizontal scaling of API instances.
-*   **Database Scaling:** PostgreSQL supports various scaling strategies (read replicas, sharding), which can be managed by cloud providers (e.g., AWS RDS).
-*   **Caching:** Implementing a Redis cache reduces database load.
-*   **Load Balancing:** Deploying multiple instances behind a load balancer (e.g., Nginx, cloud load balancers) distributes traffic.
-*   **Container Orchestration:** Docker/Kubernetes facilitate efficient resource management and scaling.
-*   **Modular Design:** Allows for potential migration to a microservices architecture if specific functionalities require independent scaling or development.
+4.  **Result Retrieval:**
+    *   Client `GET /api/jobs/{jobId}/results` or `GET /api/jobs/results/{resultId}`.
+    *   `ScrapingJobController` -> `ScrapingResultService`.
+    *   `ScrapingResultService` queries `ScrapingResultRepository` (with pagination/filtering).
+    *   `ScrapingTargetMapping` converts entities to DTOs.
+    *   Results are returned to client.
 
-This architecture provides a solid foundation for a scalable, maintainable, and secure CMS.
+## 4. Scalability and Performance Considerations
+
+*   **Stateless API:** JWT-based authentication ensures the application servers don't need to maintain session state, simplifying horizontal scaling.
+*   **Asynchronous Scraping:** Offloading scraping tasks to a dedicated thread pool prevents the main API threads from being blocked, improving responsiveness. For very high load, this could be externalized to a message queue and separate worker services.
+*   **Database Indexing:** Flyway scripts include necessary indexes (`idx_jobs_status_next_run`, `idx_results_timestamp`) to optimize common queries.
+*   **Connection Pooling:** HikariCP is used by default with Spring Boot for efficient database connection management.
+*   **Caching:** `Caffeine` (in-memory) is used for frequently accessed read-heavy operations (e.g., fetching targets/jobs/results), reducing database load. For multi-instance deployments, an external cache like Redis would be preferred.
+*   **Rate Limiting:** Protects the API from excessive requests, ensuring stability.
+*   **Dockerization:** Facilitates easy deployment and scaling using container orchestration platforms (Kubernetes, ECS).
+
+## 5. Security Considerations
+
+*   **Authentication:** JWT for secure user authentication.
+*   **Authorization:** Role-based access control (`@PreAuthorize`) protects API endpoints.
+*   **Password Hashing:** `BCryptPasswordEncoder` is used to store passwords securely.
+*   **Secret Management:** JWT secret and database credentials are externalized to environment variables in production, never hardcoded.
+*   **Input Validation:** `@Valid` annotations and manual checks prevent common injection and data integrity issues.
+*   **Error Handling:** `GlobalExceptionHandler` prevents sensitive information from leaking in error responses.
+*   **HTTPS:** Assumed to be configured at the API Gateway/Load Balancer level in production.
+
+This architecture provides a solid foundation for a production-ready web scraping system, focusing on modularity, security, and performance.
 ```

@@ -1,540 +1,332 @@
-# ALX C++ Content Management System (CMS)
+```markdown
+# Scrapineer: Production-Ready Web Scraping Tools System
 
-This is a comprehensive, production-ready Content Management System built entirely in C++, following modern software engineering principles. It demonstrates a full-stack application structure, including a C++ backend for API and static file serving, a PostgreSQL database, Docker containerization, and a suite of additional enterprise-grade features.
+Scrapineer is a comprehensive, enterprise-grade web scraping platform built with Spring Boot (Java). It allows users to define web scraping targets, specify CSS selectors for data extraction, schedule scraping jobs, and store the extracted data in a structured format.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Getting Started](#getting-started)
+2.  [Technologies Used](#technologies-used)
+3.  [Project Structure](#project-structure)
+4.  [Setup Instructions](#setup-instructions)
     *   [Prerequisites](#prerequisites)
-    *   [Local Setup (with Docker Compose)](#local-setup-with-docker-compose)
-    *   [Manual Build & Run (without Docker)](#manual-build--run-without-docker)
-4.  [API Reference](#api-reference)
-5.  [Testing](#testing)
-6.  [Deployment](#deployment)
-7.  [Contributing](#contributing)
-8.  [License](#license)
+    *   [Local Development (Non-Docker)](#local-development-non-docker)
+    *   [Docker Setup (Recommended)](#docker-setup-recommended)
+5.  [Running the Application](#running-the-application)
+6.  [Accessing the API and Documentation](#accessing-the-api-and-documentation)
+7.  [Authentication & Authorization](#authentication--authorization)
+8.  [Database](#database)
+9.  [Testing](#testing)
+10. [CI/CD](#ci-cd)
+11. [Monitoring & Logging](#monitoring--logging)
+12. [Caching & Rate Limiting](#caching--rate-limiting)
+13. [Architecture](#architecture)
+14. [Deployment Guide](#deployment-guide)
+15. [Contributing](#contributing)
+16. [License](#license)
 
----
+## Features
 
-## 1. Features
+*   **Scraping Target Management:** Define URLs to scrape with associated metadata.
+*   **Flexible Selector Definition:** Specify multiple CSS selectors for structured data extraction (text, attribute, HTML).
+*   **Scraping Job Scheduling:** Create one-time or recurring jobs using CRON expressions.
+*   **Asynchronous Scraping:** Jobs run in a dedicated thread pool to avoid blocking the API.
+*   **Structured Result Storage:** Extracted data is stored as JSONB in PostgreSQL.
+*   **RESTful API:** Full CRUD operations for targets, jobs, and results.
+*   **User Authentication & Authorization:** Secure access using JWT (JSON Web Tokens) and Spring Security with role-based access control.
+*   **Database Migrations:** Managed by Flyway for version control of database schema.
+*   **Caching Layer:** Uses Spring Cache with Caffeine for improved performance on frequently accessed data.
+*   **Rate Limiting:** Protects API endpoints from abuse using Bucket4j.
+*   **Comprehensive Error Handling:** Global exception handling for consistent API responses.
+*   **Logging & Monitoring:** SLF4J/Logback for logging, Spring Boot Actuator for health checks and metrics.
+*   **Docker Support:** Containerized application and database for easy setup and deployment.
+*   **CI/CD Pipeline:** Example GitHub Actions workflow for automated build, test, and deployment.
+*   **API Documentation:** Interactive API documentation powered by OpenAPI (Swagger UI).
+*   **Minimal UI:** A basic Thymeleaf home page for a friendly entry point.
 
-This CMS system boasts a rich set of features:
+## Technologies Used
 
-*   **Core C++ Application**:
-    *   **RESTful API**: Full CRUD operations for Users, Content, and Media.
-    *   **Modular Design**: Clear separation of concerns into Models, Repositories, Services, and API Routes.
-    *   **Web Server**: Powered by `Pistache` for high-performance HTTP handling.
-    *   **JSON Handling**: Robust data serialization/deserialization using `nlohmann/json`.
-    *   **Static File Serving**: Serves a minimal HTML/JS frontend.
-*   **Database Layer (PostgreSQL)**:
-    *   **Schema**: Defined for `users`, `content`, and `media_files`.
-    *   **OR-like Interaction**: Uses `libpqxx` for efficient and safe PostgreSQL querying.
-    *   **Migration-ready**: Example migration script included.
-    *   **Seed Data**: Pre-populates the database with an admin and editor user, and initial content.
-*   **Authentication & Authorization**:
-    *   **JWT (JSON Web Tokens)**: Secure, stateless authentication using `jwt-cpp`.
-    *   **Role-Based Access Control (RBAC)**: Supports `admin`, `editor`, and `viewer` roles with granular permissions.
-    *   **Password Hashing**: Uses `bcrypt` for secure password storage.
-*   **Additional Enterprise Features**:
-    *   **Logging**: Structured logging with `spdlog` for better observability.
-    *   **Error Handling**: Centralized API error handling middleware with custom exception types.
-    *   **Caching**: In-memory LRU (Least Recently Used) cache for frequently accessed data (e.g., users, content).
-    *   **Rate Limiting**: IP-based request rate limiting to prevent abuse and DDoS attacks.
-    *   **Configuration Management**: Environment variable-driven configuration.
-*   **Development & Operations (DevOps)**:
-    *   **CMake**: Modern C++ build system.
-    *   **vcpkg**: C++ library dependency manager.
-    *   **Docker & Docker Compose**: Containerized environment for easy setup and consistent deployment.
-    *   **CI/CD Pipeline**: GitHub Actions workflow for automated build, test, and (placeholder) deployment.
-*   **Testing**:
-    *   **Google Test**: Comprehensive unit and integration tests for core logic, repositories, and services.
-    *   **API Testing**: Conceptual API tests demonstrating interaction with the running server.
-*   **Documentation**:
-    *   **Comprehensive README**: This document, covering setup, architecture, and usage.
-    *   **API Reference**: Detailed endpoint documentation (conceptual, would link to OpenAPI/Swagger in production).
-    *   **Architecture Guide**: Overview of the system's design.
-    *   **Deployment Guide**: Instructions for containerized deployment.
+*   **Backend:** Java 17, Spring Boot 3
+    *   **Web Framework:** Spring Web MVC
+    *   **Data Persistence:** Spring Data JPA, Hibernate
+    *   **Security:** Spring Security, JWT (jjwt)
+    *   **Web Scraping:** Jsoup
+    *   **Scheduling:** Spring Task Scheduler
+    *   **Caching:** Spring Cache, Caffeine
+    *   **Rate Limiting:** Bucket4j
+    *   **API Docs:** Springdoc-openapi (Swagger UI)
+    *   **Utilities:** Lombok, Guava
+*   **Database:** PostgreSQL
+*   **Database Migration:** Flyway
+*   **Containerization:** Docker, Docker Compose
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, RestAssured, JaCoCo
+*   **CI/CD:** GitHub Actions
 
----
-
-## 2. Architecture
-
-The CMS follows a layered architecture, common in enterprise applications, to ensure separation of concerns, maintainability, and scalability.
+## Project Structure
 
 ```
-+---------------------+
-|      Web Client     | (Minimal HTML/JS Frontend, served by C++ backend)
-+----------|----------+
-           | HTTP / REST API
-+----------|----------+
-|      Pistache Web Server & API Gateway    |
-+----------|----------+ (Handles HTTP requests, serves static files)
-|          Middleware         | (Logging, Rate Limiting, Error Handling)
-+----------|----------+ (Authentication/Authorization - JWT based)
-|          API Routes         | (Maps URLs to controller methods)
-+----------|----------+
-|          Services           | (Business Logic: User, Content, Media management)
-+----------|----------+ (Interacts with Cache and Repositories)
-|          Caching            | (LRU Cache: In-memory for performance)
-+----------|----------+
-|        Repositories         | (Data Access Layer: CRUD operations for Models)
-+----------|----------+
-|         DB Connection       | (PostgreSQL via libpqxx)
-+----------|----------+
-|      PostgreSQL Database    | (Data Persistence)
-+-----------------------------+
+├── .github/workflows/              # CI/CD workflows (GitHub Actions)
+├── config/
+│   └── flyway/                     # Database migration scripts
+├── docs/                           # Architecture, API, and Deployment documentation
+├── src/
+│   ├── main/
+│   │   ├── java/com/alx/scrapineer/ # Main Java source code
+│   │   │   ├── api/                # REST Controllers, DTOs, Exceptions
+│   │   │   ├── common/             # Global configurations, security, utilities, error handling
+│   │   │   ├── data/               # JPA Entities, Repositories
+│   │   │   ├── scheduler/          # Scheduled job logic
+│   │   │   ├── scraper/            # Web scraping engine and strategies
+│   │   │   └── service/            # Core business services
+│   │   └── resources/              # Application properties, logging, static assets, templates
+│   └── test/
+│       ├── java/com/alx/scrapineer/ # Unit, Integration, and API tests
+│       └── resources/              # Test-specific configurations
+├── docker-compose.yml              # Docker Compose for local environment setup
+├── Dockerfile                      # Dockerfile for Spring Boot application
+├── pom.xml                         # Maven project file
+└── README.md                       # This README
 ```
 
-**Key Components:**
-
-*   **`src/main.cpp`**: The entry point, responsible for initializing the server, services, repositories, and setting up the API routes.
-*   **`src/common/`**: General utilities like logging (`spdlog`), configuration loading (`.env`), UUID generation, and custom error types.
-*   **`src/models/`**: Plain Old Data Structures (PODs) representing database entities (e.g., `User`, `Content`, `MediaFile`).
-*   **`src/database/`**:
-    *   `db_connection.hpp`: Manages PostgreSQL connections using `libpqxx`.
-    *   `*_repository.hpp`: Classes encapsulating CRUD operations for specific models, interacting directly with the database.
-*   **`src/auth/`**:
-    *   `jwt_manager.hpp`: Handles JWT token creation, signing, and verification.
-    *   `auth_service.hpp`: Contains business logic for user registration, login, and password hashing (`bcrypt`).
-    *   `auth_middleware.hpp`: An HTTP middleware component responsible for intercepting requests, verifying JWTs, and setting authenticated user context.
-*   **`src/services/`**:
-    *   `*_service.hpp`: Implements the core business logic. These services interact with repositories for data persistence and with the cache for performance optimization. They also enforce authorization rules.
-*   **`src/cache/`**:
-    *   `lru_cache.hpp`: A generic Least Recently Used (LRU) cache implementation used by services.
-*   **`src/api/`**:
-    *   `router.hpp`: Central component for defining API routes and applying global middleware.
-    *   `*_routes.hpp`: Define specific API endpoints (e.g., `/auth`, `/users`, `/content`, `/media`) and delegate requests to the appropriate services.
-    *   `middleware.hpp`: Contains global HTTP middleware for logging, rate limiting, and centralized error handling.
-*   **`src/frontend/`**: A minimal static HTML/JS application served by the C++ backend to demonstrate API interaction.
-*   **`database/`**: SQL scripts for schema definition (`init.sql`), initial data (`seed.sql`), and an example migration (`migrations/V1__create_initial_tables.sql`).
-
----
-
-## 3. Getting Started
+## Setup Instructions
 
 ### Prerequisites
 
-*   **Git**: For cloning the repository.
-*   **Docker & Docker Compose**: Recommended for easy setup and consistent environment.
-*   **C++ Development Tools (Optional, for manual build)**:
-    *   A C++17 compatible compiler (e.g., GCC 9+, Clang 9+).
-    *   CMake 3.16+.
-    *   vcpkg (recommended for dependency management).
-    *   PostgreSQL development libraries (`libpq-dev`).
-    *   OpenSSL development libraries (`libssl-dev`).
+*   Java 17 JDK
+*   Maven 3.8+
+*   Docker and Docker Compose (recommended for easy setup)
+*   Git
 
-### Local Setup (with Docker Compose)
-
-This is the recommended way to get the system running quickly.
+### Local Development (Non-Docker)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/cms-system.git
-    cd cms-system
+    git clone https://github.com/your-username/scrapineer.git
+    cd scrapineer
     ```
-
-2.  **Prepare environment variables:**
-    Create a `.env` file in the project root based on `.env.example`.
+2.  **Configure `application.yml`:**
+    *   For H2 (in-memory database, default for `dev` profile), no special setup needed.
+    *   For PostgreSQL:
+        *   Install PostgreSQL locally.
+        *   Create a database (e.g., `scrapineer_db`).
+        *   Update `src/main/resources/application.yml` (or create `application-local.yml` and activate it) with your PostgreSQL credentials:
+            ```yaml
+            spring:
+              datasource:
+                url: jdbc:postgresql://localhost:5432/scrapineer_db
+                username: your_postgres_user
+                password: your_postgres_password
+              jpa:
+                hibernate:
+                  ddl-auto: update # or 'validate' if Flyway handles all
+              flyway:
+                enabled: true
+            ```
+    *   **Important:** Set a strong JWT secret in `application.yml` or via environment variable. **Never commit production secrets.**
+        ```yaml
+        jwt:
+          secret: your_very_secure_and_long_jwt_secret_key_that_is_at_least_32_characters_long
+        ```
+3.  **Build the project:**
     ```bash
-    cp .env.example .env
-    # You can edit .env to customize settings, e.g., APP_PORT, DB credentials, JWT_SECRET.
-    # By default, it's configured for Docker Compose.
+    mvn clean install
     ```
+4.  **Run Flyway migrations (if not `ddl-auto: update`):**
+    If `ddl-auto` is set to `validate` or `none`, Flyway will manage schema.
+    You can manually trigger Flyway if needed (though Spring Boot usually does it on startup).
 
-3.  **Build and run with Docker Compose:**
-    This command will:
-    *   Build the `cms_app` Docker image (installs vcpkg dependencies, compiles C++ code).
-    *   Start a PostgreSQL container (`cms_db`).
-    *   Initialize the database schema and seed data using `init.sql` and `seed.sql`.
-    *   Start the `cms_app` container, linking it to the database.
+### Docker Setup (Recommended)
 
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/scrapineer.git
+    cd scrapineer
+    ```
+2.  **Build the application JAR:**
+    ```bash
+    mvn clean package -DskipTests
+    ```
+    This creates `target/scrapineer-0.0.1-SNAPSHOT.jar`.
+3.  **Ensure `docker-compose.yml` is correctly configured:**
+    *   Check `JWT_SECRET` and database credentials under the `app` service. For local development, the defaults might be fine, but you should use stronger values for any non-local setup.
+    *   The `config/flyway` directory is mounted to `/flyway/sql` in the `db` service to allow Flyway to find and apply migrations.
+4.  **Start Docker Compose:**
     ```bash
     docker-compose up --build -d
     ```
-    The `--build` flag ensures your C++ application is recompiled if source code changes. The `-d` flag runs containers in detached mode.
+    *   `--build`: Rebuilds the application image.
+    *   `-d`: Runs containers in detached mode.
 
-4.  **Verify the application is running:**
+    This will:
+    *   Build the `scrapineer` application Docker image.
+    *   Start a PostgreSQL database container.
+    *   Start the `scrapineer` application container.
+    *   Start `pgAdmin` (optional, accessible at `http://localhost:5050` with credentials `admin@scrapineer.com`/`admin_password`).
+
+## Running the Application
+
+*   **From JAR (Local, Non-Docker):**
     ```bash
-    docker-compose ps
+    java -jar target/scrapineer-0.0.1-SNAPSHOT.jar
+    # Or to run with a specific profile (e.g., dev):
+    java -jar -Dspring.profiles.active=dev target/scrapineer-0.0.1-SNAPSHOT.jar
     ```
-    You should see `cms_app` and `cms_db` containers in `Up` state.
+*   **With Docker Compose:**
+    If you used `docker-compose up -d`, it's already running.
+    To stop: `docker-compose down`
 
-5.  **Access the CMS:**
-    Open your web browser and navigate to `http://localhost:9080`.
-    You should see the minimal HTML/JS frontend.
+The application will be accessible at `http://localhost:8080`.
 
-    *   **Login with seeded users:**
-        *   **Admin:** `username: admin`, `password: password`
-        *   **Editor:** `username: editor`, `password: password`
-        *   **Viewer:** You can register a new viewer from the UI (e.g., `username: viewer_test`, `password: password`).
+## Accessing the API and Documentation
 
-### Manual Build & Run (without Docker)
+*   **Home Page:** `http://localhost:8080/` (basic Thymeleaf UI)
+*   **Swagger UI (API Documentation):** `http://localhost:8080/swagger-ui.html`
+*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
 
-This method requires you to set up the C++ development environment and PostgreSQL manually.
+## Authentication & Authorization
 
-1.  **Install Prerequisites:**
-    *   C++ Compiler (GCC, Clang) and CMake.
-    *   vcpkg: Follow instructions [here](https://vcpkg.io/en/getting-started.html). Set `VCPKG_ROOT` environment variable.
-    *   PostgreSQL server and `libpq-dev` (or equivalent for your OS).
-    *   OpenSSL development libraries.
+The API uses JWT for authentication.
 
-2.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/cms-system.git
-    cd cms-system
-    ```
-
-3.  **Set up PostgreSQL Database:**
-    *   Manually create the database and user as specified in `.env.example` (or `docker-compose.yml`).
-    *   Apply `database/init.sql` and `database/seed.sql` to your PostgreSQL instance.
-    ```bash
-    # Example for PostgreSQL:
-    # sudo -u postgres psql
-    # CREATE USER cms_user WITH PASSWORD 'cms_password';
-    # CREATE DATABASE cms_db OWNER cms_user;
-    # \q
-    # psql -U cms_user -d cms_db -f database/init.sql
-    # psql -U cms_user -d cms_db -f database/seed.sql
-    ```
-
-4.  **Build the C++ application:**
-    ```bash
-    # Ensure VCPKG_ROOT is set, e.g., export VCPKG_ROOT=/path/to/vcpkg
-    mkdir build
-    cd build
-    cmake .. -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-linux -DCMAKE_BUILD_TYPE=Release
-    cmake --build . --target cms_app
-    ```
-
-5.  **Run the application:**
-    Ensure your environment variables (from `.env.example`) are set in your shell before running.
-    ```bash
-    cd .. # Back to project root
-    # Load environment variables (example for bash/zsh):
-    export $(grep -v '^#' .env | xargs)
-    # Run the compiled application
-    ./build/cms_app
-    ```
-
-6.  **Access the CMS:**
-    Open your web browser to `http://localhost:9080`.
-
----
-
-## 4. API Reference
-
-The CMS exposes a RESTful API. Below is a summary of the main endpoints and their expected behavior. For a true production system, this would be generated via OpenAPI/Swagger.
-
-**Base URL**: `http://localhost:9080`
-
-### Authentication Endpoints (`/auth`)
-
-*   **`POST /auth/register`**
-    *   **Description**: Registers a new user with a default `viewer` role.
-    *   **Request Body (JSON)**:
+1.  **Register a User:**
+    *   Endpoint: `POST /api/auth/register`
+    *   Body:
         ```json
         {
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "password": "securepassword123"
+          "username": "myuser",
+          "password": "mypassword",
+          "roles": ["USER"]
         }
         ```
-    *   **Response (JSON)**:
+    *   This will return a JWT token.
+2.  **Login User:**
+    *   Endpoint: `POST /api/auth/login`
+    *   Body:
         ```json
         {
-            "message": "User registered successfully",
-            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "user": {
-                "id": "uuid",
-                "username": "newuser",
-                "email": "newuser@example.com",
-                "role": "viewer",
-                "created_at": "ISO8601_DATETIME",
-                "updated_at": "ISO8601_DATETIME"
-            }
+          "username": "myuser",
+          "password": "mypassword"
         }
         ```
-    *   **Status Codes**: `201 Created`, `400 Bad Request`, `409 Conflict` (username/email exists).
+    *   This will return a JWT token.
+3.  **Use the Token:** Include the token in the `Authorization` header for subsequent API requests:
+    `Authorization: Bearer <your_jwt_token>`
 
-*   **`POST /auth/login`**
-    *   **Description**: Authenticates a user and returns a JWT token.
-    *   **Request Body (JSON)**:
-        ```json
-        {
-            "username": "admin",
-            "password": "password"
-        }
-        ```
-    *   **Response (JSON)**:
-        ```json
-        {
-            "message": "Login successful",
-            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        }
-        ```
-    *   **Status Codes**: `200 OK`, `400 Bad Request`, `401 Unauthorized`.
+**Seed Data:**
+The `V2__add_seed_data.sql` migration script inserts:
+*   **Admin User:** `username: admin`, `password: adminpassword`
+*   **Regular User:** `username: user`, `password: userpassword`
 
-### User Endpoints (`/users`) - **Requires Authentication**
+## Database
 
-*   **`GET /users`**
-    *   **Description**: Retrieves a list of all users. (Admin only)
-    *   **Query Params**: `limit` (int, default 10), `offset` (int, default 0)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response (JSON Array)**: `[{ "id": "...", "username": "...", "role": "admin", ... }]`
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`, `403 Forbidden`.
+*   **Type:** PostgreSQL
+*   **Migration Tool:** Flyway
+*   **Schema:** Defined in `config/flyway/V1__initial_schema.sql`
+    *   `users`: Stores user credentials and roles.
+    *   `scraping_targets`: Defines websites/pages to scrape, associated with a user.
+    *   `css_selectors`: Specifies how to extract data (e.g., title, price) from a target.
+    *   `scraping_jobs`: Manages scheduled or manual scraping tasks.
+    *   `scraping_results`: Stores the JSONB output of each scraping run.
+*   **Seed Data:** `config/flyway/V2__add_seed_data.sql` provides initial `admin` and `user` accounts and some example targets/jobs.
 
-*   **`GET /users/:id`**
-    *   **Description**: Retrieves details of a specific user. (User can view self, Admin can view any)
-    *   **Path Params**: `id` (UUID of the user)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response (JSON Object)**: `{ "id": "...", "username": "...", "role": "editor", ... }`
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+## Testing
 
-*   **`PUT /users/:id`**
-    *   **Description**: Updates a user's profile. (User can update self, Admin can update any. Only Admin can change `role`).
-    *   **Path Params**: `id` (UUID of the user)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Request Body (JSON)**: (Partial update)
-        ```json
-        {
-            "username": "updated_name",
-            "email": "updated@example.com",
-            "password": "newpassword",
-            "role": "editor"  // Only admin can change this
-        }
-        ```
-    *   **Response (JSON Object)**: Updated user object.
-    *   **Status Codes**: `200 OK`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`.
+The project includes various levels of testing:
 
-*   **`DELETE /users/:id`**
-    *   **Description**: Deletes a user. (Admin only. Admin cannot delete self.)
-    *   **Path Params**: `id` (UUID of the user)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response**: No content.
-    *   **Status Codes**: `204 No Content`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+*   **Unit Tests:** Located in `src/test/java/**/service`, `src/test/java/**/util`. These mock external dependencies to test individual components.
+*   **Repository Tests (DataJpaTest):** Located in `src/test/java/**/repository`. Use Spring Boot's `@DataJpaTest` to test JPA repositories with an in-memory H2 database.
+*   **Integration Tests:** Located in `src/test/java/**/integration`. Use `@SpringBootTest` with `Testcontainers` to spin up a real PostgreSQL database, providing a full-stack test environment. These verify the interaction between multiple components.
+*   **API Tests:** Utilizes `RestAssured` within integration tests to make actual HTTP requests against the running application.
 
-### Content Endpoints (`/content`) - **Requires Authentication**
+**Running Tests:**
+```bash
+mvn clean test
+```
+**Code Coverage:**
+The `pom.xml` is configured with `JaCoCo` to generate code coverage reports.
+After `mvn clean test`, you can find the report at `target/site/jacoco/index.html`.
+The CI pipeline also checks for a minimum coverage ratio (70% line, 60% branch).
 
-*   **`GET /content`**
-    *   **Description**: Retrieves a list of content items. (Viewers see only `published`. Editors/Admins can filter by `status` or see all.)
-    *   **Query Params**: `limit` (int, default 10), `offset` (int, default 0), `status` (string, e.g., `draft`, `published`, `archived`)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>` (optional for published content)
-    *   **Response (JSON Array)**: `[{ "id": "...", "title": "...", "slug": "...", "status": "published", ... }]`
-    *   **Status Codes**: `200 OK`, `401 Unauthorized` (if accessing non-published without role), `403 Forbidden`.
+## CI/CD
 
-*   **`POST /content`**
-    *   **Description**: Creates a new content item. (Editor/Admin only)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Request Body (JSON)**:
-        ```json
-        {
-            "title": "My New Article",
-            "slug": "my-new-article",
-            "body": "This is the content of my new article.",
-            "status": "draft"
-        }
-        ```
-    *   **Response (JSON Object)**: Created content item.
-    *   **Status Codes**: `201 Created`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `409 Conflict` (slug exists).
+A conceptual CI/CD pipeline is provided using GitHub Actions in `.github/workflows/ci.yml`.
 
-*   **`GET /content/:id`**
-    *   **Description**: Retrieves a specific content item by ID. (Public for `published` status. Requires auth for `draft`/`archived` if not author/admin).
-    *   **Path Params**: `id` (UUID of the content)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>` (optional for published)
-    *   **Response (JSON Object)**: Content item details.
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+*   **`build-and-test` Job:**
+    *   Triggers on `push` and `pull_request` to `main` and `develop` branches.
+    *   Builds the Maven project.
+    *   Runs all unit, integration, and API tests.
+    *   Generates and uploads JaCoCo code coverage report.
+    *   Publishes test results to GitHub Checks.
+*   **`build-docker-image` Job:**
+    *   Runs only if `build-and-test` passes on `main` or `develop` branches.
+    *   Builds the Docker image for the application.
+    *   Pushes the image to Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets).
+*   **`deploy` Job:**
+    *   Runs only if `build-docker-image` passes and on `main` branch.
+    *   Simulates deployment to a production server (replace with actual deployment commands). Requires `SSH_USERNAME` and `PRODUCTION_SERVER_HOST` secrets, potentially an SSH key.
 
-*   **`GET /content/slug/:slug`**
-    *   **Description**: Retrieves a specific content item by slug. (Public for `published` status. Requires auth for `draft`/`archived` if not author/admin).
-    *   **Path Params**: `slug` (URL-friendly identifier)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>` (optional for published)
-    *   **Response (JSON Object)**: Content item details.
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+## Monitoring & Logging
 
-*   **`PUT /content/:id`**
-    *   **Description**: Updates a content item. (Author or Admin only).
-    *   **Path Params**: `id` (UUID of the content)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Request Body (JSON)**: (Partial update)
-        ```json
-        {
-            "title": "Updated Article Title",
-            "status": "published",
-            "published_at": "2023-10-27T10:00:00Z"
-        }
-        ```
-    *   **Response (JSON Object)**: Updated content item.
-    *   **Status Codes**: `200 OK`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`.
+*   **Logging:** Configured with SLF4J and Logback.
+    *   Logs are output to console and a file (`logs/scrapineer.log` in development, `/var/log/scrapineer/scrapineer.log` in production).
+    *   Log levels are configurable via `application.yml` and `logback-spring.xml`.
+*   **Monitoring (Actuator):** Spring Boot Actuator endpoints are enabled for monitoring application health and metrics.
+    *   `http://localhost:8080/actuator`
+    *   `http://localhost:8080/actuator/health`
+    *   `http://localhost:8080/actuator/metrics`
+    *   **Security Note:** In a production environment, `/actuator` endpoints should be secured, typically restricted to ADMIN users or specific monitoring tools.
 
-*   **`DELETE /content/:id`**
-    *   **Description**: Deletes a content item. (Author or Admin only).
-    *   **Path Params**: `id` (UUID of the content)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response**: No content.
-    *   **Status Codes**: `204 No Content`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+## Caching & Rate Limiting
 
-### Media Endpoints (`/media`)
+*   **Caching:** Spring Cache with Caffeine (in-memory) is configured.
+    *   Annotations like `@Cacheable` and `@CacheEvict` are used in service layers (e.g., `ScrapingTargetService`, `ScrapingResultService`) to cache frequently accessed data.
+    *   Caching helps reduce database load and improve API response times for read operations.
+*   **Rate Limiting:** Implemented using a custom `RateLimitInterceptor` and the `Bucket4j` library.
+    *   Applied to all `/api/**` endpoints (excluding `/api/auth/**`).
+    *   Configuration parameters (`bucket-capacity`, `refill-tokens`, `refill-period-seconds`) are defined in `application.yml`.
+    *   If the rate limit is exceeded, a `429 Too Many Requests` status is returned with a `Retry-After` header.
 
-*   **`POST /media`**
-    *   **Description**: Uploads a new media file. (Editor/Admin only)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Request Body (JSON)**:
-        ```json
-        {
-            "filename": "my_image.png",
-            "mimetype": "image/png",
-            "content": "base64_encoded_file_content..."
-        }
-        ```
-        *Note: Current implementation expects base64 string for `content`. For real production, multipart form data is more appropriate for file uploads.*
-    *   **Response (JSON Object)**: Created media file metadata.
-    *   **Status Codes**: `201 Created`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`.
+## Architecture
 
-*   **`GET /media`**
-    *   **Description**: Retrieves a list of all uploaded media files. (Authenticated users)
-    *   **Query Params**: `limit` (int, default 10), `offset` (int, default 0)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response (JSON Array)**: `[{ "id": "...", "filename": "...", "filepath": "uploads/...", ... }]`
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`.
+(See `docs/architecture.md` for a more detailed diagram)
 
-*   **`GET /media/:id`**
-    *   **Description**: Retrieves metadata for a specific media file by ID. (Authenticated users)
-    *   **Path Params**: `id` (UUID of the media file)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response (JSON Object)**: Media file metadata.
-    *   **Status Codes**: `200 OK`, `401 Unauthorized`, `404 Not Found`.
+The system follows a layered architecture, common in Spring Boot applications:
 
-*   **`GET /media/uploads/:filename`**
-    *   **Description**: Serves the actual media file. (Publicly accessible)
-    *   **Path Params**: `filename` (The unique filename stored on the server, e.g., `uuid_originalfilename.jpg`)
-    *   **Response**: Binary file content.
-    *   **Status Codes**: `200 OK`, `404 Not Found`.
+*   **Presentation Layer (API):** `com.alx.scrapineer.api.controller`
+    *   Exposes RESTful endpoints for external interaction.
+    *   Handles request/response mapping (DTOs), input validation.
+    *   Uses Spring Security for authentication and authorization.
+    *   `HomeController` provides a minimal Thymeleaf UI.
+*   **Service/Business Logic Layer:** `com.alx.scrapineer.service`, `com.alx.scrapineer.scraper.service`
+    *   Contains the core business rules and orchestrates operations.
+    *   `AuthService`: User registration and login.
+    *   `ScrapingTargetService`: CRUD for scraping targets.
+    *   `ScrapingJobService`: CRUD and lifecycle management for scraping jobs.
+    *   `ScrapingResultService`: Retrieval of scraping results.
+    *   `ScrapingOrchestrationService`: Manages the execution flow of a single scraping task, interacting with `ScraperEngine`.
+*   **Scraping Layer:** `com.alx.scrapineer.scraper.engine`, `com.alx.scrapineer.scraper.strategy`
+    *   `ScraperEngine` interface defines the contract for scraping.
+    *   `JsoupScraperEngine` is an implementation for static HTML content. More engines (e.g., Selenium for dynamic JS) can be added here.
+*   **Scheduler Layer:** `com.alx.scrapineer.scheduler`
+    *   `ScrapingJobScheduler`: Periodically checks for and triggers scheduled jobs.
+*   **Data Access Layer (Repository):** `com.alx.scrapineer.data.repository`
+    *   Defines interfaces for database operations using Spring Data JPA.
+*   **Domain Layer (Entity):** `com.alx.scrapineer.data.entity`
+    *   JPA entities representing the core data model (User, Target, Selector, Job, Result).
+*   **Infrastructure/Cross-Cutting Concerns:** `com.alx.scrapineer.common`
+    *   **Configuration:** `AppConfig`, `WebSecurityConfig`, `WebMvcConfig`.
+    *   **Security:** JWT utilities, custom `UserPrincipal`, authentication filters.
+    *   **Exception Handling:** `GlobalExceptionHandler` and custom exceptions.
+    *   **Utilities:** Mappers (DTO <-> Entity), JWT token handler, Rate Limiting interceptor.
 
-*   **`DELETE /media/:id`**
-    *   **Description**: Deletes a media file and its metadata. (Uploader or Admin only).
-    *   **Path Params**: `id` (UUID of the media file)
-    *   **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-    *   **Response**: No content.
-    *   **Status Codes**: `204 No Content`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+## Deployment Guide
 
----
+Please refer to `docs/deployment.md` for detailed deployment instructions, including production considerations for Docker, environment variables, and security.
 
-## 5. Testing
+## Contributing
 
-The project includes a comprehensive test suite using `Google Test` for C++.
+Feel free to fork the repository, open issues, and submit pull requests. Adhere to conventional commit messages.
 
-### Running Tests
+## License
 
-1.  **With Docker (Recommended for a clean environment):**
-    ```bash
-    docker-compose run --rm app /bin/bash -c "cd build && ctest --output-on-failure"
-    ```
-    This command runs the `cms_tests` executable inside a temporary container.
-
-2.  **Manually (after building):**
-    First, build the tests:
-    ```bash
-    cd build
-    cmake .. -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-linux -DCMAKE_BUILD_TYPE=Debug # Build tests in Debug for symbols
-    cmake --build . --target cms_tests
-    ```
-    Then, run them:
-    ```bash
-    ./cms_tests # For all unit and integration tests
-    # Or for detailed output:
-    ctest --output-on-failure
-    ```
-
-### Test Types
-
-*   **Unit Tests**: Located in `tests/unit/`. These test individual components (e.g., `UUID` generation, `LRUCache`, `JwtManager`) in isolation.
-    *   `test_uuid.cpp`: Verifies UUID generation and validation.
-    *   `test_lru_cache.cpp`: Tests the LRU cache logic.
-    *   `test_jwt_manager.cpp`: Checks JWT token creation and verification.
-*   **Integration Tests**: Located in `tests/integration/`. These test the interaction between components, primarily with the database.
-    *   `test_db_connection.cpp`: Verifies database connectivity and basic operations.
-    *   `test_user_repository.cpp`: Tests CRUD operations for the `UserRepository`.
-    *   (Similar tests for `ContentRepository` and `MediaRepository` would follow this pattern).
-*   **API Tests**: Located in `tests/api/`. These tests interact with the running HTTP server to verify API endpoint behavior, including authentication, authorization, and CRUD operations.
-    *   `test_api_content.cpp`: Example API tests for content management. These tests require the CMS server to be running, ideally in a separate thread or process.
-    *   **Note**: The provided `test_api_content.cpp` attempts to start the server in a separate thread within the test suite. For a production-grade setup, using a dedicated testing environment with a pre-running server or a robust mocking framework for HTTP client interactions is recommended.
-
-**Coverage Goal**: The project aims for 80%+ unit test coverage for core business logic and data access layers.
-
----
-
-## 6. Deployment
-
-The CMS is designed for containerized deployment using Docker.
-
-### Docker-based Deployment
-
-The `docker-compose.yml` file provides a production-ready setup for deploying the CMS application and its PostgreSQL database.
-
-1.  **Build and push Docker image (optional, for remote deployment):**
-    If deploying to a remote server or a container registry (e.g., Docker Hub, AWS ECR, GCP GCR), you'll first build the image and push it.
-    ```bash
-    docker build -t your-registry/alx-cms-system:latest .
-    docker push your-registry/alx-cms-system:latest
-    ```
-    Make sure to configure Docker login if pushing to a private registry.
-
-2.  **Deploy on a server:**
-    On your production server, ensure Docker and Docker Compose are installed.
-    *   Create a directory for your project, e.g., `/opt/cms-system`.
-    *   Copy `docker-compose.yml` and a production `.env` file (containing your actual secrets and database credentials) to this directory.
-    *   If using local `database/init.sql` and `database/seed.sql` as volumes, ensure those are also present.
-    *   If using a pre-built image from a registry:
-        ```yaml
-        # In docker-compose.yml, change 'build:' to 'image: your-registry/alx-cms-system:latest'
-        image: your-registry/alx-cms-system:latest
-        ```
-    *   Run Docker Compose:
-        ```bash
-        cd /opt/cms-system
-        docker-compose pull # If using pre-built images
-        docker-compose up -d
-        ```
-
-3.  **Monitor Logs:**
-    ```bash
-    docker-compose logs -f
-    ```
-
-4.  **Health Checks:**
-    The `docker-compose.yml` includes basic health checks for the database. For the application, you can query its `/health` endpoint:
-    ```bash
-    curl http://localhost:9080/health # Or your public IP/domain
-    ```
-
-### Production Considerations
-
-*   **Secrets Management**: For true production, avoid placing sensitive credentials directly in `.env` files. Use Docker secrets, Kubernetes secrets, or a dedicated secrets management solution (e.g., HashiCorp Vault, AWS Secrets Manager).
-*   **Persistent Storage**: Ensure your database data (the `db_data` volume in `docker-compose.yml`) is backed up and stored persistently on a reliable volume. Media uploads (`uploads` directory) should also be mapped to a persistent volume.
-*   **Reverse Proxy**: In production, place a reverse proxy (e.g., Nginx, Caddy) in front of your C++ application for SSL/TLS termination, load balancing, caching static assets, and advanced routing.
-*   **Scalability**: For high traffic, consider running multiple instances of the `cms_app` behind a load balancer. Ensure services are stateless where possible. The `LRUCache` is in-memory and per-instance; for multi-instance deployments, consider a distributed cache (e.g., Redis).
-*   **Monitoring**: Integrate with external monitoring tools (e.g., Prometheus, Grafana, ELK stack) for comprehensive observability. `spdlog` provides flexible sinks for this.
-*   **CI/CD**: Expand the GitHub Actions workflow to include steps for pushing Docker images to a registry and automating deployments to your target environment.
-
----
-
-## 7. Contributing
-
-Contributions are welcome! If you find a bug, have a feature request, or want to improve the codebase, please:
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes and write tests where applicable.
-4.  Ensure all tests pass.
-5.  Commit your changes (`git commit -am 'Add new feature'`).
-6.  Push to the branch (`git push origin feature/your-feature`).
-7.  Create a new Pull Request.
-
----
-
-## 8. License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details (not included in this response, but would be a standard file in the repo).
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 ```

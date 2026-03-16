@@ -1,29 +1,22 @@
-# Use a Node.js 18 LTS Alpine image for a smaller image size
-FROM node:18-alpine
+```dockerfile
+# Use an official OpenJDK runtime as a parent image
+FROM openjdk:17-jdk-slim
 
-# Set working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
-COPY package*.json ./
+# Copy the packaged Spring Boot application JAR file into the container
+# The `target/scrapineer-0.0.1-SNAPSHOT.jar` path assumes you've run `mvn package`
+COPY target/scrapineer-0.0.1-SNAPSHOT.jar app.jar
 
-# Install dependencies
-RUN npm install --omit=dev
+# Expose the port on which the Spring Boot application will run
+EXPOSE 8080
 
-# Copy the rest of the application code
-COPY . .
+# Run the application when the container starts
+# The `java -jar` command starts the Spring Boot application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 
-# Expose the port the app runs on
-EXPOSE 3000
-
-# Run database migrations and seeds (optional, can be external)
-# For production, consider running migrations as a separate step.
-# Here we do it as part of build or entrypoint for simplicity in dev.
-# ENV NODE_ENV=production # Or development, test
-
-# Run migrations and seed data
-# This is usually done outside the Dockerfile (e.g., in a CI/CD pipeline or docker-compose run command)
-# RUN npm run db:migrate && npm run db:seed
-
-# Command to run the application
-CMD ["npm", "start"]
+# Optional: Define build arguments for versioning (if needed)
+ARG JAR_FILE=target/*.jar
+COPY ${JAR_FILE} app.jar
+```

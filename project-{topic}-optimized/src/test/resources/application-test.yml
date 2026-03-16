@@ -1,0 +1,47 @@
+```yaml
+spring:
+  application:
+    name: scrapineer-test
+  datasource:
+    # Testcontainers will override these values
+    url: jdbc:tc:postgresql:15-alpine:///testdb
+    username: testuser
+    password: testpass
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop # Recreate schema for each test run for isolation
+    show-sql: true
+  flyway:
+    enabled: true
+    clean-disabled: false # Allow Flyway to clean the schema for test
+    locations: classpath:/config/flyway
+  main:
+    allow-bean-definition-overriding: true # Allows test configurations to override main app beans
+  cache:
+    type: none # Disable caching for tests to ensure fresh data access
+  mail:
+    host: localhost
+    port: 9025 # Example for MailHog or similar in development
+
+jwt:
+  secret: test_secure_secret_for_testing_purposes_only_12345
+  expiration: 600000 # 10 minutes for test tokens
+
+scheduler:
+  enabled: false # Disable scheduled jobs in test environment to prevent interference
+  job-check-interval-minutes: 1 # Faster check interval for scheduled job tests if needed
+
+rate-limiter:
+  bucket-capacity: 1000 # High limit for tests, essentially disabling it unless specific rate limit tests
+  refill-tokens: 1000
+  refill-period-seconds: 1
+
+logging:
+  level:
+    root: INFO
+    com.alx.scrapineer: DEBUG # More detailed logs for application during tests
+    org.springframework: INFO
+    org.hibernate: INFO
+    org.testcontainers: INFO
+```

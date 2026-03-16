@@ -1,0 +1,23 @@
+```yaml
+spring:
+  datasource:
+    url: jdbc:h2:mem:scrapineerdb_dev;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update # Automatically create/update schema in dev
+    show-sql: true
+  flyway:
+    enabled: false # Disable Flyway in H2 dev profile, let JPA handle DDL
+  profiles:
+    active: dev
+
+scheduler:
+  enabled: false # Disable scheduled jobs by default in dev profile, run manually or specific tests
+
+logging:
+  level:
+    root: DEBUG # More verbose logging in development
+```

@@ -1,0 +1,79 @@
+```html
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrapineer Home</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .card {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Scrapineer</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/swagger-ui.html">API Docs (Swagger)</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card text-center">
+                    <div class="card-header bg-primary text-white">
+                        <h1>Welcome to Scrapineer!</h1>
+                    </div>
+                    <div class="card-body">
+                        <p class="lead">Your comprehensive, production-ready web scraping tools system.</p>
+                        <p>This application provides a robust backend for defining scraping targets, scheduling jobs, and storing results.</p>
+                        <hr>
+                        <h4>Key Features:</h4>
+                        <ul class="list-group list-group-flush mx-auto" style="max-width: 400px;">
+                            <li class="list-group-item">User Authentication & Authorization (JWT)</li>
+                            <li class="list-group-item">RESTful API with CRUD operations</li>
+                            <li class="list-group-item">Flexible Scraping Target & Selector Definition</li>
+                            <li class="list-group-item">Scheduled Scraping Jobs (CRON)</li>
+                            <li class="list-group-item">PostgreSQL Database with Flyway Migrations</li>
+                            <li class="list-group-item">Logging, Error Handling, and Caching</li>
+                            <li class="list-group-item">Dockerized Setup for easy deployment</li>
+                            <li class="list-group-item">Comprehensive API Documentation (Swagger UI)</li>
+                            <li class="list-group-item">Unit, Integration & API Testing</li>
+                        </ul>
+                        <hr>
+                        <p>Explore the API documentation for full details on available endpoints.</p>
+                        <a href="/swagger-ui.html" class="btn btn-success btn-lg mt-3">Go to API Documentation</a>
+                    </div>
+                    <div class="card-footer text-muted">
+                        Built with Spring Boot & ALX Software Engineering principles.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
