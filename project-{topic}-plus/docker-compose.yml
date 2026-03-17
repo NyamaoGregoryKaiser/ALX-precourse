@@ -1,35 +1,74 @@
-# docker-compose.yml for local development environment
-
+```yaml
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: cpp-devops-app
-    # Use .env file for environment variables
-    env_file:
-      - .env
-    ports:
-      - "${APP_PORT}:${APP_PORT}" # Map host port to container port
+  # PostgreSQL Database Service
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      # Persist database file in a named volume
-      - app_data:/app/data
-      # Persist logs in a named volume
-      - app_logs:/app/logs
-      # Optional: Mount source code for live reloading (if supported by dev setup, not out-of-box with C++)
-      # - ./app/src:/app/src
-    restart: unless-stopped
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose for local access if needed, remove in prod or restrict
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT}/health"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
       timeout: 5s
       retries: 5
-    # For debugging:
-    # stdin_open: true
-    # tty: true
+
+  # Redis Cache Service
+  redis:
+    image: redis:6-alpine
+    restart: always
+    ports:
+      - "6379:6379" # Expose for local access if needed
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      # These variables are passed from the host .env to the container
+      DB_HOST: db
+      REDIS_HOST: redis
+      NODE_ENV: production # Set to production for Docker deployment
+    ports:
+      - "${PORT}:${PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app # Mount backend source for development, remove in prod or use named volume
+      - /app/node_modules # Ensure node_modules inside container is not overwritten by host
+    command: sh -c "npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all && npm start"
+    # For development, you might use: command: npm run dev (if you have nodemon)
+
+  # Frontend Application Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    # volumes:
+    #   - ./frontend:/app # Mount frontend source for development, remove in prod or use named volume
+    #   - /app/node_modules # Ensure node_modules inside container is not overwritten by host
 
 volumes:
-  app_data: # This volume will store your SQLite database
-  app_logs: # This volume will store your application logs
+  pgdata: # Named volume for PostgreSQL data persistence
+```

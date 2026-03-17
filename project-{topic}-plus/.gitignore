@@ -1,0 +1,16 @@
+```gitignore
+# Node.js
+node_modules/
+.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.nyc_output/
+coverage/
+
+# Frontend specific
+frontend/build/
+
+# Docker
+.dockerignore
+```

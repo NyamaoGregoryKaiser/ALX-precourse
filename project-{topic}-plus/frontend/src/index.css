@@ -1,0 +1,159 @@
+```css
+:root {
+  --primary-color: #007bff;
+  --secondary-color: #6c757d;
+  --success-color: #28a745;
+  --danger-color: #dc3545;
+  --warning-color: #ffc107;
+  --info-color: #17a2b8;
+  --light-color: #f8f9fa;
+  --dark-color: #343a40;
+  --background-color: #f4f7f6;
+  --text-color: #333;
+  --border-color: #dee2e6;
+  --header-height: 60px;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex-grow: 1;
+  padding: 20px;
+  max-width: 1200px;
+  margin: var(--header-height) auto 20px auto; /* Adjust for fixed header */
+  width: 100%;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--dark-color);
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Buttons */
+.button, button {
+  display: inline-block;
+  background: var(--primary-color);
+  color: #fff;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+  margin: 5px 0;
+  text-align: center;
+}
+
+.button:hover, button:hover {
+  background: darken(var(--primary-color), 10%);
+  opacity: 0.9;
+}
+
+.button.primary { background-color: var(--primary-color); }
+.button.primary:hover { background-color: darken(var(--primary-color), 10%); }
+
+.button.secondary { background-color: var(--secondary-color); }
+.button.secondary:hover { background-color: darken(var(--secondary-color), 10%); }
+
+.button.success { background-color: var(--success-color); }
+.button.success:hover { background-color: darken(var(--success-color), 10%); }
+
+.button.danger, .button.delete { background-color: var(--danger-color); }
+.button.danger:hover, .button.delete:hover { background-color: darken(var(--danger-color), 10%); }
+
+.button.warning { background-color: var(--warning-color); color: var(--dark-color); }
+.button.warning:hover { background-color: darken(var(--warning-color), 10%); }
+
+.button.info, .button.view { background-color: var(--info-color); }
+.button.info:hover, .button.view:hover { background-color: darken(var(--info-color), 10%); }
+
+.button:disabled, button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group input[type="url"],
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+  font-size: 1rem;
+}
+
+.form-group input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+.error-message {
+  color: var(--danger-color);
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 1rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  font-size: 1.2rem;
+  color: var(--secondary-color);
+}
+
+/* Utility */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+```

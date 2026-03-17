@@ -1,9 +1,10 @@
+```dockerfile
 # Stage 1: Build the React application
-FROM node:18-alpine as build
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
+# Copy package.json and package-lock.json first
 COPY package*.json ./
 
 # Install dependencies
@@ -18,15 +19,18 @@ RUN npm run build
 # Stage 2: Serve the application with Nginx
 FROM nginx:alpine
 
-# Copy the built React app from the build stage to Nginx's public directory
-COPY --from=build /app/build /usr/share/nginx/html
+# Remove default Nginx configuration
+RUN rm /etc/nginx/conf.d/default.conf
 
-# Expose port 80 (default for Nginx)
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the built React app from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Expose port 80 for the Nginx server
 EXPOSE 80
 
-# Command to run Nginx
+# Command to start Nginx
 CMD ["nginx", "-g", "daemon off;"]
 ```
-
-#### `backend/.github/workflows/main.yml` (CI/CD for Backend)
-```yaml
