@@ -1,194 +1,211 @@
 ```markdown
-# Deployment Guide for Task Manager Backend
+# 🚀 Deployment Guide
 
-This guide outlines the steps to deploy the Task Manager Backend, from local Docker Compose deployment to a conceptual cloud server setup.
+This document provides instructions on how to deploy the Web Scraping Tools System to a production environment. The recommended approach involves using Docker and a cloud provider.
 
-## Table of Contents
+## 1. Prerequisites
 
-1.  [Local Deployment with Docker Compose](#1-local-deployment-with-docker-compose)
-2.  [Production Deployment Considerations](#2-production-deployment-considerations)
-    *   [Prerequisites on Production Server](#21-prerequisites-on-production-server)
-    *   [Deployment Steps on Server](#22-deployment-steps-on-server)
-    *   [Environment Variables](#23-environment-variables)
-    *   [Security Best Practices](#24-security-best-practices)
-    *   [Scaling](#25-scaling)
-3.  [CI/CD with GitHub Actions](#3-cicd-with-github-actions)
+Before deploying, ensure you have:
 
----
+*   **Cloud Provider Account**: (e.g., AWS, Google Cloud, Azure, Heroku, DigitalOcean).
+*   **Domain Name**: (Optional but recommended for production).
+*   **Git Repository**: Your code pushed to a version control system (e.g., GitHub, GitLab).
+*   **Docker & Docker Compose**: Installed locally for testing build process.
+*   **CI/CD Pipeline Configuration**: (Optional, but highly recommended for automation).
+*   **Environment Variables**: Prepared for your production environment (e.g., database credentials, JWT secret, etc.). **Do NOT commit your `.env` file to version control.**
 
-## 1. Local Deployment with Docker Compose
+## 2. Prepare for Production
 
-This is the quickest way to get the application running with a PostgreSQL database on your local machine.
+### 2.1. Environment Variables
 
-1.  **Prerequisites:**
-    *   Docker Desktop (or Docker Engine and Docker Compose) installed.
-    *   Java 17 and Maven for building the JAR locally.
+Create a separate set of environment variables for your production environment. These should be managed by your deployment platform (e.g., AWS Parameter Store, Kubernetes Secrets, Docker Secrets, Heroku Config Vars).
 
-2.  **Build the Project JAR:**
-    Navigate to the project root and build the Spring Boot application:
+**Crucially**:
+*   **`NODE_ENV=production`**: This enables production-specific optimizations and logging.
+*   **`JWT_SECRET`**: Generate a *strong*, unique, and random secret for production.
+*   **`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`**: Use credentials for your production PostgreSQL instance.
+*   **`DB_SSL=true`**: Most cloud-hosted databases require SSL. Configure this correctly for your provider.
+*   **Other sensitive keys**: Ensure they are securely managed.
+
+### 2.2. Build the Docker Image
+
+Build the Docker image locally to verify it works:
+
+```bash
+docker build -t web-scraping-system:latest .
+```
+
+This will run the multi-stage build defined in `Dockerfile`, creating a lean production image.
+
+### 2.3. Database Provisioning
+
+Provision a managed PostgreSQL database service from your chosen cloud provider (e.g., AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL).
+*   Ensure it's in the same region/network as your application for low latency.
+*   Configure network access (security groups/firewall rules) to allow connections from your application.
+*   Note down the connection details (host, port, user, password, database name) for your production `.env` variables.
+
+## 3. Deployment Steps (General Approach)
+
+The specific steps will vary based on your cloud provider, but here's a general workflow:
+
+### 3.1. Container Orchestration (e.g., Docker Swarm, Kubernetes, AWS ECS, GCP Cloud Run)
+
+1.  **Push Docker Image**: Tag your Docker image and push it to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
     ```bash
-    mvn clean install -DskipTests
+    docker tag web-scraping-system:latest your-registry/web-scraping-system:v1.0.0
+    docker push your-registry/web-scraping-system:v1.0.0
     ```
-    This will create `target/task-manager-backend-0.0.1-SNAPSHOT.jar`.
+2.  **Deploy Application Service**:
+    *   Create a new service/deployment using your container orchestration platform.
+    *   Point to the Docker image in your registry.
+    *   **Configure Environment Variables**: Inject your production environment variables (e.g., `JWT_SECRET`, `DB_HOST`, etc.) into the container runtime. This is critical for security and configuration.
+    *   **Port Mapping**: Map the container's exposed port (e.g., `3000`) to a public port.
+    *   **Scaling**: Configure desired instance count for high availability and load balancing.
+    *   **Health Checks**: Set up health checks (e.g., `GET /health` endpoint) to ensure the service is running correctly.
+3.  **Network Configuration**:
+    *   Set up a load balancer in front of your application instances.
+    *   Configure DNS records to point your domain (e.g., `api.yourdomain.com`) to the load balancer.
+    *   Enable HTTPS/SSL termination at the load balancer.
 
-3.  **Start Services with Docker Compose:**
-    In the project root directory, run:
+### 3.2. Initial Database Setup on Production DB
+
+After provisioning your production PostgreSQL instance:
+
+1.  **Connect to DB**: Use a database client (e.g., `psql`, DBeaver, DataGrip) or your cloud provider's console to connect to your production database.
+2.  **Run Migrations**: Execute the database migrations to create the necessary tables. You can do this by temporarily `docker exec` into a running backend container (if in a shell), or typically via a CI/CD step:
     ```bash
-    docker-compose up -d
+    # Example command to run from your deployment environment
+    # Ensure you replace 'backend-container-name' with your actual container name/ID
+    docker exec <backend-container-name> npm run migration:run
     ```
-    This command performs the following:
-    *   **`db` service:** Pulls `postgres:15-alpine`, creates a volume for persistent data, and starts the PostgreSQL database.
-    *   **`app` service:** Builds the Docker image for the Spring Boot application (using the `Dockerfile`), copies the JAR file into it, and starts the application.
-    *   Connects both services to a `task-manager-network`.
-    *   Exposes backend port `8080` and database port `5432` to your host machine.
-
-4.  **Verify Deployment:**
-    Check the status of your running containers:
+3.  **Seed Data (Optional)**: If you have essential lookup data or an initial admin user that must exist in production, run the seeding script:
     ```bash
-    docker-compose ps
+    # Example command
+    docker exec <backend-container-name> npm run seed:run
     ```
-    You should see `app` and `db` services running.
+    **Caution**: Be careful with seeding scripts in production to avoid overwriting live data. Only seed data that is idempotent or only for initial setup.
 
-    Access the application:
-    *   **Backend API:** `http://localhost:8080`
-    *   **Swagger UI:** `http://localhost:8080/swagger-ui.html`
+## 4. CI/CD Pipeline (Example with GitHub Actions)
 
-5.  **Stop Services:**
-    ```bash
-    docker-compose down
-    ```
-    This stops and removes the containers and network created by `docker-compose up`. The `db_data` volume will persist unless you add `-v` to the `down` command.
+A CI/CD pipeline automates the process of building, testing, and deploying your application. Here's a conceptual `main.yml` for GitHub Actions:
 
----
+```yaml
+# .github/workflows/main.yml
+name: CI/CD Pipeline
 
-## 2. Production Deployment Considerations
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-Deploying to a production environment typically involves a dedicated server (VM, cloud instance) or a managed container service (ECS, Kubernetes). Here, we outline steps for a generic server deployment using Docker.
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
 
-### 2.1. Prerequisites on Production Server
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-*   **Operating System:** Linux (e.g., Ubuntu, CentOS)
-*   **Docker Engine & Docker Compose:** Installed and configured.
-*   **Firewall:** Configured to allow incoming traffic on port `8080` (or the port your reverse proxy uses) and outgoing traffic for updates, etc.
-*   **SSH Access:** Secure Shell access to the server.
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
 
-### 2.2. Deployment Steps on Server
+      - name: Install dependencies
+        run: npm install
 
-1.  **Connect to your server via SSH:**
-    ```bash
-    ssh username@your-server-ip
-    ```
+      - name: Lint code
+        run: npm run lint
 
-2.  **Create a deployment directory:**
-    ```bash
-    sudo mkdir -p /opt/task-manager-backend
-    sudo chown -R username:username /opt/task-manager-backend # Assign appropriate ownership
-    cd /opt/task-manager-backend
-    ```
+      - name: Build TypeScript
+        run: npm run build
 
-3.  **Transfer `docker-compose.yml` to the server:**
-    You can `git clone` the repository if it's public/private with SSH keys, or manually copy the `docker-compose.yml` file.
-    ```bash
-    # Option 1: Git clone (recommended for CI/CD)
-    git clone https://github.com/your-username/task-manager-backend.git . # clone into current directory
-    # Then remove unnecessary files, keep docker-compose.yml and potentially the Dockerfile if you build on server
+      - name: Start PostgreSQL (for integration/API tests)
+        run: docker-compose -f docker-compose.test.yml up -d db # You might need a separate docker-compose for tests
 
-    # Option 2: Manual copy (run from local machine)
-    # scp docker-compose.yml username@your-server-ip:/opt/task-manager-backend/
-    ```
+      - name: Wait for DB to be ready
+        run: sleep 15 # Adjust as needed for your DB to start
 
-4.  **Ensure Docker image is available:**
-    *   **If using Docker Hub (recommended for CI/CD):** Ensure your CI/CD pipeline (e.g., GitHub Actions) pushes the `task-manager-backend` image to Docker Hub. Then, on the server:
-        ```bash
-        docker login -u your_docker_username -p your_docker_password
-        docker pull your_docker_username/task-manager-backend:latest
-        ```
-    *   **If building on the server (less ideal for CI/CD):** Copy the `Dockerfile` and the JAR file (from `target/`) to the server, then run `docker build -t task-manager-backend .` in the `/opt/task-manager-backend` directory.
+      - name: Run migrations
+        run: docker exec <test-db-container-name> npm run migration:run # Adjust for your test DB
 
-5.  **Start the application:**
-    ```bash
-    docker-compose up -d
-    ```
-    This will pull the specified Docker images (PostgreSQL, and your backend image if not built locally), create containers, and start them in detached mode.
+      - name: Run tests
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: password
+          DB_NAME: test_db # Use a dedicated test database
+          JWT_SECRET: test_secret
+          # ... other test environment variables
+        run: npm test
 
-6.  **Verify and Monitor:**
-    *   Check container status: `docker-compose ps`
-    *   View logs: `docker-compose logs -f app` (replace `app` with `db` for database logs)
+      - name: Stop PostgreSQL
+        if: always() # Ensure this runs even if tests fail
+        run: docker-compose -f docker-compose.test.yml down
 
-### 2.3. Environment Variables
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-test # Only deploy if build and tests pass
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
 
-**CRITICAL for Production:** Do **NOT** hardcode sensitive information (like database passwords, JWT secrets) directly in `docker-compose.yml` or `application.yml` for production.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-*   **Using a `.env` file with Docker Compose:**
-    Create a `.env` file in the same directory as `docker-compose.yml` on your server:
-    ```
-    DB_USERNAME=your_prod_db_user
-    DB_PASSWORD=your_prod_db_password_strong
-    JWT_SECRET=a_very_long_and_random_jwt_secret_for_production
-    # Add other sensitive variables
-    ```
-    Docker Compose will automatically pick up these variables and inject them into the services.
+      - name: Build and push Docker image to Registry
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - run: |
+          docker build -t your-registry/web-scraping-system:${{ github.sha }} .
+          docker push your-registry/web-scraping-system:${{ github.sha }}
 
-*   **Using cloud provider secrets management:** For cloud deployments (e.g., AWS ECS, Kubernetes), use native secrets management services (AWS Secrets Manager, Kubernetes Secrets) to securely store and inject environment variables.
+      - name: Deploy to Cloud Provider
+        # This step is highly specific to your cloud provider (e.g., AWS ECS, GCP Cloud Run)
+        # Example for AWS ECS:
+        # uses: aws-actions/amazon-ecs-deploy@v1
+        # with:
+        #   task-definition: your-task-definition.json
+        #   service: your-ecs-service
+        #   cluster: your-ecs-cluster
+        #   image: your-registry/web-scraping-system:${{ github.sha }}
+        #
+        # Example for Google Cloud Run:
+        # uses: google-github-actions/deploy-cloudrun@v1
+        # with:
+        #   service: web-scraping-service
+        #   image: your-registry/web-scraping-system:${{ github.sha }}
+        #   env_vars: |
+        #     DB_HOST=${{ secrets.PROD_DB_HOST }}
+        #     DB_USER=${{ secrets.PROD_DB_USER }}
+        #     JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
+        #     # ... and all other production env vars
+        run: |
+          echo "Simulating deployment to production..."
+          echo "Image: your-registry/web-scraping-system:${{ github.sha }}"
+          # Replace with actual deployment commands for your cloud provider
+```
 
-### 2.4. Security Best Practices
+## 5. Post-Deployment Checks
 
-*   **Strong Passwords & Secrets:** Generate strong, unique passwords for the database and JWT secret. Rotate them regularly.
-*   **Firewall:** Restrict access to only necessary ports. Only expose port `8080` (or `443` if using HTTPS) to the internet. Keep database ports internal to the Docker network.
-*   **HTTPS:** Always use HTTPS in production. Deploy a reverse proxy like Nginx or Caddy in front of your Spring Boot application to handle SSL termination.
-*   **Least Privilege:** Configure database users with only the necessary permissions.
-*   **Regular Updates:** Keep your OS, Docker, and application dependencies updated to patch security vulnerabilities.
-*   **Image Scanning:** Use tools to scan your Docker images for known vulnerabilities.
-*   **Dedicated Database:** For production, use a dedicated, managed database service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) instead of running PostgreSQL in a container on the same server as your application.
+*   **Verify Logs**: Check application logs (`docker-compose logs backend` locally, or your cloud provider's logging service) for any errors.
+*   **Health Check**: Access the `/health` endpoint (e.g., `https://api.yourdomain.com/health`) to ensure the service is running.
+*   **API Tests**: Run a few basic API calls (e.g., login, create project) to confirm functionality.
+*   **Monitoring**: Ensure your monitoring tools are collecting metrics and logs.
 
-### 2.5. Scaling
+## 6. Scaling Considerations
 
-*   **Horizontal Scaling (Backend):** To handle increased traffic, run multiple instances of the `app` container behind a load balancer. Since the application is stateless (JWT-based), this is straightforward.
-*   **Vertical Scaling (Backend/Database):** Increase CPU, RAM, or storage for the server running your containers or for your managed database service.
-*   **Database Read Replicas:** For read-heavy applications, set up read replicas for your PostgreSQL database.
-*   **Distributed Caching:** For multi-instance deployments, consider an external distributed cache like Redis instead of in-memory Ehcache.
+*   **Backend Service**: Since the backend is stateless (JWT for sessions), you can easily scale it horizontally by running multiple instances behind a load balancer.
+*   **Database**: For high traffic, consider read replicas for your PostgreSQL database.
+*   **Scraping Workers**: For very heavy scraping loads, consider refactoring the `ScraperService` to run as separate worker processes, decoupled from the main API via a message queue (e.g., Redis Queue, RabbitMQ, AWS SQS/Lambda). This allows independent scaling of scraping tasks.
+*   **Puppeteer Resources**: Running many Puppeteer instances can be resource-intensive. Optimize Puppeteer settings (e.g., headless mode, request blocking) and scale resources (CPU/RAM) for your scraping workers.
 
----
-
-## 3. CI/CD with GitHub Actions
-
-The repository includes a GitHub Actions workflow (`.github/workflows/ci-cd-pipeline.yml`) to automate the build, test, and deployment process.
-
-### 3.1. Workflow Description
-
-*   **`build-and-test` job:**
-    *   Checks out code.
-    *   Sets up Java 17.
-    *   Builds the Maven project.
-    *   Runs unit and integration tests.
-    *   Generates a JaCoCo code coverage report and uploads it to Codecov.
-    *   Uploads the built JAR as an artifact.
-*   **`docker-build-and-push` job:**
-    *   **Depends on `build-and-test`** (only runs if tests pass).
-    *   Authenticates with Docker Hub using secrets.
-    *   Builds the Docker image for the application.
-    *   Pushes the image to Docker Hub with the `latest` tag.
-    *   **Conditional execution:** Only runs on pushes to the `main` branch.
-*   **`deploy` job:**
-    *   **Depends on `docker-build-and-push`**.
-    *   Connects to a remote server via SSH using secrets.
-    *   Pulls the latest Docker image from Docker Hub.
-    *   Stops and removes existing containers using `docker-compose down`.
-    *   Starts new containers using `docker-compose up -d`.
-    *   **Conditional execution:** Only runs on pushes to the `main` branch.
-
-### 3.2. Setup GitHub Secrets
-
-For the CI/CD pipeline to function, you need to configure the following secrets in your GitHub repository (**Settings > Secrets and variables > Actions**):
-
-*   `DOCKER_USERNAME`: Your Docker Hub username.
-*   `DOCKER_PASSWORD`: Your Docker Hub access token (generate one in Docker Hub settings).
-*   `CODECOV_TOKEN`: Your Codecov repository upload token.
-*   `SSH_HOST`: The IP address or hostname of your deployment server.
-*   `SSH_USERNAME`: The SSH username for your deployment server.
-*   `SSH_KEY`: The private SSH key for accessing your deployment server (ensure it's base64 encoded or properly formatted, usually `-----BEGIN OPENSSH PRIVATE KEY-----...-----END OPENSSH PRIVATE KEY-----`).
-
-**Important:** Never commit sensitive information directly to your repository. Use GitHub Secrets.
-
----
+By following these guidelines, you can achieve a robust and scalable deployment of your web scraping tools system.
 ```

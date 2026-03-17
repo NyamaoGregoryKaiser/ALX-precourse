@@ -1,158 +1,153 @@
 ```markdown
-# Task Manager Backend Architecture Documentation
+# 🏛️ Web Scraping Tools System Architecture
 
-This document provides a high-level overview of the architecture of the Task Manager Backend, highlighting its key components, layers, and interactions.
+This document outlines the architecture of the Web Scraping Tools System, focusing on its components, interactions, and design principles.
 
 ## 1. High-Level Overview
 
-The Task Manager Backend is a monolithic Spring Boot application designed to serve RESTful APIs for a mobile task management application. It follows a layered architectural pattern, promoting separation of concerns and maintainability.
+The system follows a typical **N-tier architecture** with a clear separation of concerns, designed for scalability, maintainability, and extensibility.
 
 ```
-+----------------+
-|  Mobile Client |
-| (iOS/Android)  |
-+-------+--------+
-        | HTTP/HTTPS (REST API)
-        v
-+-------------------------------------------------+
-|               Task Manager Backend              |
-|                                                 |
-| +---------------------------------------------+ |
-| |        API Gateway (e.g., Nginx, LB)        | |  (Optional for production)
-| +---------------------------------------------+ |
-|                        |                        |
-| +----------------------+---------------------+ |
-| |               Rate Limiting               | |
-| +----------------------+---------------------+ |
-|                        |                        |
-| +----------------------+---------------------+ |
-| |      Spring Security (JWT AuthN/AuthZ)    | |
-| +----------------------+---------------------+ |
-|                        |                        |
-| +----------------------+---------------------+ |
-| |       Global Exception Handler            | |
-| +----------------------+---------------------+ |
-|                        |                        |
-| +----------------------+---------------------+ |
-| |            Controller Layer (REST APIs)     | |
-| | +-----------------------------------------+ | |
-| | | AuthController, UserController,         | | |
-| | | CategoryController, TaskController      | | |
-| | +-----------------------------------------+ | |
-| +----------------------+---------------------+ |
-|                        | DTOs                 |
-| +----------------------+---------------------+ |
-| |               Service Layer                 | |
-| | +-----------------------------------------+ | |
-| | | UserService, CategoryService, TaskService | | |
-| | | (Business Logic, Transactions, Caching) | | |
-| | +-----------------------------------------+ | |
-| +----------------------+---------------------+ |
-|                        | Entities             |
-| +----------------------+---------------------+ |
-| |             Repository Layer (JPA)          | |
-| | +-----------------------------------------+ | |
-| | | UserRepository, CategoryRepository,     | | |
-| | | TaskRepository                          | | |
-| | +-----------------------------------------+ | |
-| +----------------------+---------------------+ |
-|                        | Entities (via Hibernate) |
-| +----------------------+---------------------+ |
-| |              Database Layer (PostgreSQL)    | |
-| | +-----------------------------------------+ | |
-| | | Tables: users, categories, tasks        | | |
-| | | Flyway (Schema Migrations)              | | |
-| | +-----------------------------------------+ | |
-| +-------------------------------------------------+
++----------------+       +-------------------+       +-------------------+       +--------------------+
+|                |       |  API Gateway /    |       |                   |       |                    |
+|  Client (Web/  | <---> |  Load Balancer    | <---> |  Backend Service  | <---> |  Database (PgSQL)  |
+|  Mobile App)   |       | (Nginx/Cloud LB)  |       |  (Node.js/Express)|       |                    |
+|                |       |                   |       |                   |       |                    |
++----------------+       +-------------------+       +---------+---------+       +---------+----------+
+                                                          |                       ^         |
+                                                          |                       |         | (Stores Task Config,
+                                                          |                       |         | Scraped Results)
+                                                          v                       |         v
+                                                      +-------------------+   +--------------------+
+                                                      |                   |   |                    |
+                                                      |  Scraping Engine  | <---|  Browser Runtime |
+                                                      | (Puppeteer/Cheerio)|   | (Chromium for Puppeteer) |
+                                                      |                   |   |                    |
+                                                      +-------------------+   +--------------------+
 ```
 
-## 2. Architectural Layers
+## 2. Core Components
 
-The application is structured into distinct layers, each with specific responsibilities:
+### 2.1. Client Application (Frontend) - *Out of Scope for this Implementation*
 
-### 2.1. Controller Layer (`com.alx.taskmgr.controller`)
+*   A web-based (e.g., React, Angular, Vue.js) or mobile application.
+*   Interacts with the Backend Service through RESTful APIs.
+*   Provides user interface for:
+    *   User registration and login.
+    *   Creating and managing scraping projects.
+    *   Defining scraping tasks (target URLs, selectors, schedules).
+    *   Viewing scraping results.
+    *   Triggering manual scraping runs.
 
-*   **Responsibility:** Exposes RESTful API endpoints, handles HTTP requests, marshals/unmarshals JSON data (DTOs), and delegates business logic to the Service Layer.
-*   **Technologies:** Spring Web (`@RestController`, `@RequestMapping`, `@GetMapping`, etc.), `@Valid` for input validation.
-*   **Security:** Uses Spring Security annotations (`@PreAuthorize`) for method-level authorization.
-*   **Features:** API documentation via Springdoc OpenAPI (`@Tag`, `@Operation`, `@SecurityRequirement`).
+### 2.2. Backend Service (Node.js/Express.js with TypeScript)
 
-### 2.2. Service Layer (`com.alx.taskmgr.service`)
+This is the core of the system and the primary focus of this implementation.
 
-*   **Responsibility:** Contains the core business logic. Orchestrates operations, applies business rules, interacts with the Repository Layer, and handles transactions.
-*   **Technologies:** Spring `@Service`, `@Transactional`, `@RequiredArgsConstructor` (Lombok).
-*   **Features:**
-    *   **Caching:** `@Cacheable` and `@CacheEvict` annotations integrate with Spring's caching abstraction (Ehcache).
-    *   **Input Validation:** Relies on DTO validation handled at the Controller layer, but can add more complex business rule validations here.
+*   **API Layer**:
+    *   Handles incoming HTTP requests (RESTful API).
+    *   Routes requests to appropriate controllers.
+    *   Includes middleware for:
+        *   **Authentication (`auth.middleware.ts`)**: Verifies JWT tokens and attaches user identity (`req.user`).
+        *   **Authorization (`auth.middleware.ts`)**: Restricts access based on user roles (`admin`, `user`).
+        *   **Error Handling (`errorHandler.middleware.ts`)**: Catches and processes all application errors, providing consistent error responses.
+        *   **Logging (`logging.middleware.ts`)**: Logs request details, response status, and duration.
+        *   **Rate Limiting (`rateLimit.middleware.ts`)**: Protects against abuse by limiting API request frequency per IP.
+        *   **Security (`helmet`, `cors`)**: Standard security headers and CORS configuration.
+    *   **Controllers (`src/controllers`)**:
+        *   Contain the logic to handle incoming requests from routes.
+        *   Validate input using **Zod**.
+        *   Orchestrate calls to one or more services.
+        *   Format responses for the client.
+    *   **Services (`src/services`)**:
+        *   Encapsulate the business logic of the application.
+        *   **`AuthService`**: Manages user registration, login, and JWT token generation.
+        *   **`UserService`**: Handles user CRUD operations.
+        *   **`ProjectService`**: Manages scraping projects, including access control.
+        *   **`ScrapingTaskService`**: Manages the lifecycle of scraping tasks (CRUD, initiation, basic scheduling).
+        *   **`ScraperService`**: The core scraping engine, abstracting Puppeteer/Cheerio.
+        *   **`ScrapingResultService`**: Stores and retrieves scraped data.
+        *   **`CacheService`**: Provides an interface for in-memory caching.
+    *   **Entities (`src/entities`)**:
+        *   Define the structure of data objects (ORM models) using TypeORM decorators.
+        *   `User`, `Project`, `ScrapingTask`, `ScrapingResult`.
+        *   Represent tables in the PostgreSQL database.
+    *   **Utilities (`src/utils`)**:
+        *   **`logger.ts`**: Winston-based structured logging utility.
+        *   **`AppError.ts`**: Custom error class for operational errors.
+        *   `validation.ts`: Placeholder for common validation functions.
+    *   **Configuration (`src/config`)**:
+        *   **`environment.ts`**: Loads and validates environment variables.
+        *   **`database.ts`**: Configures and initializes TypeORM with PostgreSQL.
+        *   **`cache.ts`**: Configures and initializes `node-cache`.
 
-### 2.3. Repository Layer (`com.alx.taskmgr.repository`)
+### 2.3. Database (PostgreSQL)
 
-*   **Responsibility:** Provides data access operations (CRUD) for entities. Abstracts away the underlying database technology.
-*   **Technologies:** Spring Data JPA, extending `JpaRepository`.
-*   **Features:** Custom query methods are automatically implemented by Spring Data JPA based on method names (e.g., `findByUserIdAndCompleted`).
+*   **Primary Data Store**: Stores all application data.
+*   **TypeORM**: Used as the Object-Relational Mapper (ORM) for interacting with the database.
+*   **Schema**: Defined by `src/entities` and managed through database migrations (`src/database/migrations`).
+    *   `users`: Stores user credentials and roles.
+    *   `projects`: Stores scraping project definitions.
+    *   `scraping_tasks`: Stores individual scraping task configurations (target URL, selectors, schedule).
+    *   `scraping_results`: Stores the actual data extracted from scraping runs.
+*   **Query Optimization**: TypeORM handles basic query generation. Manual query optimization (indexing, careful relations) can be applied for performance-critical scenarios.
 
-### 2.4. Model Layer (`com.alx.taskmgr.model`)
+### 2.4. Scraping Engine (Puppeteer & Cheerio)
 
-*   **Responsibility:** Defines the data structure (entities) that map directly to database tables.
-*   **Technologies:** JPA annotations (`@Entity`, `@Table`, `@Id`, `@OneToMany`, `@ManyToOne`), Lombok (`@Data`, `@Builder`).
-*   **Relationships:** Defines relationships between entities (e.g., `User` has many `Tasks` and `Categories`).
+*   **`ScraperService`**: Acts as an abstraction layer for scraping technologies.
+*   **Puppeteer**: A Node library that provides a high-level API to control headless Chrome or Chromium.
+    *   Used for scraping dynamic content (websites heavily reliant on JavaScript).
+    *   Manages browser instances, navigation, and DOM interaction.
+    *   Includes optimizations like request interception to block unnecessary resources.
+*   **Cheerio**: A fast, flexible, and lean implementation of core jQuery specifically designed for the server.
+    *   Used for parsing static HTML content.
+    *   More efficient for simple pages as it doesn't require launching a full browser.
 
-### 2.5. Data Transfer Objects (DTOs) (`com.alx.taskmgr.dto`)
+### 2.5. Cache Layer (Node-Cache)
 
-*   **Responsibility:** Objects used for data transfer between the client and the server (and sometimes between layers). They decouple the API from the internal domain model.
-*   **Features:** Includes validation annotations (`@NotBlank`, `@Size`, `@Email`).
+*   **`CacheService`**: Provides an in-memory caching mechanism using `node-cache`.
+*   Used to store frequently accessed data (e.g., user profiles, project details) to reduce database load and improve response times.
+*   Cache invalidation strategies are implemented within services after data modifications.
+*   For larger-scale production systems, an external distributed cache like Redis would be preferred.
 
-## 3. Cross-Cutting Concerns
+## 3. Data Flow
 
-### 3.1. Authentication & Authorization
+1.  **Client Request**: A client (e.g., frontend application) sends an HTTP request to the Backend Service API.
+2.  **API Gateway/Load Balancer**: (Optional, in a production setup) Routes the request to an available Backend Service instance.
+3.  **Backend Middleware**: The request passes through security, logging, and rate-limiting middleware.
+4.  **Routing**: Express routes the request to the appropriate controller method.
+5.  **Controller Logic**: The controller validates input, calls relevant service(s), and prepares the response.
+6.  **Service Logic**: Services execute business logic, performing:
+    *   **Database Interactions**: Use TypeORM repositories to query or modify data in PostgreSQL.
+    *   **Cache Interactions**: Check cache before querying DB, update/invalidate cache after DB writes.
+    *   **Scraping Initiation**: `ScrapingTaskService` delegates to `ScraperService` to perform a scrape.
+7.  **Scraping Process**:
+    *   `ScraperService` decides whether to use Puppeteer or Cheerio based on task configuration.
+    *   **Puppeteer**: Launches a browser, navigates to the URL, interacts with the page (if needed), extracts data via `page.evaluate()`.
+    *   **Cheerio**: Fetches HTML via `fetch`, then parses and extracts data using DOM manipulation.
+8.  **Result Storage**: Scraped data is passed back to `ScrapingResultService` and stored in the PostgreSQL database.
+9.  **Response**: The controller sends a structured JSON response back to the client.
+10. **Error Handling**: Any errors during this flow are caught by `errorHandler.middleware.ts`, logged, and a standardized error response is returned.
 
-*   **Technology:** Spring Security, JWT (JSON Web Tokens).
-*   **Flow:**
-    1.  User registers/logs in via `AuthController`.
-    2.  Upon successful login, a JWT token is generated by `JwtService` and returned to the client.
-    3.  For subsequent requests, the client sends the JWT in the `Authorization` header.
-    4.  `JwtAuthFilter` intercepts requests, validates the JWT using `JwtService`, and sets the `Authentication` context.
-    5.  `@PreAuthorize` annotations on controller methods enforce role-based access.
+## 4. Design Principles
 
-### 3.2. Error Handling
+*   **Separation of Concerns**: Clear distinction between API, business logic, data access, and scraping logic.
+*   **Modularity**: Code organized into logical modules (controllers, services, entities, middleware) for easier understanding and maintenance.
+*   **Dependency Injection**: Services and controllers receive their dependencies (e.g., repositories, other services) through their constructors, enhancing testability and flexibility.
+*   **Layered Architecture**: Enforces boundaries between layers, allowing changes in one layer with minimal impact on others.
+*   **Robust Error Handling**: Centralized error management to provide consistent, informative error messages.
+*   **Observability**: Integrated logging (`Winston`) for monitoring and debugging.
+*   **Security**: JWT authentication, role-based authorization, rate limiting, and `Helmet` for HTTP header security.
+*   **Scalability**: Stateless backend design (sessions managed by JWTs) facilitates horizontal scaling of the backend services. The scraping engine can also be scaled independently or run as separate worker processes in more advanced setups.
 
-*   **Technology:** Spring's `@RestControllerAdvice` and `@ExceptionHandler`.
-*   **Implementation:** `GlobalExceptionHandler` provides a centralized mechanism to catch specific exceptions (`ResourceNotFoundException`, `UserAlreadyExistsException`, `MethodArgumentNotValidException`) and return consistent, meaningful HTTP error responses (e.g., 404 Not Found, 409 Conflict, 400 Bad Request).
+## 5. Future Enhancements
 
-### 3.3. Logging
-
-*   **Technology:** SLF4J (facade) and Logback (implementation).
-*   **Configuration:** `logback-spring.xml` defines appenders (console, file), log patterns, and log levels.
-*   **Monitoring:** Spring Boot Actuator exposes `/actuator/health`, `/actuator/info`, `/actuator/metrics` endpoints for application monitoring.
-
-### 3.4. Caching
-
-*   **Technology:** Spring Cache abstraction with Ehcache.
-*   **Mechanism:** In-memory caching for frequently accessed read operations (e.g., retrieving user profiles, categories, tasks). Reduces database load and improves response times.
-
-### 3.5. Rate Limiting
-
-*   **Technology:** Custom Spring `HandlerInterceptor` using Guava `RateLimiter`.
-*   **Purpose:** Protects specific endpoints (e.g., `/api/users/me`) from excessive requests from a single IP address, preventing abuse and ensuring service availability.
-
-### 3.6. Database Migration
-
-*   **Technology:** Flyway.
-*   **Purpose:** Manages schema changes in a version-controlled and idempotent manner. Ensures the database schema is always compatible with the application code.
-
-## 4. Deployment Architecture
-
-The application is containerized using Docker.
-
-*   **`Dockerfile`:** Defines how to build the Spring Boot application's Docker image.
-*   **`docker-compose.yml`:** Orchestrates the deployment of the application container alongside a PostgreSQL database container, facilitating local development and single-server deployment.
-*   **CI/CD (GitHub Actions):** Automates the build, test, Docker image creation, and deployment process (pushing to Docker Hub and deploying to a target server via SSH).
-
-## 5. Scalability Considerations
-
-*   **Stateless Backend:** The use of JWTs makes the backend largely stateless, simplifying horizontal scaling.
-*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) for high-traffic scenarios.
-*   **Caching:** While Ehcache is in-memory and scales with the application instance, for true distributed caching, an external solution like Redis or Memcached would be integrated.
-*   **Load Balancing:** Deploying multiple instances of the backend behind a load balancer (e.g., Nginx, AWS ELB) is straightforward due to its stateless nature.
-*   **Microservices:** While currently a monolith, the layered architecture and clear separation of concerns make it a candidate for future decomposition into microservices if specific parts require independent scaling or development.
+*   **Dedicated Scraping Workers**: For high-volume scraping, offload scraping tasks to separate worker services (e.g., using a message queue like RabbitMQ or Redis BullMQ) to decouple from the main API.
+*   **Scheduling Service**: Implement a more robust scheduling system (e.g., using a cron library or a dedicated scheduler service) for recurrent scraping tasks.
+*   **Advanced Caching**: Replace in-memory `node-cache` with a distributed cache like Redis for better scalability and persistence.
+*   **Load Balancing**: Introduce a proper load balancer (e.g., Nginx, cloud load balancers) in front of multiple backend instances.
+*   **Monitoring & Alerting**: Integrate with APM tools (e.g., Prometheus, Grafana, Datadog) for comprehensive monitoring.
+*   **Frontend Application**: Develop a rich user interface to consume these APIs.
+*   **Proxy Management**: Integrate with proxy services to handle IP rotation and avoid being blocked by target websites.
+*   **Captcha Solving**: Integrate with CAPTCHA-solving services for complex scraping scenarios.
+*   **Deployment Automation**: Full CI/CD pipelines to automate testing, building, and deployment.
 ```

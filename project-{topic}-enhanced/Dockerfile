@@ -1,19 +1,32 @@
 ```dockerfile
-# Use a JRE base image for smaller size
-FROM openjdk:17-jre-slim
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS builder
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the built JAR file into the container
-# The JAR is usually found in target/ after a 'mvn package' command
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
+COPY package*.json ./
+RUN npm install
 
-# Expose the port your Spring Boot application runs on
-EXPOSE 8080
+COPY . .
+RUN npm run build
 
-# Run the Spring Boot application
-# Use -Dspring.profiles.active=prod to activate production profile
-ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
+# Stage 2: Run the application
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm install --only=production
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.env.example ./.env.example
+# Copy .env if you want to bake it in, but usually it's better to mount it or pass as env vars
+# COPY --from=builder /app/.env ./.env
+
+EXPOSE 3000
+
+CMD ["node", "dist/server.js"]
 ```
