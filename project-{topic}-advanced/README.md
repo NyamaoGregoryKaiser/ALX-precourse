@@ -1,410 +1,365 @@
 ```markdown
-# Comprehensive Mobile App Backend (C++)
+# ALX Mobile Backend System
 
-This project implements a full-scale, production-ready backend system for a mobile application, built entirely in C++. It features a robust architecture with multiple modules, comprehensive CRUD APIs, authentication/authorization, logging, caching, rate limiting, and extensive testing, following ALX Software Engineering principles.
+## Comprehensive, Production-Ready Mobile App Backend
+
+This project provides a robust, scalable, and secure backend system designed for mobile applications, built with Spring Boot and Java 17. It incorporates best practices for enterprise-grade applications, including authentication (JWT), authorization (Spring Security), database management (PostgreSQL, Flyway), caching (Caffeine), rate limiting, comprehensive testing, and CI/CD pipeline configuration.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Cloning the Repository](#cloning-the-repository)
-    *   [Setting up External Libraries](#setting-up-external-libraries)
-    *   [Environment Configuration](#environment-configuration)
-    *   [Building the Application](#building-the-application)
-    *   [Running the Application](#running-the-application)
-    *   [Running with Docker](#running-with-docker)
-4.  [Testing](#testing)
-    *   [Unit and Integration Tests](#unit-and-integration-tests)
-    *   [API Tests](#api-tests)
-    *   [Performance Tests](#performance-tests)
-5.  [API Documentation](#api-documentation)
-6.  [Deployment Guide](#deployment-guide)
-7.  [CI/CD Pipeline](#cicd-pipeline)
-8.  [Project Structure](#project-structure)
-9.  [Contributing](#contributing)
-10. [License](#license)
-
----
+2.  [Architecture Overview](#architecture-overview)
+3.  [Prerequisites](#prerequisites)
+4.  [Local Setup and Run](#local-setup-and-run)
+5.  [API Endpoints](#api-endpoints)
+6.  [Testing](#testing)
+7.  [Docker Setup](#docker-setup)
+8.  [CI/CD Configuration](#ci/cd-configuration)
+9.  [Deployment Guide](#deployment-guide)
+10. [Technologies Used](#technologies-used)
+11. [Contributing](#contributing)
+12. [License](#license)
 
 ## 1. Features
 
-*   **Core Application (C++)**:
-    *   **Web Framework**: [Crow](https://github.com/ipkn/crow) - a fast, header-only C++ microframework.
-    *   **Modular Design**: Clear separation of concerns into models, services, controllers, and utilities.
-    *   **Business Logic**: Implemented within services for user management and task management.
-    *   **API Endpoints**: Full CRUD operations for users and tasks.
-*   **Database Layer (SQLite3)**:
-    *   **Schema Definitions**: `users` and `tasks` tables with appropriate fields and constraints.
-    *   **Migration Scripts**: Automatic table creation on startup.
-    *   **Query Optimization**: Use of prepared statements for efficiency and security.
-    *   **Concurrency**: Basic mutex-based protection for SQLite operations.
-*   **Configuration & Setup**:
-    *   **Build System**: CMake for managing compilation and dependencies.
-    *   **Dependencies**: Explicitly listed (and guide for acquisition).
-    *   **Environment Configuration**: Utilizes `.env` files (via `std::getenv`) for flexible environment-specific settings.
-    *   **Docker**: Containerized setup for consistent build and deployment.
-    *   **CI/CD**: GitHub Actions workflow for automated testing and Docker image building.
-*   **Testing & Quality**:
-    *   **Unit Tests**: Implemented using [Google Test](https://github.com/google/googletest) for core components (database, services, utilities) with high coverage.
-    *   **Integration Tests**: Service-level tests verify interaction with the database.
-    *   **API Tests**: Guidance on using `curl` or Postman.
-    *   **Performance Tests**: Guidance on using tools like Apache JMeter or `wrk`.
-*   **Documentation**:
-    *   Comprehensive `README.md` (this file).
-    *   `API_DOCS.md`: Detailed API endpoints with examples.
-    *   `ARCHITECTURE.md`: Overview of the system design.
-    *   Deployment guide within `README.md`.
-*   **Additional Features**:
-    *   **Authentication/Authorization**: JWT (JSON Web Tokens) based authentication using `jwt-cpp`. Middleware for token validation.
-    *   **Logging and Monitoring**: Structured logging with [spdlog](https://github.com/gabime/spdlog), outputting to console and rotating files.
-    *   **Error Handling Middleware**: Centralized custom exception handling for consistent API error responses.
-    *   **Caching Layer**: Simple in-memory cache with configurable TTL (Time-To-Live) for frequently accessed data (users, tasks).
-    *   **Rate Limiting**: IP-based request rate limiting middleware to protect against abuse.
-    *   **CORS Support**: Configured using Crow's built-in CORS handler.
+*   **Core Application (Java/Spring Boot):**
+    *   RESTful API endpoints for Users, Products, Orders with full CRUD operations.
+    *   Layered architecture: Controllers, Services, Repositories, DTOs.
+    *   Business logic for user management, product catalog, and order processing (e.g., stock management).
+*   **Database Layer (PostgreSQL):**
+    *   Defined schema for `users`, `products`, `orders`, and `order_items`.
+    *   Flyway for database migrations.
+    *   Seed data for initial setup.
+    *   Basic query optimization via indexing.
+*   **Authentication & Authorization:**
+    *   JWT-based authentication using Spring Security.
+    *   Role-based authorization (`ROLE_USER`, `ROLE_ADMIN`) with `@PreAuthorize`.
+*   **Logging & Monitoring:**
+    *   SLF4J/Logback for structured logging.
+    *   Spring Boot Actuator for health checks, metrics, and environment info.
+*   **Error Handling:**
+    *   Global exception handling with `@ControllerAdvice` for consistent API error responses.
+    *   Custom exceptions (`ResourceNotFoundException`, `ValidationException`).
+*   **Caching Layer:**
+    *   Spring Cache with Caffeine for in-memory caching of frequently accessed data (users, products, orders).
+*   **Rate Limiting:**
+    *   Simple in-memory rate limiting filter using Google Guava to protect API endpoints from abuse.
+*   **Testing:**
+    *   Unit tests for services and repositories (Mockito, JUnit 5).
+    *   Integration/API tests for controllers (Spring MockMvc, `@WebMvcTest`).
+    *   Jacoco for code coverage reporting (configured for 80%+ line coverage goal).
+*   **Configuration & Setup:**
+    *   `pom.xml` with all necessary dependencies.
+    *   Environment-specific `application.properties` (dev, prod profiles).
+    *   Docker support with `Dockerfile` and `docker-compose.yml`.
+    *   Basic CI/CD pipeline configuration using GitHub Actions.
+*   **Documentation:**
+    *   Comprehensive README.
+    *   API documentation using Springdoc OpenAPI (Swagger UI).
+    *   Architecture and Deployment guides.
 
----
+## 2. Architecture Overview
 
-## 2. Architecture
+The backend follows a standard N-tier architecture, commonly seen in Spring Boot applications:
 
-The system follows a layered architecture, common in backend services, with clear separation of concerns:
+*   **Presentation Layer (Controllers):** Handles incoming HTTP requests, performs input validation, and delegates to the Service Layer. Returns HTTP responses. Secured using Spring Security.
+*   **Service Layer (Services):** Contains the core business logic. Interacts with the Repository Layer, orchestrates complex operations, and applies caching/transactional boundaries.
+*   **Data Access Layer (Repositories):** Uses Spring Data JPA to abstract database interactions. Handles CRUD operations and custom queries.
+*   **Domain Layer (Models):** JPA entities representing the database schema (User, Product, Order).
+*   **DTO Layer:** Data Transfer Objects for requests and responses, ensuring separation of concerns between API contract and domain models.
+*   **Security Layer:** Spring Security for authentication (JWT) and authorization (roles).
+*   **Configuration Layer:** Manages application settings, database connections, security parameters, etc.
+*   **Cross-Cutting Concerns:** Global exception handling, logging, caching, rate limiting.
 
-*   **Presentation Layer (Controllers)**: Handles HTTP requests, parses input, calls appropriate service methods, and formats HTTP responses. Uses Crow routes.
-*   **Business Logic Layer (Services)**: Contains the core business rules and orchestrates data operations. It interacts with the data layer and utility components.
-*   **Data Access Layer (Database Utility)**: Provides an abstraction over the raw SQLite3 API, managing connections, queries, and transactions.
-*   **Utility Layer**: Houses cross-cutting concerns like JWT management, logging, caching, and rate limiting middleware.
-*   **Models**: Defines the data structures (`User`, `Task`) used across all layers.
+**Data Flow:**
+Mobile App <--> HTTPS <--> Load Balancer/API Gateway <--> Spring Boot Backend (Controllers -> Services -> Repositories) <--> PostgreSQL Database
 
-**Data Flow Example (User Login):**
+## 3. Prerequisites
 
-1.  **Request**: Mobile client sends `POST /auth/login` with `identifier` and `password`.
-2.  **Rate Limiter Middleware**: Checks if the client's IP address has exceeded the request limit. If so, responds with 429.
-3.  **Controller (`AuthController::login_user`)**: Receives the request, parses JSON body.
-4.  **Service (`AuthService::login_user`)**:
-    *   Retrieves user from `Database` by identifier.
-    *   `AuthService::verify_password` hashes the provided password and compares it to the stored hash.
-    *   If credentials are valid, `JwtManager::create_token` generates a JWT.
-5.  **Controller**: Formats a 200 OK response with the JWT.
-6.  **Response**: Returns the JWT to the client. Subsequent authenticated requests will include this token.
+Before you begin, ensure you have the following installed:
 
-For authenticated routes:
+*   **Java 17 JDK:** [Download from Oracle](https://www.oracle.com/java/technologies/downloads/) or [AdoptOpenJDK](https://adoptium.net/temurin/releases/)
+*   **Maven 3.8+:** [Download Maven](https://maven.apache.org/download.cgi)
+*   **PostgreSQL 15+:** [Download PostgreSQL](https://www.postgresql.org/download/) or use Docker.
+*   **Docker & Docker Compose:** [Install Docker Engine](https://docs.docker.com/engine/install/)
+*   **Git:** [Download Git](https://git-scm.com/downloads)
 
-1.  **Request**: Client sends request with `Authorization: Bearer <token>`.
-2.  **Auth Middleware (`AuthMiddleware::before_handle`)**:
-    *   Extracts token from header.
-    *   `JwtManager::verify_token` validates the token.
-    *   If valid, extracts `user_id` and adds it to the Crow request context.
-    *   If invalid, responds with 401 Unauthorized.
-3.  **Route Handler (e.g., `UserController::get_user_profile`)**: Accesses `user_id` from context, calls `UserService::get_user_by_id`.
-4.  **Service (`UserService::get_user_by_id`)**:
-    *   Checks `Cache` for user data.
-    *   If not found, fetches from `Database`.
-    *   Caches the user data.
-5.  **Controller**: Formats a 200 OK response with user data.
-6.  **Response**: Returns user data to the client.
+## 4. Local Setup and Run
 
-Refer to `ARCHITECTURE.md` for a more detailed diagram and explanation.
+### 4.1. Database Setup (Option 1: Manual PostgreSQL)
 
----
-
-## 3. Setup and Installation
-
-### Prerequisites
-
-*   **C++ Compiler**: GCC (g++) 10+ or Clang with C++17 support.
-*   **CMake**: Version 3.10 or higher.
-*   **Git**: For cloning the repository and managing submodules.
-*   **SQLite3 Development Libraries**: `libsqlite3-dev` (Debian/Ubuntu) or equivalent.
-*   **spdlog Development Libraries**: `libspdlog-dev` (Debian/Ubuntu) or equivalent.
-*   **Google Test Development Libraries**: `libgtest-dev` (Debian/Ubuntu) or equivalent. Often requires building after install: `cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/`.
-*   **libssl-dev**: For `jwt-cpp`'s cryptographic operations.
-*   **curl**: For downloading Crow header.
-*   **Docker** (Optional, for containerized deployment).
-
-### Cloning the Repository
-
-```bash
-git clone https://github.com/your-username/mobile-backend.git
-cd mobile-backend
-```
-
-### Setting up External Libraries
-
-Some libraries like Crow and jwt-cpp are header-only or included as submodules/copied for simplicity.
-
-1.  **Crow**: Download the `crow_all.h` header file.
+1.  **Install PostgreSQL:** If not already installed.
+2.  **Create User and Database:**
     ```bash
-    mkdir -p libs
-    curl -L https://raw.githubusercontent.com/ipkn/crow/master/crow_all.h -o libs/crow_all.h
+    # Connect to default postgres user
+    psql -U postgres
+
+    # Create user with password
+    CREATE USER alxuser WITH PASSWORD 'alxpassword';
+    CREATE USER alxuser_dev WITH PASSWORD 'alxpassword_dev';
+
+    # Create databases
+    CREATE DATABASE alx_mobile_db WITH OWNER alxuser;
+    CREATE DATABASE alx_mobile_db_dev WITH OWNER alxuser_dev;
+
+    # Grant privileges
+    GRANT ALL PRIVILEGES ON DATABASE alx_mobile_db TO alxuser;
+    GRANT ALL PRIVILEGES ON DATABASE alx_mobile_db_dev TO alxuser_dev;
+
+    \q
     ```
-2.  **jwt-cpp**: Clone the repository as a submodule or directly into `libs`.
+    *Note: The `V1__Initial_schema.sql` and `V2__Add_seed_data.sql` will be automatically applied by Flyway when the Spring Boot application starts.*
+
+### 4.2. Run the Application (Spring Boot)
+
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/Thalhammer/jwt-cpp.git libs/jwt-cpp
+    git clone https://github.com/your-username/my-mobile-backend.git
+    cd my-mobile-backend
     ```
-3.  **Other dependencies** (SQLite3, spdlog, Google Test): Ensure you have their development packages installed as per [Prerequisites](#prerequisites).
-
-### Environment Configuration
-
-Create a `.env` file in the project root based on `.env.example`:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` to configure:
-
-*   `APP_PORT`: Port for the server (default: 18080)
-*   `DATABASE_PATH`: Path to the SQLite database file (e.g., `./data/mobile_backend.db`)
-*   `JWT_SECRET`: **CRITICAL!** A strong, unique secret key for JWT signing. Must be at least 32 characters.
-*   `CACHE_TTL_SECONDS`: Default time-to-live for cache entries in seconds.
-*   `RATE_LIMIT_MAX_REQUESTS`: Maximum requests allowed in `RATE_LIMIT_WINDOW_SECONDS`.
-*   `RATE_LIMIT_WINDOW_SECONDS`: Time window for rate limiting in seconds.
-
-### Building the Application
-
-```bash
-# Create a build directory
-mkdir build
-cd build
-
-# Configure CMake
-cmake -DCMAKE_BUILD_TYPE=Release \
-      -DJWT_CPP_PATH=../libs/jwt-cpp \
-      -DCROW_HEADERS_PATH=../libs \
-      ..
-
-# Build the application
-cmake --build .
-```
-
-The executable `mobile_backend` will be created in the `build/` directory.
-
-### Running the Application
-
-Before running, ensure the `data` directory for the SQLite database exists:
-
-```bash
-mkdir -p data
-```
-
-Then, run the compiled executable, sourcing your `.env` file for environment variables:
-
-```bash
-cd build
-# For Linux/macOS
-source ../.env && ./mobile_backend
-
-# For Windows (PowerShell)
-# $env:APP_PORT=18080; $env:DATABASE_PATH='./data/mobile_backend.db'; $env:JWT_SECRET='your_secret'; $env:CACHE_TTL_SECONDS=600; $env:RATE_LIMIT_MAX_REQUESTS=100; $env:RATE_LIMIT_WINDOW_SECONDS=60; .\mobile_backend.exe
-```
-
-The server will start on the configured `APP_PORT`.
-
-### Running with Docker
-
-1.  **Build the Docker image**:
+2.  **Build the project:**
     ```bash
-    docker build -t mobile-backend:latest .
+    ./mvnw clean install -DskipTests
     ```
-2.  **Run the Docker container**:
+3.  **Run the application (Development Profile):**
     ```bash
-    docker run -d \
-      -p 18080:18080 \
-      -e APP_PORT=18080 \
-      -e DATABASE_PATH=/app/data/mobile_backend.db \
-      -e JWT_SECRET="your_very_secret_jwt_key_that_is_at_least_32_characters_long_and_random" \
-      -e CACHE_TTL_SECONDS=600 \
-      -e RATE_LIMIT_MAX_REQUESTS=100 \
-      -e RATE_LIMIT_WINDOW_SECONDS=60 \
-      --name mobile_backend_app \
-      mobile-backend:latest
+    ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
     ```
-    *   Remember to replace `JWT_SECRET` with a strong secret.
-    *   You can optionally mount a volume for persistent database storage:
+    The application will start on `http://localhost:8080`.
+
+    You can access Swagger UI at `http://localhost:8080/swagger-ui.html`.
+
+## 5. API Endpoints
+
+All API endpoints are prefixed with `/api/v1`.
+
+### Authentication & Registration (`/api/v1/auth`)
+
+*   `POST /api/v1/auth/register`
+    *   **Description:** Register a new user.
+    *   **Request Body:** `RegisterRequest` (username, email, password)
+    *   **Response:** `AuthResponse` (JWT token, user details)
+*   `POST /api/v1/auth/login`
+    *   **Description:** Authenticate user and get JWT token.
+    *   **Request Body:** `AuthRequest` (usernameOrEmail, password)
+    *   **Response:** `AuthResponse` (JWT token, user details)
+
+### User Management (`/api/v1/users`) - Requires `bearerAuth` (JWT)
+
+*   `GET /api/v1/users/{id}`
+    *   **Description:** Get user by ID. (ADMIN or owner)
+    *   **Response:** `UserDto.UserResponse`
+*   `GET /api/v1/users`
+    *   **Description:** Get all users with pagination. (ADMIN only)
+    *   **Query Params:** `page`, `size`, `sort`
+    *   **Response:** `Page<UserDto.UserResponse>`
+*   `PUT /api/v1/users/{id}`
+    *   **Description:** Update a user by ID. (ADMIN or owner)
+    *   **Request Body:** `UserDto.UserUpdateRequest`
+    *   **Response:** `UserDto.UserResponse`
+*   `DELETE /api/v1/users/{id}`
+    *   **Description:** Delete a user by ID. (ADMIN only)
+    *   **Response:** `204 No Content`
+
+### Product Management (`/api/v1/products`) - Requires `bearerAuth` (JWT)
+
+*   `POST /api/v1/products`
+    *   **Description:** Create a new product. (ADMIN only)
+    *   **Request Body:** `ProductDto.ProductCreateRequest`
+    *   **Response:** `ProductDto.ProductResponse`
+*   `GET /api/v1/products/{id}`
+    *   **Description:** Get product by ID. (USER, ADMIN)
+    *   **Response:** `ProductDto.ProductResponse`
+*   `GET /api/v1/products`
+    *   **Description:** Get all products with pagination. (USER, ADMIN)
+    *   **Query Params:** `page`, `size`, `sort`
+    *   **Response:** `Page<ProductDto.ProductResponse>`
+*   `PUT /api/v1/products/{id}`
+    *   **Description:** Update a product by ID. (ADMIN only)
+    *   **Request Body:** `ProductDto.ProductUpdateRequest`
+    *   **Response:** `ProductDto.ProductResponse`
+*   `DELETE /api/v1/products/{id}`
+    *   **Description:** Delete a product by ID. (ADMIN only)
+    *   **Response:** `204 No Content`
+
+### Order Management (`/api/v1/orders`) - Requires `bearerAuth` (JWT)
+
+*   `POST /api/v1/orders`
+    *   **Description:** Create a new order. (USER, ADMIN)
+    *   **Request Body:** `OrderDto.OrderCreateRequest` (list of productId, quantity)
+    *   **Response:** `OrderDto.OrderResponse`
+*   `GET /api/v1/orders/{id}`
+    *   **Description:** Get order by ID. (ADMIN or owner)
+    *   **Response:** `OrderDto.OrderResponse`
+*   `GET /api/v1/orders`
+    *   **Description:** Get all orders with pagination. (ADMIN only)
+    *   **Query Params:** `page`, `size`, `sort`
+    *   **Response:** `Page<OrderDto.OrderResponse>`
+*   `GET /api/v1/orders/user/{userId}`
+    *   **Description:** Get all orders for a specific user with pagination. (ADMIN or owner of userId)
+    *   **Query Params:** `page`, `size`, `sort`
+    *   **Response:** `Page<OrderDto.OrderResponse>`
+*   `PATCH /api/v1/orders/{id}/status`
+    *   **Description:** Update order status by ID. (ADMIN only)
+    *   **Request Body:** `OrderDto.OrderUpdateRequest` (status: PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED)
+    *   **Response:** `OrderDto.OrderResponse`
+*   `DELETE /api/v1/orders/{id}`
+    *   **Description:** Delete an order by ID. (ADMIN or owner if order is PENDING)
+    *   **Response:** `204 No Content`
+
+## 6. Testing
+
+The project includes Unit, Integration, and API tests to ensure quality and correctness.
+
+1.  **Run all tests:**
+    ```bash
+    ./mvnw clean test
+    ```
+2.  **Generate JaCoCo test coverage report:**
+    After running `mvnw clean install` (which includes `test` phase and `jacoco:report` goal), you can find the report at:
+    `target/site/jacoco/index.html`
+    Open this file in your browser to view detailed coverage statistics. The `pom.xml` is configured to fail the build if line coverage drops below 80%.
+
+## 7. Docker Setup
+
+### 7.1. Database Setup (Option 2: Docker Compose)
+
+The `docker-compose.yml` file sets up a PostgreSQL database and the Spring Boot application.
+
+1.  **Ensure Docker Desktop is running.**
+2.  **Navigate to the project root directory.**
+3.  **Start the services:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    This will:
+    *   Build the Docker image for the backend application.
+    *   Start a PostgreSQL container.
+    *   Run an initialization script to create `alx_mobile_db` and `alx_mobile_db_dev` databases with respective users.
+    *   Start the Spring Boot application (configured to use `alx_mobile_db_dev` by default for local development).
+    *   The `Dockerfile` contains a `prod` profile by default, but `docker-compose.yml` overrides it to `dev` for local use.
+
+4.  **Verify services:**
+    ```bash
+    docker-compose ps
+    ```
+    You should see `alx-postgres` and `alx-mobile-backend` containers running.
+
+5.  **Access the application:** `http://localhost:8080` (or Swagger UI at `http://localhost:8080/swagger-ui.html`).
+
+6.  **Stop services:**
+    ```bash
+    docker-compose down
+    ```
+    To also remove volumes (database data), use:
+    ```bash
+    docker-compose down -v
+    ```
+
+## 8. CI/CD Configuration
+
+A basic GitHub Actions workflow is provided in `.github/workflows/main.yml`.
+
+**Current Workflow:**
+
+*   **`build-and-test` job:**
+    *   Triggers on `push` to `main` and `develop` branches, and `pull_request` to `main` and `develop`.
+    *   Sets up Java 17.
+    *   Starts a PostgreSQL service container for isolated testing.
+    *   Builds the Maven project and runs all tests, including JaCoCo code coverage analysis.
+    *   Uploads the JaCoCo report as an artifact.
+    *   **Note:** The `pom.xml` is configured to enforce an 80% line coverage threshold; the build will fail if this is not met.
+
+**Deployment Jobs (Commented Out):**
+The workflow includes commented-out `deploy-dev` and `deploy-prod` jobs. These provide a template for:
+*   Building and pushing Docker images to a container registry (e.g., Docker Hub, AWS ECR).
+*   Deploying the application to a target environment (e.g., Kubernetes, AWS ECS) using appropriate CLI tools.
+*   These jobs use environment variables (`DOCKER_USERNAME`, `DOCKER_PASSWORD`) and assume secrets are configured in GitHub.
+
+**To enable deployment:**
+1.  Uncomment the `deploy-dev` and `deploy-prod` jobs.
+2.  Replace placeholder values (e.g., `yourdockerrepo`, `your-ecs-cluster`, `your-ecs-service`).
+3.  Configure GitHub Secrets for `DOCKER_USERNAME`, `DOCKER_PASSWORD`, and any cloud provider credentials (e.g., `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+4.  Set up GitHub Environments (e.g., `Development`, `Production`) if you need environment-specific protection rules or variables.
+
+## 9. Deployment Guide
+
+This section outlines general steps for deploying the backend to a production environment.
+
+1.  **Prepare Production Environment:**
+    *   **Server:** Provision a Linux server (e.g., AWS EC2, Google Cloud Compute, Azure VM) or a managed container service (e.g., Kubernetes, AWS ECS, Google Cloud Run).
+    *   **Database:** Set up a managed PostgreSQL database service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL). Ensure it's secure and properly configured for backups.
+    *   **Networking:** Configure security groups/firewalls to allow traffic only from necessary sources (e.g., load balancer, internal services).
+
+2.  **Containerize and Publish Image:**
+    *   Ensure your `Dockerfile` is optimized for production (e.g., multi-stage build for smaller image size, `SPRING_PROFILES_ACTIVE=prod`).
+    *   Build the Docker image:
         ```bash
-        -v $(pwd)/data:/app/data
+        docker build -t yourdockerrepo/my-mobile-backend:latest .
+        ```
+    *   Login to your container registry (e.g., Docker Hub, AWS ECR, GCR):
+        ```bash
+        docker login
+        ```
+    *   Push the image:
+        ```bash
+        docker push yourdockerrepo/my-mobile-backend:latest
         ```
 
----
+3.  **Configure Environment Variables:**
+    *   For the production deployment, ensure the following environment variables (defined in `application-prod.properties` and `Dockerfile`) are correctly set in your deployment environment (e.g., Kubernetes manifests, ECS task definitions, CI/CD pipeline):
+        *   `SPRING_PROFILES_ACTIVE=prod`
+        *   `DB_URL` (JDBC URL for your production PostgreSQL instance)
+        *   `DB_USERNAME`
+        *   `DB_PASSWORD`
+        *   `JWT_SECRET` (Use a strong, unique secret, preferably managed by a secret manager like AWS Secrets Manager or Vault).
 
-## 4. Testing
+4.  **Database Migrations (Flyway):**
+    *   Flyway is configured to run on application startup (`spring.flyway.enabled=true`). When the application starts in production, it will apply any pending migrations to the `alx_mobile_db` database.
+    *   Ensure your database user has sufficient privileges to perform schema modifications during migrations.
+    *   Consider managing Flyway migrations as a separate step in your CI/CD pipeline, especially in complex scenarios or for zero-downtime deployments.
 
-### Unit and Integration Tests
+5.  **Deployment to Target Environment:**
+    *   **Kubernetes:** Create `Deployment` and `Service` manifests. Use `Ingress` for external access, integrating with a Load Balancer and potentially Cert-Manager for TLS.
+    *   **AWS ECS/Fargate:** Define an `ECS Task Definition` referencing your Docker image and environment variables. Create or update an `ECS Service` to run and maintain the desired number of tasks. Use an `Application Load Balancer (ALB)` for external access.
+    *   **Other PaaS (e.g., Heroku, Render):** Follow their specific deployment instructions, providing your Docker image or buildpack settings and environment variables.
 
-The project includes extensive unit and integration tests using Google Test.
+6.  **Monitoring & Logging:**
+    *   Integrate with a centralized logging solution (e.g., ELK Stack, Splunk, Datadog) to collect logs from your application instances.
+    *   Set up monitoring tools (e.g., Prometheus/Grafana, Datadog, New Relic) to track application metrics (CPU, memory, request rates, error rates, cache hit ratios from Actuator endpoints).
+    *   Configure alerts for critical issues.
 
-**To run tests:**
+7.  **Security Best Practices:**
+    *   **TLS/SSL:** Always use HTTPS in production. Configure your load balancer or application server for TLS termination.
+    *   **Secrets Management:** Never hardcode secrets. Use environment variables, secret management services (e.g., AWS Secrets Manager, Vault), or Kubernetes Secrets.
+    *   **Least Privilege:** Grant the application only the necessary permissions to access databases and other resources.
+    *   **Vulnerability Scanning:** Regularly scan your Docker images and dependencies for known vulnerabilities.
+    *   **Backup & Recovery:** Implement a robust database backup strategy and test recovery procedures.
 
-```bash
-cd build
-./mobile_backend_tests
-```
+## 10. Technologies Used
 
-**Coverage Goals**: The goal is 80%+ coverage for core logic (services, utilities). The provided tests aim to cover critical paths. Tools like `gcov` or `lcov` can be integrated with CMake to generate coverage reports.
+*   **Backend:** Java 17, Spring Boot 3.2.5
+*   **Web Framework:** Spring Web
+*   **ORM:** Spring Data JPA, Hibernate
+*   **Database:** PostgreSQL
+*   **Database Migrations:** Flyway
+*   **Authentication/Authorization:** Spring Security, JWT (jjwt)
+*   **API Documentation:** Springdoc OpenAPI (Swagger UI)
+*   **Dependency Management:** Maven
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo
+*   **Caching:** Spring Cache, Caffeine
+*   **Rate Limiting:** Google Guava RateLimiter
+*   **Logging:** SLF4J, Logback
+*   **Monitoring:** Spring Boot Actuator
+*   **Containerization:** Docker, Docker Compose
+*   **CI/CD:** GitHub Actions
+*   **Code Quality:** Lombok
 
-### API Tests
+## 11. Contributing
 
-You can use tools like `curl` (command-line), Postman, Insomnia, or browser developer tools to interact with the API.
+Feel free to fork the repository, open issues, and submit pull requests.
 
-1.  **Start the server** (see [Running the Application](#running-the-application)).
-2.  **Register a user**:
-    ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{"username":"testuser", "email":"test@example.com", "password":"password123"}' http://localhost:18080/auth/register
-    ```
-3.  **Login and get JWT token**:
-    ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{"identifier":"testuser", "password":"password123"}' http://localhost:18080/auth/login
-    ```
-    *   Copy the `token` from the response.
-4.  **Access an authenticated endpoint (e.g., get user profile)**:
-    ```bash
-    TOKEN="<YOUR_JWT_TOKEN_HERE>"
-    curl -X GET -H "Authorization: Bearer $TOKEN" http://localhost:18080/users/me
-    ```
-Refer to `API_DOCS.md` for a full list of endpoints and example requests.
+## 12. License
 
-### Performance Tests
-
-For performance testing, you can use:
-
-*   **Apache JMeter**: A powerful tool for load testing web applications.
-*   **`wrk`**: A modern HTTP benchmarking tool capable of generating significant load.
-*   **`ab` (ApacheBench)**: A simple command-line tool for basic load testing.
-
-**Example `wrk` command (after starting the server):**
-
-```bash
-# Test / (root endpoint)
-wrk -t4 -c20 -d30s http://localhost:18080/
-
-# Test an authenticated endpoint (requires a valid token)
-# Make sure your JWT token is long-lived or refreshed for extended tests.
-# You might need to script `wrk` with Lua for dynamic token injection or use JMeter.
-# Example with hardcoded token (for short bursts):
-wrk -t4 -c20 -d30s --header "Authorization: Bearer <YOUR_JWT_TOKEN>" http://localhost:18080/users/me
-```
-
-Analyze metrics like requests per second, latency, and error rates.
-
----
-
-## 5. API Documentation
-
-Detailed API documentation, including all available endpoints, request/response formats, authentication requirements, and example usage, is provided in `API_DOCS.md`.
-
-## 6. Deployment Guide
-
-### Local Deployment (Manual)
-
-1.  Follow [Setup and Installation](#setup-and-installation) and [Building the Application](#building-the-application) to get the `mobile_backend` executable.
-2.  Create a `data` directory in your desired application root: `mkdir -p /path/to/app/data`.
-3.  Create a `.env` file in the same directory, customizing variables for your production environment (especially `JWT_SECRET`).
-4.  Run the application:
-    ```bash
-    cd /path/to/app
-    source .env && ./build/mobile_backend # Or copy the executable to /path/to/app
-    ```
-5.  Consider using a process manager like `systemd`, `Supervisor`, or `pm2` (if you have Node.js installed) to keep the application running, restart on crashes, and manage logs.
-
-### Docker Deployment
-
-Docker is the recommended deployment method for production due to its consistency and ease of management.
-
-1.  Ensure you have built and pushed your Docker image to a registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
-    *   The CI/CD pipeline is configured to push to Docker Hub automatically on `main` branch pushes.
-    *   Replace `yourdockerhubusername` in `.github/workflows/main.yml` and `Dockerfile` with your actual Docker Hub username.
-2.  On your server, pull the image:
-    ```bash
-    docker pull yourdockerhubusername/mobile-backend:latest
-    ```
-3.  Run the container:
-    ```bash
-    docker run -d \
-      --restart=always \
-      -p 80:18080 \
-      -e APP_PORT=18080 \
-      -e DATABASE_PATH=/app/data/mobile_backend.db \
-      -e JWT_SECRET="YOUR_STRONG_PROD_JWT_SECRET_HERE" \
-      -e CACHE_TTL_SECONDS=600 \
-      -e RATE_LIMIT_MAX_REQUESTS=100 \
-      -e RATE_LIMIT_WINDOW_SECONDS=60 \
-      -v /var/lib/mobile-backend/data:/app/data \
-      --name mobile_backend_prod \
-      yourdockerhubusername/mobile-backend:latest
-    ```
-    *   `-p 80:18080`: Maps external port 80 to container's port 18080. Adjust as needed.
-    *   `-v /var/lib/mobile-backend/data:/app/data`: **Crucial for persistent data!** Mounts a host directory for the SQLite database.
-    *   **Always use a strong, unique `JWT_SECRET` in production.**
-    *   Consider using a secrets management system (e.g., AWS Secrets Manager, HashiCorp Vault) for `JWT_SECRET` instead of direct environment variables in production.
-4.  **Logging**: The application logs to `stdout` (which Docker captures) and to `logs/mobile_backend.log` inside the container. You can use `docker logs mobile_backend_prod` to view logs or mount a volume for logs: `-v /var/log/mobile-backend:/app/logs`.
-5.  **Reverse Proxy**: For public-facing deployments, it's highly recommended to place a reverse proxy (like Nginx or Caddy) in front of the Docker container for SSL/TLS termination, advanced load balancing, and additional security features.
-
----
-
-## 7. CI/CD Pipeline
-
-A GitHub Actions workflow (`.github/workflows/main.yml`) is configured to automate the following:
-
-1.  **On Push/Pull Request to `main` branch**:
-    *   **Build**: Compiles the C++ application and tests using CMake on an `ubuntu-latest` runner.
-    *   **Test**: Runs all Google Test unit and integration tests.
-2.  **On Push to `main` branch (after successful build & test)**:
-    *   **Docker Build & Push**: Builds the Docker image and pushes it to Docker Hub.
-        *   Requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` to be set as GitHub Secrets in your repository settings.
-        *   The image will be tagged `yourdockerhubusername/mobile-backend:latest`.
-
-This pipeline ensures that changes are automatically tested and a deployable Docker image is created upon successful integration into the `main` branch.
-
----
-
-## 8. Project Structure
-
-```
-.
-├── .github/                     # GitHub Actions CI/CD workflows
-│   └── workflows/
-│       └── main.yml             # CI/CD pipeline configuration
-├── src/
-│   ├── controllers/             # API endpoint handlers (Auth, User, Task)
-│   ├── models/                  # Data structures (User, Task)
-│   ├── services/                # Business logic (Auth, User, Task Services)
-│   ├── utils/                   # Utility functions and middlewares
-│   │   ├── auth_middleware.h    # JWT authentication middleware
-│   │   ├── cache.h              # In-memory caching layer
-│   │   ├── database.h           # SQLite database wrapper
-│   │   ├── error_middleware.h   # Custom exception handling & middleware
-│   │   ├── jwt_manager.h        # JWT token creation and verification
-│   │   ├── logger.h             # spdlog configuration
-│   │   └── rate_limiter.h       # IP-based rate limiting
-│   └── main.cpp                 # Main application entry point, Crow app setup
-├── tests/                       # Google Test unit and integration tests
-├── CMakeLists.txt               # CMake build configuration
-├── Dockerfile                   # Docker setup for building and running
-├── .env.example                 # Example environment variables
-├── API_DOCS.md                  # API documentation (OpenAPI/Swagger format can be generated from this)
-├── ARCHITECTURE.md              # Architecture overview
-└── README.md                    # Comprehensive project README (this file)
-```
-
----
-
-## 9. Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix (`git checkout -b feature/your-feature-name`).
-3.  Implement your changes, adhering to the coding style.
-4.  Write comprehensive tests for your changes.
-5.  Ensure all existing tests pass (`./build/mobile_backend_tests`).
-6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
-7.  Push to your fork (`git push origin feature/your-feature-name`).
-8.  Create a Pull Request to the `main` branch of this repository.
-
----
-
-## 10. License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is open-source and available under the [MIT License](LICENSE).
 ```

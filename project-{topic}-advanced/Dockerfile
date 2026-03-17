@@ -1,66 +1,43 @@
 ```dockerfile
-# Dockerfile for Mobile Backend
+# Use a slim OpenJDK 17 base image for smaller size
+FROM openjdk:17-jdk-slim as builder
 
-# --- Build Stage ---
-FROM gcc:10-buster AS builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libsqlite3-dev \
-    libspdlog-dev \
-    git \
-    libssl-dev \
-    # Google Test dependencies (if building from source)
-    # For simplicity, we assume GTest is available or installed via dev package
-    # For a robust setup, consider vcpkg or Conan within the build stage
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy CMakeLists.txt and source code
-COPY CMakeLists.txt ./
-COPY src/ ./src/
-COPY tests/ ./tests/
+# Copy the Maven wrapper files and pom.xml
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
 
-# Copy external header-only libraries if not managed by package manager
-# Example: Crow and jwt-cpp
-# Assuming 'libs' directory contains crow_all.h and jwt-cpp
-COPY libs/ ./libs/
+# Download dependencies (to leverage Docker layer caching)
+RUN ./mvnw dependency:go-offline -B
 
-# Create build directory and compile
-RUN cmake -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DJWT_CPP_PATH=/app/libs/jwt-cpp \
-    -DCROW_HEADERS_PATH=/app/libs
-RUN cmake --build build
+# Copy the rest of the application source code
+COPY src src
 
-# --- Runtime Stage ---
-FROM debian:buster-slim
+# Build the application
+RUN ./mvnw install -DskipTests
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libsqlite3-0 \
-    libspdlog0 \
-    # For JWT if it has runtime dependencies (e.g., OpenSSL)
-    libssl1.1 \
-    && rm -rf /var/lib/apt/lists/*
+# Package the application as a runnable JAR
+FROM openjdk:17-jdk-slim
 
-# Set working directory
-WORKDIR /app
+# Set volume for logs and configuration
+VOLUME /tmp
+ARG JAR_FILE=/app/target/*.jar
 
-# Copy the built executable from the builder stage
-COPY --from=builder /app/build/mobile_backend ./mobile_backend
+# Copy the built JAR from the builder stage
+COPY --from=builder ${JAR_FILE} app.jar
 
-# Create data directory for SQLite database
-RUN mkdir -p /app/data
+# Expose the port the application runs on
+EXPOSE 8080
 
-# Expose the port (default 18080 as per .env.example)
-EXPOSE 18080
+# Environment variables for production (can be overridden by docker-compose or Kubernetes)
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV DB_URL=jdbc:postgresql://postgres:5432/alx_mobile_db_prod
+ENV DB_USERNAME=alxuser_prod
+ENV DB_PASSWORD=alxpassword_prod
 
 # Command to run the application
-# Use a default database path, can be overridden by mounting a volume
-CMD ["./mobile_backend"]
+ENTRYPOINT ["java","-Djava.security.egd=file:/dev/urandom","-jar","/app.jar"]
 ```
