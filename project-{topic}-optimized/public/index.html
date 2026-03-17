@@ -3,62 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Processing System</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Payment Processor Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background-color: #0056b3; }
+        .message, .error { padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+        .message { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .token-display, .user-info {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .section { margin-top: 30px; padding-top: 20px; border-top: 1px dashed #eee; }
+        #account-list, #transaction-list, #payment-details {
+            list-style: none;
+            padding: 0;
+        }
+        #account-list li, #transaction-list li, #payment-details li {
+            background: #f8f9fa;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #e2e6ea;
+        }
+        #account-list li strong, #transaction-list li strong {
+            color: #007bff;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1>Payment Processing System Dashboard</h1>
+        <h1>Payment Processor Frontend Demo</h1>
+        <p>This is a simple client to demonstrate interaction with the Payment Processing System API.</p>
+
+        <div id="status-message" class="message" style="display:none;"></div>
+        <div id="error-message" class="error" style="display:none;"></div>
 
         <div id="auth-section">
             <h2>Authentication</h2>
+            <form id="register-form">
+                <h3>Register</h3>
+                <label for="reg-username">Username:</label>
+                <input type="text" id="reg-username" name="username" value="testuser" required>
+                <label for="reg-email">Email:</label>
+                <input type="email" id="reg-email" name="email" value="test@example.com" required>
+                <label for="reg-password">Password:</label>
+                <input type="password" id="reg-password" name="password" value="password123" required>
+                <button type="submit">Register</button>
+            </form>
+
             <form id="login-form">
                 <h3>Login</h3>
-                <input type="email" id="login-email" placeholder="Email" required>
-                <input type="password" id="login-password" placeholder="Password" required>
+                <label for="login-email">Email:</label>
+                <input type="email" id="login-email" name="email" value="admin@example.com" required>
+                <label for="login-password">Password:</label>
+                <input type="password" id="login-password" name="password" value="adminpassword" required>
                 <button type="submit">Login</button>
             </form>
-            <p id="auth-message"></p>
+
+            <div id="logged-in-info" style="display:none;">
+                <h3>Logged In:</h3>
+                <div class="user-info">
+                    <p><strong>User ID:</strong> <span id="user-id"></span></p>
+                    <p><strong>Email:</strong> <span id="user-email"></span></p>
+                    <p><strong>Role:</strong> <span id="user-role"></span></p>
+                </div>
+                <div class="token-display">
+                    <p><strong>JWT Token:</strong> <span id="jwt-token"></span></p>
+                </div>
+                <button id="logout-button">Logout</button>
+            </div>
         </div>
 
-        <div id="dashboard" style="display: none;">
-            <h2>Welcome!</h2>
-            <button id="logout-button">Logout</button>
-
-            <section id="customer-section">
-                <h3>Customers</h3>
-                <form id="create-customer-form">
-                    <input type="text" id="customer-name" placeholder="Customer Name" required>
-                    <input type="email" id="customer-email" placeholder="Customer Email" required>
-                    <input type="password" id="customer-password" placeholder="Customer Password" required>
-                    <select id="customer-role">
-                        <option value="customer">Customer</option>
-                        <option value="admin">Admin</option>
+        <div id="app-features" style="display:none;">
+            <div class="section">
+                <h2>Accounts</h2>
+                <form id="create-account-form">
+                    <h3>Create New Account</h3>
+                    <label for="account-currency">Currency:</label>
+                    <select id="account-currency" name="currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
                     </select>
-                    <button type="submit">Create Customer</button>
+                    <label for="account-balance">Initial Balance:</label>
+                    <input type="number" id="account-balance" name="balance" value="0" min="0" step="0.01">
+                    <button type="submit">Create Account</button>
                 </form>
-                <div id="customer-list"></div>
-            </section>
 
-            <section id="transaction-section">
-                <h3>Create Transaction</h3>
-                <form id="create-transaction-form">
-                    <input type="text" id="transaction-customer-id" placeholder="Customer ID (e.g., cust_abc)" required>
-                    <input type="text" id="transaction-payment-method-id" placeholder="Payment Method ID (e.g., pm_xyz)" required>
-                    <input type="number" id="transaction-amount" placeholder="Amount" step="0.01" required>
-                    <input type="text" id="transaction-currency" placeholder="Currency (e.g., USD)" value="USD" required>
-                    <select id="transaction-type" required>
-                        <option value="debit">Debit</option>
-                        <option value="credit">Credit</option>
+                <h3>My Accounts</h3>
+                <button id="refresh-accounts-button">Refresh Accounts</button>
+                <ul id="account-list"></ul>
+            </div>
+
+            <div class="section">
+                <h2>Payments</h2>
+                <form id="initiate-payment-form">
+                    <h3>Initiate Payment</h3>
+                    <label for="payment-source-account">Source Account ID:</label>
+                    <input type="text" id="payment-source-account" name="sourceAccountId" required>
+                    <label for="payment-destination-account">Destination Account ID:</label>
+                    <input type="text" id="payment-destination-account" name="destinationAccountId" required>
+                    <label for="payment-amount">Amount:</label>
+                    <input type="number" id="payment-amount" name="amount" min="0.01" step="0.01" value="100" required>
+                    <label for="payment-currency">Currency:</label>
+                    <select id="payment-currency" name="currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
                     </select>
-                    <input type="text" id="transaction-description" placeholder="Description">
-                    <button type="submit">Process Transaction</button>
+                    <label for="payment-method">Payment Method:</label>
+                    <select id="payment-method" name="paymentMethod">
+                        <option value="wallet">Wallet</option>
+                        <option value="card">Card</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                    </select>
+                    <label for="payment-description">Description:</label>
+                    <input type="text" id="payment-description" name="description" value="Demo payment">
+                    <label for="idempotency-key">Idempotency Key (UUID):</label>
+                    <input type="text" id="idempotency-key" name="idempotencyKey" placeholder="Generate UUID or enter existing" required>
+                    <button type="button" id="generate-uuid-button">Generate UUID</button>
+                    <button type="submit">Initiate Payment</button>
                 </form>
-                <h3>Recent Transactions</h3>
-                <div id="transaction-list"></div>
-            </section>
+
+                <form id="refund-payment-form">
+                    <h3>Refund Payment</h3>
+                    <label for="refund-payment-id">Original Payment ID:</label>
+                    <input type="text" id="refund-payment-id" name="paymentId" required>
+                    <label for="refund-amount">Amount (optional, for partial refund):</label>
+                    <input type="number" id="refund-amount" name="amount" min="0.01" step="0.01">
+                    <button type="submit">Refund Payment</button>
+                </form>
+                
+                <h3>Payment Details Lookup</h3>
+                <label for="lookup-payment-id">Payment ID:</label>
+                <input type="text" id="lookup-payment-id" placeholder="Enter Payment ID">
+                <button id="lookup-payment-button">Lookup Payment</button>
+                <div id="payment-details-output"></div>
+            </div>
+
+            <div class="section">
+                <h2>Transactions</h2>
+                <h3>Transactions for Account: <span id="selected-account-id">None</span></h3>
+                <button id="refresh-transactions-button">Refresh Transactions</button>
+                <ul id="transaction-list"></ul>
+            </div>
         </div>
     </div>
-    <script src="app.js"></script>
+
+    <script src="script.js"></script>
 </body>
 </html>

@@ -1,16 +1,24 @@
 const rateLimit = require('express-rate-limit');
-const logger = require('./logger');
+const config = require('../config');
+const logger = require('../utils/logger');
 
-const rateLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // Max 100 requests per 1 minute
-  message: 'Too many requests from this IP, please try again after a minute',
+// Global API rate limiter
+const apiLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs, // 15 minutes
+  max: config.rateLimit.max,           // Max 100 requests per 15 minutes per IP
+  message: config.rateLimit.message,
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
+  keyGenerator: (req, res) => {
+    // Use the client's IP address as the key
+    return req.ip;
+  },
   handler: (req, res, next, options) => {
-    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    logger.warn(`Rate limit exceeded for IP: ${req.ip} on URL: ${req.originalUrl}`);
     res.status(options.statusCode).send(options.message);
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
-module.exports = { rateLimiter };
+module.exports = {
+  apiLimiter,
+};

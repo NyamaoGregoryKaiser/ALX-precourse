@@ -1,47 +1,44 @@
-require('dotenv').config();
-const http = require('http');
+require('dotenv').config(); // Load environment variables first
 const app = require('./app');
-const sequelize = require('./db/models').sequelize;
-const logger = require('./middleware/logger');
+const config = require('./config');
+const logger = require('./utils/logger');
+const knex = require('knex');
+const knexConfig = require('./db/knexfile');
 
-const PORT = process.env.PORT || 3000;
+// Initialize Knex with the appropriate configuration based on environment
+const db = knex(knexConfig[config.env]);
 
-const server = http.createServer(app);
+// Test database connection
+db.raw('SELECT 1')
+  .then(() => {
+    logger.info('Database connected successfully.');
+  })
+  .catch((err) => {
+    logger.error('Database connection failed:', err);
+    process.exit(1); // Exit process if DB connection fails
+  });
 
-const startServer = async () => {
-  try {
-    // Test database connection and run migrations
-    await sequelize.authenticate();
-    logger.info('Database connection has been established successfully.');
+const PORT = config.port;
 
-    // Run migrations on server start (optional, can be done manually)
-    // In production, migrations are usually run as a separate step.
-    // await sequelize.sync({ alter: true }); // This will create/alter tables
-    // To run migrations using CLI, use `npm run db:migrate`
+const server = app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT} in ${config.env} mode`);
+  logger.info(`Access API docs at http://localhost:${PORT}/api-docs`);
+});
 
-    server.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    logger.error('Unable to connect to the database or start server:', error);
-    process.exit(1);
-  }
-};
-
-startServer();
-
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections and uncaught exceptions
 process.on('unhandledRejection', (err) => {
-  logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
-  logger.error(err.name, err.message, err.stack);
+  logger.error('Unhandled Rejection:', err.message, err);
   server.close(() => {
-    process.exit(1);
+    process.exit(1); // Exit process after closing server
   });
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-  logger.error(err.name, err.message, err.stack);
-  process.exit(1);
+  logger.error('Uncaught Exception:', err.message, err);
+  server.close(() => {
+    process.exit(1); // Exit process after closing server
+  });
 });
+
+// Export server for testing purposes
+module.exports = server;

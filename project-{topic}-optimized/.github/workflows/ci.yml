@@ -1,5 +1,4 @@
-```yaml
-name: Scrapineer CI Pipeline
+name: Node.js CI/CD
 
 on:
   push:
@@ -12,104 +11,146 @@ on:
       - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
+    name: Build and Test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: ${{ secrets.DB_USER_TEST }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD_TEST }}
+          POSTGRES_DB: ${{ secrets.DB_NAME_TEST }}
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven' # Cache Maven dependencies
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
 
-      - name: Build with Maven and Run Tests
-        run: mvn -B package --file pom.xml
+    - name: Install dependencies
+      run: npm install
 
-      - name: Upload JaCoCo Code Coverage Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/jacoco.xml
-          # Set a retention period (e.g., 5 days)
-          retention-days: 5
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        echo "Waiting for PostgreSQL to start..."
+        ATTEMPTS=0
+        until nc -z localhost 5433 || [ $ATTEMPTS -eq 30 ]; do
+          ATTEMPTS=$((ATTEMPTS+1))
+          echo "PostgreSQL not ready yet, retrying in 2 seconds (attempt $ATTEMPTS)..."
+          sleep 2
+        done
+        nc -z localhost 5433 && echo "PostgreSQL is up and running!" || { echo "PostgreSQL failed to start!"; exit 1; }
 
-      - name: Publish Test Report
-        uses: dorny/test-reporter@v1
-        if: success() || failure() # Run this step even if tests fail
-        with:
-          name: Maven Surefire Tests # Name of the check run
-          path: target/surefire-reports/*.xml # Path to test results
-          reporter: java-junit # Format of test results
-          # Optional: Github token for publishing reports to GitHub Checks API
-          token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up test environment variables
+      run: |
+        echo "DB_HOST_TEST=localhost" >> $GITHUB_ENV
+        echo "DB_PORT_TEST=5433" >> $GITHUB_ENV
+        echo "DB_USER_TEST=${{ secrets.DB_USER_TEST }}" >> $GITHUB_ENV
+        echo "DB_PASSWORD_TEST=${{ secrets.DB_PASSWORD_TEST }}" >> $GITHUB_ENV
+        echo "DB_NAME_TEST=${{ secrets.DB_NAME_TEST }}" >> $GITHUB_ENV
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> $GITHUB_ENV
+        echo "REDIS_HOST=localhost" >> $GITHUB_ENV # Redis is not used in CI for tests for simplicity
+        echo "REDIS_PORT=6379" >> $GITHUB_ENV
+        echo "NODE_ENV=test" >> $GITHUB_ENV
 
-  # Docker build and push job (optional, depends on deployment strategy)
-  build-docker-image:
-    needs: build-and-test # Only run if build and test pass
-    if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Run database migrations and seeds
+      run: npm run db:migrate -- --env test && npm run db:seed -- --env test
+      # Use --env test to ensure knex uses the test database configuration
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+    - name: Run tests
+      run: npm test -- --coverage
+      env:
+        # Pass secrets as environment variables for the test run
+        # DB_USER_TEST etc. are already set via GITHUB_ENV
+        DB_HOST: localhost # For knexfile.js, use default dev settings
+        DB_PORT: 5433 # Use test DB port
+        DB_USER: ${{ secrets.DB_USER_TEST }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD_TEST }}
+        DB_NAME: ${{ secrets.DB_NAME_TEST }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        NODE_ENV: test
 
-      - name: Build Maven Package
-        run: mvn -B package -DskipTests --file pom.xml # Skip tests here as they ran in previous job
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage/
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKER_USERNAME }}/scrapineer
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=,suffix=,format=short
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Simple deployment job (conceptual)
+  # Deployment job (example, requires further setup for a real deployment)
   deploy:
-    needs: build-docker-image # Only deploy if Docker image is built
-    if: success() && github.ref == 'refs/heads/main' # Only deploy main branch to production
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    environment: Production
+    needs: build_and_test
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+
+    environment:
+      name: Production
+      url: https://your-app-url.com
+
     steps:
-      - name: Deploy to Production Server
-        run: |
-          echo "Simulating deployment to production server..."
-          echo "Connecting to production server via SSH and pulling new Docker image."
-          echo "User: ${{ secrets.SSH_USERNAME }}"
-          echo "Host: ${{ secrets.PRODUCTION_SERVER_HOST }}"
-          # Example of a deployment command - replace with actual commands for your setup
-          # ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.PRODUCTION_SERVER_HOST }} "\
-          #   docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} && \
-          #   docker pull ${{ secrets.DOCKER_USERNAME }}/scrapineer:latest && \
-          #   docker-compose -f /path/to/docker-compose.yml down && \
-          #   docker-compose -f /path/to/docker-compose.yml up -d"
-          echo "Deployment script would be executed here."
-          echo "Production deployment initiated for ${{ secrets.DOCKER_USERNAME }}/scrapineer:latest"
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: yourusername/payment-processor:${{ github.sha }}, yourusername/payment-processor:latest
+        secrets: |
+          DB_HOST_PROD=${{ secrets.DB_HOST_PROD }}
+          DB_PORT_PROD=${{ secrets.DB_PORT_PROD }}
+          DB_USER_PROD=${{ secrets.DB_USER_PROD }}
+          DB_PASSWORD_PROD=${{ secrets.DB_PASSWORD_PROD }}
+          DB_NAME_PROD=${{ secrets.DB_NAME_PROD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET_PROD }}
+          REDIS_HOST=${{ secrets.REDIS_HOST_PROD }}
+          REDIS_PORT=${{ secrets.REDIS_PORT_PROD }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD_PROD }}
+          PAYMENT_GATEWAY_API_KEY=${{ secrets.PAYMENT_GATEWAY_API_KEY_PROD }}
+          PAYMENT_GATEWAY_SECRET=${{ secrets.PAYMENT_GATEWAY_SECRET_PROD }}
+        # Pass production environment variables as build-args or secrets if needed
+
+    - name: Deploy to Server (e.g., via SSH/Ansible/Kubernetes)
+      run: |
+        echo "Deploying to production server..."
+        # Example: SSH into your server and run docker-compose pull/up
+        # This part is highly dependent on your deployment strategy
+        # ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+        #   cd /path/to/your/app &&
+        #   docker-compose pull &&
+        #   docker-compose up -d --build &&
+        #   docker system prune -f
+        # "
+        echo "Deployment script for actual production server would go here."
 ```
+
+---
+
+### 4. Testing & Quality
+
+#### `tests/setup.js` (Jest Setup)
+
+```javascript

@@ -1,73 +1,42 @@
-const AppError = require('../utils/appError');
-const logger = require('./logger');
+const logger = require('../utils/logger');
+const config = require('../config');
 
-const handleCastErrorDB = (err) => {
-  const message = `Invalid ${err.path}: ${err.value}.`;
-  return new AppError(message, 400);
-};
+// Custom Error Class for API errors
+class ApiError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+    Error.captureStackTrace(this, this.constructor); // Captures stack trace
+  }
+}
 
-const handleDuplicateFieldsDB = (err) => {
-  const value = err.parent.detail.match(/(["'])(?:(?=(\\?))\2.)*?\1/)[0];
-  const message = `Duplicate field value: ${value}. Please use another value!`;
-  return new AppError(message, 400);
-};
+// Global error handling middleware
+const errorHandler = (err, req, res, next) => {
+  let { statusCode, message } = err;
 
-const handleValidationErrorDB = (err) => {
-  const errors = Object.values(err.errors).map((el) => el.message);
-  const message = `Invalid input data. ${errors.join('. ')}`;
-  return new AppError(message, 400);
-};
+  // If the error is not an operational error (e.g., from mongoose, joi, etc.)
+  // or a custom ApiError, set a generic 500 status and message.
+  if (!(err instanceof ApiError)) {
+    statusCode = err.statusCode || 500;
+    message = err.message || 'Internal Server Error';
+  }
 
-const handleJWTError = () =>
-  new AppError('Invalid token. Please log in again!', 401);
+  // Log the error
+  logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+  if (config.env === 'development') {
+    logger.error(err.stack); // Log stack trace in development
+  }
 
-const handleJWTExpiredError = () =>
-  new AppError('Your token has expired! Please log in again.', 401);
-
-const sendErrorDev = (err, res) => {
-  res.status(err.statusCode).json({
-    status: err.status,
-    error: err,
-    message: err.message,
-    stack: err.stack,
+  res.status(statusCode).json({
+    status: 'error',
+    code: statusCode,
+    message: message,
+    // Include stack trace only in development
+    ...(config.env === 'development' && { stack: err.stack }),
   });
 };
 
-const sendErrorProd = (err, res) => {
-  // Operational, trusted error: send message to client
-  if (err.isOperational) {
-    res.status(err.statusCode).json({
-      status: err.status,
-      message: err.message,
-    });
-  // Programming or other unknown error: don't leak error details
-  } else {
-    // 1) Log error
-    logger.error('ERROR 💥', err);
-
-    // 2) Send generic message
-    res.status(500).json({
-      status: 'error',
-      message: 'Something went very wrong!',
-    });
-  }
-};
-
-exports.errorHandler = (err, req, res, next) => {
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || 'error';
-
-  if (process.env.NODE_ENV === 'development') {
-    sendErrorDev(err, res);
-  } else if (process.env.NODE_ENV === 'production') {
-    let error = { ...err, name: err.name, message: err.message, stack: err.stack };
-
-    if (error.name === 'CastError') error = handleCastErrorDB(error);
-    if (error.parent && error.parent.code === '23505') error = handleDuplicateFieldsDB(error); // PostgreSQL unique constraint error code
-    if (error.name === 'SequelizeValidationError') error = handleValidationErrorDB(error);
-    if (error.name === 'JsonWebTokenError') error = handleJWTError();
-    if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
-
-    sendErrorProd(error, res);
-  }
+module.exports = {
+  ApiError,
+  errorHandler,
 };

@@ -1,22 +1,21 @@
-```dockerfile
-# Use an official OpenJDK runtime as a parent image
-FROM openjdk:17-jdk-slim
+# Use a Node.js 18 (LTS) image as base
+FROM node:18-alpine
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the packaged Spring Boot application JAR file into the container
-# The `target/scrapineer-0.0.1-SNAPSHOT.jar` path assumes you've run `mvn package`
-COPY target/scrapineer-0.0.1-SNAPSHOT.jar app.jar
+# Copy package.json and package-lock.json (if available)
+# to install dependencies first. This optimizes Docker layer caching.
+COPY package*.json ./
 
-# Expose the port on which the Spring Boot application will run
-EXPOSE 8080
+# Install dependencies
+RUN npm install
 
-# Run the application when the container starts
-# The `java -jar` command starts the Spring Boot application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Copy the rest of the application code
+COPY . .
 
-# Optional: Define build arguments for versioning (if needed)
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
-```
+# Expose the port the app runs on
+EXPOSE 3000
+
+# Define the command to run the application
+CMD ["npm", "start"]
