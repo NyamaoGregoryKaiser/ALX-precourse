@@ -1,101 +1,154 @@
 ```python
 import pytest
-from app.models.user import User
+from httpx import AsyncClient
+from uuid import UUID
 
-@pytest.mark.usefixtures('init_database')
-def test_create_user_admin_success(client, auth_tokens):
-    response = client.post('/api/users/', headers={
-        'Authorization': f'Bearer {auth_tokens["admin_token"]}'
-    }, json={
-        'username': 'newadminuser',
-        'email': 'newadmin@example.com',
-        'password': 'password123',
-        'role': 'admin'
-    })
+from app.core.config import settings
+from app.schemas.user import UserCreate, UserUpdate
+
+API_V1_STR = settings.API_V1_STR
+
+
+@pytest.mark.asyncio
+async def test_create_user_by_superuser(client: AsyncClient, superuser_token_headers: dict[str, str]):
+    """Test creating a new user by a superuser."""
+    user_in = UserCreate(email="newuser@example.com", password="securepassword123")
+    response = await client.post(
+        f"{API_V1_STR}/users/",
+        json=user_in.model_dump(),
+        headers=superuser_token_headers,
+    )
     assert response.status_code == 201
-    data = response.get_json()
-    assert data['username'] == 'newadminuser'
-    assert data['role'] == 'admin'
+    created_user = response.json()
+    assert created_user["email"] == user_in.email
+    assert "id" in created_user
+    assert "hashed_password" not in created_user # Should not expose hash
 
-@pytest.mark.usefixtures('init_database')
-def test_create_user_non_admin_forbidden(client, auth_tokens):
-    response = client.post('/api/users/', headers={
-        'Authorization': f'Bearer {auth_tokens["user_token"]}'
-    }, json={
-        'username': 'nonadminuser', 'email': 'nonadmin@example.com', 'password': 'password123'
-    })
-    assert response.status_code == 403
-    assert 'Admins only access' in response.get_json()['message']
 
-@pytest.mark.usefixtures('init_database')
-def test_get_all_users_admin_success(client, auth_tokens, sample_users):
-    response = client.get('/api/users/', headers={
-        'Authorization': f'Bearer {auth_tokens["admin_token"]}'
-    })
+@pytest.mark.asyncio
+async def test_create_user_without_superuser(client: AsyncClient, normal_user_token_headers: dict[str, str]):
+    """Test creating a new user by a non-superuser (should fail)."""
+    user_in = UserCreate(email="anotheruser@example.com", password="securepassword123")
+    response = await client.post(
+        f"{API_V1_STR}/users/",
+        json=user_in.model_dump(),
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 403 # Forbidden
+
+
+@pytest.mark.asyncio
+async def test_read_users_by_superuser(client: AsyncClient, superuser_token_headers: dict[str, str]):
+    """Test retrieving all users by a superuser."""
+    response = await client.get(
+        f"{API_V1_STR}/users/",
+        headers=superuser_token_headers,
+    )
     assert response.status_code == 200
-    data = response.get_json()
-    assert 'users' in data
-    assert data['total'] >= 4 # Existing users + sample users from fixtures
+    users = response.json()
+    assert isinstance(users, list)
+    assert len(users) >= 1 # At least the seeded admin user
+    assert any(user["email"] == settings.FIRST_SUPERUSER_EMAIL for user in users)
 
-@pytest.mark.usefixtures('init_database')
-def test_get_all_users_non_admin_forbidden(client, auth_tokens):
-    response = client.get('/api/users/', headers={
-        'Authorization': f'Bearer {auth_tokens["user_token"]}'
-    })
-    assert response.status_code == 403
-    assert 'Admins only access' in response.get_json()['message']
 
-@pytest.mark.usefixtures('init_database')
-def test_get_user_by_id_admin_success(client, auth_tokens, sample_users):
-    user_id = sample_users['user1'].id
-    response = client.get(f'/api/users/{user_id}', headers={
-        'Authorization': f'Bearer {auth_tokens["admin_token"]}'
-    })
+@pytest.mark.asyncio
+async def test_read_users_without_superuser(client: AsyncClient, normal_user_token_headers: dict[str, str]):
+    """Test retrieving all users by a non-superuser (should fail)."""
+    response = await client.get(
+        f"{API_V1_STR}/users/",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 403 # Forbidden
+
+
+@pytest.mark.asyncio
+async def test_read_user_me(client: AsyncClient, normal_user_token_headers: dict[str, str]):
+    """Test reading the current authenticated user's profile."""
+    response = await client.get(
+        f"{API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+    )
     assert response.status_code == 200
-    data = response.get_json()
-    assert data['id'] == user_id
-    assert data['username'] == sample_users['user1'].username
+    user_data = response.json()
+    assert user_data["email"] == "testuser@example.com" # From normal_user_token_headers fixture
 
-@pytest.mark.usefixtures('init_database')
-def test_update_user_admin_success(client, auth_tokens, sample_users):
-    user_id = sample_users['user1'].id
-    response = client.put(f'/api/users/{user_id}', headers={
-        'Authorization': f'Bearer {auth_tokens["admin_token"]}'
-    }, json={
-        'username': 'updated.user1',
-        'is_active': False
-    })
+
+@pytest.mark.asyncio
+async def test_update_user_me(client: AsyncClient, normal_user_token_headers: dict[str, str]):
+    """Test updating the current authenticated user's profile."""
+    update_data = UserUpdate(first_name="Test", last_name="User", password="newpassword123")
+    response = await client.put(
+        f"{API_V1_STR}/users/me",
+        json=update_data.model_dump(exclude_unset=True),
+        headers=normal_user_token_headers,
+    )
     assert response.status_code == 200
-    data = response.get_json()
-    assert data['username'] == 'updated.user1'
-    assert data['is_active'] is False
+    updated_user = response.json()
+    assert updated_user["first_name"] == "Test"
+    assert updated_user["last_name"] == "User"
 
-@pytest.mark.usefixtures('init_database')
-def test_update_user_non_admin_forbidden(client, auth_tokens, sample_users):
-    user_id = sample_users['user1'].id
-    response = client.put(f'/api/users/{user_id}', headers={
-        'Authorization': f'Bearer {auth_tokens["user_token"]}'
-    }, json={
-        'username': 'attempted.update'
-    })
-    assert response.status_code == 403
-    assert 'Admins only access' in response.get_json()['message']
+    # Verify password update by trying to login with new password
+    login_data = {
+        "username": updated_user["email"],
+        "password": "newpassword123",
+    }
+    login_response = await client.post(f"{API_V1_STR}/auth/access-token", data=login_data)
+    assert login_response.status_code == 200
 
-@pytest.mark.usefixtures('init_database')
-def test_delete_user_admin_success(client, auth_tokens, sample_users):
-    user_id = sample_users['user2'].id
-    response = client.delete(f'/api/users/{user_id}', headers={
-        'Authorization': f'Bearer {auth_tokens["admin_token"]}'
-    })
-    assert response.status_code == 204
-    assert User.query.get(user_id) is None
 
-@pytest.mark.usefixtures('init_database')
-def test_delete_user_non_admin_forbidden(client, auth_tokens, sample_users):
-    user_id = sample_users['user2'].id
-    response = client.delete(f'/api/users/{user_id}', headers={
-        'Authorization': f'Bearer {auth_tokens["user_token"]}'
-    })
-    assert response.status_code == 403
-    assert 'Admins only access' in response.get_json()['message']
+@pytest.mark.asyncio
+async def test_read_user_by_id_by_superuser(client: AsyncClient, superuser_token_headers: dict[str, str], db):
+    """Test reading a specific user by ID as a superuser."""
+    # First, get the superuser's ID
+    from app.crud.user import user as crud_user
+    admin_user = await crud_user.get_by_email(db, settings.FIRST_SUPERUSER_EMAIL)
+    assert admin_user is not None
+
+    response = await client.get(
+        f"{API_V1_STR}/users/{admin_user.id}",
+        headers=superuser_token_headers,
+    )
+    assert response.status_code == 200
+    user_data = response.json()
+    assert user_data["email"] == settings.FIRST_SUPERUSER_EMAIL
+
+
+@pytest.mark.asyncio
+async def test_read_user_by_id_without_superuser(client: AsyncClient, normal_user_token_headers: dict[str, str], db):
+    """Test reading a specific user by ID as a non-superuser (should fail)."""
+    # First, get the superuser's ID
+    from app.crud.user import user as crud_user
+    admin_user = await crud_user.get_by_email(db, settings.FIRST_SUPERUSER_EMAIL)
+    assert admin_user is not None
+
+    response = await client.get(
+        f"{API_V1_STR}/users/{admin_user.id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 403 # Forbidden
+
+
+@pytest.mark.asyncio
+async def test_delete_user_by_superuser(client: AsyncClient, superuser_token_headers: dict[str, str], db):
+    """Test deleting a user by a superuser."""
+    # Create a dummy user to delete
+    from app.crud.user import user as crud_user
+    from app.schemas.user import UserCreate
+    user_to_delete_in = UserCreate(email="todelete@example.com", password="deletepass")
+    user_to_delete = await crud_user.create(db, obj_in=user_to_delete_in)
+
+    response = await client.delete(
+        f"{API_V1_STR}/users/{user_to_delete.id}",
+        headers=superuser_token_headers,
+    )
+    assert response.status_code == 200
+    deleted_user = response.json()
+    assert deleted_user["email"] == user_to_delete_in.email
+
+    # Verify user is truly deleted
+    get_response = await client.get(
+        f"{API_V1_STR}/users/{user_to_delete.id}",
+        headers=superuser_token_headers,
+    )
+    assert get_response.status_code == 404 # Not Found
 ```

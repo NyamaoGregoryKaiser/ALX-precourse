@@ -1,192 +1,184 @@
 ```markdown
-# Task Management System
+# Data Visualization Tools System
 
-A comprehensive, production-ready Task Management System built with Flask (Python), PostgreSQL, and a minimal HTML/JS frontend demonstration. This project aims to showcase best practices in software engineering, including modular design, API development, database management, testing, CI/CD, and additional enterprise-grade features.
-
-## Table of Contents
-
-1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development (with Docker Compose)](#local-development-with-docker-compose)
-    *   [Running Tests](#running-tests)
-    *   [Running Performance Tests (Locust)](#running-performance-tests-locust)
-4.  [API Documentation](#api-documentation)
-5.  [Deployment Guide](#deployment-guide)
-6.  [Contributing](#contributing)
-7.  [License](#license)
+A comprehensive, production-ready data visualization system built with FastAPI (Python) for the backend and React for the frontend. This system allows users to connect to various data sources, define datasets, create interactive visualizations, and organize them into dashboards.
 
 ## Features
 
-### Core Application (Python/Flask)
-*   **Modular Structure**: Separated into `models`, `services`, `routes`, `utils` for clear separation of concerns.
-*   **RESTful API**: Full CRUD operations for:
-    *   Users
-    *   Projects
-    *   Tasks
-    *   Comments
-*   **Business Logic**: Handled in `services` layer, including validation and state transitions.
-*   **Minimal Frontend**: `app/templates/index.html` and `app/static/script.js` provide a basic interactive interface to demonstrate API calls.
+**Backend (FastAPI - Python):**
+*   **User Management:** Register, login, manage users with JWT-based authentication and role-based authorization (admin/normal user).
+*   **Data Source Management:** CRUD operations for connecting to external databases (e.g., PostgreSQL, MySQL, CSV via mocking). Connection testing.
+*   **Dataset Definition:** CRUD operations for defining specific queries or data extractions from connected data sources.
+*   **Visualization Builder:** CRUD operations for creating various chart types (bar, line, pie, scatter, table) with configurable options.
+*   **Dashboarding:** CRUD operations for creating and managing dashboards composed of multiple visualizations.
+*   **Data Processing:** Services for connecting to databases, executing queries, and transforming raw data for visualization.
+*   **API-driven:** All functionalities exposed via a RESTful API with auto-generated OpenAPI (Swagger UI/ReDoc) documentation.
+*   **Enterprise-grade:**
+    *   **Authentication/Authorization:** JWT.
+    *   **Logging:** Structured logging.
+    *   **Error Handling:** Custom exception handlers.
+    *   **Caching:** Redis-backed caching for data endpoints.
+    *   **Rate Limiting:** Redis-backed rate limiting.
+    *   **Database:** PostgreSQL with SQLAlchemy and Alembic for migrations.
 
-### Database Layer (PostgreSQL with SQLAlchemy)
-*   **SQLAlchemy ORM**: Python objects mapped to database tables.
-*   **Alembic Migrations**: Manages database schema changes.
-*   **Seed Data**: Script (`seed_db.py`) to populate the database with initial users, projects, tasks, and comments.
+**Frontend (React - JavaScript):**
+*   **Minimal UI:** A basic React application demonstrates interaction with the backend API, including user login, displaying data sources, and viewing a sample dashboard. (Further UI development would be an iterative process)
 
-### Configuration & Setup
-*   **`requirements.txt`**: All Python dependencies listed.
-*   **Environment Variables**: Managed via `python-dotenv` and `config.py` for flexible environment-specific settings.
-*   **Dockerization**: `Dockerfile` and `docker-compose.yml` for easy setup and deployment of the Flask app, PostgreSQL, and Redis.
-*   **CI/CD**: GitHub Actions workflow (`.github/workflows/main.yml`) for automated testing and deployment.
+**Infrastructure:**
+*   **Docker:** Containerization using Docker and Docker Compose for easy setup and deployment.
+*   **Environment Configuration:** `python-dotenv` and Pydantic-settings for managing environment variables.
+*   **CI/CD:** Basic GitHub Actions workflow for linting, testing, and optional Docker image building/pushing.
 
-### Testing & Quality (Pytest, Coverage, Locust)
-*   **Unit Tests**: For individual components like models and services (`tests/unit`).
-*   **Integration Tests**: For API endpoints, ensuring correct interaction between components (`tests/integration`).
-*   **Code Coverage**: Aiming for 80%+ coverage (configured in CI).
-*   **Performance Tests**: Conceptual `locustfile.py` to simulate user load and measure API performance.
+## Technology Stack
 
-### Additional Features
-*   **Authentication/Authorization**: JWT (JSON Web Tokens) for secure API access, with role-based access control (Admin, Manager, User).
-*   **Logging and Monitoring**: Structured logging using Python's `logging` module, with a conceptual integration for Sentry.
-*   **Error Handling**: Centralized custom exception classes and error handling middleware for consistent API responses.
-*   **Caching Layer**: Redis-backed caching using `Flask-Caching` to improve response times for frequently accessed data (e.g., user profiles).
-*   **Rate Limiting**: IP-based rate limiting using `Flask-Limiter` to protect against abuse and DDOS attacks.
-
-## Architecture
-
-The system follows a layered architecture:
-
-*   **Presentation Layer (Frontend - Minimal HTML/JS)**: Interacts with the API, handles user input, and displays data.
-*   **API Layer (`app/routes`)**: Flask blueprints defining RESTful endpoints, validating requests, and calling services.
-*   **Service Layer (`app/services`)**: Contains the core business logic, orchestrating interactions between models and handling complex operations.
-*   **Data Access Layer (`app/models`)**: SQLAlchemy models defining database schemas and providing an ORM interface for data persistence.
-*   **Infrastructure (Extensions, Utils)**:
-    *   `app/extensions.py`: Initializes Flask extensions (DB, JWT, Cache, Limiter).
-    *   `app/utils/`: Common utilities, decorators (for logging, auth), and custom exception handling.
-*   **Database (PostgreSQL)**: Relational database for storing application data.
-*   **Cache/Rate Limiter (Redis)**: In-memory data store for caching and rate limiting.
-
-[Refer to ARCHITECTURE.md for a more detailed overview.](./ARCHITECTURE.md)
+*   **Backend:** Python 3.9+, FastAPI, SQLAlchemy, Alembic, Pydantic, python-jose, passlib, fastapi-cache, fastapi-limiter, asyncpg, httpx.
+*   **Database:** PostgreSQL
+*   **Caching/Rate Limiting:** Redis
+*   **Frontend:** React, JavaScript, npm
+*   **Containerization:** Docker, Docker Compose
+*   **CI/CD:** GitHub Actions
+*   **Testing:** Pytest (Python), Jest/React Testing Library (JS - conceptual)
 
 ## Setup and Installation
 
 ### Prerequisites
 
 *   Docker and Docker Compose
-*   Python 3.10+
-*   `pip` (Python package installer)
-*   `git`
+*   Git
 
-### Local Development (with Docker Compose)
+### Steps
 
-1.  **Clone the repository:**
+1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/your-username/task-manager.git
-    cd task-manager
+    git clone https://github.com/your-username/data-viz-system.git
+    cd data-viz-system
     ```
 
-2.  **Create a `.env` file:**
-    Create a file named `.env` in the root directory of the project and add the following content. These will be loaded by `python-dotenv`.
-    ```env
-    FLASK_APP=manage.py
-    FLASK_ENV=development
-    DATABASE_URL=postgresql://user:password@db:5432/task_manager_db
-    SECRET_KEY=your-flask-secret-key-CHANGE-ME
-    JWT_SECRET_KEY=your-jwt-secret-key-CHANGE-ME
-    REDIS_URL=redis://redis:6379/0
-    # SENTRY_DSN=your_sentry_dsn_here # Uncomment and add for Sentry monitoring
-    LOG_LEVEL=DEBUG
+2.  **Configure Environment Variables:**
+    Create a `.env` file in the project root by copying `.env.example`:
+    ```bash
+    cp .env.example .env
     ```
-    *Replace `your-flask-secret-key-CHANGE-ME` and `your-jwt-secret-key-CHANGE-ME` with strong, random strings.*
+    Edit `.env` and fill in your desired values. **Crucially, replace `SECRET_KEY` with a strong, random string.**
 
-3.  **Build and run the Docker containers:**
+    Example `.env` content (adjust `POSTGRES_USER`, `POSTGRES_PASSWORD`, `SECRET_KEY`):
+    ```ini
+    # Core Application Settings
+    PROJECT_NAME="DataVizSystem"
+    PROJECT_VERSION="1.0.0"
+    API_V1_STR="/api/v1"
+
+    # Database Configuration (PostgreSQL)
+    POSTGRES_SERVER="db" # Name of the DB service in docker-compose
+    POSTGRES_USER="admin"
+    POSTGRES_PASSWORD="password"
+    POSTGRES_DB="dataviz_db"
+    POSTGRES_PORT=5432
+
+    # JWT Secret Key (MUST be a long, random string in production)
+    SECRET_KEY="your-super-secret-key-that-is-at-least-32-characters-long-and-randomized"
+    ALGORITHM="HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES=10080
+
+    # Admin User Credentials (for initial seeding)
+    FIRST_SUPERUSER_EMAIL="admin@example.com"
+    FIRST_SUPERUSER_PASSWORD="adminpassword"
+
+    # CORS Origins (Frontend URL)
+    BACKEND_CORS_ORIGINS=["http://localhost:3000"]
+
+    # Redis Configuration
+    REDIS_HOST="redis" # Name of the Redis service in docker-compose
+    REDIS_PORT=6379
+    REDIS_DB=0
+
+    # Environment
+    ENVIRONMENT="development"
+    ```
+
+3.  **Build and Run Docker Containers:**
+    This command will:
+    *   Build the `db` (PostgreSQL), `redis`, `backend` (FastAPI), and `frontend` (React + Nginx) images.
+    *   Start all services.
+    *   Automatically apply Alembic migrations.
+    *   Seed the database with an initial superuser and sample data.
     ```bash
     docker-compose up --build -d
     ```
-    This command will:
-    *   Build the Docker image for the Flask application.
-    *   Start the PostgreSQL database service.
-    *   Start the Redis cache/rate limit service.
-    *   Run database migrations (`flask db_commands upgrade_db`).
-    *   Seed the database with initial data (`flask seed`).
-    *   Start the Flask development server (via `gunicorn` in `Dockerfile` for production, but overridden to `flask run` in `docker-compose.yml` for dev).
+    Wait for all services to become healthy. You can check their status with `docker-compose ps`.
 
-4.  **Access the application:**
-    *   The Flask API will be available at `http://localhost:5000`.
-    *   The minimal frontend demo will be at `http://localhost:5000/`.
+4.  **Access the Application:**
+    *   **Backend API (Swagger UI):** `http://localhost:8000/api/v1/docs`
+    *   **Backend API (ReDoc):** `http://localhost:8000/api/v1/redoc`
+    *   **Frontend:** `http://localhost:3000`
 
-    You can interact with the API using tools like Postman, Insomnia, `curl`, or the provided demo frontend.
+### Initial Credentials
 
-5.  **Stop the containers:**
-    ```bash
-    docker-compose down
-    ```
+*   **Superuser Email:** `admin@example.com` (as defined in `.env`)
+*   **Superuser Password:** `adminpassword` (as defined in `.env`)
 
-### Running Tests
+Use these credentials to log in via the frontend or directly through the `/api/v1/auth/access-token` endpoint in Swagger UI to obtain a JWT token.
 
-1.  **Ensure Docker containers are running (for DB/Redis):**
-    ```bash
-    docker-compose up -d db redis
-    ```
-    Wait for services to be healthy.
+## Usage
 
-2.  **Install Python dependencies (if not already done):**
-    ```bash
-    pip install -r requirements.txt
-    ```
+1.  **Login:** Access the frontend at `http://localhost:3000` or use the `/api/v1/auth/access-token` endpoint in Swagger UI.
+2.  **Explore API:**
+    *   Use the Swagger UI (`http://localhost:8000/api/v1/docs`) to interact with all API endpoints.
+    *   Authenticate by clicking the "Authorize" button and pasting your JWT token (e.g., `Bearer YOUR_TOKEN`).
+    *   Try creating new data sources, datasets, visualizations, and dashboards.
+    *   Fetch data for a visualization or a dashboard to see the data processing in action.
 
-3.  **Run tests with coverage:**
-    ```bash
-    FLASK_ENV=testing coverage run -m pytest tests/unit tests/integration
-    coverage report -m
-    ```
-    *   `FLASK_ENV=testing` ensures the `TestingConfig` is used, which uses an in-memory SQLite database for speed.
-    *   `coverage report -m` will show the test coverage report.
+## Development
 
-4.  **Clean up Docker containers (if started manually for tests):**
-    ```bash
-    docker-compose down
-    ```
+### Backend
 
-### Running Performance Tests (Locust)
+1.  **Install dependencies:** `pip install -r requirements.txt`
+2.  **Run migrations:**
+    *   Set `DATABASE_URL` in `.env` or as an environment variable to point to your development PostgreSQL.
+    *   Generate new migration scripts: `alembic revision --autogenerate -m "Add new feature"`
+    *   Apply migrations: `alembic upgrade head`
+3.  **Run the application locally:** `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+4.  **Testing:** `pytest` (ensure your test database is configured in `tests/conftest.py` or via environment variables).
 
-1.  **Ensure your application and database are running:**
-    ```bash
-    docker-compose up -d
-    ```
+### Frontend
 
-2.  **Start Locust:**
-    ```bash
-    locust -f tests/performance/locustfile.py
-    ```
+1.  **Navigate to frontend directory:** `cd frontend`
+2.  **Install dependencies:** `npm install`
+3.  **Run the development server:** `npm start` (usually on `http://localhost:3000`)
 
-3.  **Access Locust web UI:**
-    Open your browser to `http://localhost:8089`.
-    *   Enter the "Number of users to simulate" and "Hatch rate (users spawned/second)".
-    *   Enter your Flask app's host (e.g., `http://localhost:5000`).
-    *   Click "Start swarming".
+## Project Structure
 
-    *Note: The `locustfile.py` assumes a `testuser` with `userpassword` exists from the `seed_db.py` script. If you re-seed or change this, update the locustfile.*
+Refer to the conceptual file structure at the top of this document. Key directories:
+*   `app/`: FastAPI backend code (API endpoints, core logic, CRUD, models, schemas, services).
+*   `alembic/`: Database migration scripts.
+*   `frontend/`: React single-page application.
+*   `tests/`: Unit and integration tests for the backend.
+*   `docs/`: Additional documentation.
+
+## Testing & Quality
+
+*   **Unit Tests:** Located in `tests/unit/`, focusing on individual functions and components (e.g., `security.py`, `data_transformer.py`).
+*   **Integration Tests:** Located in `tests/integration/`, focusing on API endpoints and their interaction with the database (`users.py`, `auth.py`).
+*   **Code Coverage:** Achieved using `pytest-cov`. The CI/CD pipeline uploads coverage reports.
+*   **Code Quality:** `flake8`, `black`, `isort` are used for linting and auto-formatting.
+
+## Deployment
+
+The `docker-compose.yml` provides a simple deployment strategy for a single server. For production, consider:
+
+*   **Reverse Proxy:** Use Nginx or Caddy in front of the `backend` and `frontend` services for SSL termination, load balancing, and static file serving.
+*   **Scalability:** Deploy to Kubernetes, AWS ECS, Google Cloud Run, etc., for auto-scaling and high availability.
+*   **Managed Databases:** Use managed PostgreSQL and Redis services (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud Memorystore) instead of self-hosting in Docker.
+*   **Secrets Management:** Use proper secrets management (e.g., AWS Secrets Manager, HashiCorp Vault) for database credentials and `SECRET_KEY`.
+*   **Monitoring:** Integrate with monitoring tools like Prometheus and Grafana for metrics, and centralized logging (e.g., ELK stack, Grafana Loki).
+*   **HTTPS:** Always use HTTPS in production.
 
 ## API Documentation
 
-Detailed API endpoints, request/response formats, and authentication requirements are available in [API.md](./API.md).
+FastAPI automatically generates interactive API documentation:
+*   **Swagger UI:** `http://localhost:8000/api/v1/docs`
+*   **ReDoc:** `http://localhost:8000/api/v1/redoc`
 
-## Deployment Guide
+These interfaces allow you to explore all available endpoints, their request/response schemas, and even test them directly after authenticating.
 
-A conceptual deployment guide is available in [DEPLOYMENT.md](./DEPLOYMENT.md). The CI/CD pipeline in `.github/workflows/main.yml` also outlines deployment steps for a production environment.
-
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix.
-3.  Implement your changes and write tests.
-4.  Ensure all tests pass and code coverage remains high.
-5.  Submit a pull request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-```
+## Architecture Documentation

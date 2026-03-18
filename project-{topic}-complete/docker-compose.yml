@@ -2,55 +2,76 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database Service
   db:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: task_manager_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d task_manager_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # Redis Service for Caching and Rate Limiting
   redis:
     image: redis:7-alpine
     restart: always
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "GET", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  app:
-    build: .
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: always
-    ports:
-      - "5000:5000"
+    env_file:
+      - .env
     environment:
-      FLASK_APP: manage.py
-      FLASK_ENV: development # Use 'production' for production
-      DATABASE_URL: postgresql://user:password@db:5432/task_manager_db
-      SECRET_KEY: super-secret-key-replace-in-production
-      JWT_SECRET_KEY: super-jwt-secret-key-replace-in-production
-      REDIS_URL: redis://redis:6379/0
-      SENTRY_DSN: # Add your Sentry DSN here for production logging
+      POSTGRES_SERVER: db # Use the service name for database host
+      REDIS_HOST: redis   # Use the service name for redis host
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app # Mount local app code for development convenience
+      - ./alembic:/app/alembic
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
-    volumes:
-      - .:/app
-    # Use Flask's development server for easier debugging.
-    # For production, gunicorn is used (defined in Dockerfile CMD).
-    command: sh -c "python manage.py db upgrade && python seed_db.py && flask run --host 0.0.0.0"
-    # For production, you'd want to use the gunicorn command from the Dockerfile
-    # command: gunicorn -w 4 -b 0.0.0.0:5000 manage:app
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python -c 'from app.db.init_db import init_db; import asyncio; from app.db.session import AsyncSessionLocal; async def run(): async with AsyncSessionLocal() as db: await init_db(db); await db.close();' && asyncio.run(run())' &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  # Frontend Service (Example using Nginx to serve a React app)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
+    depends_on:
+      - backend
 
 volumes:
-  db_data:
+  postgres_data:
+  redis_data:
 ```
