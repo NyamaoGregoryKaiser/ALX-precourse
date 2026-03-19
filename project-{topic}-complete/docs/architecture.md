@@ -1,138 +1,197 @@
 ```markdown
-# Architecture Documentation: Data Visualization Tools System
+# E-commerce System Architecture Documentation
 
-This document outlines the high-level architecture, component breakdown, and data flow of the Data Visualization Tools System.
+This document describes the overall architecture of the E-commerce Solution System, including its high-level components, design patterns, technology choices, and data flow.
 
 ## 1. High-Level Architecture
 
-The system follows a typical **Microservices/Monolithic (Modular) Architecture** with a clear separation of concerns between the frontend client, the backend API, and supporting infrastructure services.
+The system follows a **microservices-oriented (conceptual) / layered architecture**, separating concerns into distinct services (frontend, backend, database, cache) that communicate primarily via RESTful APIs.
 
-```mermaid
-graph TD
-    UserClient[User (Web Browser)] ---|HTTP/S| Nginx/Proxy(Optional Proxy/Load Balancer)
-    Nginx/Proxy --> Frontend(React Frontend)
-    Frontend ---|HTTP/S API Requests| Nginx/Proxy
-    Nginx/Proxy --> Backend(FastAPI Backend)
-
-    Backend --> DB(PostgreSQL Database)
-    Backend --> Redis(Redis Cache/Rate Limit)
-
-    Backend --&gt;|External Connections| ExternalDBs(External Data Sources - PG, MySQL, CSV)
+```
++----------------+           +------------------+          +-----------------+
+|   User/Admin   |           |    Cloud/CDN     |          |   Third-Party   |
+|     (Browser)  <-----------> (Static Assets)  |          |     Services    |
++--------^-------+           +------------------+          | (Payment, Email)|
+         | (HTTP/S)                                          +--------^--------+
+         |                                                            |
++--------v-------+           +------------------+          +--------v--------+
+|   Frontend App |           |   Load Balancer  |          |   External API  |
+|  (React/TS)    |<--------->|    (Nginx/ALB)   |<--------->|  (Stripe, SQS)  |
++--------^-------+           +--------^---------+          +-----------------+
+         | (HTTP/S)                     |
+         |                              | (HTTP/S)
+         |                              |
++--------v------------------------------v-------------------------------------+
+|                     Backend API Gateway/Proxy (e.g., Nginx or API Gateway)  |
++---------------------------------------^-------------------------------------+
+                                        | (HTTP/S)
+                                        |
++---------------------------------------v-------------------------------------+
+|                         Backend Microservices (Conceptual)                    |
+| +---------------------+   +---------------------+   +---------------------+ |
+| |   Auth & User       |   |   Product & Cat     |   |   Cart & Order      | |
+| |     Service         |   |     Service         |   |     Service         | |
+| | (Node.js/Express/TS)|<->| (Node.js/Express/TS)|<->| (Node.js/Express/TS)| |
+| +---------^-----------+   +---------^-----------+   +---------^-----------+ |
++-----------|-------------------------|-------------------------|-------------+
+            |                         |                         |
+            | (Read/Write)            | (Read/Write)            | (Read/Write)
+            |                         |                         |
++-----------v-------------------------v-------------------------v-------------+
+|                                    Caching Layer (Redis)                    |
++---------------------------------------^-------------------------------------+
+                                        | (Read/Write)
+                                        |
++---------------------------------------v-------------------------------------+
+|                                   Database (PostgreSQL)                     |
++-----------------------------------------------------------------------------+
 ```
 
-**Key Components:**
+## 2. Backend Architecture (Node.js/Express/TypeScript)
 
-*   **User Client:** A web browser interacting with the frontend.
-*   **Nginx/Proxy (Optional):** A reverse proxy for SSL termination, load balancing, and serving static frontend assets in production. For development, the React dev server and FastAPI server run separately or Nginx serves React directly from its build.
-*   **Frontend (React):** The client-side application responsible for user interface, interaction, and making API calls to the backend.
-*   **Backend (FastAPI):** The core application logic, RESTful API endpoints, data processing, and business logic, built using Python.
-*   **PostgreSQL Database:** The primary persistent storage for the backend, storing metadata about users, data sources, datasets, visualizations, and dashboards.
-*   **Redis:** An in-memory data store used for API caching and rate limiting.
-*   **External Data Sources:** Databases (PostgreSQL, MySQL, etc.) or file systems (CSV) that the Data Visualization System connects to in order to fetch raw data.
+The backend follows a modular, layered architecture:
 
-## 2. Backend Architecture (FastAPI)
+### 2.1. Layered Architecture
 
-The FastAPI backend is structured modularly to promote maintainability, scalability, and separation of concerns.
+*   **Routes**: Defines API endpoints and maps them to controller functions. Includes middleware for authentication, authorization, validation, caching, and rate limiting.
+*   **Controllers**: Handle incoming HTTP requests, validate input, call appropriate service methods, and send HTTP responses. They should be thin and focus on request/response handling.
+*   **Services (Business Logic Layer)**: Contain the core business logic. They orchestrate operations, perform complex validations, manage transactions, and interact with repositories. Services are independent of the HTTP context.
+*   **Repositories (Data Access Layer)**: Abstract database interactions. They provide methods for CRUD operations on specific entities using TypeORM.
+*   **Entities**: TypeORM models representing the database schema.
+*   **Middleware**: Functions that execute during the request-response cycle (e.g., authentication, error handling, logging, caching, rate limiting).
+*   **Utils**: Helper functions and classes (e.g., custom error classes, logger, API features for query building).
 
-```mermaid
-graph TD
-    UserRequest[HTTP Request] --> FastAPI(FastAPI Application `app/main.py`)
-
-    FastAPI --> Middleware(CORS, Error Handling, Rate Limiting)
-    Middleware --> Routers(API Routers `app/api/v1/`)
-    Routers --> Dependencies(Auth, DB Session)
-    Routers --> Endpoints(CRUD for Users, DataSources, etc.)
-
-    Endpoints --> Services(DataConnector, DataTransformer)
-    Services --> DB(PostgreSQL `app/db/`, `app/models/`)
-    Services --> Redis(Redis Cache/Rate Limit)
-    Services --> ExternalDataSources(External Databases/Files)
-
-    Endpoints --> CRUD(CRUD Operations `app/crud/`)
-    CRUD --> DB
-    Dependencies --> CRUD
-
-    FastAPI --&gt;|Uses| Settings(Configuration `app/core/config.py`)
-    FastAPI --&gt;|Uses| Security(Auth/Hashing `app/core/security.py`)
-    FastAPI --&gt;|Uses| Exceptions(Custom Errors `app/core/exceptions.py`)
-
-    Routers --&gt;|Uses| Schemas(Pydantic Models `app/schemas/`)
-    Endpoints --&gt;|Uses| Schemas
+```
+         Client (Frontend)
+               |
+               v
++-----------------------------+
+|         Routes              |  <-- /api/v1/products, /api/v1/auth/login
++-----------------------------+
+               |
+               v
++-----------------------------+
+|         Middleware          |  <-- Auth, Rate Limit, Cache, Validation
++-----------------------------+
+               |
+               v
++-----------------------------+
+|         Controllers         |  <-- Handles Request/Response, calls Service
++-----------------------------+
+               |
+               v
++-----------------------------+
+|         Services            |  <-- Business Logic, Transactions
++-----------------------------+
+               |
+               v
++-----------------------------+
+|         Repositories        |  <-- ORM (TypeORM) interactions
++-----------------------------+
+               |
+               v
++-----------------------------+
+|         Database (PostgreSQL) |
++-----------------------------+
 ```
 
-**Key Backend Modules:**
+### 2.2. Modular Design
 
-*   **`app/main.py`:**
-    *   Initializes the FastAPI application.
-    *   Registers API routers.
-    *   Configures middleware (CORS, error handling, rate limiting).
-    *   Handles startup/shutdown events (Redis initialization, DB cleanup).
-*   **`app/core/`:**
-    *   `config.py`: Loads application settings from environment variables.
-    *   `security.py`: Handles password hashing and JWT token creation/verification.
-    *   `exceptions.py`: Defines custom HTTP exceptions for consistent error responses.
-*   **`app/db/`:**
-    *   `base.py`: Defines the SQLAlchemy declarative base and common mixins (UUID, timestamps).
-    *   `session.py`: Manages asynchronous database sessions (`AsyncSessionLocal`).
-    *   `init_db.py`: Script for seeding initial data (e.g., superuser, sample data).
-*   **`app/models/`:**
-    *   SQLAlchemy ORM models defining the database schema (User, DataSource, Dataset, Visualization, Dashboard).
-*   **`app/schemas/`:**
-    *   Pydantic models defining input (Create, Update) and output (Read) data structures for API requests/responses. Ensures data validation and serialization.
-*   **`app/crud/`:**
-    *   `base.py`: A generic CRUD base class for common database operations.
-    *   Specific CRUD classes (`user.py`, `datasource.py`, etc.) inheriting from `CRUDBase` to handle model-specific logic.
-*   **`app/services/`:**
-    *   `data_connector.py`: Manages connections to external data sources (PostgreSQL, CSV, etc.) and executes queries. Handles different connection types and potential query timeouts.
-    *   `data_transformer.py`: Processes raw data fetched from external sources according to visualization configurations (filtering, aggregation, column selection). This is where the core "algorithm design" for data manipulation resides.
-*   **`app/api/v1/`:**
-    *   **`__init__.py`:** Aggregates all endpoint routers into a single API router.
-    *   **`endpoints/`:** Contains individual routers for each resource (auth, users, datasources, datasets, visualizations, dashboards) with their respective CRUD and business logic.
-*   **`app/dependencies.py`:**
-    *   Defines FastAPI dependency injection functions, primarily for database session management and user authentication/authorization (e.g., `get_db`, `get_current_user`, `get_current_active_superuser`).
+The backend is organized into modules, where each module represents a distinct business domain (e.g., `users`, `products`, `orders`, `carts`, `categories`, `auth`, `reviews`). Each module encapsulates its own entities, DTOs, repository, service, controller, and routes, promoting high cohesion and low coupling.
 
-## 3. Data Flow for a Visualization Request
+### 2.3. Data Flow
 
-1.  **Client Request:** A user requests a dashboard or specific visualization data from the frontend.
-2.  **API Call:** The frontend makes an authenticated `POST` request to `/api/v1/visualizations/{id}/data` (or `/api/v1/dashboards/{id}/data`).
-3.  **Authentication/Authorization:** FastAPI's dependencies (`get_current_user`) verify the JWT token and check if the user has permission to access the requested visualization/dashboard and its underlying dataset/data source.
-4.  **Retrieve Visualization Metadata:** The endpoint (`app/api/v1/endpoints/visualizations.py`) queries the PostgreSQL database (via `crud_visualization`) to retrieve the `Visualization` object, eagerly loading its associated `Dataset` and `DataSource` using SQLAlchemy's `selectinload`.
-5.  **Fetch Raw Data:** The `DataConnector` service (`app/services/data_connector.py`) is invoked with the `DataSource` object's connection details and the `Dataset`'s `query_string` and `parameters`.
-    *   `DataConnector` uses appropriate libraries (e.g., `asyncpg` for PostgreSQL) to connect to the external data source.
-    *   It executes the query and fetches the raw results as a list of dictionaries.
-    *   Error handling for connection issues, query failures, and timeouts is integrated here.
-6.  **Transform Data:** The `DataTransformer` service (`app/services/data_transformer.py`) receives the raw data and the `Visualization`'s `config`.
-    *   It applies a series of transformations (e.g., filtering, aggregation, column selection/renaming) based on the `config`.
-    *   This is where custom algorithms for data manipulation are implemented.
-7.  **Return Transformed Data:** The transformed data, along with the visualization metadata, is returned to the client.
-8.  **Frontend Rendering:** The React frontend receives the processed data and renders the visualization using a charting library.
+1.  **Request Initiation**: Frontend (or any client) sends an HTTP request to an API endpoint.
+2.  **Middleware Processing**: Request passes through global middleware (CORS, Helmet, Rate Limiting, XSS, HPP) and then route-specific middleware (Authentication, Authorization, Caching, Validation).
+3.  **Controller Handling**: If middleware allows, the request reaches the controller, which extracts data from `req.body`, `req.params`, `req.query`.
+4.  **Service Invocation**: The controller calls the appropriate method in the service layer, passing necessary data.
+5.  **Business Logic & Data Access**: The service executes business logic, potentially interacting with multiple repositories to perform database operations (CRUD, transactions).
+6.  **Response Generation**: The service returns data to the controller, which then formats an HTTP response and sends it back to the client.
+7.  **Error Handling**: If any error occurs at any stage, it's caught by the global error handling middleware, which sends a standardized error response.
 
-## 4. Security Considerations
+### 2.4. Key Design Patterns & Practices
 
-*   **Authentication:** JWT (JSON Web Tokens) are used for stateless authentication.
-*   **Authorization:** Role-based access control (superuser/normal user) is implemented using FastAPI dependencies.
-*   **Password Hashing:** `bcrypt` is used via `passlib` to securely hash user passwords.
-*   **Connection Strings:** Sensitive connection strings for data sources should ideally be encrypted at rest in the database and decrypted only when needed. For this project, they are stored directly for simplicity, but in production, this is a critical improvement area.
-*   **Input Validation:** Pydantic schemas are extensively used to validate all incoming API request data, preventing common injection and malformed data attacks.
-*   **CORS:** Configured to allow requests from specified frontend origins.
-*   **Rate Limiting:** Prevents abuse and protects against denial-of-service attacks.
+*   **Dependency Injection (Conceptual)**: Services depend on repositories, but the instantiation is managed in controllers or a central factory, making them testable.
+*   **Single Responsibility Principle**: Each module, layer, and class has a single, well-defined responsibility.
+*   **DRY (Don't Repeat Yourself)**: Reusable components like `APIFeatures` and `catchAsync` reduce code duplication.
+*   **Robust Input Validation**: Zod is used for schema validation at the API entry point (DTOs in controllers).
+*   **Centralized Error Handling**: Custom `AppError` classes and a global error middleware ensure consistent error responses.
+*   **Asynchronous Programming**: Extensive use of `async/await` for non-blocking I/O operations.
 
-## 5. Scalability and Performance
+## 3. Frontend Architecture (React/TypeScript)
 
-*   **Asynchronous I/O:** FastAPI and SQLAlchemy's async capabilities ensure efficient handling of concurrent requests, especially for I/O-bound operations like database queries.
-*   **Database Indexing:** `index=True` is used on frequently queried columns in SQLAlchemy models.
-*   **Caching:** Redis is used with `fastapi-cache` to cache results of expensive or frequently accessed endpoints (e.g., `get_dataset_data`, `get_visualization_data`).
-*   **Dockerization:** Facilitates easy horizontal scaling by deploying multiple instances of the backend service.
-*   **Modular Services:** The separation into `DataConnector` and `DataTransformer` allows for independent optimization and potential future migration to dedicated microservices if data processing becomes extremely complex.
+The frontend is built as a Single Page Application (SPA) using React.
 
-## 6. Future Enhancements
+### 3.1. Component-Based Structure
 
-*   **More Data Source Types:** Expand `DataConnector` to support more databases (MySQL, SQL Server) and cloud storage (S3, GCS).
-*   **Advanced Data Transformations:** Implement more sophisticated aggregation, pivoting, and scripting capabilities within `DataTransformer`.
-*   **Dynamic Query Builder:** A frontend interface to visually build SQL queries or data transformation pipelines.
-*   **Real-time Data:** Support for streaming data sources and real-time dashboard updates.
-*   **Multi-tenancy:** Isolate data and resources for different organizations/customers.
-*   **User Permissions Granularity:** More fine-grained control over which users can access specific data sources, datasets, or dashboards.
-*   **Data Masking/Anonymization:** Implement logic to protect sensitive data before visualization.
-*   **Frontend UI:** A more comprehensive and interactive React UI for building and managing all entities.
+The UI is broken down into reusable components:
+*   **Pages**: Top-level components representing distinct views (e.g., `HomePage`, `ProductListPage`, `CheckoutPage`).
+*   **Layout Components**: Structure the application (e.g., `Header`, `Footer`, `Sidebar`).
+*   **UI Components**: Generic, reusable building blocks (e.g., `Button`, `Input`, `ProductCard`, `Modal`).
+
+### 3.2. State Management
+
+*   **React Context API**: Used for global state management (e.g., `AuthContext` for user authentication status, `CartContext` for shopping cart data).
+*   **`useState`/`useReducer`**: For local component state.
+*   **React Query (conceptual)**: For server state management (data fetching, caching, synchronization). (Though not explicitly implemented for every API call, `axiosInstance` is set up for it.)
+
+### 3.3. API Communication
+
+*   **Axios**: HTTP client for making API requests.
+*   **Interceptors**: Used in `axiosInstance` to automatically attach JWT tokens and handle global errors (e.g., 401 Unauthorized for token expiry).
+
+### 3.4. Routing
+
+*   **React Router DOM**: Handles client-side navigation between different pages.
+*   **Protected Routes**: `PrivateRoute` component ensures that certain routes are only accessible to authenticated users and/or specific roles.
+
+### 3.5. Styling
+
+*   **TailwindCSS**: A utility-first CSS framework for rapid UI development and consistent styling.
+*   **Atomic Design Principles**: (Optional, but recommended) Organize components into atoms, molecules, organisms, templates, and pages.
+
+## 4. Database Architecture (PostgreSQL with TypeORM)
+
+*   **Relational Database**: PostgreSQL is chosen for its robustness, reliability, and support for complex queries and transactions.
+*   **TypeORM**: An Object-Relational Mapper (ORM) for TypeScript that maps database tables to TypeScript classes (entities).
+    *   **Entities**: Define table schemas, relationships, and lifecycle hooks (e.g., password hashing `BeforeInsert`).
+    *   **Repositories**: Provide an abstraction layer for database operations.
+    *   **Migrations**: Managed schema changes, ensuring database evolution is tracked and reproducible.
+    *   **Seeding**: Populate the database with initial data for development and testing.
+*   **Indexing**: Strategic indexing on frequently queried columns (`email`, `name`, foreign keys) to optimize read performance.
+*   **Transactions**: Used in services for operations requiring atomicity (e.g., order creation).
+
+## 5. Caching Layer (Redis)
+
+*   **In-memory Data Store**: Redis is used as an in-memory key-value store for caching frequently accessed data.
+*   **API Response Caching**: `cacheMiddleware` caches GET request responses, reducing database load and improving response times for idempotent requests.
+*   **Session Management**: Can be used for scalable session management if not using JWT (though JWT handles most session needs here).
+*   **Rate Limiting**: Redis is suitable for storing and tracking request counts for rate limiting, distributed across multiple backend instances.
+
+## 6. Security Considerations
+
+*   **Authentication (JWT)**: Secure user login and authorization.
+*   **Authorization (Role-Based Access Control)**: Middleware checks user roles and permissions for route access.
+*   **Password Hashing**: `bcrypt.js` is used to securely hash passwords before storing them in the database.
+*   **Input Validation**: Zod schemas prevent invalid data from reaching business logic and the database.
+*   **XSS Protection (`xss-clean`)**: Sanitizes user-supplied input to prevent cross-site scripting attacks.
+*   **HTTP Parameter Pollution (`hpp`)**: Prevents query parameter pollution attacks.
+*   **CORS**: Configured to allow legitimate frontend origins.
+*   **Helmet**: Sets various HTTP headers to improve security (e.g., X-Content-Type-Options, Strict-Transport-Security).
+*   **Rate Limiting (`express-rate-limit`)**: Protects against brute-force attacks and denial-of-service by limiting request frequency from a single IP.
+*   **Sensitive Data Handling**: JWT secrets and API keys are stored as environment variables and not committed to source control. Passwords are never returned in API responses.
+
+## 7. Observability
+
+*   **Logging (Winston)**: Centralized, structured logging for debugging, monitoring, and auditing. Logs are categorized by level (info, warn, error) and can be output to console and files.
+*   **Error Monitoring**: Global error handler ensures all unhandled errors are logged, facilitating debugging.
+*   **Performance Monitoring**: (Conceptual) Integration with tools like Prometheus/Grafana or APM solutions (Datadog, New Relic) for tracking application performance metrics.
+
+## 8. Development & Deployment
+
+*   **Docker & Docker Compose**: Facilitates consistent development environments and simplifies multi-service deployment.
+*   **CI/CD (GitHub Actions)**: Automates the process of building, testing, and deploying the application, ensuring code quality and rapid iteration.
+*   **Environment Variables**: All sensitive configurations are managed via environment variables.
+
+This architecture provides a solid foundation for building a production-ready e-commerce platform that is extensible, maintainable, and resilient.
 ```
