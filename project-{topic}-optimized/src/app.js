@@ -1,49 +1,58 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const swaggerUi = require('swagger-ui-express');
+const helmet = require('helmet');
+const cors = require('cors');
+const compression = require('compression');
+const httpStatus = require('http-status');
 
 const config = require('./config');
-const logger = require('./utils/logger');
-const { errorHandler } = require('./middleware/errorHandler');
-const requestLogger = require('./middleware/logging');
-const { apiLimiter } = require('./middleware/rateLimiter');
-const apiRoutes = require('./routes'); // All aggregated API routes
-const swaggerDocument = require('../swagger.json'); // OpenAPI spec
+const { errorHandler, notFound } = require('./middlewares/error.middleware');
+const httpLogger = require('./middlewares/logger.middleware');
+const apiLimiter = require('./middlewares/rateLimit.middleware');
+
+const authRoutes = require('./routes/auth.routes');
+const userRoutes = require('./routes/user.routes');
+const projectRoutes = require('./routes/project.routes');
+const taskRoutes = require('./routes/task.routes');
 
 const app = express();
 
-// Apply rate limiting to all API requests
+// Set security HTTP headers
+app.use(helmet());
+
+// Enable CORS
+app.use(cors());
+app.options('*', cors()); // Enable pre-flight for all routes
+
+// Parse JSON request body
+app.use(express.json());
+
+// Parse URL-encoded request body
+app.use(express.urlencoded({ extended: true }));
+
+// Gzip compression
+app.use(compression());
+
+// HTTP request logger
+app.use(httpLogger);
+
+// Apply rate limiting to all requests
 app.use(apiLimiter);
-
-// Request logging middleware
-app.use(requestLogger);
-
-// Body parsing middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// Serve static files from the 'public' directory
-app.use(express.static('public'));
-
-// API Routes
-app.use('/api', apiRoutes);
-
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP', message: 'Payment Processor API is healthy.' });
+  res.status(httpStatus.OK).json({ status: 'UP', timestamp: new Date().toISOString() });
 });
+
+// API routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/projects', projectRoutes);
+app.use('/api/v1/tasks', taskRoutes);
 
 // Catch 404 and forward to error handler
-app.use((req, res, next) => {
-  const error = new Error(`Not Found - ${req.originalUrl}`);
-  error.statusCode = 404;
-  next(error);
-});
+app.use(notFound);
 
-// Centralized error handling middleware
+// Global error handler
 app.use(errorHandler);
 
 module.exports = app;

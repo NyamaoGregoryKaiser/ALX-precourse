@@ -1,31 +1,23 @@
-const dotenv = require('dotenv');
-dotenv.config(); // Ensure environment variables are loaded
+require('dotenv').config();
 
-module.exports = {
+const config = {
   env: process.env.NODE_ENV || 'development',
   port: process.env.PORT || 3000,
-  jwtSecret: process.env.JWT_SECRET || 'supersecretjwtkey',
-  jwtExpiration: process.env.JWT_EXPIRATION || '1d',
-  db: {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    user: process.env.DB_USER || 'user',
-    password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_NAME || 'payment_processor_db',
+  jwt: {
+    secret: process.env.JWT_SECRET || 'supersecretjwtkey',
+    accessExpirationMinutes: process.env.JWT_ACCESS_EXPIRATION_MINUTES || 30,
+    refreshExpirationDays: process.env.JWT_REFRESH_EXPIRATION_DAYS || 30
   },
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/taskdb?schema=public',
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD || '', // Optional Redis password
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || undefined // Optional Redis password
   },
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '15', 10) * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10), // Max 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again after 15 minutes',
-  },
-  // Add more configurations as needed (e.g., external service credentials, payment gateway keys)
-  paymentGateway: {
-    apiKey: process.env.PAYMENT_GATEWAY_API_KEY || 'sk_test_YOUR_PAYMENT_KEY',
-    // ... other gateway specifics
+    windowMs: process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000, // 15 minutes
+    maxRequests: process.env.RATE_LIMIT_MAX_REQUESTS || 100 // max 100 requests per windowMs
   }
 };
+
+module.exports = config;

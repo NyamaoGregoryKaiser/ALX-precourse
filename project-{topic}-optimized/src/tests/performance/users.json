@@ -1,0 +1,22 @@
+[
+  {
+    "email": "manager_perf@example.com",
+    "password": "password123",
+    "token": "YOUR_MANAGER_JWT_TOKEN_HERE"
+  },
+  {
+    "email": "member_perf@example.com",
+    "password": "password123",
+    "token": "YOUR_MEMBER_JWT_TOKEN_HERE"
+  }
+]
+```
+To run: `k6 run src/tests/performance/load_test.js`
+
+---
+
+### 5. Documentation
+
+#### `README.md`
+
+```markdown

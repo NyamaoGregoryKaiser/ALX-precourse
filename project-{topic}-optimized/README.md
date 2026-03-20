@@ -1,103 +1,91 @@
-# Payment Processing System
+# Mobile App Backend System - Task Management
 
-A comprehensive, production-ready payment processing system built with Node.js (Express), PostgreSQL, and Redis. This project aims to demonstrate a full-scale backend application, adhering to best practices for architecture, security, testing, and deployment, with a strong focus on core programming logic and algorithm design, as aligned with ALX Software Engineering precourse materials.
+This is a comprehensive, production-ready backend system for a mobile task management application. It's built with Node.js, Express, PostgreSQL (with Prisma ORM), and Redis, incorporating modern best practices for scalability, security, and maintainability.
 
 ## Features
 
-*   **User Management**: Registration, login, user profiles (CRUD).
-*   **Account Management**: Create and manage financial accounts for users.
-*   **Transaction Management**: Core logic for debit, credit, fees, refunds. Atomicity ensured via database transactions.
-*   **Payment Processing**: High-level API for initiating, capturing (simplified), and refunding payments, including idempotency.
-*   **Authentication & Authorization**: JWT-based authentication, role-based authorization (`user`, `admin`).
+*   **User Management**: Registration, login, profile management.
+*   **Authentication & Authorization**: JWT-based authentication with role-based access control (Admin, Manager, Member).
+*   **Project Management**: Full CRUD operations for projects, including ownership.
+*   **Task Management**: Full CRUD operations for tasks within projects, including assignment, status, due dates, and tags.
+*   **Database Layer**: PostgreSQL with Prisma ORM for schema, migrations, and efficient querying.
+*   **Caching Layer**: Redis integration for faster retrieval of frequently accessed data.
+*   **API Endpoints**: RESTful API with clear request/response structures.
 *   **Data Validation**: Robust input validation using Joi.
-*   **Error Handling**: Centralized error handling middleware with custom `ApiError`.
-*   **Logging**: Structured logging with Winston for development and production environments.
-*   **Caching**: Redis integration for frequently accessed data (e.g., user profiles, account details).
-*   **Rate Limiting**: Protects API endpoints from abuse and brute-force attacks.
-*   **Database**: PostgreSQL with Knex.js for migrations and seeding.
-*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
-*   **CI/CD**: GitHub Actions workflow for automated testing and deployment.
-*   **Testing**: Unit, Integration, and API tests using Jest and Supertest, with performance testing outlines using K6.
-*   **Documentation**: Comprehensive README, API documentation (Swagger/OpenAPI), and architecture overview.
+*   **Error Handling**: Centralized error handling middleware.
+*   **Logging & Monitoring**: Structured logging with Winston and Morgan for HTTP requests.
+*   **Rate Limiting**: Protects against API abuse and brute-force attacks.
+*   **Security**: Basic security headers with Helmet, CORS enabled.
+*   **Containerization**: Docker for easy setup and deployment across environments.
+*   **CI/CD**: GitHub Actions pipeline configuration for automated testing and builds.
+*   **Comprehensive Testing**: Unit, Integration, and API tests using Jest and Supertest with coverage targets.
+*   **Documentation**: Detailed setup guide, API reference (OpenAPI/Swagger), architecture overview, and deployment instructions.
 
 ## Technologies Used
 
 *   **Backend**: Node.js, Express.js
 *   **Database**: PostgreSQL
-*   **ORM/Query Builder**: Knex.js
+*   **ORM**: Prisma
 *   **Caching**: Redis
-*   **Authentication**: JSON Web Tokens (JWT), Bcrypt.js
+*   **Authentication**: JSON Web Tokens (JWT)
 *   **Validation**: Joi
-*   **Logging**: Winston
-*   **Rate Limiting**: `express-rate-limit`
+*   **Logging**: Winston, Morgan
+*   **Testing**: Jest, Supertest
 *   **Containerization**: Docker, Docker Compose
-*   **Testing**: Jest, Supertest, K6 (for performance)
-*   **Documentation**: Swagger/OpenAPI
 *   **CI/CD**: GitHub Actions
 
-## Architecture Overview
+## Getting Started
 
-The system follows a layered architecture:
-
-1.  **Client Layer (Frontend)**: A simple HTML/JS client demonstrates interaction with the API.
-2.  **API Layer (Controllers & Routes)**: Express.js handles incoming HTTP requests, validates inputs, and delegates to services.
-    *   **Middleware**: Handles cross-cutting concerns like authentication, authorization, logging, error handling, and rate limiting.
-3.  **Business Logic Layer (Services)**: Contains the core business rules and data manipulation logic. This layer interacts with the Data Access Layer. Key payment algorithms for balance updates, transaction status transitions, and idempotency are implemented here.
-4.  **Data Access Layer (Knex.js)**: Abstracts database interactions, providing methods to perform CRUD operations on entities.
-5.  **Database Layer (PostgreSQL & Redis)**:
-    *   **PostgreSQL**: Primary data store for users, accounts, and transactions, ensuring data integrity and durability.
-    *   **Redis**: In-memory data store used for caching frequently accessed data to improve performance.
-
-```mermaid
-graph TD
-    A[Client App/Frontend] -->|HTTP Requests| B(API Gateway/Express)
-    B --> C{Middleware}
-    C -->|Auth, Rate Limit, Log| D(Controllers)
-    D --> E(Services/Business Logic)
-    E -->|Data Access Logic| F(Knex.js/Data Layer)
-    F --> G[PostgreSQL Database]
-    E -- Cache Reads/Writes --> H[Redis Cache]
-    C --> I[Winston Logger]
-    B -- Error Handling --> J[Error Handling Middleware]
-    J --> I
-```
-
-## Setup and Installation
+Follow these steps to set up and run the project locally.
 
 ### Prerequisites
 
 *   Node.js (v18 or higher)
-*   npm (v8 or higher)
-*   Docker and Docker Compose
-*   PostgreSQL client (optional, for direct DB access)
-*   Redis client (optional, for direct Redis access)
+*   npm (v9 or higher)
+*   Docker & Docker Compose (for database and Redis)
+*   Git
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/payment-processing-system.git
-cd payment-processing-system
+git clone https://github.com/your-username/mobile-backend-system.git
+cd mobile-backend-system
 ```
 
 ### 2. Environment Variables
 
-Create a `.env` file in the root directory by copying from `.env.example`:
+Create a `.env` file in the root directory by copying `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit the `.env` file with your desired configurations. **Crucially, change `JWT_SECRET` to a strong, unique value for production.**
+Edit the `.env` file and replace placeholder values with your desired configurations.
+**Crucially, set `DATABASE_URL` for your PostgreSQL instance, `JWT_SECRET` for security, and `REDIS_PASSWORD` if you want to secure your Redis instance.**
+
+Example `.env` (adjust `DATABASE_URL` if not using Docker):
 
 ```ini
-# .env
-# ... (see .env.example for full content)
-JWT_SECRET=your_strong_random_jwt_secret_here
-DB_USER=myuser
-DB_PASSWORD=mypassword
-DB_NAME=my_payment_db
-REDIS_PASSWORD=  # Leave empty if no password, or set a strong one
-# ...
+NODE_ENV=development
+PORT=3000
+
+DATABASE_URL="postgresql://user:password@localhost:5432/taskdb?schema=public"
+
+JWT_SECRET="YOUR_SUPER_STRONG_SECRET_KEY_HERE_MIN_32_CHARS_RECOMMENDED"
+JWT_ACCESS_EXPIRATION_MINUTES=30
+JWT_REFRESH_EXPIRATION_DAYS=30
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+# REDIS_PASSWORD=your_redis_password # Uncomment and set if you use one
+
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# PostgreSQL User/Password for Docker Compose
+POSTGRES_USER=user
+POSTGRES_PASSWORD=password
+POSTGRES_DB=taskdb
 ```
 
 ### 3. Install Dependencies
@@ -106,163 +94,132 @@ REDIS_PASSWORD=  # Leave empty if no password, or set a strong one
 npm install
 ```
 
-### 4. Database Setup (using Docker Compose)
+### 4. Start Database and Redis with Docker Compose
 
-Start the PostgreSQL and Redis containers using Docker Compose:
+This will spin up a PostgreSQL database and a Redis server.
 
 ```bash
-docker-compose up -d db redis
+docker-compose up -d
 ```
 
-This will start the `db` and `redis` services in detached mode.
+Verify that the containers are running:
+```bash
+docker-compose ps
+```
+You should see `mobile-backend-db`, `mobile-backend-redis`, and `mobile-backend-app` (if you run `npm run dev` inside it).
 
-### 5. Run Migrations and Seeds
+### 5. Initialize Database Schema and Seed Data
 
-Once the database container is running, apply the database migrations and seed initial data:
+Apply Prisma migrations to create tables and then seed the database with initial data (admin, manager, member users, projects, tasks).
 
 ```bash
-npm run db:migrate
+npx prisma migrate dev --name init # This will create the migrations directory if it doesn't exist
 npm run db:seed
 ```
+If you encounter issues with `migrate dev` in a clean environment, you might need `npx prisma db push` (for dev) or `npx prisma migrate deploy` (for production/CI). For a fresh start:
+```bash
+npm run db:reset # Warning: This deletes all data and schema in your DB!
+npx prisma migrate deploy # Apply migrations
+npm run db:seed # Seed initial data
+```
 
-**Note**: If you want to reset your database at any point (e.g., for development), you can use:
-`npm run db:reset` (this rolls back, migrates, and seeds).
+### 6. Run the Application
 
-### 6. Start the Application
-
-You can start the application directly or via Docker Compose.
-
-**Option A: Run Directly (for development)**
+#### Development Mode (with Nodemon)
 
 ```bash
 npm run dev
 ```
 
-This will start the application with `nodemon`, which automatically restarts the server on code changes. The API will be available at `http://localhost:3000`.
+The server will start on `http://localhost:3000` (or your configured `PORT`).
 
-**Option B: Run via Docker Compose (recommended for testing/production simulation)**
+#### Production Mode
 
 ```bash
-docker-compose up -d app
+npm start
 ```
 
-This builds the `app` Docker image (if not already built) and starts the container. The API will be available at `http://localhost:3000`.
+### 7. Access API Documentation
 
-To stop all services:
-```bash
-docker-compose down
-```
+Once the server is running, you can find the API documentation generated by OpenAPI/Swagger at:
+`docs/api.yaml`
 
-## API Documentation (Swagger)
-
-Once the application is running, you can access the interactive API documentation at:
-`http://localhost:3000/api-docs`
-
-This provides detailed information about all available endpoints, request/response schemas, and allows you to test the API directly from your browser.
+You can use tools like [Swagger UI](https://swagger.io/tools/swagger-ui/) or [Postman](https://www.postman.com/product/rest-api-client/) to import and interact with the API.
 
 ## Testing
 
-The project includes comprehensive tests covering unit, integration, and API aspects.
-
-### Running Tests
+The project includes unit, integration, and API tests with Jest and Supertest.
 
 ```bash
-npm test                # Runs all tests
-npm run test:unit       # Runs unit tests only
-npm run test:integration # Runs integration tests only
-npm run test:api        # Runs API tests only
-npm run coverage        # Runs all tests and generates a coverage report
+# Run all tests (unit, integration, api) with coverage
+npm test
+
+# Run unit tests only
+npm run test:unit
+
+# Run integration tests only
+npm run test:integration
+
+# Run API tests only
+npm run test:api
 ```
 
-**Note on Testing Environment:**
-*   Tests use a separate PostgreSQL database configured in `knexfile.js` under the `test` environment (`payment_processor_test_db`).
-*   The `npm test` script automatically runs migrations and seeds for the test database before executing tests and attempts to clean up.
-*   Ensure your `.env` contains `DB_USER_TEST`, `DB_PASSWORD_TEST`, `DB_NAME_TEST`, and `DB_PORT_TEST` (defaults to 5433).
+## Linting and Formatting
 
-### Performance Testing (K6)
+```bash
+# Check for linting errors
+npm run lint
 
-A basic K6 script (`k6-performance-test.js`) is provided to outline performance testing.
-To run K6 tests:
+# Fix linting errors automatically
+npm run lint:fix
 
-1.  **Install K6**: Follow instructions at [k6.io](https://k6.io/docs/getting-started/installation/).
-2.  **Create `test_data/users.json`**: For K6 to log in users, create this file with valid user credentials (e.g., your seeded admin user).
+# Check for formatting issues with Prettier
+npm run prettier
 
-    ```json
-    // test_data/users.json
-    [
-      {
-        "email": "admin@example.com",
-        "password": "adminpassword"
-      },
-      {
-        "email": "john.doe@example.com",
-        "password": "userpassword"
-      }
-    ]
-    ```
-3.  **Run the test**:
-    ```bash
-    k6 run k6-performance-test.js
-    ```
+# Fix formatting issues with Prettier
+npm run prettier:fix
+```
 
-## Deployment Guide
+## Docker
 
-### Using Docker and Docker Compose
+The project provides a `Dockerfile` for building the application image and `docker-compose.yml` for orchestrating the application, database, and Redis.
 
-The provided `Dockerfile` and `docker-compose.yml` facilitate containerized deployment.
+### Build Docker Image
 
-1.  **Build the Docker image**:
-    ```bash
-    docker build -t payment-processor-app .
-    ```
-    (Or let `docker-compose up --build` handle it)
+```bash
+docker build -t mobile-backend-app .
+```
 
-2.  **Ensure production `.env` variables**: For production, ensure `NODE_ENV=production` and all `DB_HOST_PROD`, `DB_USER_PROD`, `REDIS_HOST`, etc. are correctly set to your production database and Redis instances. **Never expose sensitive credentials directly in Dockerfile; use environment variables or Docker secrets.**
+### Run with Docker Compose (App + DB + Redis)
 
-3.  **Deploy with Docker Compose**:
-    ```bash
-    docker-compose -f docker-compose.prod.yml up -d
-    ```
-    *(You might want a separate `docker-compose.prod.yml` that doesn't mount local volumes and uses specific production configurations/images.)*
+```bash
+docker-compose up --build # --build only needed for first run or if Dockerfile changed
+```
+This will start the `app`, `db`, and `redis` services. The `app` service is configured to run `npm run dev` which watches for code changes. If you want to run the app in production mode inside Docker Compose, change the `command` in `docker-compose.yml` to `npm start`.
 
-4.  **Database Setup on Production**:
-    Connect to your production database server and run migrations. This should typically be done *before* the application starts using the DB.
-    ```bash
-    # Example for a remote server, adjust as necessary
-    ssh user@your-prod-server "cd /path/to/app && npm run db:migrate"
-    ```
+## CI/CD (GitHub Actions)
 
-### CI/CD with GitHub Actions
+A GitHub Actions workflow is configured in `.github/workflows/ci.yml`. This pipeline will:
 
-The `.github/workflows/ci.yml` file provides a basic CI/CD pipeline:
+1.  Checkout the repository.
+2.  Set up Node.js.
+3.  Install dependencies.
+4.  Set up PostgreSQL and Redis services for testing.
+5.  Apply database migrations and seed the test database.
+6.  Run ESLint for linting.
+7.  Execute all tests with coverage.
 
-*   **Build and Test**: On every push to `main` or `develop` (and PRs), it builds the Docker image, spins up a test PostgreSQL database, runs migrations/seeds, and executes all tests (unit, integration, API).
-    *   **Secrets**: You'll need to configure GitHub Secrets for `DB_USER_TEST`, `DB_PASSWORD_TEST`, `DB_NAME_TEST`, and `JWT_SECRET` in your GitHub repository settings.
-*   **Deploy**: If the tests pass and the push is to the `main` branch, it proceeds to an example deployment step. This step:
-    *   Logs into Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets).
-    *   Builds and pushes the Docker image to Docker Hub with `latest` and `commit-sha` tags.
-    *   Includes a placeholder for deploying to your production server (e.g., via SSH, Kubernetes, etc.). **This part requires significant customization for your actual deployment environment.**
+This ensures that every push or pull request to `main` or `develop` branches undergoes automated quality checks.
 
-## Additional Notes
+## Further Documentation
 
-*   **Security**:
-    *   **Secrets Management**: Always use environment variables or a dedicated secrets management system (e.g., Vault, AWS Secrets Manager) for sensitive data in production.
-    *   **Input Validation**: Joi is used, but ensure all inputs are thoroughly validated at the API boundaries.
-    *   **Hashing**: Passwords are (and should always be) securely hashed using `bcryptjs`.
-    *   **SQL Injection**: Knex.js queries are generally safe against SQL injection, but avoid raw SQL concatenation with user inputs.
-*   **Scalability**:
-    *   **Stateless API**: The application is designed to be stateless, allowing for horizontal scaling of the Node.js instances.
-    *   **Database Scaling**: PostgreSQL can be scaled with read replicas or sharding (more complex).
-    *   **Caching**: Redis offloads database reads for frequently accessed data.
-*   **Observability**:
-    *   **Logging**: Winston provides structured logging. Integrate with a log aggregation system (ELK stack, Splunk, DataDog) in production.
-    *   **Monitoring**: Integrate with APM tools (e.g., New Relic, Prometheus/Grafana) for performance and health monitoring.
-*   **Idempotency**: Implemented for payment initiation using a `reference_id` (representing an idempotency key) to prevent duplicate transactions if a client retries a request.
-*   **Transaction Atomicity**: Database transactions (`db.transaction`) are used in critical financial operations to ensure that all steps either succeed or fail together, maintaining data consistency.
-*   **Concurrency**: Row-level locking (`.forUpdate()`) is used in financial operations to prevent race conditions during balance updates.
+*   [API Documentation (OpenAPI/Swagger)](./docs/api.yaml)
+*   [Architecture Documentation](./docs/architecture.md)
+*   [Deployment Guide](./docs/deployment.md)
 
 ---
+```
 
-### **API Documentation (swagger.json)**
+#### `docs/api.yaml`
 
-```json
+```yaml

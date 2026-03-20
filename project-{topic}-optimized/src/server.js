@@ -1,44 +1,71 @@
-require('dotenv').config(); // Load environment variables first
 const app = require('./app');
 const config = require('./config');
 const logger = require('./utils/logger');
-const knex = require('knex');
-const knexConfig = require('./db/knexfile');
+const prisma = require('../prisma/client');
+const cacheService = require('./services/cache.service');
 
-// Initialize Knex with the appropriate configuration based on environment
-const db = knex(knexConfig[config.env]);
+let server;
 
-// Test database connection
-db.raw('SELECT 1')
-  .then(() => {
-    logger.info('Database connected successfully.');
-  })
-  .catch((err) => {
-    logger.error('Database connection failed:', err);
-    process.exit(1); // Exit process if DB connection fails
-  });
+const startServer = async () => {
+  try {
+    // Connect to PostgreSQL database
+    await prisma.$connect();
+    logger.info('Connected to PostgreSQL database');
 
-const PORT = config.port;
+    // Connect to Redis cache
+    await cacheService.connectRedis();
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT} in ${config.env} mode`);
-  logger.info(`Access API docs at http://localhost:${PORT}/api-docs`);
+    server = app.listen(config.port, () => {
+      logger.info(`Server listening on port ${config.port}`);
+      logger.info(`Environment: ${config.env}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1); // Exit with failure code
+  }
+};
+
+const exitHandler = async () => {
+  if (server) {
+    server.close(async () => {
+      logger.info('Server closed');
+      await prisma.$disconnect();
+      logger.info('Disconnected from PostgreSQL');
+      // No explicit disconnect for Redis needed if client handles it on process exit
+      process.exit(1);
+    });
+  } else {
+    await prisma.$disconnect();
+    logger.info('Disconnected from PostgreSQL');
+    process.exit(1);
+  }
+};
+
+const unexpectedErrorHandler = (error) => {
+  logger.error(error);
+  exitHandler();
+};
+
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed gracefully due to SIGTERM');
+    });
+  }
 });
 
-// Handle unhandled promise rejections and uncaught exceptions
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection:', err.message, err);
-  server.close(() => {
-    process.exit(1); // Exit process after closing server
-  });
+process.on('SIGINT', () => {
+  logger.info('SIGINT received');
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed gracefully due to SIGINT');
+    });
+  }
 });
 
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err.message, err);
-  server.close(() => {
-    process.exit(1); // Exit process after closing server
-  });
-});
-
-// Export server for testing purposes
-module.exports = server;
+// Start the server
+startServer();

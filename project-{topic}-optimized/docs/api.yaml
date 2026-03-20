@@ -1,0 +1,958 @@
+openapi: 3.0.0
+info:
+  title: Task Management Mobile Backend API
+  description: A comprehensive backend system for a mobile task management application.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local Development Server
+  - url: https://api.yourdomain.com/api/v1
+    description: Production Server
+
+tags:
+  - name: Authentication
+    description: User registration and login
+  - name: Users
+    description: User profile management
+  - name: Projects
+    description: Project management operations
+  - name: Tasks
+    description: Task management operations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+        username:
+          type: string
+          example: john_doe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        role:
+          type: string
+          enum: [ADMIN, MANAGER, MEMBER]
+          example: MEMBER
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13
+        name:
+          type: string
+          example: Mobile App Redesign
+        description:
+          type: string
+          example: Complete redesign of the mobile application UI/UX.
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED, COMPLETED]
+          example: ACTIVE
+        ownerId:
+          type: string
+          format: uuid
+          example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+        owner:
+          $ref: '#/components/schemas/UserLite'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskLite'
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: t0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15
+        title:
+          type: string
+          example: Implement Login Screen
+        description:
+          type: string
+          example: Develop the login screen with email/password authentication.
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE]
+          example: IN_PROGRESS
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: 2023-11-15T00:00:00.000Z
+        tags:
+          type: array
+          items:
+            type: string
+          example: [frontend, authentication]
+        projectId:
+          type: string
+          format: uuid
+          example: f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13
+        assignedToId:
+          type: string
+          format: uuid
+          nullable: true
+          example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+        creatorId:
+          type: string
+          format: uuid
+          example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-10-26T10:00:00.000Z
+        project:
+          $ref: '#/components/schemas/ProjectLite'
+        assignedTo:
+          $ref: '#/components/schemas/UserLite'
+        creator:
+          $ref: '#/components/schemas/UserLite'
+    UserLite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+        username:
+          type: string
+          example: john_doe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+    ProjectLite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13
+        name:
+          type: string
+          example: Mobile App Redesign
+    TaskLite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: t0eebc99-9c0b-4ef8-bb6d-6bb9bd380a15
+        title:
+          type: string
+          example: Implement Login Screen
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE]
+          example: IN_PROGRESS
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: Validation error
+        errors:
+          type: array
+          items:
+            type: string
+          example: ["\"email\" is required"]
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Operation successful
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            tokenMissing:
+              value:
+                code: 401
+                message: Authentication required: No token provided or malformed token.
+            tokenExpired:
+              value:
+                code: 401
+                message: Authentication failed: Token expired.
+    ForbiddenError:
+      description: Forbidden (insufficient permissions)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noPermission:
+              value:
+                code: 403
+                message: You do not have permission to perform this action.
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notFound:
+              value:
+                code: 404
+                message: Not Found
+    BadRequestError:
+      description: Bad request (validation error)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ConflictError:
+      description: Conflict (resource already exists)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  example: newuser
+                email:
+                  type: string
+                  format: email
+                  example: newuser@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+                  example: securepassword123
+                role:
+                  type: string
+                  enum: [ADMIN, MANAGER, MEMBER]
+                  default: MEMBER
+                  example: MEMBER
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tokens:
+                    $ref: '#/components/schemas/AuthTokens'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        409:
+          $ref: '#/components/responses/ConflictError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: securepassword123
+      responses:
+        200:
+          description: User logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tokens:
+                    $ref: '#/components/schemas/AuthTokens'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current authenticated user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Get all users
+      description: Requires ADMIN or MANAGER role.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get a user by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the user to retrieve
+      responses:
+        200:
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Users
+      summary: Update a user
+      description: Allows user to update their own profile, or ADMIN to update any user. Non-ADMINs cannot change roles.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the user to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: new_username
+                email:
+                  type: string
+                  format: email
+                  example: new_email@example.com
+                role:
+                  type: string
+                  enum: [ADMIN, MANAGER, MEMBER]
+                  example: MANAGER
+              minProperties: 1
+      responses:
+        200:
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  user:
+                    $ref: '#/components/schemas/User'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Users
+      summary: Delete a user
+      description: Requires ADMIN role.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the user to delete
+      responses:
+        204:
+          description: User deleted successfully (No Content)
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /projects:
+    post:
+      tags:
+        - Projects
+      summary: Create a new project
+      description: Any authenticated user can create a project.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                  example: New Mobile Feature
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: Plan and implement a new feature for the mobile app.
+                status:
+                  type: string
+                  enum: [ACTIVE, ARCHIVED, COMPLETED]
+                  default: ACTIVE
+                  example: ACTIVE
+      responses:
+        201:
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  project:
+                    $ref: '#/components/schemas/Project'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags:
+        - Projects
+      summary: Get all projects
+      description: Admins and Managers see all projects. Members see projects they own.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /projects/{id}:
+    get:
+      tags:
+        - Projects
+      summary: Get a project by ID
+      description: Only the owner, manager, or admin can view a project.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the project to retrieve
+      responses:
+        200:
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Projects
+      summary: Update a project
+      description: Only the owner, manager, or admin can update a project.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the project to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                  example: Updated Project Name
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: Revised project description.
+                status:
+                  type: string
+                  enum: [ACTIVE, ARCHIVED, COMPLETED]
+                  example: COMPLETED
+              minProperties: 1
+      responses:
+        200:
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  project:
+                    $ref: '#/components/schemas/Project'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Projects
+      summary: Delete a project
+      description: Only the owner or admin can delete a project.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the project to delete
+      responses:
+        204:
+          description: Project deleted successfully (No Content)
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /tasks:
+    post:
+      tags:
+        - Tasks
+      summary: Create a new task
+      description: Any authenticated user can create a task within a project they have access to.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - projectId
+              properties:
+                title:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                  example: Implement API endpoint for tasks
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: Develop GET, POST, PUT, DELETE endpoints for tasks.
+                projectId:
+                  type: string
+                  format: uuid
+                  example: f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13
+                assignedToId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+                status:
+                  type: string
+                  enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE]
+                  default: PENDING
+                  example: PENDING
+                dueDate:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: 2023-11-20T00:00:00.000Z
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  example: [backend, API]
+      responses:
+        201:
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  task:
+                    $ref: '#/components/schemas/Task'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags:
+        - Tasks
+      summary: Get all tasks
+      description: Supports filtering by `projectId`, `assignedToId`, `creatorId`, `status`. Admins/Managers see all tasks. Members see tasks they created or are assigned to.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: projectId
+          schema:
+            type: string
+            format: uuid
+          description: Filter tasks by project ID
+        - in: query
+          name: assignedToId
+          schema:
+            type: string
+            format: uuid
+          description: Filter tasks by assigned user ID
+        - in: query
+          name: creatorId
+          schema:
+            type: string
+            format: uuid
+          description: Filter tasks by creator user ID
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE]
+          description: Filter tasks by status
+      responses:
+        200:
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+  /tasks/{id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get a task by ID
+      description: Only the assigned user, creator, manager, or admin can view a task.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the task to retrieve
+      responses:
+        200:
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Tasks
+      summary: Update a task
+      description: Only the assigned user, creator, manager, or admin can update a task. Non-admins/managers cannot change creatorId or projectId.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the task to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                  example: Updated Task Title
+                description:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: Updated task description.
+                projectId:
+                  type: string
+                  format: uuid
+                  example: f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13
+                assignedToId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  example: 0f3c5b8e-8a7e-4d5c-9c0d-0e1f2a3b4c5d
+                status:
+                  type: string
+                  enum: [PENDING, IN_PROGRESS, COMPLETED, OVERDUE]
+                  example: COMPLETED
+                dueDate:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: 2023-12-01T00:00:00.000Z
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  example: [updated, complete]
+              minProperties: 1
+      responses:
+        200:
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/SuccessMessage/properties/message'
+                  task:
+                    $ref: '#/components/schemas/Task'
+        400:
+          $ref: '#/components/responses/BadRequestError'
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Tasks
+      summary: Delete a task
+      description: Only the creator, manager, or admin can delete a task.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the task to delete
+      responses:
+        204:
+          description: Task deleted successfully (No Content)
+        401:
+          $ref: '#/components/responses/UnauthorizedError'
+        403:
+          $ref: '#/components/responses/ForbiddenError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+```
+
+#### `docs/architecture.md`
+
+```markdown
