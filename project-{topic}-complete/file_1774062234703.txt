@@ -1,0 +1,22 @@
++---------------+           +-----------------+
+|   Client      | <-------> |   API Gateway   |
+| (Web/Mobile)  |           | (Crow C++ App)  |
++---------------+           +--------+--------+
+                                     |
++-----------------+                  | Middleware (Auth, Logging, Error)
+|   Database      |                  |
+| (SQLite/PostgreSQL) | <------------+
++-----------------+                  |
+                                     | Controllers (Auth, Account, Transaction)
+                                     |
+                          +----------v----------+
+                          | Business Logic      |
+                          | Services            |
+                          | (Auth, Account, Txn)  |
+                          +----------^----------+
+                                     |
+                                     | Models/DTOs, Utilities
+                                     |
+                          +----------+----------+
+                          |   Database Manager  |
+                          +---------------------+

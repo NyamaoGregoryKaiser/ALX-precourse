@@ -1,41 +1,8 @@
-```txt
-# FastAPI and Uvicorn
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-
-# Database
-sqlalchemy==2.0.29
-psycopg2-binary==2.9.9
-alembic==1.13.1
-
-# Environment Variables
-python-dotenv==1.0.1
-
-# Hashing and JWT
-passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.3.0
-
-# Pydantic (FastAPI's data validation)
-pydantic==2.7.1
-pydantic-settings==2.2.1
-
-# Async caching
-fastapi-cache==0.2.1
-fastapi-cache2[redis]==0.2.1
-
-# Rate Limiting
-fastapi-limiter==0.1.6
-
-# Testing
-pytest==8.2.0
-httpx==0.27.0
-pytest-asyncio==0.23.6
-
-# Code Quality
-flake8==7.0.0
-black==24.4.2
-isort==5.13.2
-
-# Optional: Structured logging
-# structlog==24.2.0
+```
+# Python tools for development, testing, or scripting
+pytest
+requests
+flake8
+black
+gunicorn # Example if using a Python microservice alongside
 ```

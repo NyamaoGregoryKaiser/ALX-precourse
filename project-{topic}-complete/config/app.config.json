@@ -1,0 +1,10 @@
+```json
+{
+  "database_path": "payment_processor.db",
+  "server_port": 8080,
+  "server_host": "0.0.0.0",
+  "jwt_secret": "your_super_secret_jwt_key_that_is_at_least_32_chars_long_and_random",
+  "jwt_expiry_hours": 24,
+  "default_currency": "USD"
+}
+```

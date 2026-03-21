@@ -1,0 +1,47 @@
+```yaml
+version: '3.8'
+
+services:
+  payment_app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist the SQLite database file and logs
+      - payment_data:/app/payment_processor.db
+      - payment_logs:/app/logs
+      # Mount configuration for easy local changes (optional for production)
+      - ./config/app.config.json:/app/config/app.config.json
+    environment:
+      # You can override config values via environment variables if AppConfig supports it
+      # For example: DB_PATH=/app/payment_processor.db, JWT_SECRET=env_secret
+      # Or, ensure app.config.json is correctly mounted/copied.
+      PAYMENT_CONFIG_PATH: /app/config/app.config.json # Tell the app where its config is
+    # For a real DB, uncomment and link:
+    # depends_on:
+    #   - payment_db
+
+  # Example if using a separate PostgreSQL database container
+  # payment_db:
+  #   image: postgres:14-alpine
+  #   environment:
+  #     POSTGRES_DB: payment_processor_db
+  #     POSTGRES_USER: user
+  #     POSTGRES_PASSWORD: password
+  #   volumes:
+  #     - db_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432" # Expose for local development/tools, remove in production
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U user -d payment_processor_db"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  payment_data: # For SQLite DB persistence
+  payment_logs: # For application logs
+  # db_data: # For PostgreSQL/MySQL data persistence
+```
