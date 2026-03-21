@@ -1,23 +1,38 @@
-# Use a Node.js base image
-FROM node:18-alpine
+```dockerfile
+# Stage 1: Build TypeScript
+FROM node:18-alpine AS builder
 
-# Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if exists)
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm install --frozen-lockfile
 
-# Install dependencies
-RUN npm install
+COPY tsconfig.json ormconfig.ts ./
+COPY src ./src
 
-# Copy the rest of the application code
-COPY . .
-
-# Build the TypeScript code
 RUN npm run build
 
-# Expose the port the app runs on
+# Stage 2: Production environment
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY package.json package-lock.json ./
+RUN npm install --only=production --frozen-lockfile
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/migrations ./src/migrations
+COPY --from=builder /app/src/seed ./src/seed
+COPY --from=builder /app/src/models ./src/models # Required for TypeORM migration path in dist
+COPY ormconfig.ts ./ormconfig.ts # Required for TypeORM in production
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PORT=5000
+
 EXPOSE 5000
 
-# Command to run the application (in production mode, assumes build is done)
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npm run migrate:run && npm start"]
+```

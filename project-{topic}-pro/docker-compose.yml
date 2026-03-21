@@ -1,69 +1,81 @@
+```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
-    container_name: taskmgr-db
-    restart: always
+    image: postgres:14-alpine
+    container_name: project_manager_db
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-taskmgrdb}
-      POSTGRES_USER: ${DB_USERNAME:-taskmgruser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
-      - taskmgr-data:/var/lib/postgresql/data
+      - project_manager_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-taskmgruser} -d ${DB_NAME:-taskmgrdb}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: project_manager_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}" # Secure Redis
+    volumes:
+      - project_manager_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "INFO"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   backend:
     build:
-      context: ./backend # Path to your backend directory containing Dockerfile
+      context: ./backend
       dockerfile: Dockerfile
-      args:
-        JAR_FILE: target/task-management-backend-0.0.1-SNAPSHOT.jar # Adjust if your JAR name is different
-    container_name: taskmgr-backend
-    restart: always
+    container_name: project_manager_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     ports:
-      - "8080:8080"
-    environment:
-      DB_HOST: db # Service name within the docker-compose network
-      DB_NAME: ${DB_NAME:-taskmgrdb}
-      DB_USERNAME: ${DB_USERNAME:-taskmgruser}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      JWT_SECRET: ${JWT_SECRET:413F4428472B4B6250655368566D5971337436763979244226452948404D6351} # REPLACE with a strong secret!
-      SPRING_PROFILES_ACTIVE: prod # Use production profile if you have one
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules # Exclude node_modules from host bind to use container's
     depends_on:
       db:
-        condition: service_healthy # Wait for DB to be healthy
-    # For local development, if you want to mount source code:
-    # volumes:
-    #   - ./backend:/app
-    #   - ~/.m2:/root/.m2 # Cache maven dependencies
-    # command: bash -c "wait-for-it db:5432 --timeout=60 --strict -- java -jar app.jar" # Using wait-for-it or similar
-    # In Spring Boot 3.x, `depends_on: condition: service_healthy` is often sufficient with retries in JDBC URL
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "npm install && npm run build && npm run migrate:run && npm start"
+    # For development with nodemon:
+    # command: sh -c "npm install && npm run dev"
 
-  # Frontend service (conceptual)
   frontend:
     build:
-      context: ./frontend # Path to your frontend directory containing Dockerfile
-      dockerfile: Dockerfile # Assuming a Dockerfile exists for the React app
-    container_name: taskmgr-frontend
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: project_manager_frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env
     ports:
       - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Exclude node_modules from host bind to use container's
     depends_on:
-      - backend
-    environment:
-      # Pass backend API URL to frontend (adjust if backend is on a different host/port)
-      REACT_APP_API_BASE_URL: http://localhost:8080/api # For development on host
-      # Or if frontend needs to call backend via service name (e.g., if both are in same k8s pod or use internal docker network)
-      # REACT_APP_API_BASE_URL: http://backend:8080/api
+      backend:
+        condition: service_started
+    command: sh -c "npm install && npm start"
 
 volumes:
-  taskmgr-data:
-    driver: local
-
+  project_manager_db_data:
+  project_manager_redis_data:
 ```

@@ -1,40 +1,68 @@
+```typescript
 import app from './app';
-import { config } from './config/env';
-import { initializeDatabase } from './config/database';
-import { logger } from './utils/logger';
-import { initializeRedis } from './config/redis';
+import { connectDB, disconnectDB } from '@config/database';
+import { connectRedis, disconnectRedis } from '@config/redis';
+import logger from '@config/logger';
+import { config } from '@config/index';
 
 const startServer = async () => {
   try {
-    // Initialize Database
-    await initializeDatabase();
+    // Connect to database
+    await connectDB();
 
-    // Initialize Redis Cache
-    await initializeRedis();
+    // Connect to Redis
+    await connectRedis();
 
-    // Start Express server
-    const port = config.PORT;
-    app.listen(port, () => {
-      logger.info(`Server running on port ${port} in ${config.NODE_ENV} mode`);
-      logger.info(`Access Health Check at http://localhost:${port}/health`);
+    const server = app.listen(config.PORT, () => {
+      logger.info(`Server running on port ${config.PORT} in ${config.NODE_ENV} mode.`);
     });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (err: Error) => {
+      logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
+      logger.error(`${err.name}: ${err.message}`, err.stack);
+      server.close(async () => {
+        await disconnectDB();
+        await disconnectRedis();
+        process.exit(1);
+      });
+    });
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (err: Error) => {
+      logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+      logger.error(`${err.name}: ${err.message}`, err.stack);
+      server.close(async () => {
+        await disconnectDB();
+        await disconnectRedis();
+        process.exit(1);
+      });
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGTERM', async () => {
+      logger.info('SIGTERM received. Shutting down gracefully.');
+      server.close(async () => {
+        await disconnectDB();
+        await disconnectRedis();
+        logger.info('Process terminated!');
+      });
+    });
+
+    process.on('SIGINT', async () => {
+      logger.info('SIGINT received. Shutting down gracefully.');
+      server.close(async () => {
+        await disconnectDB();
+        await disconnectRedis();
+        logger.info('Process terminated!');
+      });
+    });
+
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error(`Failed to start server: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 };
 
 startServer();
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  // Add database/redis connection close logic if needed
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  logger.info('SIGINT signal received: closing HTTP server');
-  // Add database/redis connection close logic if needed
-  process.exit(0);
-});
+```

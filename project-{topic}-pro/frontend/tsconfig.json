@@ -1,3 +1,4 @@
+```json
 {
   "compilerOptions": {
     "target": "es5",
@@ -19,12 +20,11 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
+    "sourceMap": true,
     "baseUrl": "src"
   },
   "include": [
     "src"
-  ],
-  "exclude": [
-    "node_modules"
   ]
 }
+```

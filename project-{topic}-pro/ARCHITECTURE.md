@@ -1,158 +1,163 @@
-# Architecture Documentation
+```markdown
+# Architecture Document: Enterprise-Grade Project Management System
 
-This document provides an overview of the Task Management System's architecture, detailing its components, their interactions, and the design decisions made.
+## 1. Introduction
 
-## 1. System Overview
+This document outlines the architectural design of the Enterprise-Grade Project Management System. The system is built to be scalable, secure, and maintainable, leveraging modern web technologies and best practices.
 
-The Task Management System is a web application designed to facilitate user, project, and task management. It adopts a client-server architecture, comprising a single-page application (SPA) frontend and a monolithic backend API.
+## 2. Goals and Principles
 
-## 2. High-Level Architecture
+**Goals:**
+*   Provide a robust and secure platform for managing projects and tasks.
+*   Enable efficient collaboration among users with different roles.
+*   Ensure high availability and responsiveness.
+*   Maintain a clear separation of concerns for easier development and maintenance.
+*   Prioritize security throughout the design and implementation.
 
-```mermaid
-graph TD
-    A[Client Devices (Web Browser)] -- HTTPS --> B(Load Balancer / API Gateway)
-    B -- "Reverse Proxy / Traffic Routing" --> C[Frontend Service (React)]
-    C -- "HTTP/REST API" --> D(Load Balancer / API Gateway)
-    D -- "Reverse Proxy / Traffic Routing" --> E[Backend Service (Spring Boot)]
-    E -- "JDBC / JPA" --> F[Managed PostgreSQL Database]
+**Principles:**
+*   **Modularity:** Break down the system into independent, cohesive modules.
+*   **Scalability:** Design components to scale horizontally to handle increased load.
+*   **Security by Design:** Integrate security measures from the initial design phase, not as an afterthought.
+*   **Maintainability:** Write clean, readable, and well-documented code with comprehensive testing.
+*   **API-First:** Design the backend as a comprehensive API to support multiple client applications.
+*   **Loose Coupling:** Components should be independent and interact through well-defined interfaces.
 
-    subgraph Infrastructure & Cross-Cutting Concerns
-        B --- G[CDN for Static Assets]
-        D --- H[Caching Layer (e.g., Redis/Caffeine)]
-        E --- I[Logging & Monitoring (e.g., ELK, Prometheus/Grafana)]
-        E --- J[Security (Authentication/Authorization)]
-        E --- K[Rate Limiting]
-        F --- L[Backup & Recovery, Replication]
-    end
+## 3. High-Level Architecture
 
-    subgraph CI/CD Workflow
-        M[Developer] -- "Code Commit" --> N(Version Control - GitHub)
-        N -- "Push/PR Trigger" --> O[CI/CD Pipeline - GitHub Actions]
-        O -- "Build, Test" --> O1[Backend JAR/Frontend Build]
-        O -- "Containerize" --> P[Docker Registry]
-        P -- "Deploy" --> Q[Deployment Environment (e.g., Kubernetes)]
-    end
+The system employs a classic 3-tier architecture, augmented with dedicated services for caching and rate limiting, orchestrated using Docker Compose.
 
-    Q -- "Deploys" --> E & F & C
+```
++-------------------+
+|      Client       |  (Web Browser / Mobile App)
++---------+---------+
+          | HTTPS / HTTP
+          |
++---------V---------+
+|     Load Balancer / Reverse Proxy (e.g., Nginx)  (Optional for single instance)
++---------+---------+
+          | HTTPS / HTTP
+          |
++---------V---------+
+|   Backend Service   |
+| (Node.js/Express)   |
++---------+---------+
+    |         |
+    |  (Database Pool)
+    |         |
++---V---------V---+
+|   PostgreSQL DB   |
++-------------------+
+    |         ^
+    | (Cache & Rate Limit Data)
+    |         |
++---V---------V---+
+|    Redis Cache    |
++-------------------+
 ```
 
-## 3. Component Breakdown
+## 4. Component Breakdown
 
-### 3.1 Frontend (Conceptual - React SPA)
-*   **Role:** Provides the user interface for interacting with the task management system.
-*   **Technologies:** React, React Router, Axios for API calls.
-*   **Responsibilities:**
-    *   User authentication (login/registration forms).
-    *   Displaying projects and tasks.
-    *   Forms for creating/editing projects and tasks.
-    *   Client-side routing and state management.
-    *   Error message display from API.
-*   **Interaction:** Communicates with the Backend API exclusively via RESTful HTTP calls.
+### 4.1. Client (Frontend)
 
-### 3.2 Backend (Spring Boot Monolithic API)
-The backend is a monolithic Spring Boot application, structured into multiple layers:
+*   **Technology:** React with TypeScript.
+*   **Role:** Provides the interactive user interface for managing projects and tasks.
+*   **Interaction:** Communicates with the Backend API exclusively through RESTful HTTP/HTTPS requests.
+*   **State Management:** Uses React Context API for global state (e.g., authentication status).
+*   **API Communication:** `Axios` for making HTTP requests.
+*   **Routing:** `React Router DOM` for client-side navigation.
 
-#### 3.2.1 Controller Layer (`com.alx.taskmgr.controller`)
-*   **Role:** Entry point for incoming HTTP requests. Handles request mapping, input validation, and delegates business logic to the Service Layer.
-*   **Responsibilities:**
-    *   Receiving HTTP requests (GET, POST, PUT, DELETE).
-    *   Deserializing JSON request bodies into Data Transfer Objects (DTOs).
-    *   Performing basic input validation using `@Valid` annotations.
-    *   Invoking appropriate service methods.
-    *   Serializing service responses (DTOs) into JSON HTTP responses.
-    *   Global exception handling (`@ControllerAdvice`) for consistent error responses.
-*   **Key Components:** `AuthController`, `UserController`, `ProjectController`, `TaskController`.
+### 4.2. Backend API
 
-#### 3.2.2 Service Layer (`com.alx.taskmgr.service`)
-*   **Role:** Contains the core business logic of the application. Orchestrates operations, enforces business rules, and interacts with the Repository Layer.
-*   **Responsibilities:**
-    *   Implementing transaction management (`@Transactional`).
-    *   Performing complex business validations.
-    *   Applying authorization checks (e.g., "only project owner can delete").
-    *   Transforming entities to DTOs and vice-versa.
-    *   Integrating cross-cutting concerns like caching (`@Cacheable`, `@CacheEvict`) and logging.
-    *   Delegating data persistence operations to the Repository Layer.
-*   **Key Components:** `UserService`, `ProjectService`, `TaskService`, `JwtService`.
+*   **Technology:** Node.js with Express.js and TypeScript.
+*   **Role:** The core business logic layer. Handles API requests, authentication, authorization, data validation, and persistence.
+*   **Structure:**
+    *   **`src/server.ts`:** Entry point, initializes Express app, connects to DB/Redis, and starts the server. Handles graceful shutdowns.
+    *   **`src/app.ts`:** Configures Express middleware (security headers, CORS, body parsers, rate limiting) and registers all API routes.
+    *   **`src/routes/`:** Defines API endpoints (`/api/auth`, `/api/users`, `/api/projects`, `/api/tasks`). Each route module groups related endpoints.
+    *   **`src/controllers/`:** Contains functions that handle incoming requests, parse request data, call appropriate services, and send HTTP responses.
+    *   **`src/services/`:** Encapsulates business logic. Services interact with repositories (ORM) to perform CRUD operations and implement complex workflows.
+    *   **`src/models/`:** TypeORM entities (`User`, `Project`, `Task`) defining the database schema and relationships.
+    *   **`src/middleware/`:** A critical layer for cross-cutting concerns:
+        *   `auth.middleware.ts`: Authenticates users using JWT.
+        *   `authorize.middleware.ts`: Implements Role-Based Access Control (RBAC).
+        *   `validate.middleware.ts`: Validates request payloads using Joi schemas.
+        *   `error.middleware.ts`: Centralized error handling, prevents sensitive data leakage.
+        *   `cache.middleware.ts`: Caching mechanism for GET requests using Redis.
+        *   `rateLimit.middleware.ts`: API rate limiting using Redis.
+    *   **`src/utils/`:** Helper functions for JWT generation/verification, password hashing, and custom error classes.
+    *   **`src/config/`:** Centralized configuration management (database, Redis, JWT secrets, logging levels) loaded from environment variables.
+*   **Security:** JWT-based authentication, RBAC authorization, input validation, bcrypt password hashing, rate limiting, Helmet for security headers, CORS, robust error handling, and structured logging.
+*   **Data Access:** TypeORM as an Object-Relational Mapper (ORM) for interacting with PostgreSQL. This provides type safety and protection against SQL injection.
 
-#### 3.2.3 Repository Layer (`com.alx.taskmgr.repository`)
-*   **Role:** Provides an abstraction over the data persistence mechanism. Handles CRUD operations for entities.
-*   **Technologies:** Spring Data JPA, Hibernate.
-*   **Responsibilities:**
-    *   Defining interfaces for data access (extending `JpaRepository`).
-    *   Executing database queries (auto-generated by Spring Data JPA or custom JPQL/native queries).
-    *   Mapping relational database tables to Java entities.
-*   **Key Components:** `UserRepository`, `ProjectRepository`, `TaskRepository`.
+### 4.3. Database (PostgreSQL)
 
-#### 3.2.4 Entity Layer (`com.alx.taskmgr.entity`)
-*   **Role:** Represents the core domain objects and their relationships in the database.
-*   **Technologies:** JPA annotations (`@Entity`, `@Table`, `@Id`, `@ManyToOne`, `@OneToMany`, etc.).
-*   **Key Components:** `User`, `Role`, `Project`, `Task`, `TaskStatus` (enum).
+*   **Technology:** PostgreSQL relational database.
+*   **Role:** Primary data store for all application data (users, projects, tasks).
+*   **Persistence:** Docker volumes are used to ensure data persistence across container restarts.
+*   **Management:** TypeORM handles schema definition (entities), migrations, and query execution.
+*   **Query Optimization:** Potential for indexing critical columns (e.g., `user.email`, `project.ownerId`) for performance. TypeORM's query builder allows for optimized queries.
 
-#### 3.2.5 DTO Layer (`com.alx.taskmgr.dto`)
-*   **Role:** Data Transfer Objects. Used to transfer data between the client and server, and between different layers of the backend. They hide internal entity details and simplify API contracts.
-*   **Key Components:** `LoginRequest`, `JwtResponse`, `UserCreateRequest`, `UserResponse`, `ProjectCreateRequest`, `ProjectResponse`, `TaskCreateRequest`, `TaskUpdateRequest`, `TaskResponse`.
+### 4.4. Cache and Rate Limiting Store (Redis)
 
-#### 3.2.6 Security Layer (`com.alx.taskmgr.config.SecurityConfig`, `JwtAuthFilter`)
-*   **Role:** Handles authentication and authorization using Spring Security.
-*   **Authentication:** JWT-based authentication. Users sign in, receive a token, and send it with subsequent requests.
-*   **Authorization:** Role-based (`ROLE_USER`, `ROLE_ADMIN`) and method-level security (`@PreAuthorize`) for API endpoints. Fine-grained authorization logic is often implemented in the Service Layer.
+*   **Technology:** Redis in-memory data store.
+*   **Role:**
+    *   **Caching:** Stores responses for frequently accessed GET endpoints (`cache.middleware.ts`) to reduce database load and improve response times.
+    *   **Rate Limiting:** Stores hit counts for API rate limiting (`rateLimit.middleware.ts`), providing efficient and distributed rate control.
+*   **Persistence:** Configured with `appendonly yes` in `docker-compose.yml` for basic data persistence (for rate limit states) across Redis container restarts.
 
-#### 3.2.7 Cross-Cutting Concerns
-*   **Error Handling (`GlobalExceptionHandler`):** Catches exceptions across the application and formats them into consistent, client-friendly error responses (e.g., 400 Bad Request, 404 Not Found, 500 Internal Server Error).
-*   **Logging:** Uses SLF4J with Logback for structured logging, configured via `application.yml`.
-*   **Caching (`CacheConfig`, `@Cacheable`, `@CacheEvict`):** Uses Spring's caching abstraction with Caffeine as the in-memory cache provider to improve performance for frequently read data.
-*   **Rate Limiting (`RateLimitInterceptor`):** Implemented as a Spring HandlerInterceptor using the `Bucket4j` library to limit the number of requests a client can make within a certain time frame based on IP address.
-*   **Auditing:** JPA auditing (`@CreatedDate`, `@LastModifiedDate`) is enabled to automatically track creation and modification timestamps for entities.
+## 5. Security Considerations
 
-### 3.3 Database (PostgreSQL)
-*   **Role:** Persistent storage for all application data.
-*   **Technologies:** PostgreSQL relational database.
-*   **Schema Management:** Flyway is used for database migrations, ensuring controlled and versioned changes to the database schema.
-*   **Query Optimization:** Indexes are defined on frequently queried columns to improve read performance.
+Security is a paramount concern and is integrated into the architecture as follows:
 
-## 4. Data Flow (Example: Creating a Task)
+*   **Authentication & Authorization:** Implemented with JWT for access tokens (short-lived) and refresh tokens (longer-lived). RBAC controls access to resources based on user roles (`admin`, `manager`, `user`). Object-level access is further enforced in service layers.
+*   **Input Validation & Sanitization:** Joi is used for comprehensive server-side validation. This prevents malformed data from entering the system and mitigates various injection attacks.
+*   **Password Management:** Passwords are hashed using `bcryptjs` before storage, never stored in plaintext.
+*   **Rate Limiting:** Protects against brute-force attacks on login endpoints and denial-of-service attacks on other APIs.
+*   **Secure Communication:** Assumes HTTPS in production for all client-server communication to protect data in transit. (Docker Compose example uses HTTP for local dev simplicity).
+*   **Environment Variables:** Sensitive configurations and secrets are externalized using environment variables (`.env` files), never hardcoded.
+*   **Logging & Monitoring:** `Winston` provides structured logging for error tracking, performance metrics, and security audit trails (e.g., failed login attempts, critical resource access).
+*   **Error Handling:** A global error handler prevents leaking sensitive stack traces or internal server details to clients in production environments.
+*   **Security Headers:** `Helmet` middleware adds crucial HTTP headers to enhance security against common web vulnerabilities.
+*   **CORS Policies:** Explicitly defined CORS policies to control which origins can access the API.
+*   **Database Access:** All database interactions go through TypeORM, which uses parameterized queries to prevent SQL injection. Database user permissions are restricted to the minimum necessary.
+*   **Docker Security:** Using lean base images (`alpine`), multi-stage builds, and avoiding running as root within containers.
 
-1.  **Frontend:** User fills out a "Create Task" form and clicks submit.
-2.  **HTTP Request:** React frontend sends a `POST` request to `/api/tasks` with a `TaskCreateRequest` JSON payload and `Authorization: Bearer <JWT_TOKEN>` header.
-3.  **Spring Security (`JwtAuthFilter`):** Intercepts the request, validates the JWT token, extracts the user's identity, and populates `SecurityContextHolder` and `UserContext` (with current user ID).
-4.  **Controller (`TaskController`):**
-    *   Receives the request, validates the `TaskCreateRequest` DTO.
-    *   Calls `taskService.createTask(request)`.
-5.  **Service (`TaskService`):**
-    *   Retrieves `currentUserId` from `UserContext`.
-    *   Fetches the `Project` entity by `projectId` from `projectRepository`.
-    *   Performs authorization check: ensures `currentUserId` is the project owner or a collaborator.
-    *   Fetches `User` entity for `assignedToId` from `userRepository` if provided.
-    *   Creates a new `Task` entity, populating fields from the DTO.
-    *   Calls `taskRepository.save(task)` to persist the new task.
-    *   Evicts relevant caches (e.g., `tasksByProject`, `tasksByUser`).
-    *   Maps the saved `Task` entity back to a `TaskResponse` DTO.
-6.  **Repository (`TaskRepository`):** Executes the JPA `save` operation, which translates to an `INSERT` SQL statement against the PostgreSQL database.
-7.  **Service:** Returns `TaskResponse` DTO.
-8.  **Controller:** Returns `ResponseEntity(TaskResponse, HttpStatus.CREATED)`.
-9.  **HTTP Response:** Backend sends a `201 Created` HTTP response with the `TaskResponse` JSON payload back to the frontend.
-10. **Frontend:** Receives the response, updates its state, and displays the new task.
+## 6. Development & Deployment Workflow
 
-## 5. Scalability Considerations
+*   **Local Development:** Developers use `docker-compose up` to spin up the entire stack locally for a consistent environment. `nodemon` is used for auto-reloading backend changes.
+*   **Version Control:** Git is used for source code management.
+*   **CI/CD (GitHub Actions):**
+    *   Automatically builds and tests both frontend and backend upon pushes/pull requests to `main` and `develop` branches.
+    *   Ensures code quality (linting), correctness (unit, integration, API tests), and satisfactory test coverage.
+    *   A simulated deployment step is configured for the `main` branch, representing a deployment to staging/production environments.
 
-*   **Stateless Backend:** JWT-based authentication ensures the backend remains stateless, allowing easy horizontal scaling of backend instances.
-*   **Database:** PostgreSQL can be scaled vertically (more powerful server) and horizontally (read replicas, sharding) as needed. Using a managed database service simplifies this.
-*   **Caching:** The Caffeine cache reduces load on the database, improving response times. For distributed environments, Caffeine could be replaced by an external cache like Redis.
-*   **Load Balancer:** Essential for distributing incoming requests across multiple backend instances and for high availability.
-*   **Containerization:** Docker and Kubernetes provide native support for scaling applications.
-*   **Asynchronous Processing:** For long-running tasks (e.g., sending notifications, complex reports), integrating message queues (RabbitMQ, Kafka) and background workers would decouple processes and improve responsiveness.
+## 7. Scaling Considerations
 
-## 6. Security Considerations
+*   **Backend:** Node.js can be scaled horizontally by running multiple instances behind a load balancer. The stateless nature of JWTs (for access tokens) facilitates this. Redis for caching and rate limiting is a shared, external service.
+*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally through read replicas for read-heavy workloads.
+*   **Redis:** Can be scaled using Redis Cluster for high availability and sharding.
+*   **Frontend:** The React app builds into static files, which can be served efficiently from a CDN or static file server (e.g., Nginx in the Docker setup).
 
-*   **Authentication:** JWT ensures secure user identity verification.
-*   **Authorization:** Role-based and fine-grained authorization logic prevents unauthorized access.
-*   **Password Hashing:** BCrypt algorithm is used for securely storing user passwords.
-*   **HTTPS:** All communication between client and server should occur over HTTPS to prevent eavesdropping.
-*   **Input Validation:** `@Valid` annotations and manual checks prevent common vulnerabilities like SQL injection and XSS (though XSS is more a frontend concern, robust backend sanitization is still good).
-*   **Rate Limiting:** Protects against brute-force attacks and denial-of-service attempts.
-*   **CORS:** Explicitly configured to allow requests only from trusted frontend origins.
-*   **Secret Management:** Sensitive configurations (JWT secret, DB passwords) are externalized via environment variables, not hardcoded. In production, dedicated secret management services (e.g., AWS Secrets Manager, Vault) would be used.
-*   **Dependency Scanning:** Regular scanning of dependencies for known vulnerabilities.
+## 8. Data Flow (Example: User Login)
 
-This architectural overview provides a solid foundation for understanding the system. Further detailed design decisions can be found within the code comments and specific configuration files.
+1.  **Frontend:** User enters credentials and clicks login.
+2.  **Frontend:** Sends a `POST /api/auth/login` request with email and password to the Backend API.
+3.  **Backend (Rate Limit Middleware):** `apiRateLimiter` checks if the IP address has exceeded the request limit in Redis. If so, it blocks the request.
+4.  **Backend (Validation Middleware):** `validate(loginSchema)` checks if the email and password format are valid. If not, returns 400.
+5.  **Backend (Auth Controller):** Calls `authService.login()`.
+6.  **Auth Service:**
+    *   Queries `UserRepository` to find the user by email.
+    *   Uses `bcrypt` to compare the provided password with the stored hashed password.
+    *   If credentials are valid, generates an `accessToken` and `refreshToken` using `jwt.sign()`.
+    *   Logs successful login.
+7.  **Auth Controller:** Sends a 200 OK response with the `accessToken`, `refreshToken`, and user details.
+8.  **Frontend:** Stores the `accessToken` (e.g., in local storage or memory) and potentially the `refreshToken` (e.g., in an HTTP-only cookie). Navigates the user to the dashboard.
+9.  **Subsequent requests:** Frontend includes the `accessToken` in the `Authorization: Bearer <token>` header.
+10. **Backend (Auth Middleware):** `authenticate` middleware verifies the `accessToken` using `jwt.verify()`, extracts user ID and role, fetches the user from the DB, and attaches the `User` object to `req.user`. If token is invalid/expired, returns 401.
+11. **Backend (Authorize Middleware):** `authorize` middleware checks if `req.user.role` has permission for the requested resource. If not, returns 403.
+12. **Backend (Controller/Service):** Proceeds with the business logic.
+
+## 9. Conclusion
+
+This architecture provides a solid foundation for a secure and scalable Project Management System. The modular design, robust security measures, and comprehensive testing strategy aim to deliver a high-quality, enterprise-grade application.
 ```

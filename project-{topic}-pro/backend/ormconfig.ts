@@ -1,24 +1,30 @@
-import { DataSource } from "typeorm";
-import { config } from "./src/config/env";
-import { User } from "./src/entities/user.entity";
-import { Workspace } from "./src/entities/workspace.entity";
-import { Project } from "./src/entities/project.entity";
-import { Task } from "./src/entities/task.entity";
-import { Comment } from "./src/entities/comment.entity";
-import { Tag } from "./src/entities/tag.entity";
+```typescript
+import { DataSource, DataSourceOptions } from 'typeorm';
+import dotenv from 'dotenv';
+import path from 'path';
 
-// This file is specifically for TypeORM CLI to run migrations.
-// It uses commonjs because ts-node is configured to use it for cli commands.
-// It directly uses config.DATABASE_URL from the env.ts for consistency.
+// Load environment variables based on NODE_ENV
+const envPath = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
+dotenv.config({ path: path.resolve(process.cwd(), envPath) });
 
-export const AppDataSource = new DataSource({
-    type: "postgres",
-    url: config.DATABASE_URL,
-    synchronize: false, // Never synchronize in CLI or production
-    logging: true,
-    entities: [User, Workspace, Project, Task, Comment, Tag],
-    migrations: [__dirname + "/src/migrations/**/*.ts"],
-    subscribers: [],
-});
+export const dataSourceOptions: DataSourceOptions = {
+  type: 'postgres',
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  synchronize: false, // Never use true in production! Use migrations.
+  logging: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
+  entities: [path.join(__dirname, 'src/models/**/*.ts')],
+  migrations: [path.join(__dirname, 'src/migrations/**/*.ts')],
+  subscribers: [],
+  extra: {
+    max: 10, // Maximum number of connections in the pool
+    min: 2,  // Minimum number of connections in the pool
+    idleTimeoutMillis: 30000 // How long a client is allowed to remain idle before being closed
+  }
+};
 
-export default AppDataSource;
+export const AppDataSource = new DataSource(dataSourceOptions);
+```

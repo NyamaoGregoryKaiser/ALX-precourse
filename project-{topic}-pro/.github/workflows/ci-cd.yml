@@ -1,3 +1,4 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
@@ -11,131 +12,134 @@ on:
       - develop
 
 jobs:
-  backend-ci:
+  build_and_test_backend:
+    name: Build & Test Backend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
 
-      - name: Install backend dependencies
-        run: npm install --prefix backend
+      - name: Cache Node.js modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Run backend tests
-        run: npm test --prefix backend -- --ci --coverage --testResultsProcessor="jest-junit"
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: Lint Backend
+        working-directory: ./backend
+        run: npm run lint # Assuming you have a lint script (e.g., eslint)
+
+      - name: Build Backend
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Set up Test Database (PostgreSQL)
+        run: |
+          docker run --name test-db -e POSTGRES_DB=test_db -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -p 5433:5432 -d postgres:14-alpine
+          docker run --name test-redis -e REDIS_PASSWORD=test_redis_password -p 6380:6379 -d redis:7-alpine redis-server --requirepass "test_redis_password"
+          sleep 10 # Give containers time to start
+
+      - name: Run Backend Tests
+        working-directory: ./backend
         env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/testdb # Use a test DB
-          JWT_SECRET: testsecret
-          REDIS_URL: redis://localhost:6379 # For testing redis connection
-        continue-on-error: true # Allow non-critical tests to fail without stopping build immediately
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_USERNAME: test_user
+          DB_PASSWORD: test_password
+          DB_DATABASE: test_db
+          REDIS_HOST: localhost
+          REDIS_PORT: 6380
+          REDIS_PASSWORD: test_redis_password
+          SECRET_KEY: test_secret
+          REFRESH_SECRET_KEY: test_refresh_secret
+        run: npm test
 
-      - name: Build backend
-        run: npm run build --prefix backend
-
-      - name: Upload backend coverage report
-        uses: actions/upload-artifact@v3
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
         with:
           name: backend-coverage-report
-          path: backend/coverage
+          path: backend/coverage/lcov.info # Or other formats
 
-      - name: Docker Login to ghcr.io
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stop Test Containers
+        if: always() # Run even if tests fail
+        run: |
+          docker stop test-db test-redis
+          docker rm test-db test-redis
 
-      - name: Build and push backend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./backend
-          push: true
-          tags: ghcr.io/${{ github.repository }}/backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  frontend-ci:
+  build_and_test_frontend:
+    name: Build & Test Frontend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        run: npm install --prefix frontend
+      - name: Cache Node.js modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Run frontend tests
-        run: npm test --prefix frontend -- --ci --coverage
-        env:
-          CI: true # Required for Create React App tests in CI environments
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install
 
-      - name: Build frontend
-        run: npm run build --prefix frontend
+      - name: Lint Frontend
+        working-directory: ./frontend
+        run: npm run lint # Assuming you have a lint script (e.g., eslint)
 
-      - name: Upload frontend coverage report
-        uses: actions/upload-artifact@v3
+      - name: Run Frontend Tests
+        working-directory: ./frontend
+        run: npm test -- --coverage
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage-report
-          path: frontend/coverage
+          path: frontend/coverage/lcov.info
 
-      - name: Docker Login to ghcr.io
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push frontend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./frontend
-          push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+  # This job will only run if all previous jobs in the workflow are successful.
+  # For a real project, this would deploy to a cloud provider (AWS, GCP, Azure, Heroku, etc.)
+  # This example is a placeholder for a simulated deployment.
   deploy:
+    name: Deploy to Staging/Production
     runs-on: ubuntu-latest
-    needs: [backend-ci, frontend-ci] # Only deploy if both CI jobs pass
-    if: github.ref == 'refs/heads/main' # Deploy only from main branch
-    environment: production # Define a production environment in GitHub for secrets/variables
+    needs: [build_and_test_backend, build_and_test_frontend] # Ensure tests pass before deployment
+    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Pull Docker images
+      - name: Simulate Deployment
         run: |
-          docker pull ghcr.io/${{ github.repository }}/backend:latest
-          docker pull ghcr.io/${{ github.repository }}/frontend:latest
-
-      - name: Deploy to EC2/Remote Server (example using SSH)
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.PROD_SSH_HOST }}
-          username: ${{ secrets.PROD_SSH_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            # Update images and restart services using docker-compose
-            cd /path/to/your/app/on/server
-            # Ensure .env is present on server or pass env vars directly
-            echo "DATABASE_URL=${{ secrets.PROD_DATABASE_URL }}" > .env
-            echo "JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}" >> .env
-            echo "REDIS_URL=${{ secrets.PROD_REDIS_URL }}" >> .env
-            echo "REACT_APP_API_BASE_URL=${{ secrets.PROD_FRONTEND_API_URL }}" >> .env
-            # Add other production environment variables
-            docker compose pull
-            docker compose up -d --force-recreate --build
-            docker system prune -f
-            echo "Deployment completed successfully!"
+          echo "Deploying backend and frontend Docker images to a hypothetical server..."
+          echo "  - Build Docker images (if not already built by previous stages)"
+          docker-compose build
+          echo "  - Push images to Docker Registry (e.g., Docker Hub, ECR)"
+          # Example: docker push myrepo/backend:latest
+          # Example: docker push myrepo/frontend:latest
+          echo "  - Pull images and restart services on the target server (e.g., using SSH and docker-compose)"
+          echo "Deployment simulated successfully! In a real scenario, this would involve cloud-specific deployment steps."
+```
