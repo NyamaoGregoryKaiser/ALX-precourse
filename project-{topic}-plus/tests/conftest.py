@@ -1,17 +1,37 @@
-```python
 import pytest
-from app import create_app, db, cache
-from app.models import User, Category, Product, Cart, CartItem, Order, OrderItem, UserRole, OrderStatus
-import uuid
-from decimal import Decimal
+import os
+from dotenv import load_dotenv
+
+# Load environment variables for tests
+load_dotenv(override=True)
+
+# Ensure FLASK_ENV is set for testing
+os.environ['FLASK_ENV'] = 'testing'
+os.environ['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # Use in-memory SQLite for tests
+os.environ['SECRET_KEY'] = 'test_secret_key'
+os.environ['JWT_SECRET_KEY'] = 'test_jwt_secret_key'
+os.environ['JWT_ACCESS_TOKEN_EXPIRES_MINUTES'] = '1' # Shorter expiry for testing
+os.environ['REDIS_URL'] = 'redis://localhost:6379/1' # Use a different Redis DB for testing if possible
+os.environ['CACHE_TYPE'] = 'simple' # Use simple cache for tests to avoid external dependency
+
+from app import create_app, db, jwt, cache
+from app.models import User, Task, Role, REVOKED_TOKENS
+from app.services.auth_service import AuthService
 
 @pytest.fixture(scope='session')
 def app():
-    """Create and configure a new app instance for each test session."""
-    app = create_app('testing')
+    """Fixture for the Flask application, configured for testing."""
+    app = create_app('development') # Use development config for testing setup
+    app.config.update({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'JWT_SECRET_KEY': 'test_jwt_secret_key',
+        'SECRET_KEY': 'test_secret_key',
+        'CACHE_TYPE': 'simple', # Use simple cache for tests
+        'RATELIMIT_ENABLED': False # Disable rate limiting for tests for predictability
+    })
+
     with app.app_context():
-        # Re-initialize the cache for testing to ensure isolation
-        cache.clear()
         db.create_all()
         yield app
         db.session.remove()
@@ -19,151 +39,102 @@ def app():
 
 @pytest.fixture(scope='function')
 def client(app):
-    """A test client for the app."""
+    """Fixture for a test client."""
     return app.test_client()
 
 @pytest.fixture(scope='function')
-def runner(app):
-    """A cli runner for the app."""
-    return app.test_cli_runner()
+def init_database(app):
+    """Fixture to clear and re-create database for each test function."""
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+        # Clear revoked tokens for each test
+        REVOKED_TOKENS.clear()
+        yield db
+        db.session.remove()
+        db.drop_all()
 
 @pytest.fixture(scope='function')
-def db_session(app):
-    """Provide a clean database session for each test function."""
-    with app.app_context():
-        # Before each test, clear data
-        for table in reversed(db.metadata.sorted_tables):
-            db.session.execute(table.delete())
-        db.session.commit()
+def seed_users(init_database):
+    """Fixture to seed initial users."""
+    db_instance = init_database # Ensure database is initialized
+    admin = User(username='admin_test', email='admin_test@example.com', role=Role.ADMIN)
+    admin.set_password('password')
+    user1 = User(username='user1_test', email='user1_test@example.com', role=Role.USER)
+    user1.set_password('password')
+    user2 = User(username='user2_test', email='user2_test@example.com', role=Role.USER)
+    user2.set_password('password')
 
-        # Re-initialize the cache for testing to ensure isolation
-        cache.clear()
-
-        yield db.session
-
-        # After each test, rollback any changes to ensure a clean state for the next test
-        db.session.rollback()
-
-@pytest.fixture
-def test_users(db_session):
-    """Create test users and their carts."""
-    admin_user = User(id=uuid.uuid4(), username='admin_test', email='admin_test@example.com', role=UserRole.ADMIN)
-    admin_user.password = 'adminpass'
-    db_session.add(admin_user)
-
-    customer_user = User(id=uuid.uuid4(), username='customer_test', email='customer_test@example.com', role=UserRole.CUSTOMER)
-    customer_user.password = 'customerpass'
-    db_session.add(customer_user)
-
-    another_customer = User(id=uuid.uuid4(), username='another_customer', email='another@example.com', role=UserRole.CUSTOMER)
-    another_customer.password = 'anotherpass'
-    db_session.add(another_customer)
-
-    db_session.flush() # To get user IDs
-
-    admin_cart = Cart(user_id=admin_user.id)
-    customer_cart = Cart(user_id=customer_user.id)
-    another_cart = Cart(user_id=another_customer.id)
-    db_session.add_all([admin_cart, customer_cart, another_cart])
-    db_session.commit()
+    db_instance.session.add_all([admin, user1, user2])
+    db_instance.session.commit()
 
     return {
-        'admin': admin_user,
-        'customer': customer_user,
-        'another_customer': another_customer,
+        'admin': admin,
+        'user1': user1,
+        'user2': user2
     }
 
-@pytest.fixture
-def auth_tokens(client, test_users):
-    """Provide JWT tokens for test users."""
+@pytest.fixture(scope='function')
+def auth_tokens(client, seed_users):
+    """Fixture to get JWT tokens for seeded users."""
     tokens = {}
-    for role, user in test_users.items():
-        if role != 'another_customer': # Only generate for admin and customer for simplicity
-            response = client.post('/api/auth/login', json={'email': user.email, 'password': f'{role}pass'})
-            assert response.status_code == 200
-            data = response.get_json()
-            tokens[role] = data['access_token']
+    users = seed_users
+    
+    # Login admin
+    admin_login_res = client.post('/api/auth/login', json={'username': users['admin'].username, 'password': 'password'})
+    tokens['admin'] = admin_login_res.json
+
+    # Login user1
+    user1_login_res = client.post('/api/auth/login', json={'username': users['user1'].username, 'password': 'password'})
+    tokens['user1'] = user1_login_res.json
+
+    # Login user2
+    user2_login_res = client.post('/api/auth/login', json={'username': users['user2'].username, 'password': 'password'})
+    tokens['user2'] = user2_login_res.json
+    
     return tokens
 
-@pytest.fixture
-def test_categories(db_session):
-    """Create test categories."""
-    electronics = Category(id=uuid.uuid4(), name='Electronics', slug='electronics', description='Electronic gadgets')
-    clothing = Category(id=uuid.uuid4(), name='Clothing', slug='clothing', description='Wearable items')
-    db_session.add_all([electronics, clothing])
-    db_session.commit()
+@pytest.fixture(scope='function')
+def admin_auth_header(auth_tokens):
+    """Fixture for admin authorization header."""
+    return {'Authorization': f"Bearer {auth_tokens['admin']['access_token']}"}
+
+@pytest.fixture(scope='function')
+def user1_auth_header(auth_tokens):
+    """Fixture for user1 authorization header."""
+    return {'Authorization': f"Bearer {auth_tokens['user1']['access_token']}"}
+
+@pytest.fixture(scope='function')
+def user2_auth_header(auth_tokens):
+    """Fixture for user2 authorization header."""
+    return {'Authorization': f"Bearer {auth_tokens['user2']['access_token']}"}
+
+@pytest.fixture(scope='function')
+def seed_tasks(init_database, seed_users):
+    """Fixture to seed tasks."""
+    db_instance = init_database
+    users = seed_users
+
+    admin = users['admin']
+    user1 = users['user1']
+    user2 = users['user2']
+
+    task1 = Task(title='Admin Task 1', description='Task by admin for admin', created_by_id=admin.id, assigned_to_id=admin.id, status=TaskStatus.PENDING)
+    task2 = Task(title='Admin Task 2', description='Task by admin for user1', created_by_id=admin.id, assigned_to_id=user1.id, status=TaskStatus.IN_PROGRESS)
+    task3 = Task(title='User1 Task 1', description='Task by user1 for user1', created_by_id=user1.id, assigned_to_id=user1.id, status=TaskStatus.COMPLETED)
+    task4 = Task(title='User1 Task 2', description='Task by user1 for user2', created_by_id=user1.id, assigned_to_id=user2.id, status=TaskStatus.PENDING)
+    task5 = Task(title='User2 Task 1', description='Task by user2 for user1', created_by_id=user2.id, assigned_to_id=user1.id, status=TaskStatus.PENDING)
+    task6 = Task(title='User2 Task 2', description='Task by user2 for user2', created_by_id=user2.id, assigned_to_id=user2.id, status=TaskStatus.IN_PROGRESS)
+
+    db_instance.session.add_all([task1, task2, task3, task4, task5, task6])
+    db_instance.session.commit()
+
     return {
-        'electronics': electronics,
-        'clothing': clothing
+        'task1': task1,
+        'task2': task2,
+        'task3': task3,
+        'task4': task4,
+        'task5': task5,
+        'task6': task6
     }
-
-@pytest.fixture
-def test_products(db_session, test_categories):
-    """Create test products."""
-    product1 = Product(
-        id=uuid.uuid4(),
-        name='Test Smartphone',
-        slug='test-smartphone',
-        description='A great test smartphone',
-        price=Decimal('500.00'),
-        stock=10,
-        category_id=test_categories['electronics'].id
-    )
-    product2 = Product(
-        id=uuid.uuid4(),
-        name='Test T-Shirt',
-        slug='test-t-shirt',
-        description='A comfortable test t-shirt',
-        price=Decimal('25.00'),
-        stock=20,
-        category_id=test_categories['clothing'].id
-    )
-    db_session.add_all([product1, product2])
-    db_session.commit()
-    return {
-        'smartphone': product1,
-        'tshirt': product2
-    }
-
-@pytest.fixture
-def customer_cart_with_items(db_session, test_users, test_products):
-    """Populate customer's cart with items."""
-    customer = test_users['customer']
-    cart = Cart.query.filter_by(user_id=customer.id).first()
-    
-    cart_item1 = CartItem(cart_id=cart.id, product_id=test_products['smartphone'].id, quantity=1)
-    cart_item2 = CartItem(cart_id=cart.id, product_id=test_products['tshirt'].id, quantity=2)
-    db_session.add_all([cart_item1, cart_item2])
-    db_session.commit()
-    return cart
-
-@pytest.fixture
-def seeded_order(db_session, test_users, test_products):
-    """Create a seeded order for testing order-specific actions."""
-    customer = test_users['customer']
-    order = Order(
-        id=uuid.uuid4(),
-        user_id=customer.id,
-        total_amount=Decimal('550.00'),
-        status=OrderStatus.PENDING,
-        shipping_address="123 Test St, Test City"
-    )
-    db_session.add(order)
-    db_session.flush() # to get order ID
-
-    order_item1 = OrderItem(
-        order_id=order.id,
-        product_id=test_products['smartphone'].id,
-        quantity=1,
-        price=test_products['smartphone'].price
-    )
-    order_item2 = OrderItem(
-        order_id=order.id,
-        product_id=test_products['tshirt'].id,
-        quantity=2,
-        price=test_products['tshirt'].price
-    )
-    db_session.add_all([order_item1, order_item2])
-    db_session.commit()
-    return order
 ```

@@ -1,62 +1,63 @@
-```python
 import os
 from datetime import timedelta
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-
 class Config:
-    SECRET_KEY = os.getenv('SECRET_KEY', 'my_secret_key_for_dev')
+    """Base configuration class."""
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'default_secret_key_for_dev')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default_jwt_secret_key_for_dev')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'super-secret-jwt-key-replace-me-in-production')
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_MINUTES', 30)))
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES_DAYS', 7)))
-    PROPAGATE_EXCEPTIONS = True # Allows error handlers to catch exceptions
+    SQLALCHEMY_ECHO = False  # Set to True to log all SQL queries
 
-    # Cache Configuration (Flask-Caching)
-    CACHE_TYPE = os.getenv('CACHE_TYPE', 'RedisCache') # 'SimpleCache', 'RedisCache'
-    CACHE_REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-    CACHE_DEFAULT_TIMEOUT = 300 # 5 minutes
+    # JWT Configuration
+    JWT_TOKEN_LOCATION = ['headers']
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES_MINUTES', 15)))
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES_DAYS', 30)))
+    JWT_BLACKLIST_ENABLED = True
+    JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
 
-    # Rate Limiting (Flask-Limiter)
-    RATELIMIT_STORAGE_URL = os.getenv('RATELIMIT_STORAGE_URL', 'redis://localhost:6379/1')
-    RATELIMIT_DEFAULT = "500 per day;100 per hour" # Default rate limits for all routes
-    RATELIMIT_HEADERS_ENABLED = True # Include X-RateLimit-* headers in responses
+    # Caching Configuration
+    CACHE_TYPE = 'redis'
+    CACHE_REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    CACHE_DEFAULT_TIMEOUT = int(os.environ.get('CACHE_DEFAULT_TIMEOUT', 300)) # 5 minutes
 
-    # Sentry DSN for error monitoring (optional)
-    SENTRY_DSN = os.getenv('SENTRY_DSN')
+    # Rate Limiting Configuration
+    # Example: "200 per day;50 per hour"
+    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    RATELIMIT_DEFAULT = os.environ.get('RATE_LIMIT_DEFAULT', '200 per day;50 per hour')
+
+    # Logging Configuration
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH', 'logs/app.log')
+    LOG_MAX_BYTES = 10 * 1024 * 1024 # 10 MB
+    LOG_BACKUP_COUNT = 5
+
+    # Flasgger (Swagger UI) Configuration
+    SWAGGER = {
+        'title': 'Task Management API',
+        'uiversion': 3,
+        'doc_dir': './app/templates/', # Where index.html for swagger is (optional for custom ui)
+        'swagger_ui_bundle_js': 'https://unpkg.com/swagger-ui-dist@3.52.0/swagger-ui-bundle.js',
+        'swagger_ui_standalone_preset_js': 'https://unpkg.com/swagger-ui-dist@3.52.0/swagger-ui-standalone-preset.js',
+        'swagger_ui_css': 'https://unpkg.com/swagger-ui-dist@3.52.0/swagger-ui.css'
+    }
 
 class DevelopmentConfig(Config):
+    """Development configuration."""
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/ecommerce_db')
-    # Use SQLite for simpler dev if preferred:
-    # SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'dev.db')
-    JWT_SECRET_KEY = 'dev-jwt-secret' # Override for dev
-    CACHE_TYPE = 'SimpleCache' # Simpler cache for dev without Redis setup
-    RATELIMIT_STORAGE_URL = None # Disable rate limiting storage for local dev to avoid redis dependency
-
-class TestingConfig(Config):
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.getenv('TEST_DATABASE_URL', 'sqlite:///:memory:') # In-memory SQLite for tests
-    JWT_SECRET_KEY = 'test-jwt-secret'
-    WTF_CSRF_ENABLED = False # Disable CSRF in tests
-    CACHE_TYPE = 'null' # No caching in tests
-    RATELIMIT_ENABLED = False # Disable rate limiting in tests
+    SQLALCHEMY_DATABASE_URI = os.environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///app.db')
+    SQLALCHEMY_ECHO = True # Log SQL queries in development
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
 
 class ProductionConfig(Config):
+    """Production configuration."""
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/ecommerce_db')
-    # Ensure all secrets are set via environment variables for production
+    TESTING = False
+    # Use PostgreSQL in production
+    SQLALCHEMY_DATABASE_URI = os.environ.get('SQLALCHEMY_DATABASE_URI', 'postgresql://user:password@db:5432/mydatabase')
+    # Ensure a strong, unique secret key is set via environment variables in production
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
-    CACHE_REDIS_URL = os.environ.get('REDIS_URL')
-    RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL')
 
-    if not all([Config.SECRET_KEY, Config.JWT_SECRET_KEY, Config.SQLALCHEMY_DATABASE_URI]):
-        raise ValueError("Critical environment variables for Production must be set!")
-
-config_by_name = {
-    'development': DevelopmentConfig,
-    'testing': TestingConfig,
-    'production': ProductionConfig,
-    'default': DevelopmentConfig
-}
+    if not Config.SECRET_KEY or not Config.JWT_SECRET_KEY:
+        raise ValueError("SECRET_KEY and JWT_SECRET_KEY must be set in environment for production.")
 ```

@@ -1,127 +1,86 @@
-name: Java Spring Boot CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   build-and-test:
-    name: Build & Test Backend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # For SonarCloud
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Cache SonarCloud packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.sonar/cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Cache Maven packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('backend/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Install database driver if needed for tests (e.g., psycopg2-binary)
+        # pip install psycopg2-binary # For PostgreSQL in test environment
 
-      - name: Build with Maven and Run Tests
-        run: mvn -B verify --file pom.xml
+    - name: Run Database Migrations (for testing setup)
+      run: |
+        # For SQLite, it's often simpler to just create the database on the fly for tests
+        # For a real DB, you'd run migration commands here
+        flask db upgrade
+      env:
+        SQLALCHEMY_DATABASE_URI: "sqlite:///test_app.db" # Use a dedicated test DB
 
-      - name: Analyze with SonarCloud
-        if: success() && github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=alx-ecommerce -Dsonar.organization=alx-ecommerce
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=app --cov-report=xml
+      env:
+        SQLALCHEMY_DATABASE_URI: "sqlite:///test_app.db" # Ensure tests use the same DB
+        SECRET_KEY: "test_secret_key"
+        JWT_SECRET_KEY: "test_jwt_secret_key"
+        FLASK_ENV: "testing"
 
-  docker-build-and-push:
-    name: Build & Push Docker Image
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    if: success() && github.ref == 'refs/heads/main' # Only push image for main branch successful builds
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true
+        verbose: true
 
-    steps:
-      - uses: actions/checkout@v4
+  # deploy-to-staging:
+  #   needs: build-and-test
+  #   if: github.ref == 'refs/heads/develop'
+  #   runs-on: ubuntu-latest
+  #   environment: staging
+  #   steps:
+  #   - name: Deploy to Staging
+  #     uses: some-deployment-action@vX # e.g., for AWS ECS, Kubernetes, Heroku
+  #     with:
+  #       # Add your deployment credentials and configuration here
+  #       # This is highly dependent on your cloud provider and deployment strategy
+  #       # Example:
+  #       # aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #       # aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #       # ecs-cluster: your-staging-cluster
+  #       # ecs-service: your-staging-service
+  #       # docker-image: your-docker-registry/your-app:${{ github.sha }}
+  #       pass: echo "Simulating deployment to Staging..."
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push backend Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Add steps for frontend if you have a frontend Dockerfile and want to push it
-      # - name: Build and push frontend Docker image
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: ./frontend
-      #     file: ./frontend/Dockerfile
-      #     push: true
-      #     tags: ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-frontend:latest
-      #     cache-from: type=gha
-      #     cache-to: type=gha,mode=max
-
-  # This job could be for deploying to a cloud provider, e.g., using SSH to a VM
-  # or using a dedicated deployment action for AWS, Azure, GCP.
-  # For simplicity, this example just has a placeholder.
-  deploy:
-    name: Deploy Application
-    runs-on: ubuntu-latest
-    needs: docker-build-and-push
-    if: success() && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Deploy to Server (Placeholder)
-        run: |
-          echo "Simulating deployment to production server..."
-          echo "Run docker compose pull && docker compose up -d on your server."
-          # In a real scenario, you'd use SSH to connect to your server and
-          # execute commands like 'docker pull' and 'docker compose up -d'.
-          # For example:
-          # ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no user@your-server-ip "
-          #   cd /path/to/your/app &&
-          #   docker compose pull &&
-          #   docker compose up -d --remove-orphans
-          # "
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  # deploy-to-production:
+  #   needs: build-and-test # or deploy-to-staging for a stricter pipeline
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   environment: production
+  #   steps:
+  #   - name: Deploy to Production
+  #     uses: some-deployment-action@vX # e.g., for AWS ECS, Kubernetes, Heroku
+  #     with:
+  #       # Add your production deployment credentials and configuration here
+  #       pass: echo "Simulating deployment to Production..."
 ```
-**Note on CI/CD:**
-*   You need to set up GitHub Secrets for `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `SONAR_TOKEN`, `SSH_PRIVATE_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`.
-*   SonarCloud integration requires configuring your project on SonarCloud and getting a `SONAR_TOKEN`.
-*   The deploy step is a placeholder. Real deployment varies greatly by infrastructure.
-
----
-
-### 4. Testing & Quality
-
-#### `backend/src/test/java/com/alx/ecommerce/user/service/UserServiceTest.java` (Unit Test)
-```java

@@ -1,54 +1,47 @@
-```html
-{% extends "base.html" %}
-
-{% block title %}Welcome{% endblock %}
-
-{% block content %}
-    <h1>Welcome to ShopSwift!</h1>
-    <p>Your one-stop shop for everything you need.</p>
-    <p>Explore our wide range of products or log in to manage your account.</p>
-
-    <h2>Featured Products</h2>
-    <div id="featured-products">
-        <!-- Products will be loaded here via JS if desired, or server-rendered in a more complex setup -->
-        <p>Loading products...</p>
-    </div>
-
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Task Management API - Swagger UI</title>
+    <link rel="stylesheet" type="text/css" href="{{ swagger_ui_css }}">
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin: 0;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="{{ swagger_ui_bundle_js }}"></script>
+    <script src="{{ swagger_ui_standalone_preset_js }}"></script>
     <script>
-        // A very basic example of fetching data from the API
-        // In a real application, you'd use a proper frontend framework (React, Vue, etc.)
-        document.addEventListener('DOMContentLoaded', async () => {
-            const productListDiv = document.getElementById('featured-products');
-            try {
-                const response = await fetch('/api/products?per_page=4');
-                const data = await response.json();
-                if (response.ok) {
-                    let productsHtml = '<h3>Some of our great products:</h3>';
-                    if (data.products && data.products.length > 0) {
-                        productsHtml += '<div style="display: flex; flex-wrap: wrap; gap: 20px;">';
-                        data.products.forEach(product => {
-                            productsHtml += `
-                                <div style="border: 1px solid #eee; padding: 15px; border-radius: 5px; width: 200px;">
-                                    <img src="${product.image_url || 'https://via.placeholder.com/150'}" alt="${product.name}" style="width: 100%; height: 150px; object-fit: cover;">
-                                    <h5>${product.name}</h5>
-                                    <p>$${product.price}</p>
-                                    <p><a href="/products/${product.slug}" class="button button-outline">View Details</a></p>
-                                </div>
-                            `;
-                        });
-                        productsHtml += '</div>';
-                    } else {
-                        productsHtml += '<p>No products available yet.</p>';
-                    }
-                    productListDiv.innerHTML = productsHtml;
-                } else {
-                    productListDiv.innerHTML = `<p>Error loading products: ${data.message || 'Unknown error'}</p>`;
-                }
-            } catch (error) {
-                productListDiv.innerHTML = `<p>Failed to fetch products: ${error.message}</p>`;
-                console.error('Error fetching featured products:', error);
-            }
-        });
+        window.onload = function() {
+            // Build a system
+            const ui = SwaggerUIBundle({
+                url: "{{ swagger_spec_url }}",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                validatorUrl: null // Disable Swagger validator
+            });
+            window.ui = ui;
+        };
     </script>
-{% endblock %}
+</body>
+</html>
 ```

@@ -1,106 +1,132 @@
-```python
-import slugify
-from sqlalchemy.exc import IntegrityError
-from app import db, bcrypt
-from app.models import User, UserRole, Cart
-from app.schemas import UserSchema
-from flask import current_app
+import logging
+from app import db
+from app.models import User, Role
+from app.utils.exceptions import NotFoundError, ConflictError, UnauthorizedError, ForbiddenError
+
+logger = logging.getLogger(__name__)
 
 class UserService:
-    user_schema = UserSchema()
-    users_schema = UserSchema(many=True)
+    """
+    Service layer for managing user-related business logic.
+    Handles CRUD operations for users and role management.
+    """
 
-    @classmethod
-    def create_user(cls, username, email, password, role=UserRole.CUSTOMER):
-        """Creates a new user and an associated cart."""
-        try:
-            if User.query.filter_by(email=email).first():
-                raise ValueError("A user with this email already exists.")
-            if User.query.filter_by(username=username).first():
-                raise ValueError("A user with this username already exists.")
-
-            user = User(username=username, email=email, role=role)
-            user.password = password  # Uses the password setter to hash
-            db.session.add(user)
-            db.session.flush() # Flush to get user.id before committing
-
-            # Create an empty cart for the new user
-            cart = Cart(user_id=user.id)
-            db.session.add(cart)
-
-            db.session.commit()
-            return cls.user_schema.dump(user)
-        except IntegrityError:
-            db.session.rollback()
-            raise ValueError("Database error occurred while creating user. Check unique constraints.")
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error creating user: {e}")
-            raise
-
-    @classmethod
-    def get_user_by_id(cls, user_id):
-        """Retrieves a user by ID."""
+    @staticmethod
+    def get_user_by_id(user_id):
+        """
+        Retrieves a user by their ID.
+        Args:
+            user_id (int): The ID of the user.
+        Returns:
+            User: The user object.
+        Raises:
+            NotFoundError: If the user does not exist.
+        """
         user = User.query.get(user_id)
         if not user:
-            return None
-        return cls.user_schema.dump(user)
+            logger.warning(f"User with ID {user_id} not found.")
+            raise NotFoundError("User not found.")
+        logger.debug(f"Retrieved user: {user.username} (ID: {user.id})")
+        return user
 
-    @classmethod
-    def get_user_by_email(cls, email):
-        """Retrieves a user by email."""
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            return None
-        return cls.user_schema.dump(user)
+    @staticmethod
+    def get_all_users():
+        """
+        Retrieves all users in the system.
+        Returns:
+            list[User]: A list of all user objects.
+        """
+        users = User.query.all()
+        logger.debug(f"Retrieved {len(users)} users.")
+        return users
 
-    @classmethod
-    def get_user_by_username(cls, username):
-        """Retrieves a user by username."""
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            return None
-        return cls.user_schema.dump(user)
+    @staticmethod
+    def update_user(user_id, current_user_id, current_user_role, data):
+        """
+        Updates an existing user's details.
+        Args:
+            user_id (int): The ID of the user to update.
+            current_user_id (int): The ID of the user performing the update.
+            current_user_role (Role): The role of the user performing the update.
+            data (dict): Dictionary containing fields to update (username, email, role).
+        Returns:
+            User: The updated user object.
+        Raises:
+            NotFoundError: If the user does not exist.
+            ForbiddenError: If current user tries to update another user's role or updates another user without admin rights.
+            ConflictError: If username or email already exists for another user.
+        """
+        user = UserService.get_user_by_id(user_id)
 
-    @classmethod
-    def verify_user(cls, email, password):
-        """Verifies user credentials."""
-        user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            return cls.user_schema.dump(user)
-        return None
+        # Authorization check:
+        # 1. Non-admin users can only update their own profile.
+        # 2. Admins can update any profile.
+        # 3. Non-admin users cannot change their own role.
+        # 4. Admins can change any role, but cannot demote themselves.
 
-    @classmethod
-    def update_user_profile(cls, user_id, data):
-        """Updates a user's profile information."""
-        user = User.query.get(user_id)
-        if not user:
-            return None
+        if current_user_id != user.id and current_user_role != Role.ADMIN:
+            logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to update user {user_id} without admin privileges.")
+            raise ForbiddenError("You are not authorized to update other users' profiles.")
 
-        # Prevent updating email or role without specific permissions/flows
-        if 'email' in data and data['email'] != user.email:
-            if User.query.filter(User.email == data['email'], User.id != user_id).first():
-                raise ValueError("Email already in use.")
-            user.email = data['email']
+        # Handle username update
         if 'username' in data and data['username'] != user.username:
-            if User.query.filter(User.username == data['username'], User.id != user_id).first():
-                raise ValueError("Username already in use.")
+            if User.query.filter_by(username=data['username']).first():
+                logger.warning(f"Update failed for user {user_id}: Username '{data['username']}' already taken.")
+                raise ConflictError("Username already exists.")
             user.username = data['username']
-        if 'password' in data:
-            user.password = data['password'] # Uses the setter to hash
+
+        # Handle email update
+        if 'email' in data and data['email'] != user.email:
+            if User.query.filter_by(email=data['email']).first():
+                logger.warning(f"Update failed for user {user_id}: Email '{data['email']}' already taken.")
+                raise ConflictError("Email already exists.")
+            user.email = data['email']
+
+        # Handle role update (only for admins)
+        if 'role' in data:
+            new_role = data['role']
+            if current_user_role != Role.ADMIN:
+                logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to change role without admin privileges.")
+                raise ForbiddenError("Only administrators can change user roles.")
+            
+            # Admin cannot demote themselves
+            if current_user_id == user.id and new_role != Role.ADMIN:
+                logger.warning(f"Admin user {current_user_id} attempted to demote self to {new_role.value}.")
+                raise ForbiddenError("Administrators cannot demote themselves.")
+            
+            user.role = new_role
+            logger.info(f"User {user.id} role changed to {new_role.value} by Admin {current_user_id}.")
 
         db.session.commit()
-        return cls.user_schema.dump(user)
+        logger.info(f"User {user.id} updated successfully by {current_user_id}.")
+        return user
 
-    @classmethod
-    def delete_user(cls, user_id):
-        """Deletes a user and their associated data."""
-        user = User.query.get(user_id)
-        if not user:
-            return False
+    @staticmethod
+    def delete_user(user_id, current_user_id, current_user_role):
+        """
+        Deletes a user from the system.
+        Args:
+            user_id (int): The ID of the user to delete.
+            current_user_id (int): The ID of the user performing the deletion.
+            current_user_role (Role): The role of the user performing the deletion.
+        Raises:
+            NotFoundError: If the user does not exist.
+            ForbiddenError: If the user tries to delete themselves or deletes another user without admin rights.
+        """
+        user = UserService.get_user_by_id(user_id)
+
+        # Authorization check:
+        # 1. Only admins can delete users.
+        # 2. Admins cannot delete themselves.
+        if current_user_role != Role.ADMIN:
+            logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to delete user {user_id} without admin privileges.")
+            raise ForbiddenError("Only administrators can delete users.")
         
-        # Cascade delete handled by ORM relationships (cart, orders)
+        if current_user_id == user.id:
+            logger.warning(f"Admin user {current_user_id} attempted to delete self.")
+            raise ForbiddenError("Administrators cannot delete themselves.")
+
         db.session.delete(user)
         db.session.commit()
-        return True
+        logger.info(f"User {user_id} deleted successfully by Admin {current_user_id}.")
 ```

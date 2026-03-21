@@ -1,60 +1,104 @@
-```python
 from functools import wraps
-from flask import jsonify, abort
-from flask_jwt_extended import get_jwt_identity, verify_jwt_arg_callbacks, current_user
-from app.models import User, UserRole
-import uuid
+from flask import jsonify
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
+from app.models import User, Role
+from app.utils.exceptions import ForbiddenError, NotFoundError
+from app import limiter, cache
+import logging
 
-def role_required(role):
+logger = logging.getLogger(__name__)
+
+def jwt_and_roles_required(roles=None, fresh=False):
     """
-    Decorator to restrict access to a route based on user role.
-    Requires @jwt_required() to be applied first.
+    A decorator that ensures a valid JWT is present and the user has one of the specified roles.
+    Args:
+        roles (list[Role], optional): A list of Role enums that are allowed to access the endpoint.
+                                      If None, any authenticated user can access.
+        fresh (bool): If True, requires a fresh access token.
     """
-    def wrapper(fn):
+    def decorator(fn):
         @wraps(fn)
-        def decorator(*args, **kwargs):
-            if current_user.role != role:
-                return jsonify(message=f"Access forbidden: {role.value} role required"), 403
+        def wrapper(*args, **kwargs):
+            verify_jwt_in_request(fresh=fresh)
+            current_user_id = get_jwt_identity()
+
+            user = User.query.get(current_user_id)
+            if not user:
+                logger.error(f"Authenticated user ID {current_user_id} not found in DB.")
+                raise NotFoundError("Authenticated user not found.")
+
+            if roles:
+                if user.role not in roles:
+                    logger.warning(f"User {user.username} (ID: {current_user_id}, Role: {user.role.value}) attempted to access forbidden resource. Required roles: {[r.value for r in roles]}")
+                    raise ForbiddenError("You do not have the necessary permissions to access this resource.")
+            
+            # Pass user object or role/id to the decorated function if needed
+            # For simplicity, we'll pass current_user_id and current_user_role
+            kwargs['current_user_id'] = current_user_id
+            kwargs['current_user_role'] = user.role
+            
             return fn(*args, **kwargs)
-        return decorator
-    return wrapper
+        return wrapper
+    return decorator
 
 def admin_required(fn):
-    """Decorator for admin-only access."""
-    return role_required(UserRole.ADMIN)(fn)
+    """Decorator to require an admin role."""
+    return jwt_and_roles_required(roles=[Role.ADMIN])(fn)
 
-def customer_required(fn):
-    """Decorator for customer-only access."""
-    return role_required(UserRole.CUSTOMER)(fn)
+def user_and_admin_required(fn):
+    """Decorator to require either a regular user or admin role."""
+    return jwt_and_roles_required(roles=[Role.USER, Role.ADMIN])(fn)
 
-def admin_or_owner_required(resource_id_param_name):
+def rate_limit(limit_string):
     """
-    Decorator to allow access if user is an admin OR the owner of the resource.
-    The resource_id_param_name should match the name of the URL parameter
-    that contains the resource's UUID.
-    Requires @jwt_required() to be applied first.
+    Decorator for rate limiting an endpoint.
+    Args:
+        limit_string (str): A string representing the rate limit, e.g., "10 per minute".
     """
-    def wrapper(fn):
+    def decorator(fn):
         @wraps(fn)
-        def decorator(*args, **kwargs):
-            resource_id = kwargs.get(resource_id_param_name)
-            if not resource_id:
-                # This should ideally be caught by Flask's routing, but as a safeguard.
-                return jsonify(message=f"Resource ID parameter '{resource_id_param_name}' missing."), 500
+        @limiter.limit(limit_string)
+        def wrapper(*args, **kwargs):
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
-            # Convert resource_id to string for comparison, as UUIDField converts it to uuid.UUID
-            if isinstance(resource_id, uuid.UUID):
-                resource_id = str(resource_id)
+def cache_response(timeout=None, key_prefix='view'):
+    """
+    Decorator to cache the response of an endpoint.
+    Args:
+        timeout (int, optional): Cache timeout in seconds. Uses CACHE_DEFAULT_TIMEOUT if None.
+        key_prefix (str): Prefix for the cache key.
+    """
+    def decorator(fn):
+        @wraps(fn)
+        @cache.cached(timeout=timeout, key_prefix=key_prefix)
+        def wrapper(*args, **kwargs):
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
-            # Check if current user is admin
-            if current_user.role == UserRole.ADMIN:
-                return fn(*args, **kwargs)
+def jwt_refresh_token_required(fn):
+    """
+    Decorator to protect a view with a refresh token.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        verify_jwt_in_request(refresh=True)
+        # Store JTI for potential revocation later
+        kwargs['jti'] = get_jwt()['jti']
+        return fn(*args, **kwargs)
+    return wrapper
 
-            # Check if current user is the owner of the resource
-            if str(current_user.id) == resource_id:
-                return fn(*args, **kwargs)
-            
-            return jsonify(message="Access forbidden: Admin or resource owner privilege required"), 403
-        return decorator
+def jwt_access_token_required(fn):
+    """
+    Decorator to protect a view with an access token (not necessarily fresh).
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        verify_jwt_in_request()
+        # Store JTI for potential revocation later
+        kwargs['jti'] = get_jwt()['jti']
+        return fn(*args, **kwargs)
     return wrapper
 ```

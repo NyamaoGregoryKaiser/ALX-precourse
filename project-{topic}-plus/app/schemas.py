@@ -1,98 +1,66 @@
-```python
 from marshmallow import Schema, fields, validate
-from app.models import UserRole, OrderStatus
-import uuid
+from app.models import Role, TaskStatus
+from webargs.flaskparser import use_args, use_kwargs
+from functools import wraps
 
-class UUIDField(fields.Field):
-    def _serialize(self, value, attr, obj, **kwargs):
-        if value is None:
-            return None
-        return str(value)
-
-    def _deserialize(self, value, attr, data, **kwargs):
-        if not value:
-            return None
-        try:
-            return uuid.UUID(value)
-        except ValueError:
-            raise validate.ValidationError("Invalid UUID format.")
-
-class UserSchema(Schema):
-    id = UUIDField(dump_only=True)
+class AuthSchema(Schema):
+    """Schema for user authentication (login/register)."""
     username = fields.Str(required=True, validate=validate.Length(min=3, max=80))
-    email = fields.Email(required=True)
-    role = fields.Enum(UserRole, dump_only=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+    email = fields.Email(required=True, validate=validate.Length(min=5, max=120))
+    password = fields.Str(required=True, validate=validate.Length(min=6))
 
-class UserRegisterSchema(UserSchema):
-    password = fields.Str(required=True, load_only=True, validate=validate.Length(min=6))
-    role = fields.Enum(UserRole, load_only=True, default=UserRole.CUSTOMER, missing=UserRole.CUSTOMER)
+class UserUpdateSchema(Schema):
+    """Schema for updating user details."""
+    username = fields.Str(validate=validate.Length(min=3, max=80))
+    email = fields.Email(validate=validate.Length(min=5, max=120))
+    # Role update should typically be restricted to admin via authorization, not directly via schema validation
+    role = fields.Enum(Role, by_value=True, missing=Role.USER) # Allow setting role
 
-class CategorySchema(Schema):
-    id = UUIDField(dump_only=True)
-    name = fields.Str(required=True, validate=validate.Length(min=3, max=100))
-    slug = fields.Str(dump_only=True)
-    description = fields.Str()
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+class TaskSchema(Schema):
+    """Schema for creating/updating a task."""
+    title = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    description = fields.Str(validate=validate.Length(max=500), allow_none=True)
+    status = fields.Enum(TaskStatus, by_value=True, missing=TaskStatus.PENDING)
+    due_date = fields.DateTime(format="iso", allow_none=True)
+    assigned_to_id = fields.Int(allow_none=True) # ID of the user assigned to the task
 
-class ProductSchema(Schema):
-    id = UUIDField(dump_only=True)
-    name = fields.Str(required=True, validate=validate.Length(min=3, max=255))
-    slug = fields.Str(dump_only=True)
-    description = fields.Str()
-    price = fields.Decimal(required=True, places=2, as_string=True, validate=validate.Range(min=0.01))
-    stock = fields.Int(required=True, validate=validate.Range(min=0))
-    image_url = fields.Url()
-    category_id = UUIDField(required=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+class TaskUpdateSchema(Schema):
+    """Schema for updating an existing task."""
+    title = fields.Str(validate=validate.Length(min=1, max=100))
+    description = fields.Str(validate=validate.Length(max=500), allow_none=True)
+    status = fields.Enum(TaskStatus, by_value=True)
+    due_date = fields.DateTime(format="iso", allow_none=True)
+    assigned_to_id = fields.Int(allow_none=True)
 
-    category = fields.Nested(CategorySchema, dump_only=True, exclude=('description', 'products')) # Show nested category info
+class TaskQuerySchema(Schema):
+    """Schema for querying tasks."""
+    status = fields.Enum(TaskStatus, by_value=True)
+    created_by_id = fields.Int()
+    assigned_to_id = fields.Int()
+    due_date_before = fields.DateTime(format="iso")
+    due_date_after = fields.DateTime(format="iso")
+    page = fields.Int(missing=1, validate=validate.Range(min=1))
+    per_page = fields.Int(missing=10, validate=validate.Range(min=1, max=100))
 
-class CartItemProductSchema(ProductSchema):
-    class Meta:
-        fields = ('id', 'name', 'slug', 'price', 'image_url') # Only show essential product info
 
-class CartItemSchema(Schema):
-    id = UUIDField(dump_only=True)
-    product_id = UUIDField(required=True)
-    quantity = fields.Int(required=True, validate=validate.Range(min=1))
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
-    product = fields.Nested(CartItemProductSchema, dump_only=True) # Nested product details
+# Decorators for schema validation
+def validate_json_body(schema_class):
+    """Decorator to validate JSON request body using Marshmallow schema."""
+    def decorator(f):
+        @wraps(f)
+        @use_args(schema_class(), location="json")
+        def wrapped_function(args, *kwargs):
+            return f(*args, **kwargs)
+        return wrapped_function
+    return decorator
 
-class CartSchema(Schema):
-    id = UUIDField(dump_only=True)
-    user_id = UUIDField(dump_only=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
-    items = fields.List(fields.Nested(CartItemSchema), dump_only=True)
-
-class OrderItemProductSchema(ProductSchema):
-    class Meta:
-        fields = ('id', 'name', 'slug', 'image_url') # Only show essential product info
-
-class OrderItemSchema(Schema):
-    id = UUIDField(dump_only=True)
-    product_id = UUIDField(required=True)
-    quantity = fields.Int(required=True, validate=validate.Range(min=1))
-    price = fields.Decimal(required=True, places=2, as_string=True, validate=validate.Range(min=0.01)) # Price at time of order
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
-    product = fields.Nested(OrderItemProductSchema, dump_only=True)
-
-class OrderSchema(Schema):
-    id = UUIDField(dump_only=True)
-    user_id = UUIDField(dump_only=True)
-    total_amount = fields.Decimal(dump_only=True, places=2, as_string=True)
-    status = fields.Enum(OrderStatus, dump_only=True)
-    shipping_address = fields.Str(required=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
-    items = fields.List(fields.Nested(OrderItemSchema), dump_only=True)
-    
-class OrderUpdateSchema(Schema):
-    status = fields.Enum(OrderStatus, required=True)
+def validate_query_params(schema_class):
+    """Decorator to validate query parameters using Marshmallow schema."""
+    def decorator(f):
+        @wraps(f)
+        @use_kwargs(schema_class(), location="query")
+        def wrapped_function(*args, **kwargs):
+            return f(*args, **kwargs)
+        return wrapped_function
+    return decorator
 ```
