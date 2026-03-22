@@ -1,3 +1,4 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
@@ -11,142 +12,118 @@ on:
       - develop
 
 jobs:
-  build-and-test-backend:
-    name: Build & Test Backend
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:14-alpine
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:6-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install backend dependencies
-        run: npm install
-        working-directory: ./backend
-
-      - name: Create .env for backend tests
-        run: |
-          echo "NODE_ENV=test" > ./backend/.env
-          echo "PORT=5000" >> ./backend/.env
-          echo "DB_HOST=localhost" >> ./backend/.env
-          echo "DB_PORT=5432" >> ./backend/.env
-          echo "DB_USERNAME=testuser" >> ./backend/.env
-          echo "DB_PASSWORD=testpassword" >> ./backend/.env
-          echo "DB_DATABASE=testdb" >> ./backend/.env
-          echo "JWT_SECRET=testsecret" >> ./backend/.env
-          echo "JWT_EXPIRES_IN=1h" >> ./backend/.env
-          echo "REDIS_HOST=localhost" >> ./backend/.env
-          echo "REDIS_PORT=6379" >> ./backend/.env
-          echo "REDIS_PASSWORD=" >> ./backend/.env
-          echo "MOCK_CSV_DATA_PATH=./src/db/mock_data/sample_data.csv" >> ./backend/.env
-        working-directory: ./backend
-
-      - name: Wait for PostgreSQL to be ready
-        run: while ! pg_isready -h localhost -p 5432 -U testuser; do sleep 5; done
-        
-      - name: Run TypeORM Migrations
-        run: npm run migrate:run
-        working-directory: ./backend
-
-      - name: Build backend
-        run: npm run build
-        working-directory: ./backend
-
-      - name: Run backend tests
-        run: npm test
-        working-directory: ./backend
-        env:
-          CI: true # Prevents Jest from going into watch mode
-
-      - name: Upload Backend Coverage Report
-        uses: actions/upload-artifact@v3
-        with:
-          name: backend-coverage-report
-          path: backend/coverage
-
-  build-and-test-frontend:
-    name: Build & Test Frontend
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          node-version: '18'
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
 
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: ./frontend
-
-      - name: Create .env for frontend tests
-        run: |
-          echo "REACT_APP_API_BASE_URL=http://localhost:5000/api" > .env
-        working-directory: ./frontend
-
-      - name: Build frontend
-        run: npm run build
-        working-directory: ./frontend
-
-      - name: Run frontend tests
-        run: npm test -- --watchAll=false
-        working-directory: ./frontend
-        env:
-          CI: true # Prevents Jest from going into watch mode
-
-      - name: Upload Frontend Coverage Report
-        uses: actions/upload-artifact@v3
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
         with:
-          name: frontend-coverage-report
-          path: frontend/coverage
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-  deploy:
-    name: Deploy to Staging/Production
+      - name: Build with Maven and Run Tests
+        run: mvn clean install -Dspring.profiles.active=test
+
+      - name: Upload JaCoCo Coverage Report
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # Optional: If you use Codecov for coverage reports
+          file: target/site/jacoco/jacoco.xml
+          fail_ci_if_error: true
+          verbose: true
+
+  docker-build-and-push:
+    name: Docker Build & Push
+    needs: build-and-test # This job depends on successful build and test
     runs-on: ubuntu-latest
-    needs: [build-and-test-backend, build-and-test-frontend]
-    if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only run for main/develop branch pushes
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Dummy Deploy Step
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Image
+        run: docker build -t alx-ecommerce-app:${{ github.sha }} . # Tag with commit SHA
+
+      - name: Tag and Push Docker Image (main branch)
+        if: github.ref == 'refs/heads/main'
         run: |
-          echo "Simulating deployment to a cloud provider (e.g., AWS ECR/ECS, GCP GKE, Azure AKS)."
-          echo "This would involve:"
-          echo "1. Authenticating to your cloud provider."
-          echo "2. Building and pushing Docker images to a container registry."
-          echo "3. Updating Kubernetes manifests or ECS task definitions."
-          echo "4. Applying migrations (backend)."
-          echo "5. Restarting services."
-          echo "Deployment successful for branch ${{ github.ref }}"
+          docker tag alx-ecommerce-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:latest
+          docker tag alx-ecommerce-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:${{ github.sha }}
+
+      - name: Tag and Push Docker Image (develop branch)
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          docker tag alx-ecommerce-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:develop
+          docker tag alx-ecommerce-app:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:develop-${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:develop
+          docker push ${{ secrets.DOCKER_USERNAME }}/alx-ecommerce-app:develop-${{ github.sha }}
+
+  deploy-to-dev:
+    name: Deploy to Development
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+    environment: Development # GitHub Environment for Dev
+    if: github.ref == 'refs/heads/develop' # Deploy develop branch to dev environment
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server (SSH)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            cd /opt/alx-ecommerce-dev # Your deploy directory on the server
+            docker compose pull ecommerce-app # Pull the latest develop image
+            docker compose up -d --remove-orphans
+            docker image prune -f # Clean up old images
+
+  deploy-to-prod:
+    name: Deploy to Production
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+    environment: Production # GitHub Environment for Prod
+    if: github.ref == 'refs/heads/main' # Deploy main branch to prod environment
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server (SSH)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/alx-ecommerce-prod # Your deploy directory on the server
+            docker compose pull ecommerce-app # Pull the latest main/latest image
+            docker compose up -d --remove-orphans
+            docker image prune -f # Clean up old images
+```

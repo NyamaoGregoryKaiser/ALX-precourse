@@ -1,3 +1,4 @@
+```
 # Maven
 target/
 pom.xml.tag
@@ -5,69 +6,43 @@ pom.xml.releaseBackup
 pom.xml.versionsBackup
 pom.xml.next
 release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
+release-pom.xml
+# For project specific
+.project
+.settings
+.vs/
+.classpath
+.factorypath
+.apt_generated
+.springBeans
 
-# Java
-*.class
+# Eclipse
+.metadata
+!.metadata/.plugins/org.eclipse.core.resources/.projects/*/
+!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.markers
+!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.externalToolBuilders/
+!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.buildspec
+!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.settings/
+!.metadata/.plugins/org.eclipse.jdt.core/
+
+# Intellij
+.idea/
+*.iws
+*.iml
+*.ipr
+.gradle/
+build/
 
 # Log files
 *.log
 logs/
-
-# IDE files
-.idea/
-.vscode/
-*.iml
-*.iws
-*.ipr
-
-# OS generated files
-.DS_Store
-.directory
-Thumbs.db
-
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
-# Ignore docker volumes/bind mounts if they are created by docker-compose and not part of the repo
-data/db_data/
+*.json
+*.txt
+*.yaml
 
 # Environment variables
 .env
-*.env
-*.properties # Only ignore if sensitive
-application-dev.yml # Only ignore if sensitive
-application-prod.yml # Only ignore if sensitive
-
-# Specific to Spring Boot
-/.idea/
-.settings/
-.project
-tmp/
-*.jar
-*.war
-*.ear
-/dist/
-/target/
-/classes/
-/generated-sources/
-/generated-test-sources/
-
-# Frontend (if any)
-node_modules/
-dist/
-build/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.parcel-cache/
-
-# Test reports
-/surefire-reports/
-/test-output/
-/jacoco/
-.
+# Docker
+*.env # for local development secrets
+.dockerignore
+```

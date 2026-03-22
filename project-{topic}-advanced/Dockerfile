@@ -1,38 +1,31 @@
-# Use a slim Java 17 image as the base for building
-FROM eclipse-temurin:17-jdk-jammy as builder
+```dockerfile
+# Use a slim OpenJDK 17 base image for smaller footprint
+FROM openjdk:17-jdk-slim as builder
 
-# Set the working directory inside the container
+# Set the working directory
 WORKDIR /app
 
 # Copy the Maven pom.xml and source code
-# We copy pom.xml separately to leverage Docker's build cache.
-# If pom.xml doesn't change, Maven dependencies don't need to be re-downloaded.
 COPY pom.xml .
 COPY src ./src
 
-# Package the application using Maven
-# -Dmaven.test.skip=true skips running tests during the build
-# --no-transfer-progress reduces verbose output during dependency downloads
-# This step creates an executable JAR file in target/
-RUN --mount=type=cache,target=/root/.m2 ./mvnw clean install -DskipTests
+# Build the application
+# Use -Dmaven.test.skip=true to skip tests during the build in the Dockerfile
+# For production builds, you might want to run tests in CI/CD before building the image.
+RUN --mount=type=cache,target=/root/.m2 ./mvnw package -DskipTests
 
-# Use a lighter JRE image for the final runtime image
-FROM eclipse-temurin:17-jre-jammy
+# Stage 2: Create the final image
+FROM openjdk:17-jdk-slim
 
-# Set the working directory for the runtime
+# Set the working directory
 WORKDIR /app
 
-# Copy the executable JAR from the builder stage
-# The JAR is typically named artifactId-version.jar, you might need to adjust this.
+# Copy the built JAR file from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Expose the port the Spring Boot application listens on
+# Expose the port the Spring Boot application runs on
 EXPOSE 8080
 
-# Define environment variables (can be overridden at runtime)
-ENV SPRING_PROFILES_ACTIVE=prod
-ENV JAVA_TOOL_OPTIONS="-XX:+ExitOnOutOfMemoryError" # Exit JVM on OOM
-
-# Run the application
-# Use entrypoint for container initialization, ensures script runs as PID 1
+# Define the entrypoint command to run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
+```

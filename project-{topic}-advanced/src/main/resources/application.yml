@@ -1,77 +1,98 @@
-# Global application settings
+```yaml
 spring:
   application:
-    name: authentication-system
+    name: ecommerce-system
   profiles:
     active: dev # Default profile
-  main:
-    web-application-type: servlet # Ensures it's a web application
-  # Database configuration (PostgreSQL)
   datasource:
-    url: jdbc:postgresql://localhost:5432/auth_db # Default for local Docker setup
-    username: admin
-    password: password
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:ecommerce_db}
+    username: ${DB_USER:ecommerce_user}
+    password: ${DB_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
-  # JPA (Hibernate) configuration
   jpa:
     hibernate:
-      ddl-auto: validate # 'validate' in production, 'update' or 'create' for dev if needed, 'none' with Flyway
-    show-sql: true # Log SQL queries for debugging
+      ddl-auto: validate # Should be 'none' or 'validate' in production
+    show-sql: true
     properties:
-      hibernate:
-        format_sql: true # Format SQL logs
-    open-in-view: false # Prevents N+1 issues and keeps session open in view layer (generally set to false)
-  # Flyway database migration configuration
+      hibernate.format_sql: true
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
     enabled: true
-    baseline-on-migrate: true # Baselines schema if it exists but is not versioned by Flyway
-    locations: classpath:db/migration # Directory for migration scripts
-    create-schemas: true # Allows Flyway to create the database schema if it doesn't exist
-    url: ${spring.datasource.url}
-    user: ${spring.datasource.username}
-    password: ${spring.datasource.password}
-  # Cache configuration (Caffeine)
-  cache:
-    caffeine:
-      spec: maximumSize=500,expireAfterWrite=10m # Default cache settings if not overridden by CacheConfig
-  # Web configuration
-  web:
-    resources:
-      add-mappings: true # Enable serving static resources
-
-# Server settings
-server:
-  port: 8080 # Application runs on port 8080
-
-# Logging configuration
-logging:
-  config: classpath:logback-spring.xml # Path to Logback configuration file
-  level:
-    root: INFO
-    org.springframework.web: DEBUG # More detailed logging for web requests
-    com.alx.auth.system: DEBUG # Detailed logging for our application package
-    org.hibernate.SQL: DEBUG # Show prepared statements
-    org.hibernate.orm.jdbc.bind: TRACE # Show parameters for prepared statements
-
-# JWT Security properties
-application:
+    locations: classpath:db/migration
+    baseline-on-migrate: true # Only for dev, disable in prod for safety
   security:
-    jwt:
-      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970 # Base64 encoded secret key (highly recommended to generate a strong random one)
-      expiration: 86400000 # 24 hours in milliseconds (24 * 60 * 60 * 1000)
+    user:
+      name: user
+      password: '{noop}password' # For basic auth if needed, but JWT will override
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      #password: ${REDIS_PASSWORD:} # Uncomment if Redis requires password
+  cache:
+    type: redis
+    redis:
+      cache-null-values: true
+      time-to-live: 60000ms # 1 minute cache for common items
+      key-prefix: ecommerce::
 
-# OpenAPI (Swagger) configuration
+jwt:
+  secret: ${JWT_SECRET:yourStrongJwtSecretKeyThatIsAtLeast32BytesLongAndSecurelyStored} # **CHANGE THIS IN PRODUCTION**
+  expiration: 86400000 # 24 hours in milliseconds
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus # Expose health, info, and prometheus metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Springdoc OpenAPI (Swagger UI) Configuration
 springdoc:
   api-docs:
-    path: /v3/api-docs # Endpoint for the OpenAPI specification
+    path: /api-docs
   swagger-ui:
-    path: /swagger-ui.html # Endpoint for Swagger UI
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
     disable-swagger-default-url: true
-    display-request-duration: true # Show response time in Swagger UI
-    operations-sorter: method # Sort operations by HTTP method
-    tags-sorter: alpha # Sort tags alphabetically
+    display-request-duration: true
+
+# Rate Limiting Configuration
+app:
+  rate-limit:
+    enabled: true
+    window-in-seconds: 60
+    max-requests: 100 # Max 100 requests per minute per IP
+
+# Logging configuration reference (actual config in logback-spring.xml)
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    com.alx.ecommerce: DEBUG # Adjust for your package
+    org.hibernate.SQL: DEBUG # To see generated SQL
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE # To see SQL parameters
+
+---
+# Docker Profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://ecommerce-db:5432/ecommerce_db
+    username: ecommerce_user
+    password: password
+  data:
+    redis:
+      host: redis
+      port: 6379
 ```
-
-#### `src/main/resources/logback-spring.xml`
-
-```xml

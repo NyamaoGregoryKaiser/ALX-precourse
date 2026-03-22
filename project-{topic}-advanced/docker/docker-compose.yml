@@ -1,0 +1,72 @@
+```yaml
+version: '3.8'
+
+services:
+  ecommerce-db:
+    image: postgres:15-alpine
+    container_name: ecommerce-db
+    environment:
+      POSTGRES_DB: ecommerce_db
+      POSTGRES_USER: ecommerce_user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce_user -d ecommerce_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ecommerce-app:
+    build:
+      context: ../ # Build from the parent directory where pom.xml and src are
+      dockerfile: Dockerfile
+    container_name: ecommerce-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ecommerce-db:5432/ecommerce_db
+      SPRING_DATASOURCE_USERNAME: ecommerce_user
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # Add other environment variables as needed, e.g., JWT secret
+      JWT_SECRET: yourStrongJwtSecretKeyThatIsAtLeast32BytesLongAndSecurelyStored
+      SPRING_PROFILES_ACTIVE: docker # Activate specific profile for docker
+    depends_on:
+      ecommerce-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Optional: If you want to see logs live in development
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # Optional: Link to a network if you have a custom one
+    # networks:
+    #   - my-ecommerce-network
+
+volumes:
+  db_data:
+    driver: local
+
+# Optional: Define custom networks
+# networks:
+#   my-ecommerce-network:
+#     driver: bridge
+```

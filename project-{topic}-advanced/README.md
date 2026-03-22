@@ -1,259 +1,350 @@
-# ALX Production-Ready Authentication System
+```markdown
+# ALX E-commerce System
 
-This project is a comprehensive, production-ready authentication system built with Spring Boot, Spring Security, JWT, and PostgreSQL. It demonstrates best practices for building a secure, scalable, and maintainable backend service.
+## Comprehensive, Production-Ready E-commerce Solution
+
+This project provides a full-scale, enterprise-grade e-commerce backend built with Spring Boot, PostgreSQL, Redis, and Spring Security (JWT). It is designed with modularity, scalability, and robust testing in mind, adhering to best practices in software engineering.
+
+---
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture Overview](#architecture-overview)
-3.  [Technology Stack](#technology-stack)
-4.  [Prerequisites](#prerequisites)
-5.  [Setup and Installation](#setup-and-installation)
-    *   [Local Development](#local-development)
-    *   [Docker with Docker Compose](#docker-with-docker-compose)
-6.  [Running the Application](#running-the-application)
-7.  [API Endpoints (Swagger UI)](#api-endpoints-swagger-ui)
-8.  [Testing](#testing)
-    *   [Unit Tests](#unit-tests)
-    *   [Integration Tests](#integration-tests)
-    *   [Performance Tests (Conceptual)](#performance-tests-conceptual)
-9.  [CI/CD (Conceptual)](#ci-cd-conceptual)
-10. [Database Layer](#database-layer)
-11. [Configuration & Environment Variables](#configuration--environment-variables)
-12. [Additional Features](#additional-features)
-13. [Frontend (Conceptual)](#frontend-conceptual)
-14. [Contributing](#contributing)
-15. [License](#license)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup and Installation](#setup-and-installation)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+5.  [API Endpoints](#api-endpoints)
+6.  [Testing](#testing)
+7.  [CI/CD](#ci-cd)
+8.  [Documentation](#documentation)
+    *   [API Documentation](#api-documentation)
+    *   [Architecture Documentation](#architecture-documentation)
+    *   [Deployment Guide](#deployment-guide)
+9.  [Contributing](#contributing)
+10. [License](#license)
+
+---
 
 ## 1. Features
 
-*   **User Management**: Register new users, user login, retrieve user profile, update user profile, retrieve all users (admin only), retrieve user by ID (admin only), delete user (admin only).
-*   **Authentication**: Secure JWT (JSON Web Token) based authentication for stateless API interactions.
-*   **Authorization**: Role-Based Access Control (RBAC) with `USER` and `ADMIN` roles using Spring Security's `@PreAuthorize`.
-*   **Security**:
-    *   Password hashing with BCrypt.
-    *   JWT token generation, validation, and parsing.
-    *   CSRF protection disabled for stateless APIs (appropriate for JWT).
-    *   CORS configuration for frontend integration.
-*   **Database Management**: PostgreSQL database with Flyway for robust schema migrations and versioning.
-*   **RESTful API**: Clean and consistent API endpoints.
-*   **Data Validation**: Input validation using `jakarta.validation` annotations.
-*   **Global Error Handling**: Consistent error responses using `@ControllerAdvice` for various exceptions (e.g., 400, 401, 403, 404, 409, 429, 500).
-*   **Structured Logging**: Configured with Logback for clear and configurable logging.
-*   **Caching**: In-memory caching with Caffeine for performance optimization (e.g., role lookups).
-*   **Rate Limiting**: Simple in-memory rate limiting per IP address to prevent API abuse (5 requests/second).
-*   **API Documentation**: Automated API documentation with Swagger UI (OpenAPI 3).
-*   **Containerization**: Docker and Docker Compose for easy setup, deployment, and environment consistency.
-*   **Testing**: Comprehensive suite of Unit, Integration, and API tests with high coverage goals (80%+).
+This system encompasses a wide range of e-commerce functionalities:
 
-## 2. Architecture Overview
+*   **User Management:**
+    *   User Registration (Customer role by default)
+    *   User Authentication (JWT-based)
+    *   User Profile Management (CRUD for user details)
+    *   Role-Based Access Control (RBAC): `CUSTOMER`, `ADMIN` roles
+*   **Product Catalog Management:**
+    *   CRUD operations for Products (Admin only)
+    *   CRUD operations for Categories (Admin only)
+    *   Browsing products and categories (Public access)
+    *   Product Search/Filtering (by category, name)
+*   **Order Management:**
+    *   Create orders (Customer)
+    *   View own orders (Customer)
+    *   View all orders, update order status (Admin)
+    *   Basic Inventory Integration (stock decrease on order, re-stock on cancellation)
+*   **Security:**
+    *   JWT Authentication and Authorization
+    *   Password Hashing (BCrypt)
+    *   Global Exception Handling
+    *   Rate Limiting to prevent abuse
+*   **Performance & Scalability:**
+    *   Caching with Redis for frequently accessed data
+    *   Database indexing and query optimization
+*   **Observability:**
+    *   Structured Logging (SLF4J/Logback)
+    *   Spring Boot Actuator for health checks and metrics (Prometheus endpoint exposed)
+*   **Developer Experience:**
+    *   Docker & Docker Compose for easy setup
+    *   Flyway for database migrations
+    *   OpenAPI 3 (Swagger UI) for interactive API documentation
+    *   Comprehensive test suite (Unit, Integration)
 
-The system follows a layered architecture, common in Spring Boot applications:
+---
 
-*   **Presentation Layer (Controller)**: Handles HTTP requests, marshals/unmarshals DTOs, and delegates to the service layer.
-*   **Service Layer (Business Logic)**: Contains the core business logic, orchestrates data operations, and applies domain rules.
-*   **Data Access Layer (Repository)**: Abstracts database interactions, using Spring Data JPA for persistence.
-*   **Security Layer**: Intercepts requests, validates JWT tokens, manages authentication and authorization contexts.
-*   **Configuration Layer**: Manages application-wide settings, security configurations, and bean definitions.
+## 2. Technology Stack
 
-Data flow for a typical request:
-`Client Request -> RateLimitInterceptor -> JwtAuthenticationFilter -> Spring Security Filter Chain -> Controller -> Service -> Repository -> Database`
+*   **Backend:** Java 17+, Spring Boot 3+
+*   **Web Framework:** Spring Web MVC
+*   **Data Access:** Spring Data JPA, Hibernate
+*   **Database:** PostgreSQL
+*   **Database Migrations:** Flyway
+*   **Authentication/Authorization:** Spring Security, JSON Web Tokens (JWT)
+*   **Caching:** Spring Cache with Redis
+*   **Object Mapping:** Lombok, MapStruct
+*   **Validation:** Spring Validation API (Jakarta Validation)
+*   **Logging:** SLF4J, Logback
+*   **API Documentation:** Springdoc OpenAPI (Swagger UI)
+*   **Containerization:** Docker, Docker Compose
+*   **Build Tool:** Apache Maven
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers
+*   **CI/CD:** GitHub Actions
 
-## 3. Technology Stack
+---
 
-*   **Backend**:
-    *   Java 17
-    *   Spring Boot 3.2.x
-    *   Spring Security 6.2.x
-    *   JJWT (Java JWT) 0.12.x
-    *   Lombok (for boilerplate code reduction)
-    *   Caffeine (in-memory caching)
-    *   Guava (RateLimiter)
-*   **Database**: PostgreSQL
-*   **Database Migration**: Flyway
-*   **Build Tool**: Maven
-*   **API Documentation**: Springdoc OpenAPI (Swagger UI)
-*   **Containerization**: Docker, Docker Compose
-*   **Testing**: JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo (for code coverage)
-*   **Logging**: SLF4J with Logback
+## 3. Project Structure
 
-## 4. Prerequisites
+The project follows a standard layered architecture for Spring Boot applications:
+
+```
+ecommerce-system/
+├── src/
+│   ├── main/
+│   │   ├── java/com/alx/ecommerce/
+│   │   │   ├── EcommerceApplication.java # Main Spring Boot app
+│   │   │   ├── config/                   # Spring/Application configurations (Security, JWT, Redis, OpenAPI)
+│   │   │   ├── controller/               # REST API endpoints (Auth, User, Product, Category, Order)
+│   │   │   ├── model/                    # JPA Entities (User, Product, Category, Order, OrderItem, AuditBaseEntity)
+│   │   │   ├── repository/               # Spring Data JPA repositories
+│   │   │   ├── service/                  # Business logic and transaction management
+│   │   │   ├── dto/                      # Data Transfer Objects for API requests/responses
+│   │   │   ├── mapper/                   # MapStruct interfaces for DTO-Entity mapping
+│   │   │   ├── exception/                # Custom exceptions and global exception handler
+│   │   │   └── util/                     # Utility classes (e.g., RateLimiter)
+│   │   └── resources/
+│   │       ├── application.yml           # Spring Boot application properties
+│   │       └── logback-spring.xml        # Logback configuration
+│   └── test/                             # Unit and Integration tests
+├── db/
+│   ├── migration/                        # Flyway SQL migration scripts
+├── docker/
+│   └── docker-compose.yml                # Docker Compose setup for services
+├── Dockerfile                            # Dockerfile for building the Spring Boot app image
+├── pom.xml                               # Maven project configuration
+├── .github/workflows/                    # GitHub Actions CI/CD workflows
+├── README.md                             # This file
+├── ARCHITECTURE.md                       # Detailed architecture overview
+├── API_DOCS.md                           # Comprehensive API documentation
+└── DEPLOYMENT.md                         # Guide for deployment to various environments
+```
+
+---
+
+## 4. Setup and Installation
+
+### Prerequisites
 
 Before you begin, ensure you have the following installed:
 
-*   **Java 17 JDK**
-*   **Maven 3.8+**
-*   **Docker Desktop** (includes Docker Engine and Docker Compose)
+*   **Java Development Kit (JDK) 17 or higher**
+*   **Apache Maven 3.6.3 or higher**
+*   **Docker Desktop** (includes Docker Engine and Docker Compose) for local development or containerized deployment.
+*   (Optional but recommended) An IDE like **IntelliJ IDEA** or **VS Code** with Java extensions.
 
-## 5. Setup and Installation
+### Local Development Setup
 
-You have two primary ways to set up and run this project:
-
-### Local Development (without Docker for DB)
-
-1.  **Clone the repository:**
+1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/your-username/authentication-system.git
-    cd authentication-system
+    git clone https://github.com/alx-software-engineering/ecommerce-system.git
+    cd ecommerce-system
     ```
 
-2.  **Install PostgreSQL locally:**
-    Ensure you have a PostgreSQL server running. Create a database named `auth_db` and a user `admin` with password `password`.
-    ```sql
-    CREATE USER admin WITH PASSWORD 'password';
-    CREATE DATABASE auth_db OWNER admin;
-    ```
-    (You may need to `ALTER USER admin WITH SUPERUSER;` or grant specific permissions for Flyway to work if you encounter issues, though typically just `CREATE DATABASE` and `OWNER` are enough).
+2.  **Set up PostgreSQL Database:**
+    You can run PostgreSQL locally or use Docker. For a quick local setup (without Docker Compose):
+    *   Install PostgreSQL (e.g., `sudo apt install postgresql` on Ubuntu, or use an installer for Windows/macOS).
+    *   Create a user and database:
+        ```sql
+        CREATE USER ecommerce_user WITH PASSWORD 'password';
+        CREATE DATABASE ecommerce_db OWNER ecommerce_user;
+        ```
+    *   Ensure your `application.yml` has the correct `spring.datasource` properties. By default, `localhost:5432` with `ecommerce_user`/`password` is configured.
 
-3.  **Update `application.yml` (if needed):**
-    If your local PostgreSQL credentials or port differ, update `src/main/resources/application.yml`.
+3.  **Set up Redis (Optional, for caching):**
+    *   Install Redis locally (e.g., `sudo apt install redis-server` on Ubuntu).
+    *   Or run it via Docker: `docker run --name ecommerce-redis -p 6379:6379 -d redis:7-alpine`
+    *   Ensure your `application.yml` has the correct `spring.data.redis` properties.
 
-4.  **Build the project:**
+4.  **Run Flyway Migrations:**
+    Flyway migrations will run automatically when the Spring Boot application starts, if `spring.flyway.enabled=true` and `spring.flyway.baseline-on-migrate=true` (for initial setup) are configured.
+
+5.  **Build and Run the Application:**
     ```bash
-    mvn clean install -DskipTests
-    ```
-
-5.  **Run the application:**
-    ```bash
+    mvn clean install # Builds the project and runs tests
     mvn spring-boot:run
     ```
-    Alternatively, you can run the `AuthenticationSystemApplication.java` directly from your IDE.
+    The application will start on `http://localhost:8080/api/v1`.
+    Swagger UI will be available at `http://localhost:8080/api/v1/swagger-ui.html`.
 
-### Docker with Docker Compose (Recommended for consistency)
+### Running with Docker Compose
 
-This is the recommended way to run the application as it sets up both the Spring Boot app and the PostgreSQL database in isolated containers.
+This is the recommended way to run the application and its dependencies locally.
 
-1.  **Clone the repository:**
+1.  **Build the Docker Image for the Application:**
+    From the root of the project (`ecommerce-system/`):
     ```bash
-    git clone https://github.com/your-username/authentication-system.git
-    cd authentication-system
+    docker build -t alx-ecommerce-app .
     ```
+    This builds the Spring Boot application into a Docker image named `alx-ecommerce-app`.
 
-2.  **Build and run the containers:**
+2.  **Start Services with Docker Compose:**
+    Navigate to the `docker` directory:
     ```bash
-    docker-compose up --build -d
+    cd docker
+    docker compose up -d
     ```
-    *   `--build`: Builds the Docker image for the Spring Boot application (only needed the first time or after code changes).
-    *   `-d`: Runs the containers in detached mode (in the background).
+    This command will:
+    *   Start a PostgreSQL container (`ecommerce-db`).
+    *   Start a Redis container (`ecommerce-redis`).
+    *   Start the `alx-ecommerce-app` container, linking it to the database and Redis.
+    *   The `-d` flag runs containers in detached mode.
 
-3.  **Verify containers are running:**
+3.  **Verify Services:**
+    Check the logs to ensure all services started correctly:
     ```bash
-    docker-compose ps
+    docker compose logs -f
     ```
-    You should see `auth_postgres_db` and `auth_spring_app` listed as `Up`.
+    You should see logs from `ecommerce-db`, `ecommerce-redis`, and `ecommerce-app`. Flyway migrations will run automatically on the `ecommerce-db` when `ecommerce-app` starts.
 
-## 6. Running the Application
+4.  **Access the Application:**
+    The application will be available at `http://localhost:8080/api/v1`.
+    Swagger UI: `http://localhost:8080/api/v1/swagger-ui.html`.
 
-Once the application is running (either locally or via Docker Compose), it will be accessible at:
-
-*   **Application Root**: `http://localhost:8080`
-*   **API Documentation (Swagger UI)**: `http://localhost:8080/swagger-ui.html`
-*   **OpenAPI 3 JSON**: `http://localhost:8080/v3/api-docs`
-
-## 7. API Endpoints (Swagger UI)
-
-The API is fully documented using Swagger UI. Navigate to `http://localhost:8080/swagger-ui.html` in your browser.
-
-You can use Swagger UI to:
-*   View all available endpoints.
-*   See request/response schemas.
-*   **Try out API calls directly**:
-    1.  Click the "Authorize" button (usually a lock icon).
-    2.  Enter your JWT token in the format `Bearer <YOUR_JWT_TOKEN>` (e.g., `Bearer eyJhbGciOiJIUzI1Ni...`). You get this token from the `/api/v1/auth/authenticate` or `/api/v1/auth/register` endpoints.
-    3.  Execute protected endpoints.
-
-**Example Endpoints:**
-
-*   **Register User**: `POST /api/v1/auth/register`
-    *   Body: `{ "firstname": "Alice", "lastname": "Smith", "email": "alice@example.com", "password": "password123" }`
-*   **Authenticate User**: `POST /api/v1/auth/authenticate`
-    *   Body: `{ "email": "admin@example.com", "password": "adminpass" }` (Use `admin@example.com` / `adminpass` or `user@example.com` / `userpass` from `V2__Seed_Data.sql`)
-*   **Get My Profile**: `GET /api/v1/users/me` (Requires JWT)
-*   **Update My Profile**: `PUT /api/v1/users/me` (Requires JWT)
-    *   Body: `{ "firstname": "Alicia", "newPassword": "newsecurepass" }`
-*   **Get All Users (ADMIN ONLY)**: `GET /api/v1/users` (Requires ADMIN JWT)
-*   **Delete User by ID (ADMIN ONLY)**: `DELETE /api/v1/users/{id}` (Requires ADMIN JWT)
-
-## 8. Testing
-
-The project has a robust testing strategy:
-
-### Unit Tests
-
-*   Located in `src/test/java/.../service/` and `src/test/java/.../controller/` (for controller mocks).
-*   Uses JUnit 5 and Mockito to test individual components in isolation.
-*   **Run unit tests:**
+5.  **Stop Services:**
     ```bash
-    mvn test
+    docker compose down
     ```
+    This stops and removes the containers and networks created by `docker compose up`. If you want to also remove the database volume, use `docker compose down -v`.
 
-### Integration Tests
+---
 
-*   Located in `src/test/java/.../controller/`.
-*   Uses Spring Boot's `@SpringBootTest` and `MockMvc` to test the full request lifecycle from controller to database.
-*   Leverages **Testcontainers** to spin up a real PostgreSQL database for tests, ensuring a production-like environment.
-*   `application-test.yml` configures the test environment.
-*   **Run integration tests (along with unit tests):**
-    ```bash
-    mvn clean verify
-    ```
-*   **Code Coverage (JaCoCo):** After `mvn clean verify`, a JaCoCo report will be generated. You can view it by opening `target/site/jacoco/index.html` in your browser. The `pom.xml` aims for 80%+ line and branch coverage.
+## 5. API Endpoints
 
-### Performance Tests (Conceptual)
+The API is fully documented with OpenAPI (Swagger UI). Once the application is running, navigate to `http://localhost:8080/api/v1/swagger-ui.html` to explore all available endpoints, request/response schemas, and try them out interactively.
 
-A conceptual JMeter test plan (`performance-tests/jmeter-plan.jmx`) is provided to outline how performance testing would be approached.
+**Key Endpoints (Examples):**
 
-To execute actual performance tests:
-1.  Download and install [Apache JMeter](https://jmeter.apache.org/download_jmeter.cgi).
-2.  Ensure your application is running (preferably via `docker-compose up -d`).
-3.  Open JMeter, load the `jmeter-plan.jmx` file.
-4.  Configure user variables (host, port, number of users, ramp-up, loops).
-5.  Run the tests and analyze the results in JMeter's listeners (Summary Report, Aggregate Report, View Results Tree).
+*   **Authentication:**
+    *   `POST /api/v1/auth/register` - Register a new user.
+    *   `POST /api/v1/auth/authenticate` - Authenticate and get JWT token.
 
-## 9. CI/CD (Conceptual)
+*   **Users:**
+    *   `GET /api/v1/users/me` - Get authenticated user's profile.
+    *   `PUT /api/v1/users/me` - Update authenticated user's profile.
+    *   `GET /api/v1/users/{id}` (ADMIN) - Get user by ID.
+    *   `GET /api/v1/users` (ADMIN) - Get all users.
+    *   `DELETE /api/v1/users/{id}` (ADMIN) - Delete user.
 
-A conceptual `jenkins-pipeline.groovy` is provided in the `ci-cd/` directory. This file outlines a typical Jenkins declarative pipeline structure for this project.
+*   **Products:**
+    *   `POST /api/v1/products` (ADMIN) - Create a new product.
+    *   `GET /api/v1/products/{id}` - Get product by ID.
+    *   `GET /api/v1/products` - Get all products (paginated).
+    *   `GET /api/v1/products/category/{categoryId}` - Get products by category.
+    *   `PUT /api/v1/products/{id}` (ADMIN) - Update product.
+    *   `DELETE /api/v1/products/{id}` (ADMIN) - Delete product.
 
-**Stages of a typical CI/CD pipeline:**
-1.  **Checkout**: Get the latest code from the repository.
-2.  **Build**: Compile the application and package it into a JAR.
-3.  **Test**: Run unit, integration, and API tests. Generate code coverage reports.
-4.  **Security Scan**: (Placeholder) Integrate tools like SonarQube, Snyk, OWASP Dependency-Check.
-5.  **Build Docker Image**: Create a Docker image for the application.
-6.  **Push Docker Image**: Push the image to a container registry (e.g., Docker Hub, AWS ECR).
-7.  **Deploy to Staging**: Deploy the application to a staging environment (e.g., Kubernetes, AWS ECS, bare metal with Docker Compose).
-8.  **Automated End-to-End Tests**: Run more extensive end-to-end tests on the staging environment.
-9.  **Manual Approval**: (Optional) For critical deployments.
-10. **Deploy to Production**: Deploy the validated application to the production environment.
+*   **Categories:**
+    *   `POST /api/v1/categories` (ADMIN) - Create a new category.
+    *   `GET /api/v1/categories/{id}` - Get category by ID.
+    *   `GET /api/v1/categories` - Get all categories.
+    *   `PUT /api/v1/categories/{id}` (ADMIN) - Update category.
+    *   `DELETE /api/v1/categories/{id}` (ADMIN) - Delete category.
 
-**Note**: A fully functional CI/CD pipeline requires an actual CI server (like Jenkins, GitLab CI, GitHub Actions) and environment setup, which is beyond the scope of this single project response.
+*   **Orders:**
+    *   `POST /api/v1/orders` (AUTHENTICATED) - Create a new order.
+    *   `GET /api/v1/orders/{orderId}` (OWNER/ADMIN) - Get order by ID.
+    *   `GET /api/v1/orders/my-orders` (AUTHENTICATED) - Get current user's orders.
+    *   `GET /api/v1/orders` (ADMIN) - Get all orders.
+    *   `PATCH /api/v1/orders/{orderId}/status` (ADMIN) - Update order status.
+    *   `DELETE /api/v1/orders/{orderId}` (OWNER(PENDING/CANCELLED)/ADMIN) - Delete order.
 
-## 10. Database Layer
+---
 
-*   **Database**: PostgreSQL is used.
-*   **Migrations**: Flyway handles schema evolution. Migration scripts are located in `src/main/resources/db/migration/`.
-    *   `V1__Initial_Schema.sql`: Creates the `_user` table.
-    *   `V2__Seed_Data.sql`: Inserts default `ADMIN` (`admin@example.com`/`adminpass`) and `USER` (`user@example.com`/`userpass`) accounts.
-*   **JPA**: Spring Data JPA is used for ORM, simplifying database interactions.
-*   **Query Optimization**: Indexes are added to frequently queried columns (e.g., `email` in `_user` table) in migration scripts. Spring Data JPA's derived query methods are efficient. For complex queries, `@Query` annotations or native SQL can be used.
+## 6. Testing
 
-## 11. Configuration & Environment Variables
+The project includes a comprehensive suite of tests:
 
-*   **`application.yml`**: Main configuration file for Spring Boot settings, database, JWT, logging, caching, and Swagger.
-*   **Environment Variables**: Key configurations (like database credentials, JWT secret) can be overridden by environment variables, which is crucial for Docker deployments and different environments (dev, prod).
-    *   Example: `SPRING_DATASOURCE_URL`, `APPLICATION_SECURITY_JWT_SECRET_KEY`.
-*   **Logging (`logback-spring.xml`)**: Configures console and rolling file appenders, log levels for different packages.
+*   **Unit Tests:** Focus on individual components (services, repositories) in isolation using JUnit 5 and Mockito. Achieves high code coverage.
+    *   Run unit tests: `mvn test`
+*   **Integration Tests:** Test the interaction between multiple components, including the database, using `@SpringBootTest` and Testcontainers for realistic environment simulation.
+    *   Integration tests are run as part of `mvn clean install`.
+*   **API Tests:** Tested via `MockMvc` in integration tests to simulate HTTP requests and verify API responses and status codes.
+    *   The `ProductControllerIntegrationTest` is a good example.
+*   **Performance Tests (Conceptual):** While not generating actual performance test scripts here, the design supports integration with tools like JMeter or Gatling. Key metrics are exposed via Spring Boot Actuator (`/actuator/prometheus`) for monitoring.
 
-## 12. Additional Features
+**Running Tests:**
 
-*   **Authentication/Authorization**: Implemented using JWT and Spring Security, with `ROLE_USER` and `ROLE_ADMIN` permissions. `@PreAuthorize` annotations control access to controller methods.
-*   **Logging and Monitoring**: SLF4J with Logback for structured logging. Spring Boot Actuator is included (`pom.xml`) for monitoring endpoints like `/actuator/health`, `/actuator/info`, etc. For full-scale monitoring, integration with tools like Prometheus/Grafana or an ELK stack would be recommended.
-*   **Error Handling Middleware**: A global `@ControllerAdvice` (`GlobalExceptionHandler.java`) provides consistent JSON error responses for various exceptions, including validation errors and custom exceptions.
-*   **Caching Layer**: Configured with Spring Cache and Caffeine (`CacheConfig.java`). `@Cacheable` is used in `RoleRepository` as an example.
-*   **Rate Limiting**: An in-memory `RateLimitInterceptor` (`RateLimitInterceptor.java`) limits requests to 5 per second per IP address. This is a simple solution; for distributed systems, dedicated gateways (like NGINX, API Gateway) or external services (like Redis-backed rate limiters) are preferred.
+To run all tests (unit and integration):
+```bash
+mvn clean install
+```
+This will generate JaCoCo code coverage reports in `target/site/jacoco/jacoco.xml` and `target/site/jacoco/index.html`.
 
-## 13. Frontend (Conceptual)
+---
 
-A basic `client/index.html` file is provided to demonstrate how a simple HTML/JavaScript client would interact with the backend API. It includes examples for registration, login, and accessing a protected endpoint.
+## 7. CI/CD
 
-```html
+The project includes a GitHub Actions workflow (`.github/workflows/ci-cd.yml`) to automate the build, test, and deployment process.
+
+**Workflow Stages:**
+
+1.  **`build-and-test`:**
+    *   Checks out the code.
+    *   Sets up JDK 17.
+    *   Caches Maven dependencies.
+    *   Builds the project and runs all unit and integration tests (`mvn clean install`).
+    *   Uploads JaCoCo code coverage report to Codecov (if configured).
+
+2.  **`docker-build-and-push`:**
+    *   Depends on `build-and-test` succeeding.
+    *   Logs into Docker Hub using provided secrets.
+    *   Builds the Docker image for the Spring Boot application.
+    *   Tags and pushes the image to Docker Hub with `latest` (for `main` branch) or `develop` (for `develop` branch) tags, and commit SHA tags.
+
+3.  **`deploy-to-dev`:**
+    *   Depends on `docker-build-and-push` succeeding.
+    *   Triggered only for pushes to the `develop` branch.
+    *   Uses SSH to connect to a development server.
+    *   Pulls the latest `develop` Docker image.
+    *   Restarts the Docker Compose services on the development server.
+
+4.  **`deploy-to-prod`:**
+    *   Depends on `docker-build-and-push` succeeding.
+    *   Triggered only for pushes to the `main` branch.
+    *   Uses SSH to connect to a production server.
+    *   Pulls the latest `main`/`latest` Docker image.
+    *   Restarts the Docker Compose services on the production server.
+
+**Required GitHub Secrets:**
+
+*   `DOCKER_USERNAME`: Your Docker Hub username.
+*   `DOCKER_PASSWORD`: Your Docker Hub Access Token.
+*   `CODECOV_TOKEN`: (Optional) Your Codecov repository token.
+*   `DEV_SSH_HOST`: IP address or hostname of your development server.
+*   `DEV_SSH_USER`: SSH username for your development server.
+*   `DEV_SSH_KEY`: Private SSH key for accessing your development server (add as a multi-line secret).
+*   `PROD_SSH_HOST`: IP address or hostname of your production server.
+*   `PROD_SSH_USER`: SSH username for your production server.
+*   `PROD_SSH_KEY`: Private SSH key for accessing your production server.
+
+---
+
+## 8. Documentation
+
+### API Documentation
+
+Refer to `API_DOCS.md` for a detailed, markdown-formatted overview of the API endpoints, including example requests and responses. For interactive exploration, use the Swagger UI at `http://localhost:8080/api/v1/swagger-ui.html`.
+
+### Architecture Documentation
+
+Refer to `ARCHITECTURE.md` for a deep dive into the system's design principles, architectural patterns (e.g., Layered Architecture, DDD concepts), component interactions, and choices behind the technology stack. This document will include diagrams and explanations of data flow, security mechanisms, and scalability considerations.
+
+### Deployment Guide
+
+Refer to `DEPLOYMENT.md` for comprehensive instructions on deploying the application to various environments (e.g., cloud platforms like AWS EC2, Kubernetes, or self-hosted servers). It will cover prerequisites, steps for setting up environment variables, database configuration, container orchestration, and monitoring setup.
+
+---
+
+## 9. Contributing
+
+Contributions are welcome! If you'd like to contribute, please fork the repository, create a new branch, and submit a pull request. Ensure your code adheres to the project's coding standards and includes appropriate tests.
+
+---
+
+## 10. License
+
+This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+```
