@@ -1,77 +1,77 @@
-```yaml
-# application.yml
-# Spring Boot configuration for WebScraperX application
-
+# Global application settings
 spring:
   application:
-    name: web-scraper-x
+    name: authentication-system
+  profiles:
+    active: dev # Default profile
+  main:
+    web-application-type: servlet # Ensures it's a web application
+  # Database configuration (PostgreSQL)
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:webscraperdb}
-    username: ${DB_USERNAME:webscraper}
-    password: ${DB_PASSWORD:webscraperpass}
+    url: jdbc:postgresql://localhost:5432/auth_db # Default for local Docker setup
+    username: admin
+    password: password
     driver-class-name: org.postgresql.Driver
+  # JPA (Hibernate) configuration
   jpa:
     hibernate:
-      ddl-auto: validate # Use 'validate' with Flyway, 'update' for dev, 'none' for production
-    show-sql: true
+      ddl-auto: validate # 'validate' in production, 'update' or 'create' for dev if needed, 'none' with Flyway
+    show-sql: true # Log SQL queries for debugging
     properties:
       hibernate:
-        format_sql: true
-    open-in-view: false # Prevents n+1 issues by closing session after controller
+        format_sql: true # Format SQL logs
+    open-in-view: false # Prevents N+1 issues and keeps session open in view layer (generally set to false)
+  # Flyway database migration configuration
   flyway:
     enabled: true
-    locations: classpath:db/migration # Directory where migration scripts are located
-  security:
-    user:
-      name: ${SECURITY_DEFAULT_USER:admin}
-      password: ${SECURITY_DEFAULT_PASSWORD:admin} # Default password (should be strong in production)
-  # Cache Configuration using Caffeine
+    baseline-on-migrate: true # Baselines schema if it exists but is not versioned by Flyway
+    locations: classpath:db/migration # Directory for migration scripts
+    create-schemas: true # Allows Flyway to create the database schema if it doesn't exist
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}
+  # Cache configuration (Caffeine)
   cache:
-    cache-names: scrapingTasks
     caffeine:
-      spec: maximumSize=500,expireAfterWrite=60s # Cache tasks for 60 seconds
+      spec: maximumSize=500,expireAfterWrite=10m # Default cache settings if not overridden by CacheConfig
+  # Web configuration
+  web:
+    resources:
+      add-mappings: true # Enable serving static resources
 
-# JWT Configuration
-jwt:
-  secret: ${JWT_SECRET:your_super_secret_jwt_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_prod}
-  expiration: ${JWT_EXPIRATION:3600000} # 1 hour in milliseconds
-
-# Server Configuration
+# Server settings
 server:
-  port: ${SERVER_PORT:8080}
-  servlet:
-    context-path: /
+  port: 8080 # Application runs on port 8080
 
-# Logging Configuration
+# Logging configuration
 logging:
+  config: classpath:logback-spring.xml # Path to Logback configuration file
   level:
     root: INFO
-    com.alx.webscraper: DEBUG # Detailed logging for our application package
-    org.springframework: INFO
-    org.hibernate: INFO
-    org.flywaydb: INFO
-    org.jsoup: INFO # Jsoup logging
-  file:
-    name: logs/webscraperx.log # Log to a file
+    org.springframework.web: DEBUG # More detailed logging for web requests
+    com.alx.auth.system: DEBUG # Detailed logging for our application package
+    org.hibernate.SQL: DEBUG # Show prepared statements
+    org.hibernate.orm.jdbc.bind: TRACE # Show parameters for prepared statements
 
-# Springdoc OpenAPI (Swagger UI) Configuration
+# JWT Security properties
+application:
+  security:
+    jwt:
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970 # Base64 encoded secret key (highly recommended to generate a strong random one)
+      expiration: 86400000 # 24 hours in milliseconds (24 * 60 * 60 * 1000)
+
+# OpenAPI (Swagger) configuration
 springdoc:
   api-docs:
-    path: /v3/api-docs # Endpoint for OpenAPI JSON
+    path: /v3/api-docs # Endpoint for the OpenAPI specification
   swagger-ui:
     path: /swagger-ui.html # Endpoint for Swagger UI
     disable-swagger-default-url: true
-    display-request-duration: true
-    operations-sorter: method
-    tags-sorter: alpha
-
-# Actuator Endpoints (for monitoring and management)
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus,env,loggers,caches # Expose useful endpoints
-  endpoint:
-    health:
-      show-details: always # Show full details on health checks
+    display-request-duration: true # Show response time in Swagger UI
+    operations-sorter: method # Sort operations by HTTP method
+    tags-sorter: alpha # Sort tags alphabetically
 ```
+
+#### `src/main/resources/logback-spring.xml`
+
+```xml

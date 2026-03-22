@@ -1,61 +1,66 @@
-```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
-    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+    <!-- Define a property for the application name, used in log file names -->
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="application"/>
 
-    <property name="LOG_FILE" value="logs/${spring.application.name}.log"/>
-
-    <!-- Appender for logging to a file -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE}</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.gz</fileNamePattern>
-            <maxHistory>7</maxHistory> <!-- Retain 7 days of logs -->
-            <totalSizeCap>1GB</totalSizeCap> <!-- Total size cap for all archived files -->
-        </rollingPolicy>
+    <!-- Console Appender: Logs to standard output (console) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <!-- Pattern for console output: Timestamp, Log Level, Thread, Logger Name, Message, New Line -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %magenta([%thread]) %green(%logger{36}) - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- Appender for structured JSON logging (optional, but good for enterprise) -->
-    <!--
-    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE}.json</file>
+    <!-- Rolling File Appender: Logs to a file, with rolling based on size and time -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- Log file name and path -->
+        <file>logs/${appName}.log</file>
+        <encoder>
+            <!-- Pattern for file output: Timestamp, Log Level, Thread, Logger Name, Message, New Line -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+
+        <!-- Rolling policy: Rolls logs daily and/or when size limit is reached -->
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_FILE}.json.%d{yyyy-MM-dd}.gz</fileNamePattern>
-            <maxHistory>7</maxHistory>
-            <totalSizeCap>1GB</totalSizeCap>
+            <!-- Daily rollover: creates a new log file each day -->
+            <fileNamePattern>logs/${appName}-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- Max size of each archived file -->
+                <maxFileSize>10MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <!-- Keep 30 days of archived log files -->
+            <maxHistory>30</maxHistory>
         </rollingPolicy>
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <customFields>{"application":"${spring.application.name}"}</customFields>
-        </encoder>
     </appender>
-    -->
 
+    <!-- Root Logger: Default logger for all log events -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
-        <!-- <appender-ref ref="JSON_FILE"/> -->
     </root>
 
-    <!-- Specific logger for our application code to set a default DEBUG level -->
-    <logger name="com.alx.webscraper" level="DEBUG" additivity="false">
+    <!-- Specific Logger for our application package for more granular control -->
+    <logger name="com.alx.auth.system" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
-        <!-- <appender-ref ref="JSON_FILE"/> -->
     </logger>
 
-    <!-- For database related logging -->
+    <!-- Example: Logger for Spring Security to see authentication details -->
+    <logger name="org.springframework.security" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <!-- Example: Logger for Hibernate SQL statements (configured in application.yml too) -->
     <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
-    <logger name="org.hibernate.type.descriptor.sql.BasicExtractor" level="TRACE" additivity="false">
+    <logger name="org.hibernate.orm.jdbc.bind" level="TRACE" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
 
+    <!-- Other third-party libraries can be configured similarly -->
+
 </configuration>
-```

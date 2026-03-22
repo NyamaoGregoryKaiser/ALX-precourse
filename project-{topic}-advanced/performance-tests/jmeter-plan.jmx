@@ -1,0 +1,71 @@
+# Conceptual JMeter Test Plan - (This is a simplified representation, actual .jmx is XML)
+# JMeter allows you to simulate high loads to analyze performance.
+
+# Test Plan: ALX Auth System Performance Test
+#  - User Defined Variables:
+#    - host: localhost
+#    - port: 8080
+#    - users: 100 (Number of concurrent users)
+#    - ramp_up_period: 10 (Time in seconds to ramp up users)
+#    - loop_count: 5 (Number of times each user will execute the test steps)
+
+#  - Thread Group: Simulate Users
+#    - Number of Threads (Users): ${users}
+#    - Ramp-up Period (seconds): ${ramp_up_period}
+#    - Loop Count: ${loop_count}
+
+#    - HTTP Request Defaults:
+#      - Protocol: http
+#      - Server Name or IP: ${host}
+#      - Port: ${port}
+
+#    - Logic Controller: One Time Login (Performed once per thread)
+#      - HTTP Request: Login
+#        - Method: POST
+#        - Path: /api/v1/auth/authenticate
+#        - Body Data (JSON):
+#          {
+#            "email": "user${__threadNum}@example.com",
+#            "password": "password123"
+#          }
+#        - JSON Extractor: Extract JWT Token (store in 'jwt_token' variable)
+#          - Variable Names: jwt_token
+#          - JSON Path Expressions: $.token
+
+#    - Loop Controller: Authenticated Operations (Loop N times per thread)
+#      - HTTP Header Manager: Add Authorization header
+#        - Name: Authorization
+#        - Value: Bearer ${jwt_token}
+
+#      - HTTP Request: Get User Profile
+#        - Method: GET
+#        - Path: /api/v1/users/me
+#        - Assertions: JSON Assertion for expected user data
+
+#      - HTTP Request: Update User Profile (e.g., change first name)
+#        - Method: PUT
+#        - Path: /api/v1/users/me
+#        - Body Data (JSON):
+#          {
+#            "firstname": "UpdatedName${__iterationNum}"
+#          }
+#        - Assertions: JSON Assertion for updated name
+
+#      - Think Time (e.g., Gaussian Random Timer: 100ms offset, 50ms deviation)
+
+#  - Listeners:
+#    - Summary Report (for quick overview)
+#    - View Results Tree (for detailed request/response during debugging)
+#    - Aggregate Report (for response times, throughput, error rates)
+#    - Graph Results (for visualizing trends over time)
+
+#  - Pre-requisites:
+#    - Ensure test users are pre-registered in the database (e.g., user1@example.com, user2@example.com, etc.)
+#      for robust login simulation. This can be done via Flyway seed data or a separate setup script.
+#    - Docker Compose setup must be running.
+
+#  - Execution:
+#    - Start the Spring Boot application via `docker-compose up`
+#    - Open JMeter GUI, load this .jmx plan.
+#    - Run the test.
+#    - Analyze results in the listeners.

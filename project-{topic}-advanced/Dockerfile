@@ -1,43 +1,38 @@
-```dockerfile
-# Use a slim OpenJDK 17 base image for smaller size
-FROM openjdk:17-jdk-slim as builder
+# Use a slim Java 17 image as the base for building
+FROM eclipse-temurin:17-jdk-jammy as builder
 
-# Set working directory inside the container
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the Maven wrapper files and pom.xml
-COPY mvnw .
-COPY .mvn .mvn
+# Copy the Maven pom.xml and source code
+# We copy pom.xml separately to leverage Docker's build cache.
+# If pom.xml doesn't change, Maven dependencies don't need to be re-downloaded.
 COPY pom.xml .
+COPY src ./src
 
-# Download dependencies (to leverage Docker layer caching)
-RUN ./mvnw dependency:go-offline -B
+# Package the application using Maven
+# -Dmaven.test.skip=true skips running tests during the build
+# --no-transfer-progress reduces verbose output during dependency downloads
+# This step creates an executable JAR file in target/
+RUN --mount=type=cache,target=/root/.m2 ./mvnw clean install -DskipTests
 
-# Copy the rest of the application source code
-COPY src src
+# Use a lighter JRE image for the final runtime image
+FROM eclipse-temurin:17-jre-jammy
 
-# Build the application
-RUN ./mvnw install -DskipTests
+# Set the working directory for the runtime
+WORKDIR /app
 
-# Package the application as a runnable JAR
-FROM openjdk:17-jdk-slim
+# Copy the executable JAR from the builder stage
+# The JAR is typically named artifactId-version.jar, you might need to adjust this.
+COPY --from=builder /app/target/*.jar app.jar
 
-# Set volume for logs and configuration
-VOLUME /tmp
-ARG JAR_FILE=/app/target/*.jar
-
-# Copy the built JAR from the builder stage
-COPY --from=builder ${JAR_FILE} app.jar
-
-# Expose the port the application runs on
+# Expose the port the Spring Boot application listens on
 EXPOSE 8080
 
-# Environment variables for production (can be overridden by docker-compose or Kubernetes)
+# Define environment variables (can be overridden at runtime)
 ENV SPRING_PROFILES_ACTIVE=prod
-ENV DB_URL=jdbc:postgresql://postgres:5432/alx_mobile_db_prod
-ENV DB_USERNAME=alxuser_prod
-ENV DB_PASSWORD=alxpassword_prod
+ENV JAVA_TOOL_OPTIONS="-XX:+ExitOnOutOfMemoryError" # Exit JVM on OOM
 
-# Command to run the application
-ENTRYPOINT ["java","-Djava.security.egd=file:/dev/urandom","-jar","/app.jar"]
-```
+# Run the application
+# Use entrypoint for container initialization, ensures script runs as PID 1
+ENTRYPOINT ["java", "-jar", "app.jar"]

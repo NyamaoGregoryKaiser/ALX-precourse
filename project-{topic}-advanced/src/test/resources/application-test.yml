@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: authentication-system-test
+  # Use an in-memory H2 database for faster tests or Testcontainers for real PostgreSQL
+  datasource:
+    # For Testcontainers (recommended for integration tests for production-like environment)
+    # The actual URL/username/password will be overridden by Testcontainers.
+    url: jdbc:tc:postgresql:15-alpine:///auth_db_test
+    username: testuser
+    password: testpassword
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    # For H2 in-memory (faster for unit tests where DB interaction is mocked or very simple)
+    # url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # username: sa
+    # password:
+    # driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create # Create schema for each test run
+    show-sql: false # Don't show SQL logs during tests unless debugging
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration # Use the same migration scripts
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}
+
+# JWT Security properties (same as prod, but can be overridden for specific test cases if needed)
+application:
+  security:
+    jwt:
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970 # Use a consistent secret for tests
+      expiration: 3600000 # 1 hour for tests
+
+logging:
+  level:
+    root: INFO
+    com.alx.auth.system: INFO # Keep test logs concise
+```
+
+#### `src/test/java/com/alx/auth/system/service/AuthServiceTest.java`
+
+```java

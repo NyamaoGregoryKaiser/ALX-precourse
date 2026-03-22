@@ -1,72 +1,62 @@
-```yaml
 version: '3.8'
 
 services:
+  # PostgreSQL Database Service
   db:
-    image: postgres:13-alpine
-    restart: always
+    image: postgres:15-alpine # Use a lightweight PostgreSQL image
+    container_name: auth_postgres_db
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_DB: auth_db       # Database name
+      POSTGRES_USER: admin       # Database user
+      POSTGRES_PASSWORD: password # Database password
     ports:
-      - "${DB_PORT}:5432"
+      - "5432:5432" # Map container port 5432 to host port 5432
     volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      - auth_db_data:/var/lib/postgresql/data # Persist data to a named volume
+    healthcheck: # Healthcheck to ensure the database is ready before the app starts
+      test: ["CMD-SHELL", "pg_isready -U admin -d auth_db"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s # Give the DB some time to start up initially
+    restart: unless-stopped # Restart policy
 
-  backend:
+  # Spring Boot Application Service
+  app:
     build:
-      context: ./src/backend
+      context: . # Build context is the current directory (where Dockerfile is)
       dockerfile: Dockerfile
-    restart: always
-    environment:
-      NODE_ENV: production
-      PORT: ${PORT}
-      DB_HOST: db
-      DB_PORT: ${DB_PORT}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_DIALECT: ${DB_DIALECT}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS}
-      LOG_LEVEL: ${LOG_LEVEL}
-      FRONTEND_URL: ${FRONTEND_URL}
+    container_name: auth_spring_app
     ports:
-      - "${PORT}:${PORT}"
+      - "8080:8080" # Map container port 8080 to host port 8080
+    environment:
+      # Inject database connection details as environment variables
+      # These override the values in application.yml for the 'prod' profile
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/auth_db # 'db' is the service name in docker-compose
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate # Ensure schema is validated, not created/updated automatically
+      SPRING_PROFILES_ACTIVE: prod # Activate the 'prod' profile
+      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970 # Same as in application.yml
+      APPLICATION_SECURITY_JWT_EXPIRATION: 86400000 # 24 hours
     depends_on:
       db:
-        condition: service_healthy
-    networks:
-      - product-network
-
-  frontend:
-    build:
-      context: ./src/frontend
-      dockerfile: Dockerfile
-    restart: always
-    environment:
-      NODE_ENV: production
-      REACT_APP_API_URL: http://localhost:${PORT} # This needs to be the host IP or exposed port for frontend to access backend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    networks:
-      - product-network
-
-networks:
-  product-network:
-    driver: bridge
+        condition: service_healthy # Ensure 'db' service is healthy before starting 'app'
+    restart: unless-stopped # Restart policy
 
 volumes:
-  db_data:
+  auth_db_data: # Define the named volume for database persistence
+
+# Usage:
+# 1. To build and run: docker-compose up --build -d
+# 2. To stop: docker-compose down
+# 3. To view logs: docker-compose logs -f
 ```
+
+---
+
+### 4. Testing & Quality
+
+#### `src/test/resources/application-test.yml`
+
+```yaml

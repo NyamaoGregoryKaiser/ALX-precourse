@@ -1,266 +1,259 @@
-```markdown
-# Comprehensive DevOps Automation System for a Product Catalog
+# ALX Production-Ready Authentication System
 
-This project demonstrates a full-scale, production-ready DevOps automation system for a Product Catalog Management application. It encompasses a complete full-stack JavaScript (Node.js/React) application, robust database management, a Dockerized environment, CI/CD with GitHub Actions, extensive testing, and thorough documentation.
+This project is a comprehensive, production-ready authentication system built with Spring Boot, Spring Security, JWT, and PostgreSQL. It demonstrates best practices for building a secure, scalable, and maintainable backend service.
 
 ## Table of Contents
 
-1.  [Project Overview](#project-overview)
-2.  [Features](#features)
-3.  [Technologies Used](#technologies-used)
-4.  [Getting Started](#getting-started)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup](#local-development-setup)
-    *   [Running with Docker Compose](#running-with-docker-compose)
-5.  [Application Usage](#application-usage)
-    *   [Default Admin Credentials](#default-admin-credentials)
-    *   [Frontend Access](#frontend-access)
-    *   [Backend API Documentation](#backend-api-documentation)
-6.  [Testing](#testing)
-    *   [Running Tests](#running-tests)
-    *   [Coverage Report](#coverage-report)
-7.  [CI/CD Pipeline](#cicd-pipeline)
-8.  [Documentation](#documentation)
-    *   [API Documentation](#api-documentation)
-    *   [Architecture Documentation](#architecture-documentation)
-    *   [Deployment Guide](#deployment-guide)
-9.  [Code Structure](#code-structure)
-10. [Additional Features](#additional-features)
-11. [ALX Precourse Alignment](#alx-precourse-alignment)
-12. [License](#license)
+1.  [Features](#features)
+2.  [Architecture Overview](#architecture-overview)
+3.  [Technology Stack](#technology-stack)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup and Installation](#setup-and-installation)
+    *   [Local Development](#local-development)
+    *   [Docker with Docker Compose](#docker-with-docker-compose)
+6.  [Running the Application](#running-the-application)
+7.  [API Endpoints (Swagger UI)](#api-endpoints-swagger-ui)
+8.  [Testing](#testing)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [Performance Tests (Conceptual)](#performance-tests-conceptual)
+9.  [CI/CD (Conceptual)](#ci-cd-conceptual)
+10. [Database Layer](#database-layer)
+11. [Configuration & Environment Variables](#configuration--environment-variables)
+12. [Additional Features](#additional-features)
+13. [Frontend (Conceptual)](#frontend-conceptual)
+14. [Contributing](#contributing)
+15. [License](#license)
 
----
+## 1. Features
 
-## 1. Project Overview
+*   **User Management**: Register new users, user login, retrieve user profile, update user profile, retrieve all users (admin only), retrieve user by ID (admin only), delete user (admin only).
+*   **Authentication**: Secure JWT (JSON Web Token) based authentication for stateless API interactions.
+*   **Authorization**: Role-Based Access Control (RBAC) with `USER` and `ADMIN` roles using Spring Security's `@PreAuthorize`.
+*   **Security**:
+    *   Password hashing with BCrypt.
+    *   JWT token generation, validation, and parsing.
+    *   CSRF protection disabled for stateless APIs (appropriate for JWT).
+    *   CORS configuration for frontend integration.
+*   **Database Management**: PostgreSQL database with Flyway for robust schema migrations and versioning.
+*   **RESTful API**: Clean and consistent API endpoints.
+*   **Data Validation**: Input validation using `jakarta.validation` annotations.
+*   **Global Error Handling**: Consistent error responses using `@ControllerAdvice` for various exceptions (e.g., 400, 401, 403, 404, 409, 429, 500).
+*   **Structured Logging**: Configured with Logback for clear and configurable logging.
+*   **Caching**: In-memory caching with Caffeine for performance optimization (e.g., role lookups).
+*   **Rate Limiting**: Simple in-memory rate limiting per IP address to prevent API abuse (5 requests/second).
+*   **API Documentation**: Automated API documentation with Swagger UI (OpenAPI 3).
+*   **Containerization**: Docker and Docker Compose for easy setup, deployment, and environment consistency.
+*   **Testing**: Comprehensive suite of Unit, Integration, and API tests with high coverage goals (80%+).
 
-This system provides a complete solution for managing a product catalog. It allows users to register, log in, browse products, and (for administrators) perform full CRUD operations on product data. The primary focus is on demonstrating a robust and automated development and deployment workflow using modern DevOps practices.
+## 2. Architecture Overview
 
-## 2. Features
+The system follows a layered architecture, common in Spring Boot applications:
 
-**Core Application (Full-Stack JavaScript)**
-*   **Backend (Node.js/Express)**:
-    *   RESTful API endpoints for User and Product management.
-    *   Full CRUD operations for Products (admin-only for Create, Update, Delete).
-    *   User registration and login.
-    *   Role-based access control (User, Admin).
-*   **Frontend (React.js)**:
-    *   User-friendly interface for browsing products.
-    *   User authentication (login, registration, logout).
-    *   Admin panel for managing products.
-    *   Dynamic routing and state management.
+*   **Presentation Layer (Controller)**: Handles HTTP requests, marshals/unmarshals DTOs, and delegates to the service layer.
+*   **Service Layer (Business Logic)**: Contains the core business logic, orchestrates data operations, and applies domain rules.
+*   **Data Access Layer (Repository)**: Abstracts database interactions, using Spring Data JPA for persistence.
+*   **Security Layer**: Intercepts requests, validates JWT tokens, manages authentication and authorization contexts.
+*   **Configuration Layer**: Manages application-wide settings, security configurations, and bean definitions.
 
-**Database Layer (PostgreSQL with Sequelize ORM)**
-*   Schema definitions for `User` and `Product` models.
-*   Database migration scripts for schema evolution.
-*   Seed data for initial admin user and sample products.
-*   Basic query optimization considerations (e.g., indexing implicitly handled by Sequelize for primary keys).
+Data flow for a typical request:
+`Client Request -> RateLimitInterceptor -> JwtAuthenticationFilter -> Spring Security Filter Chain -> Controller -> Service -> Repository -> Database`
 
-**Configuration & Setup**
-*   `package.json` for both backend and frontend, detailing all dependencies.
-*   Environment variable management (`.env`).
-*   **Docker**: Containerization for backend, frontend, and PostgreSQL database.
-*   **CI/CD Pipeline**: Automated build, test, and linting pipeline using GitHub Actions.
+## 3. Technology Stack
 
-**Testing & Quality**
-*   **Backend**: Unit tests (Jest), Integration tests (Supertest + Jest) covering API endpoints and business logic. Aim for 80%+ coverage.
-*   **Frontend**: Unit tests (React Testing Library + Jest) for components and hooks.
-*   Linting (ESLint) for code quality.
-
-**Documentation**
-*   Comprehensive `README.md` (this file).
-*   API documentation generated using Swagger/OpenAPI.
-*   High-level architecture documentation.
-*   Detailed deployment guide.
-
-**Additional Features**
-*   **Authentication/Authorization**: JWT-based authentication, role-based access control middleware.
-*   **Logging and Monitoring**: Centralized logging with Winston for backend operations and HTTP requests.
-*   **Error Handling Middleware**: Global error handling for Express.js, providing consistent error responses.
-*   **Caching Layer**: In-memory caching with `node-cache` for product listings to improve response times.
-*   **Rate Limiting**: Protection against brute-force attacks and abuse using `express-rate-limit`.
-
-## 3. Technologies Used
-
-*   **Backend**: Node.js, Express.js, Sequelize ORM, PostgreSQL, bcryptjs, jsonwebtoken, winston, node-cache, express-rate-limit, swagger-jsdoc, swagger-ui-express.
-*   **Frontend**: React.js, create-react-app, React Router DOM, Axios, Tailwind CSS (implied by styling classes).
+*   **Backend**:
+    *   Java 17
+    *   Spring Boot 3.2.x
+    *   Spring Security 6.2.x
+    *   JJWT (Java JWT) 0.12.x
+    *   Lombok (for boilerplate code reduction)
+    *   Caffeine (in-memory caching)
+    *   Guava (RateLimiter)
 *   **Database**: PostgreSQL
+*   **Database Migration**: Flyway
+*   **Build Tool**: Maven
+*   **API Documentation**: Springdoc OpenAPI (Swagger UI)
 *   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-*   **Testing**: Jest, Supertest, React Testing Library
-*   **Code Quality**: ESLint
+*   **Testing**: JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo (for code coverage)
+*   **Logging**: SLF4J with Logback
 
-## 4. Getting Started
+## 4. Prerequisites
 
-### Prerequisites
+Before you begin, ensure you have the following installed:
 
-*   Git
-*   Docker & Docker Compose (Docker Desktop recommended for local development)
-*   Node.js (v20+) & npm (if not using Docker for everything)
+*   **Java 17 JDK**
+*   **Maven 3.8+**
+*   **Docker Desktop** (includes Docker Engine and Docker Compose)
 
-### Local Development Setup (without Docker Compose)
+## 5. Setup and Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/product-catalog-devops.git
-    cd product-catalog-devops
-    ```
+You have two primary ways to set up and run this project:
 
-2.  **Create `.env` file:**
-    Copy `.env.example` to `.env` in the project root and fill in your details.
-    ```bash
-    cp .env.example .env
-    ```
-    Ensure your `DB_HOST` points to `localhost` if running PostgreSQL locally without Docker, or `db` if you plan to run the DB via Docker without `docker-compose`.
-
-3.  **Install dependencies:**
-    Use the root `package.json` to install dependencies for both backend and frontend.
-    ```bash
-    npm install-all
-    ```
-    (This runs `npm install` in `src/backend` and `src/frontend`).
-
-4.  **Set up PostgreSQL Database:**
-    *   Install PostgreSQL locally (if not using Docker).
-    *   Create a database with the name specified in your `.env` (e.g., `product_catalog_db`).
-    *   Create a user with the specified username and password in your `.env`.
-
-5.  **Run Database Migrations and Seed Data (Backend):**
-    ```bash
-    npm run migrate --prefix src/backend
-    npm run seed --prefix src/backend
-    ```
-    This will create tables and insert the default admin user and sample products.
-
-6.  **Start Backend:**
-    ```bash
-    npm run dev --prefix src/backend
-    ```
-    The backend server will run on `http://localhost:5000` (or your specified `PORT`).
-
-7.  **Start Frontend:**
-    ```bash
-    npm start --prefix src/frontend
-    ```
-    The frontend application will run on `http://localhost:3000`.
-
-### Running with Docker Compose (Recommended)
-
-Docker Compose simplifies the setup by orchestrating all services (backend, frontend, database).
+### Local Development (without Docker for DB)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/product-catalog-devops.git
-    cd product-catalog-devops
+    git clone https://github.com/your-username/authentication-system.git
+    cd authentication-system
     ```
 
-2.  **Create `.env` file:**
-    Copy `.env.example` to `.env` in the project root and fill in your details. The `DB_HOST` should remain `db` as specified in `docker-compose.yml`.
+2.  **Install PostgreSQL locally:**
+    Ensure you have a PostgreSQL server running. Create a database named `auth_db` and a user `admin` with password `password`.
+    ```sql
+    CREATE USER admin WITH PASSWORD 'password';
+    CREATE DATABASE auth_db OWNER admin;
+    ```
+    (You may need to `ALTER USER admin WITH SUPERUSER;` or grant specific permissions for Flyway to work if you encounter issues, though typically just `CREATE DATABASE` and `OWNER` are enough).
+
+3.  **Update `application.yml` (if needed):**
+    If your local PostgreSQL credentials or port differ, update `src/main/resources/application.yml`.
+
+4.  **Build the project:**
     ```bash
-    cp .env.example .env
+    mvn clean install -DskipTests
     ```
 
-3.  **Build and run all services:**
+5.  **Run the application:**
+    ```bash
+    mvn spring-boot:run
+    ```
+    Alternatively, you can run the `AuthenticationSystemApplication.java` directly from your IDE.
+
+### Docker with Docker Compose (Recommended for consistency)
+
+This is the recommended way to run the application as it sets up both the Spring Boot app and the PostgreSQL database in isolated containers.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/authentication-system.git
+    cd authentication-system
+    ```
+
+2.  **Build and run the containers:**
     ```bash
     docker-compose up --build -d
     ```
-    *   `--build`: Builds the Docker images before starting containers (useful for first run or after code changes).
-    *   `-d`: Runs containers in detached mode (in the background).
+    *   `--build`: Builds the Docker image for the Spring Boot application (only needed the first time or after code changes).
+    *   `-d`: Runs the containers in detached mode (in the background).
 
-4.  **Verify services:**
-    Check the status of your running containers:
+3.  **Verify containers are running:**
     ```bash
     docker-compose ps
     ```
-    You should see `db`, `backend`, and `frontend` services running.
+    You should see `auth_postgres_db` and `auth_spring_app` listed as `Up`.
 
-5.  **Access the application:**
-    *   **Frontend**: `http://localhost:3000`
-    *   **Backend API**: `http://localhost:5000/api/v1`
-    *   **API Docs (Swagger)**: `http://localhost:5000/api-docs`
+## 6. Running the Application
 
-6.  **Stopping services:**
+Once the application is running (either locally or via Docker Compose), it will be accessible at:
+
+*   **Application Root**: `http://localhost:8080`
+*   **API Documentation (Swagger UI)**: `http://localhost:8080/swagger-ui.html`
+*   **OpenAPI 3 JSON**: `http://localhost:8080/v3/api-docs`
+
+## 7. API Endpoints (Swagger UI)
+
+The API is fully documented using Swagger UI. Navigate to `http://localhost:8080/swagger-ui.html` in your browser.
+
+You can use Swagger UI to:
+*   View all available endpoints.
+*   See request/response schemas.
+*   **Try out API calls directly**:
+    1.  Click the "Authorize" button (usually a lock icon).
+    2.  Enter your JWT token in the format `Bearer <YOUR_JWT_TOKEN>` (e.g., `Bearer eyJhbGciOiJIUzI1Ni...`). You get this token from the `/api/v1/auth/authenticate` or `/api/v1/auth/register` endpoints.
+    3.  Execute protected endpoints.
+
+**Example Endpoints:**
+
+*   **Register User**: `POST /api/v1/auth/register`
+    *   Body: `{ "firstname": "Alice", "lastname": "Smith", "email": "alice@example.com", "password": "password123" }`
+*   **Authenticate User**: `POST /api/v1/auth/authenticate`
+    *   Body: `{ "email": "admin@example.com", "password": "adminpass" }` (Use `admin@example.com` / `adminpass` or `user@example.com` / `userpass` from `V2__Seed_Data.sql`)
+*   **Get My Profile**: `GET /api/v1/users/me` (Requires JWT)
+*   **Update My Profile**: `PUT /api/v1/users/me` (Requires JWT)
+    *   Body: `{ "firstname": "Alicia", "newPassword": "newsecurepass" }`
+*   **Get All Users (ADMIN ONLY)**: `GET /api/v1/users` (Requires ADMIN JWT)
+*   **Delete User by ID (ADMIN ONLY)**: `DELETE /api/v1/users/{id}` (Requires ADMIN JWT)
+
+## 8. Testing
+
+The project has a robust testing strategy:
+
+### Unit Tests
+
+*   Located in `src/test/java/.../service/` and `src/test/java/.../controller/` (for controller mocks).
+*   Uses JUnit 5 and Mockito to test individual components in isolation.
+*   **Run unit tests:**
     ```bash
-    docker-compose down
-    ```
-    This stops and removes all services defined in `docker-compose.yml`. If you want to remove volumes (database data), use `docker-compose down -v`.
-
-## 5. Application Usage
-
-### Default Admin Credentials
-
-An initial admin user is created on application startup (or migration/seeding) with the following credentials:
-*   **Email**: `admin@example.com` (configurable via `ADMIN_EMAIL` in `.env`)
-*   **Password**: `adminpassword` (configurable via `ADMIN_PASSWORD` in `.env`)
-
-### Frontend Access
-
-Navigate to `http://localhost:3000`.
-*   **Register/Login**: Use the `Register` and `Login` links in the Navbar.
-*   **View Products**: After logging in (even as a regular user), you can navigate to `/products`.
-*   **Manage Products (Admin)**: If logged in as an admin, a `Manage Products` link will appear in the Navbar, leading to `/admin/products`. Here, you can Add, Edit, and Delete products.
-
-### Backend API Documentation
-
-The API documentation is available via Swagger UI at `http://localhost:5000/api-docs`. You can explore all available endpoints, their request/response schemas, and even test them directly from the browser.
-
-To test authenticated endpoints:
-1.  Click the "Authorize" button.
-2.  In the dialog, enter your JWT token in the format `Bearer <your-jwt-token>`. You get this token upon successful login.
-3.  Click "Authorize" and then "Close". Your requests will now include the authorization header.
-
-## 6. Testing
-
-The project includes comprehensive unit and integration tests for both frontend and backend.
-
-### Running Tests
-
-*   **Run all tests (backend and frontend):**
-    ```bash
-    npm test-backend
-    npm test-frontend
-    ```
-    (These use the root `package.json` scripts that delegate to the respective sub-project scripts).
-
-*   **Run backend tests only:**
-    ```bash
-    npm test --prefix src/backend
+    mvn test
     ```
 
-*   **Run frontend tests only:**
+### Integration Tests
+
+*   Located in `src/test/java/.../controller/`.
+*   Uses Spring Boot's `@SpringBootTest` and `MockMvc` to test the full request lifecycle from controller to database.
+*   Leverages **Testcontainers** to spin up a real PostgreSQL database for tests, ensuring a production-like environment.
+*   `application-test.yml` configures the test environment.
+*   **Run integration tests (along with unit tests):**
     ```bash
-    npm test --prefix src/frontend
+    mvn clean verify
     ```
+*   **Code Coverage (JaCoCo):** After `mvn clean verify`, a JaCoCo report will be generated. You can view it by opening `target/site/jacoco/index.html` in your browser. The `pom.xml` aims for 80%+ line and branch coverage.
 
-### Coverage Report
+### Performance Tests (Conceptual)
 
-Backend tests are configured to generate coverage reports. After running backend tests, you can find the report in `src/backend/coverage/lcov-report/index.html`. Open this file in your browser to view detailed coverage information. The target is 80%+ coverage for branches, functions, lines, and statements, as configured in `src/backend/package.json`.
+A conceptual JMeter test plan (`performance-tests/jmeter-plan.jmx`) is provided to outline how performance testing would be approached.
 
-## 7. CI/CD Pipeline
+To execute actual performance tests:
+1.  Download and install [Apache JMeter](https://jmeter.apache.org/download_jmeter.cgi).
+2.  Ensure your application is running (preferably via `docker-compose up -d`).
+3.  Open JMeter, load the `jmeter-plan.jmx` file.
+4.  Configure user variables (host, port, number of users, ramp-up, loops).
+5.  Run the tests and analyze the results in JMeter's listeners (Summary Report, Aggregate Report, View Results Tree).
 
-The project utilizes **GitHub Actions** for Continuous Integration and Continuous Deployment.
+## 9. CI/CD (Conceptual)
 
-*   **Workflow File**: `.github/workflows/main.yml`
-*   **Triggers**: Pushes to `main` or `develop` branches, and pull requests to these branches.
-*   **Jobs**:
-    *   **`build-and-test`**:
-        *   Checks out code.
-        *   Sets up Node.js environment.
-        *   Installs backend and frontend dependencies.
-        *   Runs ESLint for both backend and frontend.
-        *   Executes Jest tests for both backend and frontend.
-        *   Builds the React frontend for production.
-        *   Builds Docker images for backend and frontend.
-    *   **(Optional) `deploy`**: A placeholder job demonstrating how deployment to a cloud provider (e.g., using SSH to a remote server to pull and restart Docker containers) could be integrated. This job is commented out and requires specific secrets and configuration for a real-world deployment.
+A conceptual `jenkins-pipeline.groovy` is provided in the `ci-cd/` directory. This file outlines a typical Jenkins declarative pipeline structure for this project.
 
-## 8. Documentation
+**Stages of a typical CI/CD pipeline:**
+1.  **Checkout**: Get the latest code from the repository.
+2.  **Build**: Compile the application and package it into a JAR.
+3.  **Test**: Run unit, integration, and API tests. Generate code coverage reports.
+4.  **Security Scan**: (Placeholder) Integrate tools like SonarQube, Snyk, OWASP Dependency-Check.
+5.  **Build Docker Image**: Create a Docker image for the application.
+6.  **Push Docker Image**: Push the image to a container registry (e.g., Docker Hub, AWS ECR).
+7.  **Deploy to Staging**: Deploy the application to a staging environment (e.g., Kubernetes, AWS ECS, bare metal with Docker Compose).
+8.  **Automated End-to-End Tests**: Run more extensive end-to-end tests on the staging environment.
+9.  **Manual Approval**: (Optional) For critical deployments.
+10. **Deploy to Production**: Deploy the validated application to the production environment.
 
-### API Documentation
+**Note**: A fully functional CI/CD pipeline requires an actual CI server (like Jenkins, GitLab CI, GitHub Actions) and environment setup, which is beyond the scope of this single project response.
 
-Interactive API documentation is generated using `swagger-jsdoc` and `swagger-ui-express`.
-*   **Swagger UI**: Accessible at `http://localhost:5000/api-docs` when the backend is running.
-*   **API Specification**: The `src/backend/config/swagger.js` file defines the OpenAPI specification.
+## 10. Database Layer
 
-### Architecture Documentation
+*   **Database**: PostgreSQL is used.
+*   **Migrations**: Flyway handles schema evolution. Migration scripts are located in `src/main/resources/db/migration/`.
+    *   `V1__Initial_Schema.sql`: Creates the `_user` table.
+    *   `V2__Seed_Data.sql`: Inserts default `ADMIN` (`admin@example.com`/`adminpass`) and `USER` (`user@example.com`/`userpass`) accounts.
+*   **JPA**: Spring Data JPA is used for ORM, simplifying database interactions.
+*   **Query Optimization**: Indexes are added to frequently queried columns (e.g., `email` in `_user` table) in migration scripts. Spring Data JPA's derived query methods are efficient. For complex queries, `@Query` annotations or native SQL can be used.
 
-#### `ARCHITECTURE.md`
-This file provides a high-level overview of the system's architecture, including its components, their interactions, and the data flow.
+## 11. Configuration & Environment Variables
+
+*   **`application.yml`**: Main configuration file for Spring Boot settings, database, JWT, logging, caching, and Swagger.
+*   **Environment Variables**: Key configurations (like database credentials, JWT secret) can be overridden by environment variables, which is crucial for Docker deployments and different environments (dev, prod).
+    *   Example: `SPRING_DATASOURCE_URL`, `APPLICATION_SECURITY_JWT_SECRET_KEY`.
+*   **Logging (`logback-spring.xml`)**: Configures console and rolling file appenders, log levels for different packages.
+
+## 12. Additional Features
+
+*   **Authentication/Authorization**: Implemented using JWT and Spring Security, with `ROLE_USER` and `ROLE_ADMIN` permissions. `@PreAuthorize` annotations control access to controller methods.
+*   **Logging and Monitoring**: SLF4J with Logback for structured logging. Spring Boot Actuator is included (`pom.xml`) for monitoring endpoints like `/actuator/health`, `/actuator/info`, etc. For full-scale monitoring, integration with tools like Prometheus/Grafana or an ELK stack would be recommended.
+*   **Error Handling Middleware**: A global `@ControllerAdvice` (`GlobalExceptionHandler.java`) provides consistent JSON error responses for various exceptions, including validation errors and custom exceptions.
+*   **Caching Layer**: Configured with Spring Cache and Caffeine (`CacheConfig.java`). `@Cacheable` is used in `RoleRepository` as an example.
+*   **Rate Limiting**: An in-memory `RateLimitInterceptor` (`RateLimitInterceptor.java`) limits requests to 5 per second per IP address. This is a simple solution; for distributed systems, dedicated gateways (like NGINX, API Gateway) or external services (like Redis-backed rate limiters) are preferred.
+
+## 13. Frontend (Conceptual)
+
+A basic `client/index.html` file is provided to demonstrate how a simple HTML/JavaScript client would interact with the backend API. It includes examples for registration, login, and accessing a protected endpoint.
+
+```html

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALX Auth System Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #e9f7ff; }
+        form div { margin-bottom: 10px; }
+        label { display: inline-block; width: 100px; font-weight: bold; }
+        input[type="text"], input[type="email"], input[type="password"] { width: calc(100% - 120px); padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 10px; }
+        button:hover { background-color: #0056b3; }
+        .output { background-color: #f8f9fa; border: 1px solid #e2e6ea; padding: 15px; border-radius: 5px; margin-top: 20px; white-space: pre-wrap; word-wrap: break-word; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ALX Authentication System Client</h1>
+        <p>This is a simple client to interact with the Java Spring Boot backend API.</p>
+
+        <h2 id="register">Register</h2>
+        <form id="registerForm">
+            <div>
+                <label for="regFirstName">First Name:</label>
+                <input type="text" id="regFirstName" value="Client" required>
+            </div>
+            <div>
+                <label for="regLastName">Last Name:</label>
+                <input type="text" id="regLastName" value="User" required>
+            </div>
+            <div>
+                <label for="regEmail">Email:</label>
+                <input type="email" id="regEmail" value="client.user@example.com" required>
+            </div>
+            <div>
+                <label for="regPassword">Password:</label>
+                <input type="password" id="regPassword" value="clientpass123" required>
+            </div>
+            <button type="submit">Register</button>
+        </form>
+
+        <h2 id="login">Login</h2>
+        <form id="loginForm">
+            <div>
+                <label for="authEmail">Email:</label>
+                <input type="email" id="authEmail" value="client.user@example.com" required>
+            </div>
+            <div>
+                <label for="authPassword">Password:</label>
+                <input type="password" id="authPassword" value="clientpass123" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
+
+        <h2 id="protected">Protected Endpoint: My Profile</h2>
+        <button id="fetchProfile">Fetch My Profile</button>
+        <button id="updateProfile">Update My Profile</button> (Change name to 'Jane Doe')
+
+        <h2 id="admin">Admin Endpoint: All Users</h2>
+        <button id="fetchAllUsers">Fetch All Users (Admin Only)</button>
+
+        <h2 id="output">API Response</h2>
+        <pre id="apiOutput" class="output"></pre>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8080/api/v1';
+        let jwtToken = localStorage.getItem('jwtToken') || '';
+
+        const apiOutput = document.getElementById('apiOutput');
+
+        function displayResponse(data, isError = false) {
+            apiOutput.className = isError ? 'output error' : 'output success';
+            apiOutput.textContent = JSON.stringify(data, null, 2);
+            if (!isError && data && data.token) {
+                jwtToken = data.token;
+                localStorage.setItem('jwtToken', jwtToken);
+                console.log('JWT Token saved:', jwtToken);
+            }
+        }
+
+        async function makeRequest(method, url, data = null, needsAuth = false) {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+
+            if (needsAuth && jwtToken) {
+                headers['Authorization'] = `Bearer ${jwtToken}`;
+            }
+
+            const options = {
+                method,
+                headers
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const responseData = await response.json();
+                if (!response.ok) {
+                    throw { status: response.status, ...responseData };
+                }
+                displayResponse(responseData);
+                return responseData;
+            } catch (error) {
+                console.error('API Request Error:', error);
+                displayResponse(error, true);
+                throw error;
+            }
+        }
+
+        // --- Register ---
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const firstname = document.getElementById('regFirstName').value;
+            const lastname = document.getElementById('regLastName').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            await makeRequest('POST', `${API_BASE_URL}/auth/register`, { firstname, lastname, email, password });
+        });
+
+        // --- Login ---
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+            await makeRequest('POST', `${API_BASE_URL}/auth/authenticate`, { email, password });
+        });
+
+        // --- Fetch My Profile ---
+        document.getElementById('fetchProfile').addEventListener('click', async () => {
+            if (!jwtToken) {
+                displayResponse({ message: 'Please log in first to get a token.' }, true);
+                return;
+            }
+            await makeRequest('GET', `${API_BASE_URL}/users/me`, null, true);
+        });
+
+        // --- Update My Profile ---
+        document.getElementById('updateProfile').addEventListener('click', async () => {
+            if (!jwtToken) {
+                displayResponse({ message: 'Please log in first to get a token.' }, true);
+                return;
+            }
+            const updateData = {
+                firstname: 'Jane',
+                lastname: 'Doe'
+            };
+            await makeRequest('PUT', `${API_BASE_URL}/users/me`, updateData, true);
+        });
+
+        // --- Fetch All Users (Admin Only) ---
+        document.getElementById('fetchAllUsers').addEventListener('click', async () => {
+            if (!jwtToken) {
+                displayResponse({ message: 'Please log in first to get a token.' }, true);
+                return;
+            }
+            displayResponse({ message: 'Attempting to fetch all users (requires ADMIN role)...' });
+            await makeRequest('GET', `${API_BASE_URL}/users`, null, true);
+        });
+
+        // Initial token check
+        if (jwtToken) {
+            console.log('Existing JWT Token found in localStorage. You might be able to access protected resources.');
+        } else {
+            console.log('No JWT Token found. Please register or log in.');
+        }
+    </script>
+</body>
+</html>
+```
+
+To run the client:
+1.  Save the content above as `index.html` in the `client/` directory.
+2.  Open this `index.html` file in your web browser.
+3.  Ensure your Spring Boot backend is running on `http://localhost:8080`.
+4.  Use the forms to register, log in, and test protected endpoints.
+
+## 14. Contributing
+
+Contributions are welcome! Please feel free to open issues or submit pull requests.
+
+## 15. License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+(Note: A `LICENSE` file is not included in this output but should be created for a real project).
