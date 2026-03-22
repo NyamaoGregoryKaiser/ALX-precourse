@@ -3,84 +3,70 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
-    container_name: sqlinsight_pro_db
+    image: postgres:13-alpine
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "${DB_PORT}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: sqlinsight_pro_redis
-    restart: always
-    ports:
-      - "${REDIS_PORT}:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
-      context: ./backend
+      context: ./src/backend
       dockerfile: Dockerfile
-    container_name: sqlinsight_pro_backend
     restart: always
-    env_file:
-      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT}
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_DIALECT: ${DB_DIALECT}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS}
+      LOG_LEVEL: ${LOG_LEVEL}
+      FRONTEND_URL: ${FRONTEND_URL}
     ports:
       - "${PORT}:${PORT}"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
-      - sqlinsight_network
-    # Command to run migrations and then start the app in a production environment
-    # In development, you might run `yarn dev` via nodemon directly on host
-    command: sh -c "npm run migrate:run && npm run seed:run && npm start"
-    # For initial setup, you might want to run seeds only once, or conditionally.
-    # The current setup runs seeds on every startup, which is fine for dev but not ideal for prod.
-    # In prod, seeds would be part of a release script or specific migration.
+      - product-network
 
   frontend:
     build:
-      context: ./frontend
+      context: ./src/frontend
       dockerfile: Dockerfile
-    container_name: sqlinsight_pro_frontend
     restart: always
+    environment:
+      NODE_ENV: production
+      REACT_APP_API_URL: http://localhost:${PORT} # This needs to be the host IP or exposed port for frontend to access backend
     ports:
-      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
+      - "3000:3000"
     depends_on:
       - backend
-    environment:
-      # Pass backend API URL to React app at build time or runtime (runtime via env is better)
-      REACT_APP_API_URL: http://localhost:${PORT}/api/v1 # This needs to be the service name if accessed within docker-compose, or localhost if accessed from browser directly
     networks:
-      - sqlinsight_network
+      - product-network
 
 networks:
-  sqlinsight_network:
+  product-network:
     driver: bridge
 
 volumes:
-  postgres_data:
-  redis_data:
+  db_data:
 ```
-
-#### `backend/Dockerfile`

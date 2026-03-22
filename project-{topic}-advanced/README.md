@@ -1,416 +1,266 @@
 ```markdown
-# SQLInsight Pro: Database Optimization System
+# Comprehensive DevOps Automation System for a Product Catalog
 
-SQLInsight Pro is a full-stack, enterprise-grade web application designed to help developers and DBAs monitor, analyze, and optimize slow SQL queries. It provides insights into query performance, offers intelligent suggestions for improvement, and visualizes query execution plans.
+This project demonstrates a full-scale, production-ready DevOps automation system for a Product Catalog Management application. It encompasses a complete full-stack JavaScript (Node.js/React) application, robust database management, a Dockerized environment, CI/CD with GitHub Actions, extensive testing, and thorough documentation.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Technologies Used](#technologies-used)
-3.  [Architecture](#architecture)
-4.  [Setup and Installation](#setup-and-installation)
+1.  [Project Overview](#project-overview)
+2.  [Features](#features)
+3.  [Technologies Used](#technologies-used)
+4.  [Getting Started](#getting-started)
     *   [Prerequisites](#prerequisites)
-    *   [Environment Variables](#environment-variables)
-    *   [Docker Compose Setup (Recommended)](#docker-compose-setup-recommended)
-    *   [Manual Setup (Backend)](#manual-setup-backend)
-    *   [Manual Setup (Frontend)](#manual-setup-frontend)
-5.  [Running the Application](#running-the-application)
-6.  [Database Management](#database-management)
-7.  [Testing](#testing)
-8.  [API Documentation](#api-documentation)
-9.  [Deployment Guide](#deployment-guide)
-10. [Contribution](#contribution)
-11. [License](#license)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+5.  [Application Usage](#application-usage)
+    *   [Default Admin Credentials](#default-admin-credentials)
+    *   [Frontend Access](#frontend-access)
+    *   [Backend API Documentation](#backend-api-documentation)
+6.  [Testing](#testing)
+    *   [Running Tests](#running-tests)
+    *   [Coverage Report](#coverage-report)
+7.  [CI/CD Pipeline](#cicd-pipeline)
+8.  [Documentation](#documentation)
+    *   [API Documentation](#api-documentation)
+    *   [Architecture Documentation](#architecture-documentation)
+    *   [Deployment Guide](#deployment-guide)
+9.  [Code Structure](#code-structure)
+10. [Additional Features](#additional-features)
+11. [ALX Precourse Alignment](#alx-precourse-alignment)
+12. [License](#license)
 
-## 1. Features
+---
 
-*   **Query Reporting API:** Dedicated endpoint for client applications to report slow SQL queries with metadata (execution time, application, hostname, database ID).
-*   **Intelligent Query Analysis:**
-    *   Simulated `EXPLAIN` plan generation for reported queries.
-    *   Rule-based analysis to identify common anti-patterns (e.g., `SELECT *`, missing `WHERE` clauses, functions on indexed columns, leading wildcards in `LIKE`).
-    *   Suggests actionable optimizations (e.g., index creation, query rewrites).
-*   **Interactive Dashboard:** Overview of system health, total slow queries, monitored databases, and average query execution times.
-*   **Query Listing & Detail View:** Paginated list of slow queries with detailed views showing the query, execution plan, and all generated suggestions.
-*   **Suggestion Management:** Mark suggestions as "Applied" or "Dismissed" with optional feedback.
-*   **Database Management:** Register, view, update, and delete databases to monitor.
-*   **User Management & Authentication:**
-    *   JWT-based authentication (register, login, logout).
-    *   Role-based authorization (Admin, User) for accessing different features and data.
-*   **Logging & Monitoring:** Centralized logging with Winston, basic health checks.
-*   **Error Handling:** Robust middleware for consistent API error responses.
-*   **Caching:** Redis integration (conceptual) for improving performance of frequently accessed data or user sessions.
-*   **Rate Limiting:** Protects API endpoints from abuse.
+## 1. Project Overview
 
-## 2. Technologies Used
+This system provides a complete solution for managing a product catalog. It allows users to register, log in, browse products, and (for administrators) perform full CRUD operations on product data. The primary focus is on demonstrating a robust and automated development and deployment workflow using modern DevOps practices.
 
-**Backend:**
-*   **Node.js:** JavaScript runtime.
-*   **Express.js:** Web framework.
-*   **TypeScript:** Type-safe JavaScript.
-*   **TypeORM:** ORM for database interaction.
-*   **PostgreSQL:** Relational database.
-*   **Redis:** In-memory data store for caching/sessions.
-*   **bcryptjs:** Password hashing.
-*   **jsonwebtoken:** JWT implementation.
-*   **dotenv:** Environment variable management.
-*   **winston:** Logging library.
-*   **yup:** Schema validation.
-*   **lodash:** Utility library.
+## 2. Features
 
-**Frontend:**
-*   **React:** JavaScript library for building user interfaces.
-*   **TypeScript:** Type-safe JavaScript.
-*   **Material-UI (MUI):** React UI framework.
-*   **Axios:** HTTP client.
-*   **react-router-dom:** For routing.
-*   **js-cookie:** For client-side cookie management.
-*   **react-toastify:** For notifications.
-*   **highlight.js:** For syntax highlighting.
+**Core Application (Full-Stack JavaScript)**
+*   **Backend (Node.js/Express)**:
+    *   RESTful API endpoints for User and Product management.
+    *   Full CRUD operations for Products (admin-only for Create, Update, Delete).
+    *   User registration and login.
+    *   Role-based access control (User, Admin).
+*   **Frontend (React.js)**:
+    *   User-friendly interface for browsing products.
+    *   User authentication (login, registration, logout).
+    *   Admin panel for managing products.
+    *   Dynamic routing and state management.
 
-**Infrastructure:**
-*   **Docker:** Containerization.
-*   **Docker Compose:** For orchestrating multi-container Docker applications.
-*   **Nginx:** Web server (for serving frontend).
+**Database Layer (PostgreSQL with Sequelize ORM)**
+*   Schema definitions for `User` and `Product` models.
+*   Database migration scripts for schema evolution.
+*   Seed data for initial admin user and sample products.
+*   Basic query optimization considerations (e.g., indexing implicitly handled by Sequelize for primary keys).
 
-**Testing:**
-*   **Jest:** JavaScript testing framework (unit tests).
-*   **Supertest:** HTTP assertion library (integration/API tests).
-*   **React Testing Library:** For React component testing.
-*   **Artillery (Conceptual):** For performance testing.
+**Configuration & Setup**
+*   `package.json` for both backend and frontend, detailing all dependencies.
+*   Environment variable management (`.env`).
+*   **Docker**: Containerization for backend, frontend, and PostgreSQL database.
+*   **CI/CD Pipeline**: Automated build, test, and linting pipeline using GitHub Actions.
 
-**CI/CD:**
-*   **GitHub Actions (Configuration provided):** Automated build, test, and deployment workflows.
+**Testing & Quality**
+*   **Backend**: Unit tests (Jest), Integration tests (Supertest + Jest) covering API endpoints and business logic. Aim for 80%+ coverage.
+*   **Frontend**: Unit tests (React Testing Library + Jest) for components and hooks.
+*   Linting (ESLint) for code quality.
 
-## 3. Architecture
+**Documentation**
+*   Comprehensive `README.md` (this file).
+*   API documentation generated using Swagger/OpenAPI.
+*   High-level architecture documentation.
+*   Detailed deployment guide.
 
-The system follows a microservice-like architecture (monorepo structure for convenience) with a clear separation of concerns:
+**Additional Features**
+*   **Authentication/Authorization**: JWT-based authentication, role-based access control middleware.
+*   **Logging and Monitoring**: Centralized logging with Winston for backend operations and HTTP requests.
+*   **Error Handling Middleware**: Global error handling for Express.js, providing consistent error responses.
+*   **Caching Layer**: In-memory caching with `node-cache` for product listings to improve response times.
+*   **Rate Limiting**: Protection against brute-force attacks and abuse using `express-rate-limit`.
 
-*   **Frontend:** A React application responsible for the user interface, interacting with the backend API.
-*   **Backend API:** A Node.js/Express application handling all business logic, data persistence, authentication, and query analysis.
-*   **Database (PostgreSQL):** Stores all application data (users, databases, slow queries, plans, suggestions).
-*   **Cache (Redis):** Used for fast data retrieval and potentially session management.
+## 3. Technologies Used
 
-```mermaid
-graph TD
-    User -->|Views/Interacts| Frontend(React App)
-    Frontend -->|API Calls (HTTP/S)| Backend(Node.js/Express API)
+*   **Backend**: Node.js, Express.js, Sequelize ORM, PostgreSQL, bcryptjs, jsonwebtoken, winston, node-cache, express-rate-limit, swagger-jsdoc, swagger-ui-express.
+*   **Frontend**: React.js, create-react-app, React Router DOM, Axios, Tailwind CSS (implied by styling classes).
+*   **Database**: PostgreSQL
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Jest, Supertest, React Testing Library
+*   **Code Quality**: ESLint
 
-    subgraph Backend Services
-        Auth_Module[Auth Module]
-        User_Module[User Module]
-        DB_Mgmt_Module[Database Management Module]
-        Query_Module[Query Module]
-        Analysis_Engine[Query Analysis Engine]
-        Logging_Service[Logging Service]
-        Cache_Service[Caching Service (Redis Client)]
-        Error_Handling[Error Handling Middleware]
-        Rate_Limiting[Rate Limiting Middleware]
-    end
-
-    Backend -->|CRUD| PostgreSQL(Database)
-    Backend -->|Read/Write| Redis(Cache)
-    Client_Apps(Client Applications) -->|Report Slow Queries (HTTP/S)| Backend
-
-    style Frontend fill:#f9f,stroke:#333,stroke-width:2px
-    style Backend fill:#ccf,stroke:#333,stroke-width:2px
-    style PostgreSQL fill:#cfc,stroke:#333,stroke-width:2px
-    style Redis fill:#ffc,stroke:#333,stroke-width:2px
-    style Client_Apps fill:#f9f,stroke:#333,stroke-width:2px
-```
-
-## 4. Setup and Installation
+## 4. Getting Started
 
 ### Prerequisites
 
-*   Node.js (v18+) and npm/yarn
-*   Docker and Docker Compose
-*   PostgreSQL (if not using Docker)
-*   Redis (if not using Docker)
+*   Git
+*   Docker & Docker Compose (Docker Desktop recommended for local development)
+*   Node.js (v20+) & npm (if not using Docker for everything)
 
-### Environment Variables
-
-Both `backend` and `frontend` directories contain an `.env.example` file. Copy this file to `.env` in the respective directories and populate the values.
-
-**`backend/.env`:**
-```dotenv
-# Application Configuration
-PORT=5000
-NODE_ENV=development
-FRONTEND_URL=http://localhost:3000 # Must match frontend's access URL
-
-# JWT Configuration (generate strong keys for production!)
-JWT_SECRET=your_super_secret_jwt_key_here_please_change_this_in_production_!!!
-JWT_ACCESS_EXPIRATION_MINUTES=30
-JWT_REFRESH_EXPIRATION_DAYS=7
-
-# Database Configuration (PostgreSQL)
-DB_HOST=db # Use 'db' if running inside docker-compose network, 'localhost' otherwise
-DB_PORT=5432
-DB_USER=sqlinsight
-DB_PASSWORD=sqlinsight
-DB_NAME=sqlinsight_db
-DB_SYNCHRONIZE=false # Set to false in production, true for quick dev setup if no migrations
-DB_LOGGING=false
-
-# Redis Configuration
-REDIS_HOST=redis # Use 'redis' if running inside docker-compose network, 'localhost' otherwise
-REDIS_PORT=6379
-
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX=100
-```
-
-**`frontend/.env`:**
-```dotenv
-REACT_APP_API_URL=http://localhost:5000/api/v1 # Points to your backend API
-```
-**Important:** When running with Docker Compose, `DB_HOST` should be `db` and `REDIS_HOST` should be `redis` (the service names). If running backend manually and connecting to a local PostgreSQL/Redis, use `localhost`.
-
-### Docker Compose Setup (Recommended)
+### Local Development Setup (without Docker Compose)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/sql-insight-pro.git
-    cd sql-insight-pro
+    git clone https://github.com/your-username/product-catalog-devops.git
+    cd product-catalog-devops
     ```
-2.  **Create `.env` files:**
+
+2.  **Create `.env` file:**
+    Copy `.env.example` to `.env` in the project root and fill in your details.
     ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    cp .env.example .env
     ```
-    Adjust variables as needed (especially `JWT_SECRET`).
-3.  **Build and run the Docker containers:**
-    This command will build the images (if not already built), create the necessary volumes, and start all services (PostgreSQL, Redis, Backend, Frontend). The backend will automatically run migrations and seed the database on first startup.
+    Ensure your `DB_HOST` points to `localhost` if running PostgreSQL locally without Docker, or `db` if you plan to run the DB via Docker without `docker-compose`.
+
+3.  **Install dependencies:**
+    Use the root `package.json` to install dependencies for both backend and frontend.
+    ```bash
+    npm install-all
+    ```
+    (This runs `npm install` in `src/backend` and `src/frontend`).
+
+4.  **Set up PostgreSQL Database:**
+    *   Install PostgreSQL locally (if not using Docker).
+    *   Create a database with the name specified in your `.env` (e.g., `product_catalog_db`).
+    *   Create a user with the specified username and password in your `.env`.
+
+5.  **Run Database Migrations and Seed Data (Backend):**
+    ```bash
+    npm run migrate --prefix src/backend
+    npm run seed --prefix src/backend
+    ```
+    This will create tables and insert the default admin user and sample products.
+
+6.  **Start Backend:**
+    ```bash
+    npm run dev --prefix src/backend
+    ```
+    The backend server will run on `http://localhost:5000` (or your specified `PORT`).
+
+7.  **Start Frontend:**
+    ```bash
+    npm start --prefix src/frontend
+    ```
+    The frontend application will run on `http://localhost:3000`.
+
+### Running with Docker Compose (Recommended)
+
+Docker Compose simplifies the setup by orchestrating all services (backend, frontend, database).
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/product-catalog-devops.git
+    cd product-catalog-devops
+    ```
+
+2.  **Create `.env` file:**
+    Copy `.env.example` to `.env` in the project root and fill in your details. The `DB_HOST` should remain `db` as specified in `docker-compose.yml`.
+    ```bash
+    cp .env.example .env
+    ```
+
+3.  **Build and run all services:**
     ```bash
     docker-compose up --build -d
     ```
+    *   `--build`: Builds the Docker images before starting containers (useful for first run or after code changes).
+    *   `-d`: Runs containers in detached mode (in the background).
+
 4.  **Verify services:**
+    Check the status of your running containers:
     ```bash
     docker-compose ps
     ```
-    You should see `db`, `redis`, `backend`, and `frontend` running.
+    You should see `db`, `backend`, and `frontend` services running.
 
 5.  **Access the application:**
-    *   **Frontend:** `http://localhost:3000`
-    *   **Backend API:** `http://localhost:5000/api/v1` (for testing with Postman/Insomnia)
+    *   **Frontend**: `http://localhost:3000`
+    *   **Backend API**: `http://localhost:5000/api/v1`
+    *   **API Docs (Swagger)**: `http://localhost:5000/api-docs`
 
-### Manual Setup (Backend)
-
-Only perform this if you prefer not to use Docker Compose for the backend. You'll need local PostgreSQL and Redis instances running.
-
-1.  **Navigate to the backend directory:**
+6.  **Stopping services:**
     ```bash
-    cd sql-insight-pro/backend
+    docker-compose down
     ```
-2.  **Install dependencies:**
+    This stops and removes all services defined in `docker-compose.yml`. If you want to remove volumes (database data), use `docker-compose down -v`.
+
+## 5. Application Usage
+
+### Default Admin Credentials
+
+An initial admin user is created on application startup (or migration/seeding) with the following credentials:
+*   **Email**: `admin@example.com` (configurable via `ADMIN_EMAIL` in `.env`)
+*   **Password**: `adminpassword` (configurable via `ADMIN_PASSWORD` in `.env`)
+
+### Frontend Access
+
+Navigate to `http://localhost:3000`.
+*   **Register/Login**: Use the `Register` and `Login` links in the Navbar.
+*   **View Products**: After logging in (even as a regular user), you can navigate to `/products`.
+*   **Manage Products (Admin)**: If logged in as an admin, a `Manage Products` link will appear in the Navbar, leading to `/admin/products`. Here, you can Add, Edit, and Delete products.
+
+### Backend API Documentation
+
+The API documentation is available via Swagger UI at `http://localhost:5000/api-docs`. You can explore all available endpoints, their request/response schemas, and even test them directly from the browser.
+
+To test authenticated endpoints:
+1.  Click the "Authorize" button.
+2.  In the dialog, enter your JWT token in the format `Bearer <your-jwt-token>`. You get this token upon successful login.
+3.  Click "Authorize" and then "Close". Your requests will now include the authorization header.
+
+## 6. Testing
+
+The project includes comprehensive unit and integration tests for both frontend and backend.
+
+### Running Tests
+
+*   **Run all tests (backend and frontend):**
     ```bash
-    yarn install
-    # or
-    npm install
+    npm test-backend
+    npm test-frontend
     ```
-3.  **Create `.env` file:**
+    (These use the root `package.json` scripts that delegate to the respective sub-project scripts).
+
+*   **Run backend tests only:**
     ```bash
-    cp .env.example .env
+    npm test --prefix src/backend
     ```
-    Update `DB_HOST` and `REDIS_HOST` to `localhost` if running local services.
-4.  **Run migrations:**
+
+*   **Run frontend tests only:**
     ```bash
-    npm run migrate:run
-    ```
-5.  **Seed the database (optional, for initial data):**
-    ```bash
-    npm run seed:run
-    ```
-6.  **Build TypeScript:**
-    ```bash
-    npm run build
-    ```
-7.  **Start the backend server:**
-    ```bash
-    npm start
-    # For development with hot-reloading:
-    # npm run dev
+    npm test --prefix src/frontend
     ```
 
-### Manual Setup (Frontend)
+### Coverage Report
 
-Only perform this if you prefer not to use Docker Compose for the frontend.
+Backend tests are configured to generate coverage reports. After running backend tests, you can find the report in `src/backend/coverage/lcov-report/index.html`. Open this file in your browser to view detailed coverage information. The target is 80%+ coverage for branches, functions, lines, and statements, as configured in `src/backend/package.json`.
 
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd sql-insight-pro/frontend
-    ```
-2.  **Install dependencies:**
-    ```bash
-    yarn install
-    # or
-    npm install
-    ```
-3.  **Create `.env` file:**
-    ```bash
-    cp .env.example .env
-    ```
-    Ensure `REACT_APP_API_URL` points to your running backend (e.g., `http://localhost:5000/api/v1`).
-4.  **Start the frontend development server:**
-    ```bash
-    npm start
-    ```
-    The application should open in your browser at `http://localhost:3000`.
+## 7. CI/CD Pipeline
 
-## 5. Running the Application
+The project utilizes **GitHub Actions** for Continuous Integration and Continuous Deployment.
 
-After successful setup (preferably with Docker Compose):
+*   **Workflow File**: `.github/workflows/main.yml`
+*   **Triggers**: Pushes to `main` or `develop` branches, and pull requests to these branches.
+*   **Jobs**:
+    *   **`build-and-test`**:
+        *   Checks out code.
+        *   Sets up Node.js environment.
+        *   Installs backend and frontend dependencies.
+        *   Runs ESLint for both backend and frontend.
+        *   Executes Jest tests for both backend and frontend.
+        *   Builds the React frontend for production.
+        *   Builds Docker images for backend and frontend.
+    *   **(Optional) `deploy`**: A placeholder job demonstrating how deployment to a cloud provider (e.g., using SSH to a remote server to pull and restart Docker containers) could be integrated. This job is commented out and requires specific secrets and configuration for a real-world deployment.
 
-1.  Open your browser and navigate to `http://localhost:3000`.
-2.  You will be redirected to the login page.
-3.  Use the seeded credentials:
-    *   **Admin User:** `admin@example.com` / `adminpassword`
-    *   **Regular User:** `user@example.com` / `userpassword`
-4.  Explore the Dashboard, Queries, Databases, and (for admin) User Management sections.
-5.  You can manually "report" a slow query by sending a POST request to `/api/v1/queries/slow` using Postman/Insomnia or a custom script, referencing an existing `databaseId`.
+## 8. Documentation
 
-## 6. Database Management
+### API Documentation
 
-*   **Migrations:**
-    *   Create a new migration: `npm run migrate:make --name=YourMigrationName` (from `backend/` directory)
-    *   Run pending migrations: `npm run migrate:run`
-    *   Revert last migration: `npm run migrate:revert`
-*   **Seeding:**
-    *   Run seed scripts: `npm run seed:run` (from `backend/` directory)
-    *   *Note*: The Docker Compose setup runs migrations and seeds on startup. For production, manage seeding carefully.
+Interactive API documentation is generated using `swagger-jsdoc` and `swagger-ui-express`.
+*   **Swagger UI**: Accessible at `http://localhost:5000/api-docs` when the backend is running.
+*   **API Specification**: The `src/backend/config/swagger.js` file defines the OpenAPI specification.
 
-## 7. Testing
+### Architecture Documentation
 
-Tests are located in the `backend/tests` and `frontend/src/**/*.test.tsx` directories.
-
-**Backend Tests:**
-1.  Navigate to `backend/`
-2.  Run all tests: `npm test` (includes unit and integration tests)
-3.  Run tests in watch mode: `npm run test:watch`
-
-**Frontend Tests:**
-1.  Navigate to `frontend/`
-2.  Run all tests: `npm test`
-
-**Performance Tests (Conceptual):**
-Using Artillery, refer to the `artillery.yml` and `artillery_processor.js` examples. You would need to:
-1.  Ensure your backend is running.
-2.  Update `artillery.yml` with valid `databaseId` for reporting queries.
-3.  Run: `artillery run artillery.yml`
-
-## 8. API Documentation
-
-The backend exposes a RESTful API. Below are the primary endpoints. For a full, interactive OpenAPI/Swagger documentation, you would typically integrate a library like `swagger-ui-express`.
-
-**Base URL:** `http://localhost:5000/api/v1`
-
----
-
-### Authentication
-
-*   `POST /auth/register`
-    *   **Body:** `{ email, password, role? }`
-    *   **Response:** `{ success, data: { user, accessToken, refreshToken } }`
-*   `POST /auth/login`
-    *   **Body:** `{ email, password }`
-    *   **Response:** `{ success, data: { user, accessToken, refreshToken } }`
-*   `POST /auth/logout` (Authenticated)
-    *   **Response:** `{ success, message }`
-*   `GET /auth/me` (Authenticated)
-    *   **Response:** `{ success, data: { user } }`
-
----
-
-### User Management (Admin Only)
-
-*   `GET /users` (Authenticated, Admin)
-    *   **Response:** `{ success, data: User[] }`
-*   `GET /users/:id` (Authenticated)
-    *   **Response:** `{ success, data: User }`
-*   `PUT /users/:id` (Authenticated, Admin or User updating self)
-    *   **Body:** `{ email?, role? }`
-    *   **Response:** `{ success, message, data: User }`
-*   `DELETE /users/:id` (Authenticated, Admin)
-    *   **Response:** `{ success, message }`
-
----
-
-### Database Management
-
-*   `POST /databases` (Authenticated)
-    *   **Body:** `{ name, type, connectionString, description? }`
-    *   **Response:** `{ success, message, data: Database }`
-*   `GET /databases` (Authenticated)
-    *   **Response:** `{ success, data: Database[] }` (User gets owned DBs, Admin gets all)
-*   `GET /databases/:id` (Authenticated)
-    *   **Response:** `{ success, data: Database }`
-*   `PUT /databases/:id` (Authenticated)
-    *   **Body:** `{ name?, type?, connectionString?, description? }`
-    *   **Response:** `{ success, message, data: Database }`
-*   `DELETE /databases/:id` (Authenticated)
-    *   **Response:** `{ success, message }`
-
----
-
-### Slow Query & Optimization
-
-*   `POST /queries/slow` (No authentication required, for client apps to report)
-    *   **Body:** `{ query, executionTimeMs, clientApplication?, clientHostname?, databaseId, reporterId? }`
-    *   **Response:** `{ success, message, data: SlowQuery }` (includes generated plans/suggestions)
-*   `GET /queries/slow` (Authenticated)
-    *   **Query Params:** `page`, `limit`, `databaseId`, `minExecutionTimeMs`, `sortBy`, `sortOrder`
-    *   **Response:** `{ success, data: SlowQuery[], meta: { total, page, limit, totalPages } }`
-*   `GET /queries/slow/:id` (Authenticated)
-    *   **Response:** `{ success, data: SlowQuery (with queryPlans and querySuggestions populated) }`
-*   `PATCH /queries/slow/:queryId/suggestions/:suggestionId` (Authenticated)
-    *   **Body:** `{ status: 'pending' | 'applied' | 'dismissed', feedback?: string }`
-    *   **Response:** `{ success, message, data: QuerySuggestion }`
-
----
-
-## 9. Deployment Guide
-
-This section outlines conceptual steps for production deployment.
-
-1.  **Containerize:** Ensure your `Dockerfile`s and `docker-compose.yml` are production-ready (e.g., multi-stage builds for smaller images, specific environment configurations).
-2.  **Environment Variables:** Securely manage environment variables (e.g., `JWT_SECRET`, database credentials) using your cloud provider's secrets management tools (AWS Secrets Manager, Azure Key Vault, Kubernetes Secrets). Do NOT commit `.env` files to production.
-3.  **Database Provisioning:**
-    *   Provision a managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL).
-    *   Ensure proper backups, replication, and monitoring are configured.
-    *   Run migrations (`npm run migrate:run`) as part of your deployment pipeline, *before* application startup.
-4.  **Redis Provisioning:**
-    *   Provision a managed Redis service (e.g., AWS ElastiCache, Azure Cache for Redis, Google Cloud Memorystore).
-5.  **CI/CD Pipeline:**
-    *   Integrate the provided GitHub Actions workflow (or similar for GitLab CI, Jenkins, etc.).
-    *   The pipeline should:
-        *   Trigger on `push` to `main` or `release` branch.
-        *   Build backend and frontend Docker images.
-        *   Run tests.
-        *   Push images to a container registry (Docker Hub, AWS ECR, GCR).
-        *   Deploy updated containers to your chosen infrastructure (ECS, EKS, Azure Container Apps, Google Cloud Run/GKE).
-6.  **Infrastructure:**
-    *   **Container Orchestration:** Use Kubernetes (EKS, GKE, AKS) or a container service (AWS ECS, Azure Container Apps, Google Cloud Run) for scalability, high availability, and easier management.
-    *   **Load Balancing:** Place a load balancer in front of your frontend (and potentially backend) services for traffic distribution and SSL termination.
-    *   **Networking:** Configure VPCs, subnets, security groups, and network ACLs for secure communication.
-7.  **Monitoring & Alerting:**
-    *   Integrate a robust logging solution (e.g., ELK Stack, Datadog, CloudWatch Logs).
-    *   Set up application performance monitoring (APM) with tools like New Relic, Datadog, or Prometheus/Grafana.
-    *   Configure alerts for critical errors, high latency, or resource exhaustion.
-8.  **Security Best Practices:**
-    *   Regularly update dependencies.
-    *   Scan Docker images for vulnerabilities.
-    *   Enforce HTTPS.
-    *   Implement strong password policies.
-    *   Regular security audits.
-
-## 10. Contribution
-
-Contributions are welcome! If you find a bug or have an enhancement idea, please open an issue or submit a pull request.
-
-## 11. License
-
-This project is licensed under the ISC License.
-```
-
-### `ARCHITECTURE.md`
+#### `ARCHITECTURE.md`
+This file provides a high-level overview of the system's architecture, including its components, their interactions, and the data flow.

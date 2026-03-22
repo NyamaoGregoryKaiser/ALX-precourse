@@ -1,5 +1,5 @@
 ```yaml
-name: ALX Mobile Backend CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
@@ -13,125 +13,101 @@ on:
 
 jobs:
   build-and-test:
-    name: Build and Test
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: testdb
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
+          node-version: '20'
 
-      - name: Build with Maven and Run Tests (including JaCoCo)
+      - name: Load .env file
+        uses: 'intact/env-file-action@v2'
+        with:
+          path: .env.example # Use example file for CI build, sensitive vars are in secrets
+
+      # Backend steps
+      - name: Install Backend Dependencies
+        run: npm install --prefix src/backend
+
+      - name: Run Backend Lint
+        run: npm run lint --prefix src/backend
+
+      - name: Run Backend Tests
+        run: npm test --prefix src/backend
+        env:
+          # Use database setup from services for tests, or mock it
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_NAME: test_db
+          DB_DIALECT: postgres
+          JWT_SECRET: ci_test_secret
+          JWT_EXPIRES_IN: 1h
+          ADMIN_EMAIL: admin@test.com
+          ADMIN_PASSWORD: password
+          CACHE_TTL_SECONDS: 1
+          LOG_LEVEL: debug
+          PORT: 5001 # Use a different port for CI tests
+
+      # Frontend steps
+      - name: Install Frontend Dependencies
+        run: npm install --prefix src/frontend
+
+      - name: Run Frontend Lint
+        run: npm run lint --prefix src/frontend
+
+      - name: Run Frontend Tests
+        run: npm test --prefix src/frontend
+        env:
+          CI: true # Required for React scripts test in CI environments
+          REACT_APP_API_URL: http://localhost:5001 # Mocked or pointing to a test backend if needed
+
+      - name: Build Frontend
+        run: npm run build --prefix src/frontend
+
+      # Docker build (optional, can be done in a separate job for deployment)
+      - name: Build Docker Images
         run: |
-          ./mvnw clean install -Dspring.profiles.active=test \
-            -Dspring.datasource.url=jdbc:postgresql://localhost:5432/testdb \
-            -Dspring.datasource.username=testuser \
-            -Dspring.datasource.password=testpassword
+          docker build -t product-backend:latest -f src/backend/Dockerfile src/backend
+          docker build -t product-frontend:latest -f src/frontend/Dockerfile src/frontend
 
-      - name: Upload JaCoCo test report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/jacoco.xml
-          # Optional: If you want to use a GitHub Action for JaCoCo report visualization:
-          # uses: codecov/codecov-action@v3
-          # with:
-          #  files: ./target/site/jacoco/jacoco.xml
-
-  # Uncomment and configure for actual deployment
-  # deploy-dev:
-  #   name: Deploy to Development
+  # Placeholder for Deployment Job (e.g., to a cloud provider)
+  # deploy:
   #   needs: build-and-test
   #   runs-on: ubuntu-latest
-  #   environment: Development
-  #   if: github.ref == 'refs/heads/develop'
+  #   environment: production # Or staging
+  #   if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
   #   steps:
   #     - name: Checkout code
   #       uses: actions/checkout@v4
-  #
   #     - name: Set up Docker Buildx
   #       uses: docker/setup-buildx-action@v3
-  #
   #     - name: Log in to Docker Hub
   #       uses: docker/login-action@v3
   #       with:
   #         username: ${{ secrets.DOCKER_USERNAME }}
   #         password: ${{ secrets.DOCKER_PASSWORD }}
-  #
-  #     - name: Build and push Docker image
-  #       id: docker_build
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: .
-  #         push: true
-  #         tags: yourdockerrepo/alx-mobile-backend:dev-${{ github.sha }}
-  #         build-args: SPRING_PROFILES_ACTIVE=dev
-  #
-  #     - name: Deploy to K8s/ECS (using kubectl or aws cli)
+  #     - name: Build and push backend image
   #       run: |
-  #         echo "Deploying image yourdockerrepo/alx-mobile-backend:dev-${{ github.sha }} to dev environment..."
-  #         # Example for Kubernetes (requires KUBECONFIG to be set up)
-  #         # kubectl set image deployment/alx-backend alx-backend=yourdockerrepo/alx-mobile-backend:dev-${{ github.sha }} -n dev-namespace
-  #         # Example for AWS ECS (requires AWS credentials configured)
-  #         # aws ecs update-service --cluster your-ecs-cluster --service your-ecs-service-dev --force-new-deployment --task-definition $(aws ecs register-task-definition --cli-input-json file://task-definition-dev.json | jq -r .taskDefinition.taskDefinitionArn)
-
-  # deploy-prod:
-  #   name: Deploy to Production
-  #   needs: build-and-test # Should ideally also depend on deploy-dev for full pipeline
-  #   runs-on: ubuntu-latest
-  #   environment: Production
-  #   if: github.ref == 'refs/heads/main'
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #
-  #     - name: Log in to Docker Hub
-  #       uses: docker/login-action@v3
-  #       with:
-  #         username: ${{ secrets.DOCKER_USERNAME }}
-  #         password: ${{ secrets.DOCKER_PASSWORD }}
-  #
-  #     - name: Build and push Docker image
-  #       id: docker_build
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: .
-  #         push: true
-  #         tags: yourdockerrepo/alx-mobile-backend:latest,yourdockerrepo/alx-mobile-backend:${{ github.sha }}
-  #         build-args: SPRING_PROFILES_ACTIVE=prod
-  #
-  #     - name: Deploy to K8s/ECS
+  #         docker build -t your-dockerhub-username/product-backend:latest -f src/backend/Dockerfile src/backend
+  #         docker push your-dockerhub-username/product-backend:latest
+  #     - name: Build and push frontend image
   #       run: |
-  #         echo "Deploying image yourdockerrepo/alx-mobile-backend:latest to production..."
-  #         # kubectl set image deployment/alx-backend alx-backend=yourdockerrepo/alx-mobile-backend:latest -n prod-namespace
+  #         docker build -t your-dockerhub-username/product-frontend:latest -f src/frontend/Dockerfile src/frontend
+  #         docker push your-dockerhub-username/product-frontend:latest
+  #     - name: Deploy to Server (e.g., using SSH and docker-compose pull/up)
+  #       uses: appleboy/ssh-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         script: |
+  #           cd /path/to/your/app
+  #           docker-compose pull
+  #           docker-compose down
+  #           docker-compose up -d
 ```
-
----
-
-### 4. Testing & Quality
-
-I will provide illustrative tests for each layer (repository, service, controller), aiming to show the techniques for achieving high coverage. Real 80%+ coverage would require exhaustively testing every method, edge case, and validation rule.
-
-#### Unit Tests
