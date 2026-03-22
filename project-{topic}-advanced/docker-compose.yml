@@ -2,54 +2,85 @@
 version: '3.8'
 
 services:
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: alx-postgres
+    container_name: sqlinsight_pro_db
+    restart: always
     environment:
-      POSTGRES_DB: alx_mobile_db
-      POSTGRES_USER: alxuser
-      POSTGRES_PASSWORD: alxpassword
-      # Create a separate database for development if using application-dev.properties
-      POSTGRES_MULTIPLE_DATABASES: alx_mobile_db,alx_mobile_db_dev
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Initialize multiple databases. This requires a custom entrypoint script
-      # Or manage multiple databases from your app. For simplicity, we'll assume one DB for now or handle dev/prod in application properties.
-      # For local dev, a single DB and separate usernames/passwords is often enough,
-      # and application properties can point to the same DB but different schemas if needed.
-      # For this example, let's use two distinct databases for prod/dev separation.
-      - ./init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+    ports:
+      - "${DB_PORT}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U alxuser -d alx_mobile_db"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: alx-mobile-backend
+  redis:
+    image: redis:7-alpine
+    container_name: sqlinsight_pro_redis
+    restart: always
     ports:
-      - "8080:8080"
-    environment:
-      # These environment variables will override those in Dockerfile for Spring Boot
-      # Use `dev` profile for local development, connecting to `alx_mobile_db_dev`
-      SPRING_PROFILES_ACTIVE: dev
-      DB_URL: jdbc:postgresql://postgres:5432/alx_mobile_db_dev
-      DB_USERNAME: alxuser_dev
-      DB_PASSWORD: alxpassword_dev
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sqlinsight_pro_backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    ports:
+      - "${PORT}:${PORT}"
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-    # Optional: Mount local source for hot-reloading (for development)
-    # This might require specific build tools configured in Maven/Gradle
-    # - ./src:/app/src
-    # - ./pom.xml:/app/pom.xml
-    # command: ./mvnw spring-boot:run # For dev, replaces ENTRYPOINT in Dockerfile
+      redis:
+        condition: service_healthy
+    networks:
+      - sqlinsight_network
+    # Command to run migrations and then start the app in a production environment
+    # In development, you might run `yarn dev` via nodemon directly on host
+    command: sh -c "npm run migrate:run && npm run seed:run && npm start"
+    # For initial setup, you might want to run seeds only once, or conditionally.
+    # The current setup runs seeds on every startup, which is fine for dev but not ideal for prod.
+    # In prod, seeds would be part of a release script or specific migration.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sqlinsight_pro_frontend
+    restart: always
+    ports:
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
+    depends_on:
+      - backend
+    environment:
+      # Pass backend API URL to React app at build time or runtime (runtime via env is better)
+      REACT_APP_API_URL: http://localhost:${PORT}/api/v1 # This needs to be the service name if accessed within docker-compose, or localhost if accessed from browser directly
+    networks:
+      - sqlinsight_network
+
+networks:
+  sqlinsight_network:
+    driver: bridge
 
 volumes:
   postgres_data:
+  redis_data:
 ```
+
+#### `backend/Dockerfile`

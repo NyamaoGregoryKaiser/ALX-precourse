@@ -1,57 +1,62 @@
-import express from 'express';
-import bodyParser from 'body-parser';
+```typescript
+import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
-import { errorHandler } from './middleware/errorHandler';
-import { rateLimiter } from './middleware/rateLimiter';
-import authRoutes from './routes/authRoutes';
-import userRoutes from './routes/userRoutes';
-import dataSourceRoutes from './routes/dataSourceRoutes';
-import dashboardRoutes from './routes/dashboardRoutes';
-import visualizationRoutes from './routes/visualizationRoutes';
-import { loggerMiddleware } from './middleware/loggerMiddleware';
-import { authenticateToken } from './middleware/authMiddleware'; // Auth for protected routes
+import config from './config';
+import { errorHandler } from './middleware/error.middleware';
+import { requestLogger } from './middleware/logging.middleware';
+import { apiRateLimiter } from './middleware/rateLimit.middleware';
 
-dotenv.config();
+// Import route modules
+import authRoutes from './modules/auth/auth.routes';
+import userRoutes from './modules/users/user.routes';
+import databaseRoutes from './modules/databases/database.routes';
+import queryRoutes from './modules/queries/query.routes';
+import { CustomError } from './utils/error';
 
-const app = express();
+const app: Application = express();
 
 // Security Middleware
 app.use(helmet());
 
-// CORS Configuration
+// CORS - Allow cross-origin requests
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? 'http://your-frontend-domain.com' : 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from your frontend
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 
-// Request Body Parser
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Request body parsing
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Rate Limiting
-app.use(rateLimiter);
+// Custom request logger
+app.use(requestLogger);
 
-// Logger Middleware
-app.use(loggerMiddleware);
+// Apply rate limiting to all requests
+app.use(apiRateLimiter);
 
-// Public Routes
-app.use('/api/auth', authRoutes);
+// --- API Routes ---
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/databases', databaseRoutes);
+app.use('/api/v1/queries', queryRoutes);
 
-// Protected Routes (require authentication)
-app.use('/api/users', authenticateToken, userRoutes);
-app.use('/api/data-sources', authenticateToken, dataSourceRoutes);
-app.use('/api/dashboards', authenticateToken, dashboardRoutes);
-app.use('/api/visualizations', authenticateToken, visualizationRoutes);
-
-// Catch-all for undefined routes
-app.use((req, res, next) => {
-  res.status(404).json({ message: 'Not Found' });
+// --- Health Check ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
-// Centralized Error Handling
+// --- Catch 404 and forward to error handler ---
+app.use((req, res, next) => {
+  next(new CustomError(`Not Found - ${req.originalUrl}`, 404));
+});
+
+// --- Global Error Handler ---
 app.use(errorHandler);
 
 export default app;
+```
+
+#### `backend/src/server.ts`

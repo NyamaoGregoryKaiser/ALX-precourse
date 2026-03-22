@@ -1,0 +1,101 @@
+```yaml
+config:
+  target: "http://localhost:5000/api/v1" # Target your backend API
+  phases:
+    - duration: 60 # Duration of the test in seconds
+      arrivalRate: 10 # Number of new virtual users to start per second
+      name: "Warmup"
+    - duration: 120
+      arrivalRate: 20
+      rampTo: 50 # Gradually increase users to 50 per second
+      name: "Main Load"
+    - duration: 60
+      arrivalRate: 5
+      name: "Cool Down"
+  processor: "./artillery_processor.js" # Custom JS functions for login/token management
+
+scenarios:
+  - name: "User Registration and Login Flow"
+    flow:
+      - post:
+          url: "/auth/register"
+          json:
+            email: "user_{{$uuid}}@example.com"
+            password: "SecurePassword123!"
+          capture:
+            json: "$.data.accessToken"
+            as: "accessToken"
+            json: "$.data.user.id"
+            as: "userId"
+      - post:
+          url: "/auth/login"
+          json:
+            email: "user_{{$uuid}}@example.com" # This will likely fail as we need the registered user's email
+            password: "SecurePassword123!"
+          # This needs a processor to correctly use the registered email.
+          # For simplicity here, assume one-off registrations and then use a known user for other scenarios.
+          # Or, ensure each user logs in right after registering.
+          capture:
+            json: "$.data.accessToken"
+            as: "accessToken"
+      - get:
+          url: "/auth/me"
+          headers:
+            Authorization: "Bearer {{accessToken}}"
+
+  - name: "Report Slow Query"
+    flow:
+      - loop:
+          - post:
+              url: "/queries/slow"
+              headers:
+                Authorization: "Bearer {{accessToken}}" # Requires a pre-logged in user
+              json:
+                query: "SELECT * FROM orders WHERE status = 'processing' AND created_at < '2023-01-01' LIMIT 100 OFFSET {{ $randomNumber(0, 10000) }};"
+                executionTimeMs: "{{ $randomNumber(5000, 20000) }}"
+                clientApplication: "LoadTestApp"
+                clientHostname: "loadtest-host-{{ $randomNumber(1, 10) }}"
+                databaseId: "a2a0e41e-5a02-4b2a-8c9e-1f7c1b3d4e5f" # Replace with a valid database ID from your seed data
+          count: 5 # Each virtual user reports 5 queries
+
+  - name: "Browse Slow Queries & Details"
+    flow:
+      - get:
+          url: "/queries/slow"
+          headers:
+            Authorization: "Bearer {{accessToken}}"
+          qs:
+            page: "{{ $randomNumber(1, 5) }}"
+            limit: 10
+            sortBy: "executionTimeMs"
+            sortOrder: "DESC"
+      - get: # Assuming we can get a query ID from the previous response or a known one
+          url: "/queries/slow/{{ $environment.knownQueryId }}" # Use a known query ID for simplicity in this example
+          headers:
+            Authorization: "Bearer {{accessToken}}"
+      - get:
+          url: "/databases"
+          headers:
+            Authorization: "Bearer {{accessToken}}"
+```
+
+#### `artillery_processor.js` (Conceptual)
+```javascript
+// This file would contain helper functions for Artillery, e.g., to manage tokens.
+module.exports = {
+  setAccessToken: (context, events, done) => {
+    // This is where you might get a token and store it in the virtual user's context
+    // For example, after a login request, you could capture the token and set it:
+    // context.vars.accessToken = someLogicToExtractToken;
+    return done();
+  },
+  // More functions for dynamic data generation or complex auth flows
+};
+```
+To run performance tests:
+1.  Install Artillery: `npm install -g artillery`
+2.  Run the test: `artillery run artillery.yml`
+
+## 5. Documentation
+
+### `README.md`

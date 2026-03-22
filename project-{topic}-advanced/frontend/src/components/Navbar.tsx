@@ -1,57 +1,58 @@
-```typescript
+```tsx
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Navbar: React.FC = () => {
-  const { isAuthenticated, user, logout, loading } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
 
   return (
-    <nav className="bg-gray-800 p-4 text-white">
-      <div className="container mx-auto flex justify-between items-center">
-        <Link to="/" className="text-xl font-bold">
-          PerfMonitor
-        </Link>
-        <ul className="flex space-x-4 items-center">
-          {!loading && isAuthenticated && (
+    <AppBar position="static" sx={{ bgcolor: '#2c3e50' }}>
+      <Toolbar>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <RouterLink to="/" style={{ color: 'inherit', textDecoration: 'none' }}>
+            SQLInsight Pro
+          </RouterLink>
+        </Typography>
+        <Box>
+          {isAuthenticated ? (
             <>
-              <li>
-                <Link to="/dashboard" className="hover:text-gray-300">
-                  Dashboard
-                </Link>
-              </li>
-              <li>
-                <Link to="/services" className="hover:text-gray-300">
-                  Services
-                </Link>
-              </li>
-              <li className="text-gray-400">Hello, {user?.username}!</li>
-              <li>
-                <button onClick={logout} className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded">
-                  Logout
-                </button>
-              </li>
+              <Button color="inherit" component={RouterLink} to="/dashboard">
+                Dashboard
+              </Button>
+              <Button color="inherit" component={RouterLink} to="/queries">
+                Queries
+              </Button>
+              <Button color="inherit" component={RouterLink} to="/databases">
+                Databases
+              </Button>
+              {user?.role === 'admin' && (
+                 <Button color="inherit" component={RouterLink} to="/admin/users">
+                 Users
+               </Button>
+              )}
+              <Button color="inherit" onClick={logout}>
+                Logout ({user?.email})
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button color="inherit" component={RouterLink} to="/login">
+                Login
+              </Button>
+              <Button color="inherit" component={RouterLink} to="/register">
+                Register
+              </Button>
             </>
           )}
-          {!loading && !isAuthenticated && (
-            <>
-              <li>
-                <Link to="/login" className="hover:text-gray-300">
-                  Login
-                </Link>
-              </li>
-              <li>
-                <Link to="/register" className="hover:text-gray-300">
-                  Register
-                </Link>
-              </li>
-            </>
-          )}
-        </ul>
-      </div>
-    </nav>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 };
 
 export default Navbar;
 ```
+
+#### `frontend/src/components/Layout.tsx`

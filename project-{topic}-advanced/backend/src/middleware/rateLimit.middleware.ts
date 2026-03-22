@@ -1,33 +1,38 @@
 ```typescript
-import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import { RedisStore } from 'rate-limit-redis';
-import { getRedisClient } from '../config/redis';
-import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS } from '../config/env';
-import logger from '../utils/logger';
+import config from '../config';
+import logger from '../services/logger.service';
 
-const redisClient = getRedisClient(); // Ensure Redis is connected before this middleware is used
-
+/**
+ * Global API rate limiter middleware.
+ * Limits requests from the same IP address.
+ */
 export const apiRateLimiter = rateLimit({
-  store: new RedisStore({
-    // @ts-ignore: `redis` is of type `RedisClient` in `rate-limit-redis`,
-    // but `getRedisClient()` returns `RedisClientType` from `redis` package.
-    // The underlying methods are compatible for this use case.
-    redis: redisClient,
-    // Message will be returned in "X-RateLimit-Reset" header
-    // resetBefore: RATE_LIMIT_WINDOW_MS / 1000,
-  }),
-  windowMs: RATE_LIMIT_WINDOW_MS, // 1 minute
-  max: RATE_LIMIT_MAX_REQUESTS, // Limit each IP to 100 requests per windowMs
-  message: {
-    status: 'error',
-    message: 'Too many requests from this IP, please try again after a minute',
-  },
+  windowMs: config.rateLimit.windowMs, // 1 minute window
+  max: config.rateLimit.max, // limit each IP to 100 requests per window
+  message: 'Too many requests from this IP, please try again after a minute.',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   handler: (req, res, next, options) => {
-    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    logger.warn(`Rate limit exceeded for IP: ${req.ip}. URL: ${req.originalUrl}`);
+    res.status(options.statusCode).send(options.message);
+  },
+});
+
+/**
+ * Stricter rate limit for authentication endpoints.
+ */
+export const authRateLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs, // 1 minute window
+  max: Math.floor(config.rateLimit.max / 5), // e.g., 20 requests per minute
+  message: 'Too many authentication attempts from this IP, please try again after a minute.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    logger.warn(`Auth rate limit exceeded for IP: ${req.ip}. URL: ${req.originalUrl}`);
     res.status(options.statusCode).send(options.message);
   },
 });
 ```
+
+#### `backend/src/services/cache.service.ts`

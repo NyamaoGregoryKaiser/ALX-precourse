@@ -1,3 +1,4 @@
+```json
 {
   "compilerOptions": {
     "target": "es5",
@@ -18,10 +19,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-    "downlevelIteration": true // Required for Chart.js in some setups
+    "jsx": "react-jsx"
   },
   "include": [
     "src"
   ]
 }
+```
+
+#### `frontend/src/types/index.ts`

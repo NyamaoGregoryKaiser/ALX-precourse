@@ -1,60 +1,74 @@
 ```typescript
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../config/env';
-import { UserRole } from '../entities/User';
-import { UnauthorizedError, ForbiddenError } from './errorHandler.middleware';
-import logger from '../utils/logger';
+import config from '../config';
+import { AppDataSource } from '../config/database';
+import { User, UserRole } from '../entities/User';
+import { CustomError } from '../utils/error';
 
-export const protect = (req: Request, res: Response, next: NextFunction) => {
-  let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
+// Extend the Request type to include `user`
+declare global {
+  namespace Express {
+    interface Request {
+      user?: User;
+    }
   }
+}
 
-  if (!token) {
-    return next(new UnauthorizedError('Not authorized, no token'));
-  }
-
+/**
+ * Middleware to authenticate JWT token.
+ * Populates req.user if token is valid.
+ */
+export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    req.user = {
-      id: decoded.id,
-      username: decoded.username,
-      email: decoded.email,
-      roles: decoded.roles,
-    };
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new CustomError('Authentication invalid: No token provided or malformed.', 401);
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!token) {
+      throw new CustomError('Authentication invalid: No token provided.', 401);
+    }
+
+    const payload = jwt.verify(token, config.jwt.secret) as { id: string, email: string, role: UserRole };
+    const userRepository = AppDataSource.getRepository(User);
+    const user = await userRepository.findOneBy({ id: payload.id });
+
+    if (!user) {
+      throw new CustomError('Authentication invalid: User not found.', 401);
+    }
+
+    req.user = user;
     next();
   } catch (error) {
-    logger.error('Token verification failed:', error);
-    return next(new UnauthorizedError('Not authorized, token failed'));
+    if (error instanceof jwt.JsonWebTokenError) {
+      return next(new CustomError('Authentication invalid: Invalid token.', 401));
+    }
+    next(error); // Pass other errors to the error handling middleware
   }
 };
 
-export const authorize = (roles: UserRole[] = []) => {
+/**
+ * Middleware to authorize user roles.
+ * @param roles An array of roles allowed to access the route.
+ */
+export const authorize = (roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(new UnauthorizedError('No user attached to request. Ensure `protect` middleware is used.'));
+      // This should ideally not happen if 'authenticate' middleware runs before 'authorize'
+      return next(new CustomError('Authorization failed: User not authenticated.', 403));
     }
 
-    const hasPermission = roles.some((role) => req.user?.roles.includes(role));
-    if (!hasPermission) {
-      return next(new ForbiddenError('You do not have permission to perform this action'));
+    if (!roles.includes(req.user.role)) {
+      return next(new CustomError('Authorization failed: Insufficient permissions.', 403));
     }
+
     next();
   };
 };
-
-// Middleware to check API key for service data submission
-export const serviceAuth = (req: Request, res: Response, next: NextFunction) => {
-  const apiKey = req.headers['x-api-key'] as string;
-
-  if (!apiKey) {
-    return next(new UnauthorizedError('Missing X-API-Key header'));
-  }
-
-  // Store the apiKey in request for later use by the dataPoint service
-  (req as any).apiKey = apiKey;
-  next();
-};
 ```
+
+#### `backend/src/middleware/error.middleware.ts`

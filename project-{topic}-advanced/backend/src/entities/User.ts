@@ -1,43 +1,60 @@
 ```typescript
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { IsEmail, Length, IsEnum, IsArray } from 'class-validator';
-import { Service } from './Service';
+import bcrypt from 'bcryptjs';
+import { Database } from './Database';
+import { SlowQuery } from './SlowQuery';
 
 export enum UserRole {
   ADMIN = 'admin',
   USER = 'user',
-  SERVICE_OWNER = 'service_owner',
 }
 
-@Entity()
+@Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Column({ unique: true })
-  @Length(3, 50, { message: 'Username must be between 3 and 50 characters' })
-  username!: string;
-
-  @Column({ unique: true })
-  @IsEmail({}, { message: 'Invalid email format' })
   email!: string;
 
   @Column()
-  @Length(6, 100, { message: 'Password must be at least 6 characters long' })
-  passwordHash!: string;
+  password!: string;
 
-  @Column({ type: 'jsonb', default: [UserRole.USER] })
-  @IsArray()
-  @IsEnum(UserRole, { each: true, message: 'Invalid user role' })
-  roles!: UserRole[];
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
 
-  @OneToMany(() => Service, (service) => service.user)
-  services!: Service[];
-
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+
+  @OneToMany(() => Database, (database) => database.owner)
+  databases!: Database[];
+
+  @OneToMany(() => SlowQuery, (query) => query.reporter)
+  reportedQueries!: SlowQuery[];
+
+  /**
+   * Hashes the user's password before saving.
+   * @param password The plain text password.
+   * @returns {Promise<string>} The hashed password.
+   */
+  async hashPassword(password: string): Promise<string> {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(password, salt);
+    return this.password;
+  }
+
+  /**
+   * Compares a given password with the stored hashed password.
+   * @param password The plain text password to compare.
+   * @returns {Promise<boolean>} True if passwords match, false otherwise.
+   */
+  async comparePassword(password: string): Promise<boolean> {
+    return bcrypt.compare(password, this.password);
+  }
 }
 ```
+
+#### `backend/src/entities/Database.ts`

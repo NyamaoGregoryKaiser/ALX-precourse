@@ -1,0 +1,15 @@
+graph LR
+    A[Client Applications] -- Reports Slow Queries --> B(SQLInsight Pro Backend API)
+    B -- Stores & Retrieves --> C(PostgreSQL Database)
+    B -- Caches Data --> D(Redis Cache)
+    E[Frontend Web App] -- Accesses Data via --> B
+    F[User/DBA] -- Interacts with --> E
+    G[CI/CD Pipeline] -- Builds & Deploys --> H(Docker Containers)
+    H -- Runs --> B & E & C & D
+
+    subgraph SQLInsight Pro
+        B
+        C
+        D
+        E
+    end

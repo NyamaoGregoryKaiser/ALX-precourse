@@ -1,67 +1,49 @@
 ```typescript
 import jwt from 'jsonwebtoken';
-import { config } from '../config';
-import { UnauthorizedError } from './apiErrors';
+import config from '../config';
+import { User, UserRole } from '../entities/User';
 
-interface JwtPayload {
-  userId: string;
-  role: string;
-  type: 'access' | 'refresh' | 'resetPassword' | 'verifyEmail';
-}
-
-export const generateToken = (
-  userId: string,
-  role: string,
-  expires: string | number,
-  type: JwtPayload['type'],
-  secret: string = config.jwt.secret
-): string => {
-  const payload: JwtPayload = { userId, role, type };
-  return jwt.sign(payload, secret, { expiresIn: expires });
-};
-
-export const generateAuthTokens = (userId: string, role: string) => {
-  const accessTokenExpires = `${config.jwt.accessExpirationMinutes}m`;
-  const refreshTokenExpires = `${config.jwt.refreshExpirationDays}d`;
-
-  const accessToken = generateToken(userId, role, accessTokenExpires, 'access');
-  const refreshToken = generateToken(userId, role, refreshTokenExpires, 'refresh');
-
-  return {
-    accessToken,
-    refreshToken,
-    accessExpires: new Date(Date.now() + config.jwt.accessExpirationMinutes * 60 * 1000),
-    refreshExpires: new Date(Date.now() + config.jwt.refreshExpirationDays * 24 * 60 * 60 * 1000),
+/**
+ * Generates an access token for a user.
+ * @param user The user object.
+ * @returns {string} The generated JWT access token.
+ */
+export const generateAccessToken = (user: User): string => {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    role: user.role,
   };
+  return jwt.sign(payload, config.jwt.secret, {
+    expiresIn: `${config.jwt.accessExpirationMinutes}m`,
+  });
 };
 
-export const verifyToken = (token: string, secret: string): JwtPayload => {
-  try {
-    return jwt.verify(token, secret) as JwtPayload;
-  } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      throw new UnauthorizedError('Token expired.');
-    }
-    if (error.name === 'JsonWebTokenError') {
-      throw new UnauthorizedError('Invalid token.');
-    }
-    throw new UnauthorizedError('Token verification failed.');
-  }
+/**
+ * Generates a refresh token for a user.
+ * (For a full implementation, refresh tokens would typically be stored in the DB/Redis and invalidated on logout)
+ * @param user The user object.
+ * @returns {string} The generated JWT refresh token.
+ */
+export const generateRefreshToken = (user: User): string => {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  };
+  return jwt.sign(payload, config.jwt.secret, {
+    expiresIn: `${config.jwt.refreshExpirationDays}d`,
+  });
 };
 
-export const verifyAccessToken = (token: string): JwtPayload => {
-  const decoded = verifyToken(token, config.jwt.secret);
-  if (decoded.type !== 'access') {
-    throw new UnauthorizedError('Invalid token type.');
-  }
-  return decoded;
-};
-
-export const verifyRefreshToken = (token: string): JwtPayload => {
-  const decoded = verifyToken(token, config.jwt.secret);
-  if (decoded.type !== 'refresh') {
-    throw new UnauthorizedError('Invalid token type.');
-  }
-  return decoded;
+/**
+ * Verifies a JWT token.
+ * @param token The JWT token string.
+ * @returns {jwt.JwtPayload | string} The decoded payload or an error.
+ */
+export const verifyToken = (token: string): jwt.JwtPayload | string => {
+  return jwt.verify(token, config.jwt.secret);
 };
 ```
+
+#### `backend/src/utils/error.ts`

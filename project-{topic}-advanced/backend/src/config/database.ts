@@ -1,26 +1,44 @@
 ```typescript
+import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import config from './index';
 import { User } from '../entities/User';
-import { Role } from '../entities/Role';
-import { BlacklistedToken } from '../entities/BlacklistedToken';
-import { Post } from '../entities/Post'; // Example entity
+import { Database } from '../entities/Database';
+import { SlowQuery } from '../entities/SlowQuery';
+import { QueryPlan } from '../entities/QueryPlan';
+import { QuerySuggestion } from '../entities/QuerySuggestion';
 
+// This file is used by TypeORM CLI for migrations and by the application
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USER || 'user',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'auth_db',
-  synchronize: false, // Use migrations for schema changes in production
-  logging: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
-  entities: [User, Role, BlacklistedToken, Post],
-  migrations: ['./src/migrations/**/*.ts'],
+  host: config.database.host,
+  port: config.database.port,
+  username: config.database.username,
+  password: config.database.password,
+  database: config.database.database,
+  synchronize: config.database.synchronize, // Set to false in production, use migrations
+  logging: config.database.logging,
+  entities: [User, Database, SlowQuery, QueryPlan, QuerySuggestion],
+  migrations: [__dirname + '/../database/migrations/*.ts'],
   subscribers: [],
-  extra: {
-    max: parseInt(process.env.DB_POOL_MAX || '10', 10),
-    min: parseInt(process.env.DB_POOL_MIN || '2', 10),
-    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MILLIS || '30000', 10),
-  },
 });
+
+/**
+ * Initializes the database connection.
+ * @returns {Promise<DataSource>} The initialized DataSource instance.
+ */
+export const initializeDatabase = async (): Promise<DataSource> => {
+  if (!AppDataSource.isInitialized) {
+    try {
+      await AppDataSource.initialize();
+      console.log('Database connection established.');
+    } catch (error) {
+      console.error('Error connecting to database:', error);
+      process.exit(1); // Exit process if DB connection fails
+    }
+  }
+  return AppDataSource;
+};
 ```
+
+#### `backend/src/entities/User.ts`

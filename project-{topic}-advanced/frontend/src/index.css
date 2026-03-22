@@ -1,13 +1,28 @@
 ```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Custom styles can go here */
 body {
-  font-family: 'Inter', sans-serif;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f3f4f6; /* Light gray background */
+  background-color: #f4f6f8; /* Light background */
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom styles for Highlight.js to fit MUI Paper */
+pre {
+  background-color: #eee !important; /* Override default highlight.js background */
+  padding: 16px;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap; /* Ensure long lines wrap */
+  word-break: break-all; /* Break words for very long strings without spaces */
 }
 ```
+
+### Frontend Dockerfile (`frontend/Dockerfile`)

@@ -1,365 +1,416 @@
 ```markdown
-# ALX Mobile Backend System
+# SQLInsight Pro: Database Optimization System
 
-## Comprehensive, Production-Ready Mobile App Backend
-
-This project provides a robust, scalable, and secure backend system designed for mobile applications, built with Spring Boot and Java 17. It incorporates best practices for enterprise-grade applications, including authentication (JWT), authorization (Spring Security), database management (PostgreSQL, Flyway), caching (Caffeine), rate limiting, comprehensive testing, and CI/CD pipeline configuration.
+SQLInsight Pro is a full-stack, enterprise-grade web application designed to help developers and DBAs monitor, analyze, and optimize slow SQL queries. It provides insights into query performance, offers intelligent suggestions for improvement, and visualizes query execution plans.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture Overview](#architecture-overview)
-3.  [Prerequisites](#prerequisites)
-4.  [Local Setup and Run](#local-setup-and-run)
-5.  [API Endpoints](#api-endpoints)
-6.  [Testing](#testing)
-7.  [Docker Setup](#docker-setup)
-8.  [CI/CD Configuration](#ci/cd-configuration)
+2.  [Technologies Used](#technologies-used)
+3.  [Architecture](#architecture)
+4.  [Setup and Installation](#setup-and-installation)
+    *   [Prerequisites](#prerequisites)
+    *   [Environment Variables](#environment-variables)
+    *   [Docker Compose Setup (Recommended)](#docker-compose-setup-recommended)
+    *   [Manual Setup (Backend)](#manual-setup-backend)
+    *   [Manual Setup (Frontend)](#manual-setup-frontend)
+5.  [Running the Application](#running-the-application)
+6.  [Database Management](#database-management)
+7.  [Testing](#testing)
+8.  [API Documentation](#api-documentation)
 9.  [Deployment Guide](#deployment-guide)
-10. [Technologies Used](#technologies-used)
-11. [Contributing](#contributing)
-12. [License](#license)
+10. [Contribution](#contribution)
+11. [License](#license)
 
 ## 1. Features
 
-*   **Core Application (Java/Spring Boot):**
-    *   RESTful API endpoints for Users, Products, Orders with full CRUD operations.
-    *   Layered architecture: Controllers, Services, Repositories, DTOs.
-    *   Business logic for user management, product catalog, and order processing (e.g., stock management).
-*   **Database Layer (PostgreSQL):**
-    *   Defined schema for `users`, `products`, `orders`, and `order_items`.
-    *   Flyway for database migrations.
-    *   Seed data for initial setup.
-    *   Basic query optimization via indexing.
-*   **Authentication & Authorization:**
-    *   JWT-based authentication using Spring Security.
-    *   Role-based authorization (`ROLE_USER`, `ROLE_ADMIN`) with `@PreAuthorize`.
-*   **Logging & Monitoring:**
-    *   SLF4J/Logback for structured logging.
-    *   Spring Boot Actuator for health checks, metrics, and environment info.
-*   **Error Handling:**
-    *   Global exception handling with `@ControllerAdvice` for consistent API error responses.
-    *   Custom exceptions (`ResourceNotFoundException`, `ValidationException`).
-*   **Caching Layer:**
-    *   Spring Cache with Caffeine for in-memory caching of frequently accessed data (users, products, orders).
-*   **Rate Limiting:**
-    *   Simple in-memory rate limiting filter using Google Guava to protect API endpoints from abuse.
-*   **Testing:**
-    *   Unit tests for services and repositories (Mockito, JUnit 5).
-    *   Integration/API tests for controllers (Spring MockMvc, `@WebMvcTest`).
-    *   Jacoco for code coverage reporting (configured for 80%+ line coverage goal).
-*   **Configuration & Setup:**
-    *   `pom.xml` with all necessary dependencies.
-    *   Environment-specific `application.properties` (dev, prod profiles).
-    *   Docker support with `Dockerfile` and `docker-compose.yml`.
-    *   Basic CI/CD pipeline configuration using GitHub Actions.
-*   **Documentation:**
-    *   Comprehensive README.
-    *   API documentation using Springdoc OpenAPI (Swagger UI).
-    *   Architecture and Deployment guides.
+*   **Query Reporting API:** Dedicated endpoint for client applications to report slow SQL queries with metadata (execution time, application, hostname, database ID).
+*   **Intelligent Query Analysis:**
+    *   Simulated `EXPLAIN` plan generation for reported queries.
+    *   Rule-based analysis to identify common anti-patterns (e.g., `SELECT *`, missing `WHERE` clauses, functions on indexed columns, leading wildcards in `LIKE`).
+    *   Suggests actionable optimizations (e.g., index creation, query rewrites).
+*   **Interactive Dashboard:** Overview of system health, total slow queries, monitored databases, and average query execution times.
+*   **Query Listing & Detail View:** Paginated list of slow queries with detailed views showing the query, execution plan, and all generated suggestions.
+*   **Suggestion Management:** Mark suggestions as "Applied" or "Dismissed" with optional feedback.
+*   **Database Management:** Register, view, update, and delete databases to monitor.
+*   **User Management & Authentication:**
+    *   JWT-based authentication (register, login, logout).
+    *   Role-based authorization (Admin, User) for accessing different features and data.
+*   **Logging & Monitoring:** Centralized logging with Winston, basic health checks.
+*   **Error Handling:** Robust middleware for consistent API error responses.
+*   **Caching:** Redis integration (conceptual) for improving performance of frequently accessed data or user sessions.
+*   **Rate Limiting:** Protects API endpoints from abuse.
 
-## 2. Architecture Overview
+## 2. Technologies Used
 
-The backend follows a standard N-tier architecture, commonly seen in Spring Boot applications:
+**Backend:**
+*   **Node.js:** JavaScript runtime.
+*   **Express.js:** Web framework.
+*   **TypeScript:** Type-safe JavaScript.
+*   **TypeORM:** ORM for database interaction.
+*   **PostgreSQL:** Relational database.
+*   **Redis:** In-memory data store for caching/sessions.
+*   **bcryptjs:** Password hashing.
+*   **jsonwebtoken:** JWT implementation.
+*   **dotenv:** Environment variable management.
+*   **winston:** Logging library.
+*   **yup:** Schema validation.
+*   **lodash:** Utility library.
 
-*   **Presentation Layer (Controllers):** Handles incoming HTTP requests, performs input validation, and delegates to the Service Layer. Returns HTTP responses. Secured using Spring Security.
-*   **Service Layer (Services):** Contains the core business logic. Interacts with the Repository Layer, orchestrates complex operations, and applies caching/transactional boundaries.
-*   **Data Access Layer (Repositories):** Uses Spring Data JPA to abstract database interactions. Handles CRUD operations and custom queries.
-*   **Domain Layer (Models):** JPA entities representing the database schema (User, Product, Order).
-*   **DTO Layer:** Data Transfer Objects for requests and responses, ensuring separation of concerns between API contract and domain models.
-*   **Security Layer:** Spring Security for authentication (JWT) and authorization (roles).
-*   **Configuration Layer:** Manages application settings, database connections, security parameters, etc.
-*   **Cross-Cutting Concerns:** Global exception handling, logging, caching, rate limiting.
+**Frontend:**
+*   **React:** JavaScript library for building user interfaces.
+*   **TypeScript:** Type-safe JavaScript.
+*   **Material-UI (MUI):** React UI framework.
+*   **Axios:** HTTP client.
+*   **react-router-dom:** For routing.
+*   **js-cookie:** For client-side cookie management.
+*   **react-toastify:** For notifications.
+*   **highlight.js:** For syntax highlighting.
 
-**Data Flow:**
-Mobile App <--> HTTPS <--> Load Balancer/API Gateway <--> Spring Boot Backend (Controllers -> Services -> Repositories) <--> PostgreSQL Database
+**Infrastructure:**
+*   **Docker:** Containerization.
+*   **Docker Compose:** For orchestrating multi-container Docker applications.
+*   **Nginx:** Web server (for serving frontend).
 
-## 3. Prerequisites
+**Testing:**
+*   **Jest:** JavaScript testing framework (unit tests).
+*   **Supertest:** HTTP assertion library (integration/API tests).
+*   **React Testing Library:** For React component testing.
+*   **Artillery (Conceptual):** For performance testing.
 
-Before you begin, ensure you have the following installed:
+**CI/CD:**
+*   **GitHub Actions (Configuration provided):** Automated build, test, and deployment workflows.
 
-*   **Java 17 JDK:** [Download from Oracle](https://www.oracle.com/java/technologies/downloads/) or [AdoptOpenJDK](https://adoptium.net/temurin/releases/)
-*   **Maven 3.8+:** [Download Maven](https://maven.apache.org/download.cgi)
-*   **PostgreSQL 15+:** [Download PostgreSQL](https://www.postgresql.org/download/) or use Docker.
-*   **Docker & Docker Compose:** [Install Docker Engine](https://docs.docker.com/engine/install/)
-*   **Git:** [Download Git](https://git-scm.com/downloads)
+## 3. Architecture
 
-## 4. Local Setup and Run
+The system follows a microservice-like architecture (monorepo structure for convenience) with a clear separation of concerns:
 
-### 4.1. Database Setup (Option 1: Manual PostgreSQL)
+*   **Frontend:** A React application responsible for the user interface, interacting with the backend API.
+*   **Backend API:** A Node.js/Express application handling all business logic, data persistence, authentication, and query analysis.
+*   **Database (PostgreSQL):** Stores all application data (users, databases, slow queries, plans, suggestions).
+*   **Cache (Redis):** Used for fast data retrieval and potentially session management.
 
-1.  **Install PostgreSQL:** If not already installed.
-2.  **Create User and Database:**
-    ```bash
-    # Connect to default postgres user
-    psql -U postgres
+```mermaid
+graph TD
+    User -->|Views/Interacts| Frontend(React App)
+    Frontend -->|API Calls (HTTP/S)| Backend(Node.js/Express API)
 
-    # Create user with password
-    CREATE USER alxuser WITH PASSWORD 'alxpassword';
-    CREATE USER alxuser_dev WITH PASSWORD 'alxpassword_dev';
+    subgraph Backend Services
+        Auth_Module[Auth Module]
+        User_Module[User Module]
+        DB_Mgmt_Module[Database Management Module]
+        Query_Module[Query Module]
+        Analysis_Engine[Query Analysis Engine]
+        Logging_Service[Logging Service]
+        Cache_Service[Caching Service (Redis Client)]
+        Error_Handling[Error Handling Middleware]
+        Rate_Limiting[Rate Limiting Middleware]
+    end
 
-    # Create databases
-    CREATE DATABASE alx_mobile_db WITH OWNER alxuser;
-    CREATE DATABASE alx_mobile_db_dev WITH OWNER alxuser_dev;
+    Backend -->|CRUD| PostgreSQL(Database)
+    Backend -->|Read/Write| Redis(Cache)
+    Client_Apps(Client Applications) -->|Report Slow Queries (HTTP/S)| Backend
 
-    # Grant privileges
-    GRANT ALL PRIVILEGES ON DATABASE alx_mobile_db TO alxuser;
-    GRANT ALL PRIVILEGES ON DATABASE alx_mobile_db_dev TO alxuser_dev;
+    style Frontend fill:#f9f,stroke:#333,stroke-width:2px
+    style Backend fill:#ccf,stroke:#333,stroke-width:2px
+    style PostgreSQL fill:#cfc,stroke:#333,stroke-width:2px
+    style Redis fill:#ffc,stroke:#333,stroke-width:2px
+    style Client_Apps fill:#f9f,stroke:#333,stroke-width:2px
+```
 
-    \q
-    ```
-    *Note: The `V1__Initial_schema.sql` and `V2__Add_seed_data.sql` will be automatically applied by Flyway when the Spring Boot application starts.*
+## 4. Setup and Installation
 
-### 4.2. Run the Application (Spring Boot)
+### Prerequisites
+
+*   Node.js (v18+) and npm/yarn
+*   Docker and Docker Compose
+*   PostgreSQL (if not using Docker)
+*   Redis (if not using Docker)
+
+### Environment Variables
+
+Both `backend` and `frontend` directories contain an `.env.example` file. Copy this file to `.env` in the respective directories and populate the values.
+
+**`backend/.env`:**
+```dotenv
+# Application Configuration
+PORT=5000
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000 # Must match frontend's access URL
+
+# JWT Configuration (generate strong keys for production!)
+JWT_SECRET=your_super_secret_jwt_key_here_please_change_this_in_production_!!!
+JWT_ACCESS_EXPIRATION_MINUTES=30
+JWT_REFRESH_EXPIRATION_DAYS=7
+
+# Database Configuration (PostgreSQL)
+DB_HOST=db # Use 'db' if running inside docker-compose network, 'localhost' otherwise
+DB_PORT=5432
+DB_USER=sqlinsight
+DB_PASSWORD=sqlinsight
+DB_NAME=sqlinsight_db
+DB_SYNCHRONIZE=false # Set to false in production, true for quick dev setup if no migrations
+DB_LOGGING=false
+
+# Redis Configuration
+REDIS_HOST=redis # Use 'redis' if running inside docker-compose network, 'localhost' otherwise
+REDIS_PORT=6379
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=100
+```
+
+**`frontend/.env`:**
+```dotenv
+REACT_APP_API_URL=http://localhost:5000/api/v1 # Points to your backend API
+```
+**Important:** When running with Docker Compose, `DB_HOST` should be `db` and `REDIS_HOST` should be `redis` (the service names). If running backend manually and connecting to a local PostgreSQL/Redis, use `localhost`.
+
+### Docker Compose Setup (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/my-mobile-backend.git
-    cd my-mobile-backend
+    git clone https://github.com/your-username/sql-insight-pro.git
+    cd sql-insight-pro
     ```
-2.  **Build the project:**
+2.  **Create `.env` files:**
     ```bash
-    ./mvnw clean install -DskipTests
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
     ```
-3.  **Run the application (Development Profile):**
-    ```bash
-    ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-    ```
-    The application will start on `http://localhost:8080`.
-
-    You can access Swagger UI at `http://localhost:8080/swagger-ui.html`.
-
-## 5. API Endpoints
-
-All API endpoints are prefixed with `/api/v1`.
-
-### Authentication & Registration (`/api/v1/auth`)
-
-*   `POST /api/v1/auth/register`
-    *   **Description:** Register a new user.
-    *   **Request Body:** `RegisterRequest` (username, email, password)
-    *   **Response:** `AuthResponse` (JWT token, user details)
-*   `POST /api/v1/auth/login`
-    *   **Description:** Authenticate user and get JWT token.
-    *   **Request Body:** `AuthRequest` (usernameOrEmail, password)
-    *   **Response:** `AuthResponse` (JWT token, user details)
-
-### User Management (`/api/v1/users`) - Requires `bearerAuth` (JWT)
-
-*   `GET /api/v1/users/{id}`
-    *   **Description:** Get user by ID. (ADMIN or owner)
-    *   **Response:** `UserDto.UserResponse`
-*   `GET /api/v1/users`
-    *   **Description:** Get all users with pagination. (ADMIN only)
-    *   **Query Params:** `page`, `size`, `sort`
-    *   **Response:** `Page<UserDto.UserResponse>`
-*   `PUT /api/v1/users/{id}`
-    *   **Description:** Update a user by ID. (ADMIN or owner)
-    *   **Request Body:** `UserDto.UserUpdateRequest`
-    *   **Response:** `UserDto.UserResponse`
-*   `DELETE /api/v1/users/{id}`
-    *   **Description:** Delete a user by ID. (ADMIN only)
-    *   **Response:** `204 No Content`
-
-### Product Management (`/api/v1/products`) - Requires `bearerAuth` (JWT)
-
-*   `POST /api/v1/products`
-    *   **Description:** Create a new product. (ADMIN only)
-    *   **Request Body:** `ProductDto.ProductCreateRequest`
-    *   **Response:** `ProductDto.ProductResponse`
-*   `GET /api/v1/products/{id}`
-    *   **Description:** Get product by ID. (USER, ADMIN)
-    *   **Response:** `ProductDto.ProductResponse`
-*   `GET /api/v1/products`
-    *   **Description:** Get all products with pagination. (USER, ADMIN)
-    *   **Query Params:** `page`, `size`, `sort`
-    *   **Response:** `Page<ProductDto.ProductResponse>`
-*   `PUT /api/v1/products/{id}`
-    *   **Description:** Update a product by ID. (ADMIN only)
-    *   **Request Body:** `ProductDto.ProductUpdateRequest`
-    *   **Response:** `ProductDto.ProductResponse`
-*   `DELETE /api/v1/products/{id}`
-    *   **Description:** Delete a product by ID. (ADMIN only)
-    *   **Response:** `204 No Content`
-
-### Order Management (`/api/v1/orders`) - Requires `bearerAuth` (JWT)
-
-*   `POST /api/v1/orders`
-    *   **Description:** Create a new order. (USER, ADMIN)
-    *   **Request Body:** `OrderDto.OrderCreateRequest` (list of productId, quantity)
-    *   **Response:** `OrderDto.OrderResponse`
-*   `GET /api/v1/orders/{id}`
-    *   **Description:** Get order by ID. (ADMIN or owner)
-    *   **Response:** `OrderDto.OrderResponse`
-*   `GET /api/v1/orders`
-    *   **Description:** Get all orders with pagination. (ADMIN only)
-    *   **Query Params:** `page`, `size`, `sort`
-    *   **Response:** `Page<OrderDto.OrderResponse>`
-*   `GET /api/v1/orders/user/{userId}`
-    *   **Description:** Get all orders for a specific user with pagination. (ADMIN or owner of userId)
-    *   **Query Params:** `page`, `size`, `sort`
-    *   **Response:** `Page<OrderDto.OrderResponse>`
-*   `PATCH /api/v1/orders/{id}/status`
-    *   **Description:** Update order status by ID. (ADMIN only)
-    *   **Request Body:** `OrderDto.OrderUpdateRequest` (status: PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED)
-    *   **Response:** `OrderDto.OrderResponse`
-*   `DELETE /api/v1/orders/{id}`
-    *   **Description:** Delete an order by ID. (ADMIN or owner if order is PENDING)
-    *   **Response:** `204 No Content`
-
-## 6. Testing
-
-The project includes Unit, Integration, and API tests to ensure quality and correctness.
-
-1.  **Run all tests:**
-    ```bash
-    ./mvnw clean test
-    ```
-2.  **Generate JaCoCo test coverage report:**
-    After running `mvnw clean install` (which includes `test` phase and `jacoco:report` goal), you can find the report at:
-    `target/site/jacoco/index.html`
-    Open this file in your browser to view detailed coverage statistics. The `pom.xml` is configured to fail the build if line coverage drops below 80%.
-
-## 7. Docker Setup
-
-### 7.1. Database Setup (Option 2: Docker Compose)
-
-The `docker-compose.yml` file sets up a PostgreSQL database and the Spring Boot application.
-
-1.  **Ensure Docker Desktop is running.**
-2.  **Navigate to the project root directory.**
-3.  **Start the services:**
+    Adjust variables as needed (especially `JWT_SECRET`).
+3.  **Build and run the Docker containers:**
+    This command will build the images (if not already built), create the necessary volumes, and start all services (PostgreSQL, Redis, Backend, Frontend). The backend will automatically run migrations and seed the database on first startup.
     ```bash
     docker-compose up --build -d
     ```
-    This will:
-    *   Build the Docker image for the backend application.
-    *   Start a PostgreSQL container.
-    *   Run an initialization script to create `alx_mobile_db` and `alx_mobile_db_dev` databases with respective users.
-    *   Start the Spring Boot application (configured to use `alx_mobile_db_dev` by default for local development).
-    *   The `Dockerfile` contains a `prod` profile by default, but `docker-compose.yml` overrides it to `dev` for local use.
-
 4.  **Verify services:**
     ```bash
     docker-compose ps
     ```
-    You should see `alx-postgres` and `alx-mobile-backend` containers running.
+    You should see `db`, `redis`, `backend`, and `frontend` running.
 
-5.  **Access the application:** `http://localhost:8080` (or Swagger UI at `http://localhost:8080/swagger-ui.html`).
+5.  **Access the application:**
+    *   **Frontend:** `http://localhost:3000`
+    *   **Backend API:** `http://localhost:5000/api/v1` (for testing with Postman/Insomnia)
 
-6.  **Stop services:**
+### Manual Setup (Backend)
+
+Only perform this if you prefer not to use Docker Compose for the backend. You'll need local PostgreSQL and Redis instances running.
+
+1.  **Navigate to the backend directory:**
     ```bash
-    docker-compose down
+    cd sql-insight-pro/backend
     ```
-    To also remove volumes (database data), use:
+2.  **Install dependencies:**
     ```bash
-    docker-compose down -v
+    yarn install
+    # or
+    npm install
+    ```
+3.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    ```
+    Update `DB_HOST` and `REDIS_HOST` to `localhost` if running local services.
+4.  **Run migrations:**
+    ```bash
+    npm run migrate:run
+    ```
+5.  **Seed the database (optional, for initial data):**
+    ```bash
+    npm run seed:run
+    ```
+6.  **Build TypeScript:**
+    ```bash
+    npm run build
+    ```
+7.  **Start the backend server:**
+    ```bash
+    npm start
+    # For development with hot-reloading:
+    # npm run dev
     ```
 
-## 8. CI/CD Configuration
+### Manual Setup (Frontend)
 
-A basic GitHub Actions workflow is provided in `.github/workflows/main.yml`.
+Only perform this if you prefer not to use Docker Compose for the frontend.
 
-**Current Workflow:**
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd sql-insight-pro/frontend
+    ```
+2.  **Install dependencies:**
+    ```bash
+    yarn install
+    # or
+    npm install
+    ```
+3.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    ```
+    Ensure `REACT_APP_API_URL` points to your running backend (e.g., `http://localhost:5000/api/v1`).
+4.  **Start the frontend development server:**
+    ```bash
+    npm start
+    ```
+    The application should open in your browser at `http://localhost:3000`.
 
-*   **`build-and-test` job:**
-    *   Triggers on `push` to `main` and `develop` branches, and `pull_request` to `main` and `develop`.
-    *   Sets up Java 17.
-    *   Starts a PostgreSQL service container for isolated testing.
-    *   Builds the Maven project and runs all tests, including JaCoCo code coverage analysis.
-    *   Uploads the JaCoCo report as an artifact.
-    *   **Note:** The `pom.xml` is configured to enforce an 80% line coverage threshold; the build will fail if this is not met.
+## 5. Running the Application
 
-**Deployment Jobs (Commented Out):**
-The workflow includes commented-out `deploy-dev` and `deploy-prod` jobs. These provide a template for:
-*   Building and pushing Docker images to a container registry (e.g., Docker Hub, AWS ECR).
-*   Deploying the application to a target environment (e.g., Kubernetes, AWS ECS) using appropriate CLI tools.
-*   These jobs use environment variables (`DOCKER_USERNAME`, `DOCKER_PASSWORD`) and assume secrets are configured in GitHub.
+After successful setup (preferably with Docker Compose):
 
-**To enable deployment:**
-1.  Uncomment the `deploy-dev` and `deploy-prod` jobs.
-2.  Replace placeholder values (e.g., `yourdockerrepo`, `your-ecs-cluster`, `your-ecs-service`).
-3.  Configure GitHub Secrets for `DOCKER_USERNAME`, `DOCKER_PASSWORD`, and any cloud provider credentials (e.g., `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
-4.  Set up GitHub Environments (e.g., `Development`, `Production`) if you need environment-specific protection rules or variables.
+1.  Open your browser and navigate to `http://localhost:3000`.
+2.  You will be redirected to the login page.
+3.  Use the seeded credentials:
+    *   **Admin User:** `admin@example.com` / `adminpassword`
+    *   **Regular User:** `user@example.com` / `userpassword`
+4.  Explore the Dashboard, Queries, Databases, and (for admin) User Management sections.
+5.  You can manually "report" a slow query by sending a POST request to `/api/v1/queries/slow` using Postman/Insomnia or a custom script, referencing an existing `databaseId`.
+
+## 6. Database Management
+
+*   **Migrations:**
+    *   Create a new migration: `npm run migrate:make --name=YourMigrationName` (from `backend/` directory)
+    *   Run pending migrations: `npm run migrate:run`
+    *   Revert last migration: `npm run migrate:revert`
+*   **Seeding:**
+    *   Run seed scripts: `npm run seed:run` (from `backend/` directory)
+    *   *Note*: The Docker Compose setup runs migrations and seeds on startup. For production, manage seeding carefully.
+
+## 7. Testing
+
+Tests are located in the `backend/tests` and `frontend/src/**/*.test.tsx` directories.
+
+**Backend Tests:**
+1.  Navigate to `backend/`
+2.  Run all tests: `npm test` (includes unit and integration tests)
+3.  Run tests in watch mode: `npm run test:watch`
+
+**Frontend Tests:**
+1.  Navigate to `frontend/`
+2.  Run all tests: `npm test`
+
+**Performance Tests (Conceptual):**
+Using Artillery, refer to the `artillery.yml` and `artillery_processor.js` examples. You would need to:
+1.  Ensure your backend is running.
+2.  Update `artillery.yml` with valid `databaseId` for reporting queries.
+3.  Run: `artillery run artillery.yml`
+
+## 8. API Documentation
+
+The backend exposes a RESTful API. Below are the primary endpoints. For a full, interactive OpenAPI/Swagger documentation, you would typically integrate a library like `swagger-ui-express`.
+
+**Base URL:** `http://localhost:5000/api/v1`
+
+---
+
+### Authentication
+
+*   `POST /auth/register`
+    *   **Body:** `{ email, password, role? }`
+    *   **Response:** `{ success, data: { user, accessToken, refreshToken } }`
+*   `POST /auth/login`
+    *   **Body:** `{ email, password }`
+    *   **Response:** `{ success, data: { user, accessToken, refreshToken } }`
+*   `POST /auth/logout` (Authenticated)
+    *   **Response:** `{ success, message }`
+*   `GET /auth/me` (Authenticated)
+    *   **Response:** `{ success, data: { user } }`
+
+---
+
+### User Management (Admin Only)
+
+*   `GET /users` (Authenticated, Admin)
+    *   **Response:** `{ success, data: User[] }`
+*   `GET /users/:id` (Authenticated)
+    *   **Response:** `{ success, data: User }`
+*   `PUT /users/:id` (Authenticated, Admin or User updating self)
+    *   **Body:** `{ email?, role? }`
+    *   **Response:** `{ success, message, data: User }`
+*   `DELETE /users/:id` (Authenticated, Admin)
+    *   **Response:** `{ success, message }`
+
+---
+
+### Database Management
+
+*   `POST /databases` (Authenticated)
+    *   **Body:** `{ name, type, connectionString, description? }`
+    *   **Response:** `{ success, message, data: Database }`
+*   `GET /databases` (Authenticated)
+    *   **Response:** `{ success, data: Database[] }` (User gets owned DBs, Admin gets all)
+*   `GET /databases/:id` (Authenticated)
+    *   **Response:** `{ success, data: Database }`
+*   `PUT /databases/:id` (Authenticated)
+    *   **Body:** `{ name?, type?, connectionString?, description? }`
+    *   **Response:** `{ success, message, data: Database }`
+*   `DELETE /databases/:id` (Authenticated)
+    *   **Response:** `{ success, message }`
+
+---
+
+### Slow Query & Optimization
+
+*   `POST /queries/slow` (No authentication required, for client apps to report)
+    *   **Body:** `{ query, executionTimeMs, clientApplication?, clientHostname?, databaseId, reporterId? }`
+    *   **Response:** `{ success, message, data: SlowQuery }` (includes generated plans/suggestions)
+*   `GET /queries/slow` (Authenticated)
+    *   **Query Params:** `page`, `limit`, `databaseId`, `minExecutionTimeMs`, `sortBy`, `sortOrder`
+    *   **Response:** `{ success, data: SlowQuery[], meta: { total, page, limit, totalPages } }`
+*   `GET /queries/slow/:id` (Authenticated)
+    *   **Response:** `{ success, data: SlowQuery (with queryPlans and querySuggestions populated) }`
+*   `PATCH /queries/slow/:queryId/suggestions/:suggestionId` (Authenticated)
+    *   **Body:** `{ status: 'pending' | 'applied' | 'dismissed', feedback?: string }`
+    *   **Response:** `{ success, message, data: QuerySuggestion }`
+
+---
 
 ## 9. Deployment Guide
 
-This section outlines general steps for deploying the backend to a production environment.
+This section outlines conceptual steps for production deployment.
 
-1.  **Prepare Production Environment:**
-    *   **Server:** Provision a Linux server (e.g., AWS EC2, Google Cloud Compute, Azure VM) or a managed container service (e.g., Kubernetes, AWS ECS, Google Cloud Run).
-    *   **Database:** Set up a managed PostgreSQL database service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL). Ensure it's secure and properly configured for backups.
-    *   **Networking:** Configure security groups/firewalls to allow traffic only from necessary sources (e.g., load balancer, internal services).
+1.  **Containerize:** Ensure your `Dockerfile`s and `docker-compose.yml` are production-ready (e.g., multi-stage builds for smaller images, specific environment configurations).
+2.  **Environment Variables:** Securely manage environment variables (e.g., `JWT_SECRET`, database credentials) using your cloud provider's secrets management tools (AWS Secrets Manager, Azure Key Vault, Kubernetes Secrets). Do NOT commit `.env` files to production.
+3.  **Database Provisioning:**
+    *   Provision a managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL).
+    *   Ensure proper backups, replication, and monitoring are configured.
+    *   Run migrations (`npm run migrate:run`) as part of your deployment pipeline, *before* application startup.
+4.  **Redis Provisioning:**
+    *   Provision a managed Redis service (e.g., AWS ElastiCache, Azure Cache for Redis, Google Cloud Memorystore).
+5.  **CI/CD Pipeline:**
+    *   Integrate the provided GitHub Actions workflow (or similar for GitLab CI, Jenkins, etc.).
+    *   The pipeline should:
+        *   Trigger on `push` to `main` or `release` branch.
+        *   Build backend and frontend Docker images.
+        *   Run tests.
+        *   Push images to a container registry (Docker Hub, AWS ECR, GCR).
+        *   Deploy updated containers to your chosen infrastructure (ECS, EKS, Azure Container Apps, Google Cloud Run/GKE).
+6.  **Infrastructure:**
+    *   **Container Orchestration:** Use Kubernetes (EKS, GKE, AKS) or a container service (AWS ECS, Azure Container Apps, Google Cloud Run) for scalability, high availability, and easier management.
+    *   **Load Balancing:** Place a load balancer in front of your frontend (and potentially backend) services for traffic distribution and SSL termination.
+    *   **Networking:** Configure VPCs, subnets, security groups, and network ACLs for secure communication.
+7.  **Monitoring & Alerting:**
+    *   Integrate a robust logging solution (e.g., ELK Stack, Datadog, CloudWatch Logs).
+    *   Set up application performance monitoring (APM) with tools like New Relic, Datadog, or Prometheus/Grafana.
+    *   Configure alerts for critical errors, high latency, or resource exhaustion.
+8.  **Security Best Practices:**
+    *   Regularly update dependencies.
+    *   Scan Docker images for vulnerabilities.
+    *   Enforce HTTPS.
+    *   Implement strong password policies.
+    *   Regular security audits.
 
-2.  **Containerize and Publish Image:**
-    *   Ensure your `Dockerfile` is optimized for production (e.g., multi-stage build for smaller image size, `SPRING_PROFILES_ACTIVE=prod`).
-    *   Build the Docker image:
-        ```bash
-        docker build -t yourdockerrepo/my-mobile-backend:latest .
-        ```
-    *   Login to your container registry (e.g., Docker Hub, AWS ECR, GCR):
-        ```bash
-        docker login
-        ```
-    *   Push the image:
-        ```bash
-        docker push yourdockerrepo/my-mobile-backend:latest
-        ```
+## 10. Contribution
 
-3.  **Configure Environment Variables:**
-    *   For the production deployment, ensure the following environment variables (defined in `application-prod.properties` and `Dockerfile`) are correctly set in your deployment environment (e.g., Kubernetes manifests, ECS task definitions, CI/CD pipeline):
-        *   `SPRING_PROFILES_ACTIVE=prod`
-        *   `DB_URL` (JDBC URL for your production PostgreSQL instance)
-        *   `DB_USERNAME`
-        *   `DB_PASSWORD`
-        *   `JWT_SECRET` (Use a strong, unique secret, preferably managed by a secret manager like AWS Secrets Manager or Vault).
+Contributions are welcome! If you find a bug or have an enhancement idea, please open an issue or submit a pull request.
 
-4.  **Database Migrations (Flyway):**
-    *   Flyway is configured to run on application startup (`spring.flyway.enabled=true`). When the application starts in production, it will apply any pending migrations to the `alx_mobile_db` database.
-    *   Ensure your database user has sufficient privileges to perform schema modifications during migrations.
-    *   Consider managing Flyway migrations as a separate step in your CI/CD pipeline, especially in complex scenarios or for zero-downtime deployments.
+## 11. License
 
-5.  **Deployment to Target Environment:**
-    *   **Kubernetes:** Create `Deployment` and `Service` manifests. Use `Ingress` for external access, integrating with a Load Balancer and potentially Cert-Manager for TLS.
-    *   **AWS ECS/Fargate:** Define an `ECS Task Definition` referencing your Docker image and environment variables. Create or update an `ECS Service` to run and maintain the desired number of tasks. Use an `Application Load Balancer (ALB)` for external access.
-    *   **Other PaaS (e.g., Heroku, Render):** Follow their specific deployment instructions, providing your Docker image or buildpack settings and environment variables.
-
-6.  **Monitoring & Logging:**
-    *   Integrate with a centralized logging solution (e.g., ELK Stack, Splunk, Datadog) to collect logs from your application instances.
-    *   Set up monitoring tools (e.g., Prometheus/Grafana, Datadog, New Relic) to track application metrics (CPU, memory, request rates, error rates, cache hit ratios from Actuator endpoints).
-    *   Configure alerts for critical issues.
-
-7.  **Security Best Practices:**
-    *   **TLS/SSL:** Always use HTTPS in production. Configure your load balancer or application server for TLS termination.
-    *   **Secrets Management:** Never hardcode secrets. Use environment variables, secret management services (e.g., AWS Secrets Manager, Vault), or Kubernetes Secrets.
-    *   **Least Privilege:** Grant the application only the necessary permissions to access databases and other resources.
-    *   **Vulnerability Scanning:** Regularly scan your Docker images and dependencies for known vulnerabilities.
-    *   **Backup & Recovery:** Implement a robust database backup strategy and test recovery procedures.
-
-## 10. Technologies Used
-
-*   **Backend:** Java 17, Spring Boot 3.2.5
-*   **Web Framework:** Spring Web
-*   **ORM:** Spring Data JPA, Hibernate
-*   **Database:** PostgreSQL
-*   **Database Migrations:** Flyway
-*   **Authentication/Authorization:** Spring Security, JWT (jjwt)
-*   **API Documentation:** Springdoc OpenAPI (Swagger UI)
-*   **Dependency Management:** Maven
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo
-*   **Caching:** Spring Cache, Caffeine
-*   **Rate Limiting:** Google Guava RateLimiter
-*   **Logging:** SLF4J, Logback
-*   **Monitoring:** Spring Boot Actuator
-*   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** GitHub Actions
-*   **Code Quality:** Lombok
-
-## 11. Contributing
-
-Feel free to fork the repository, open issues, and submit pull requests.
-
-## 12. License
-
-This project is open-source and available under the [MIT License](LICENSE).
+This project is licensed under the ISC License.
 ```
+
+### `ARCHITECTURE.md`
