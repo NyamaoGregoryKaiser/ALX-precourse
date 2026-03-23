@@ -1,100 +1,92 @@
+```yaml
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mobile-backend-app
-    ports:
-      - "3000:3000"
-    environment:
-      # Inject environment variables from .env file directly into the container
-      # Ensure DATABASE_URL, JWT_SECRET etc., are defined in your local .env file
-      - DATABASE_URL=${DATABASE_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_ACCESS_EXPIRATION_MINUTES=${JWT_ACCESS_EXPIRATION_MINUTES}
-      - JWT_REFRESH_EXPIRATION_DAYS=${JWT_REFRESH_EXPIRATION_DAYS}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD} # If your Redis has a password
-      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
-      - NODE_ENV=development # Or 'production' for production use
-    depends_on:
-      - db
-      - redis
-    volumes:
-      - .:/app # Mount the current directory into the container
-      - /app/node_modules # Exclude node_modules from host bind mount
-    command: npm run dev # Use 'npm start' for production
-    networks:
-      - backend-network
-
   db:
     image: postgres:14-alpine
-    container_name: mobile-backend-db
+    container_name: alx-payment-processor-db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user} # Default user 'user' if not specified
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Default password 'password'
-      POSTGRES_DB: ${POSTGRES_DB:-taskdb} # Default database 'taskdb'
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data # Persist database data
-    networks:
-      - backend-network
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:6-alpine
-    container_name: mobile-backend-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD} # Add password if defined
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD} # Pass password to Redis
+    container_name: alx-payment-processor-redis
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data # Persist redis data
-    networks:
-      - backend-network
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alx-payment-processor-backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      API_PORT: ${API_PORT}
+      API_PREFIX: ${API_PREFIX}
+      CLIENT_URL: ${CLIENT_URL}
+      DB_HOST: db # Use service name for inter-container communication
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REDIS_HOST: redis # Use service name
+      REDIS_PORT: ${REDIS_PORT}
+      LOG_LEVEL: ${LOG_LEVEL}
+    volumes:
+      - ./backend:/app # Mount for development, for production copy in Dockerfile
+      - /app/node_modules # Anonymous volume to prevent host node_modules overwriting container ones
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "npm run migration:run && npm run start" # Run migrations on startup
+    # Use 'command: npm run dev' for local development with nodemon and mounted volumes.
+    # For production, `npm run start` after migrations is appropriate.
+
+  # frontend: (Conceptual)
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: alx-payment-processor-frontend
+  #   ports:
+  #     - "3001:3000" # Frontend might run on 3000 inside container
+  #   environment:
+  #     NEXT_PUBLIC_API_BASE_URL: http://backend:3000/api/v1 # Internal backend URL
+  #     NODE_ENV: ${NODE_ENV}
+  #   depends_on:
+  #     - backend
 
 volumes:
-  db_data:
-  redis_data:
-
-networks:
-  backend-network:
-    driver: bridge
+  pgdata:
+  redisdata:
 ```
+**Usage:**
+1.  Create a `.env` file in the root of the project based on `backend/.env.example`.
+2.  `docker-compose up --build`
 
-#### `jest.config.js` (already included in `package.json`)
+### CI/CD Pipeline Configuration (GitHub Actions)
 
-```javascript
-// Located within package.json for simplicity and single-file setup
-// "jest": {
-//   "testEnvironment": "node",
-//   "setupFilesAfterEnv": [
-//     "./src/tests/setup.js"
-//   ],
-//   "collectCoverageFrom": [
-//     "src/**/*.js",
-//     "!src/app.js",
-//     "!src/server.js",
-//     "!src/config/**",
-//     "!src/routes/**",
-//     "!src/tests/**"
-//   ],
-//   "coverageThreshold": {
-//     "global": {
-//       "branches": 80,
-//       "functions": 80,
-//       "lines": 80,
-//       "statements": 80
-//     }
-//   }
-// }
-```
-
-#### CI/CD Pipeline (`.github/workflows/ci.yml`)
-
-```yaml
+This is a basic CI pipeline for the backend. A full CI/CD would include frontend builds, deployment stages, and more robust testing.

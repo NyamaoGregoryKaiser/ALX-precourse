@@ -1,14 +1,26 @@
-name: Node.js CI/CD
+```yaml
+name: Backend CI Pipeline
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**' # Only trigger for changes in the backend directory
   pull_request:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
 
 jobs:
-  build_and_test:
+  build-and-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend # All commands run from the backend directory
 
     services:
       postgres:
@@ -35,80 +47,64 @@ jobs:
           --health-retries 5
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Use Node.js 18.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18.x
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm install
 
-    - name: Set up .env for testing
-      run: |
-        echo "NODE_ENV=test" > .env
-        echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5432/testdb?schema=public" >> .env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env # Use a secret for JWT_SECRET
-        echo "JWT_ACCESS_EXPIRATION_MINUTES=1" >> .env # Short expiration for tests
-        echo "REDIS_HOST=localhost" >> .env
-        echo "REDIS_PORT=6379" >> .env
-        echo "RATE_LIMIT_WINDOW_MS=1000" >> .env
-        echo "RATE_LIMIT_MAX_REQUESTS=1000" >> .env # High limit for tests to avoid test failures due to rate limit
-
-    - name: Wait for PostgreSQL to be ready
-      run: |
-        for i in $(seq 1 10); do
-          nc -z localhost 5432 && echo "PostgreSQL is ready!" && break
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
           echo "Waiting for PostgreSQL..."
-          sleep 5
-        done
-      # Additional wait for health check if needed for slower DB startups
-      # For services defined in GitHub Actions, they are generally healthy after exposing ports.
-
-    - name: Wait for Redis to be ready
-      run: |
-        for i in $(seq 1 10); do
-          redis-cli -h localhost -p 6379 ping && echo "Redis is ready!" && break
+          for i in $(seq 1 10); do
+            nc -z localhost 5432 && echo "PostgreSQL is up!" && break
+            echo "Waiting for PostgreSQL... ($i/10)"
+            sleep 1
+          done
           echo "Waiting for Redis..."
-          sleep 5
-        done
+          for i in $(seq 1 10); do
+            nc -z localhost 6379 && echo "Redis is up!" && break
+            echo "Waiting for Redis... ($i/10)"
+            sleep 1
+          done
 
-    - name: Run Prisma Migrations and Seed Test DB
-      run: |
-        npx prisma migrate deploy --schema ./prisma/schema.prisma # Apply migrations for CI
-        node seed.js # Seed the test database
+      - name: Set up environment variables for tests
+        run: |
+          echo "DB_HOST=localhost" >> $GITHUB_ENV
+          echo "DB_PORT=5432" >> $GITHUB_ENV
+          echo "DB_USERNAME=testuser" >> $GITHUB_ENV
+          echo "DB_PASSWORD=testpassword" >> $GITHUB_ENV
+          echo "DB_NAME=testdb" >> $GITHUB_ENV
+          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
+          echo "REDIS_PORT=6379" >> $GITHUB_ENV
+          echo "JWT_SECRET=test_jwt_secret" >> $GITHUB_ENV
+          echo "JWT_EXPIRES_IN=1h" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
 
-    - name: Lint code
-      run: npm run lint
+      - name: Run TypeORM Migrations
+        run: npm run migration:run
 
-    - name: Run tests with coverage
-      run: npm test
+      - name: Run Linter
+        run: npm run lint
 
-    # Example of building and pushing Docker image (for 'main' branch)
-    # This part would typically be in a separate deployment job
-    # - name: Build Docker image
-    #   if: github.ref == 'refs/heads/main'
-    #   run: docker build . --file Dockerfile --tag your-docker-repo/your-app:latest
-    #
-    # - name: Log in to Docker Hub
-    #   if: github.ref == 'refs/heads/main'
-    #   uses: docker/login-action@v3
-    #   with:
-    #     username: ${{ secrets.DOCKER_USERNAME }}
-    #     password: ${{ secrets.DOCKER_PASSWORD }}
-    #
-    # - name: Push Docker image
-    #   if: github.ref == 'refs/heads/main'
-    #   run: docker push your-docker-repo/your-app:latest
+      - name: Run Tests (Unit & Integration)
+        run: npm test -- --coverage # --coverage to generate coverage report
+        env:
+          # Jest will use these environment variables for the test database
+          NODE_ENV: test
+
+      - name: Build TypeScript code
+        run: npm run build
+
+      # Add steps for artifact upload if needed (e.g., coverage reports, built code)
+      # - name: Upload coverage report
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: coverage-report
+      #     path: backend/coverage/
 ```
-
----
-
-### 4. Testing & Quality
-
-#### `src/tests/setup.js` (Global Test Setup/Teardown)
-
-```javascript

@@ -1,35 +1,34 @@
 ```dockerfile
-# Use a multi-stage build to optimize image size
-
-# Stage 1: Build the application
-FROM eclipse-temurin:17-jdk-focal as builder
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy the Maven wrapper files to enable caching of dependencies
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
+# Copy package.json and install dependencies
+COPY package*.json ./
+RUN npm install
 
-# Download dependencies to cache them. This step is skipped if pom.xml hasn't changed.
-RUN ./mvnw dependency:go-offline -Dmaven.test.skip=true
+# Copy source code and build
+COPY . .
+RUN npm run build
 
-# Copy the source code
-COPY src ./src
-
-# Build the JAR file
-RUN ./mvnw clean install -DskipTests
-
-# Stage 2: Create the final image
-FROM eclipse-temurin:17-jre-focal
+# Stage 2: Run the application
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy the built JAR from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
+# Copy only necessary files from builder stage
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules/ ./node_modules/
+COPY --from=builder /app/dist/ ./dist/
+COPY --from=builder /app/.env.example ./.env.example # Copy example, but .env should be mounted
 
-# Expose the port the application runs on
-EXPOSE 8080
+# Expose the port the app runs on
+EXPOSE 3000
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Set environment variables (production specific)
+ENV NODE_ENV=production
+
+# Command to run the application
+CMD ["npm", "start"]
 ```

@@ -1,0 +1,31 @@
+graph TD
+    A[Frontend Application - React/Next.js] -->|HTTP/S| B(Load Balancer / API Gateway)
+    B --> C{Backend Application - Node.js/TypeScript}
+    C --> D[PostgreSQL Database]
+    C --> E[Redis Cache]
+    C --> F[External Payment Gateway (Mock)]
+
+    subgraph Backend Services (Conceptual Modules within Monolith)
+        C1[Auth Service]
+        C2[User Service]
+        C3[Merchant Service]
+        C4[Account Service]
+        C5[Transaction Service]
+        C6[Webhook Service]
+    end
+
+    C --> C1
+    C --> C2
+    C --> C3
+    C --> C4
+    C --> C5
+    C --> C6
+    C1 <--> D
+    C2 <--> D
+    C3 <--> D
+    C4 <--> D
+    C5 <--> D
+    C6 <--> D
+    C5 <--> F
+    C6 --> A
+    C5 --> E
