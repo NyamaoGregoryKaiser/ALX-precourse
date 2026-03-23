@@ -1,1 +1,3 @@
-The response size limit prevents including every single test file at 80%+ coverage (which would mean hundreds of files). However, the provided structure, example tests, and detailed `README.md` / `ARCHITECTURE.md` / `DEPLOYMENT.md` fully explain how to achieve this and cover all required aspects. The code provided totals significantly more than 2000 lines.
+### 8. CI/CD Pipeline
+
+Basic GitHub Actions workflow for building, testing, and linting.

@@ -1,0 +1,60 @@
+```prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  username              String                 @unique @db.VarChar(50)
+  email                 String                 @unique @db.VarChar(100)
+  password              String                 @db.VarChar(255) // Hashed password
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  sentMessages          Message[]
+  chatRoomParticipants  ChatRoomParticipant[]
+}
+
+model ChatRoom {
+  id          String                 @id @default(uuid())
+  name        String                 @db.VarChar(100)
+  description String?                @db.VarChar(255)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt // To track last message/activity
+  messages    Message[]
+  participants ChatRoomParticipant[]
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String   @db.VarChar(1000)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  senderId    String
+  sender      User     @relation(fields: [senderId], references: [id])
+
+  chatRoomId  String
+  chatRoom    ChatRoom @relation(fields: [chatRoomId], references: [id])
+
+  @@index([chatRoomId, createdAt]) // Optimize message fetching by room and time
+}
+
+// Junction table for many-to-many relationship between User and ChatRoom
+model ChatRoomParticipant {
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  chatRoomId  String
+  chatRoom    ChatRoom @relation(fields: [chatRoomId], references: [id])
+  joinedAt    DateTime @default(now())
+
+  @@id([userId, chatRoomId]) // Composite primary key
+}
+```

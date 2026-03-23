@@ -1,30 +1,29 @@
 ```dockerfile
-# Use a Node.js base image to build the React app
-FROM node:18-alpine as build
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
 
-WORKDIR /app/frontend
+WORKDIR /app
 
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm install --frozen-lockfile
 
-RUN npm install
+COPY .env.example ./.env # Copy .env.example for build stage
 
-COPY . .
+COPY public ./public
+COPY src ./src
 
-# Build the React app for production
 RUN npm run build
 
-# Use Nginx to serve the React app
+# Stage 2: Serve the application with Nginx
 FROM nginx:alpine
 
-# Copy the built React app to Nginx's public directory
-COPY --from=build /app/frontend/build /usr/share/nginx/html
+# Copy the built React app from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy custom nginx configuration (optional)
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80
 EXPOSE 80
 
-# Command to start Nginx (default command for nginx:alpine)
 CMD ["nginx", "-g", "daemon off;"]
 ```

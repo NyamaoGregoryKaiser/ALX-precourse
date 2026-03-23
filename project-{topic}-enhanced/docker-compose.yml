@@ -2,55 +2,85 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:14-alpine
-    container_name: scraping_postgres
+  postgres:
+    image: postgres:15-alpine
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-scraping_db}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: chat_app
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-scraping_db}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d chat_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    container_name: scraping_backend
+    restart: always
+    env_file:
+      - ./backend/.env
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${PORT:-3000}
-      DB_HOST: db # Use the service name for inter-container communication
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      DB_NAME: ${DB_NAME:-scraping_db}
-      DB_SSL: ${DB_SSL:-false}
-      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
-      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-1h}
-      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-7d}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
-      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-3600}
+      DATABASE_URL: postgresql://user:password@postgres:5432/chat_app?schema=public
+      REDIS_URL: redis://redis:6379
+      # Other variables like JWT_SECRET, CORS_ORIGIN should be in .env
     ports:
-      - "3000:3000"
+      - "5000:5000"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-    # Uncomment to mount .env file for local development.
-    # For production, it's better to pass environment variables directly.
+      redis:
+        condition: service_healthy
     volumes:
-      - .:/app
-      - /app/node_modules # Prevents host node_modules from overriding container's
-    command: ["npm", "run", "dev"] # Use 'npm start' for production
+      - ./backend:/app # Mount for live reload in development if needed
+      - /app/node_modules # Exclude node_modules from host mount
+    # Command to run migrations and then start the app.
+    # In a production setup, migrations might be a separate job.
+    command: sh -c "npx prisma migrate deploy && npm run start"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./frontend/.env
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:5000/api
+      REACT_APP_WS_URL: http://localhost:5000
+      # Ensure these match the host-exposed ports if accessing from host browser directly.
+      # If using an Nginx reverse proxy, these might point to internal service names.
+    ports:
+      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app # Mount for live reload in development if needed
+      - /app/node_modules # Exclude node_modules from host mount
+      - /app/build # Exclude build output from host mount
+
 
 volumes:
   postgres_data:
+  redis_data:
 ```

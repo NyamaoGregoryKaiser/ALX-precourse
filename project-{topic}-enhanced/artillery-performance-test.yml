@@ -1,0 +1,95 @@
+```yaml
+# Performance test script for Artillery
+# To run: npx artillery run artillery-performance-test.yml
+
+config:
+  target: "http://localhost:5000" # Target the backend API
+  phases:
+    - duration: 60 # Total duration of the test in seconds
+      arrivalRate: 10 # Number of new users per second
+      rampTo: 50 # Ramp up to 50 users per second over the duration
+      name: "High Load Chat Session"
+  processor: "./artillery-processor.js" # Custom JS functions for login/token management
+
+scenarios:
+  - name: "User Registration and Login"
+    flow:
+      - post:
+          url: "/api/auth/register"
+          json:
+            username: "{{ $randomString(10) }}"
+            email: "{{ $randomEmail() }}"
+            password: "testpassword"
+          capture:
+            json: "$.data.token"
+            as: "authToken"
+            json: "$.data.user.id"
+            as: "userId"
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $randomEmail() }}" # This will fail for new users unless we reuse registered email. Better to register only once per scenario.
+            password: "testpassword"
+          capture:
+            json: "$.data.token"
+            as: "authToken"
+            json: "$.data.user.id"
+            as: "userId"
+
+  - name: "Authenticated Chat Room Operations"
+    flow:
+      - function: "generateUserAndToken" # Custom function to register/login a user once per virtual user
+      - post:
+          url: "/api/chats"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            name: "Room {{ $randomString(8) }}"
+            description: "A room for load testing"
+          capture:
+            json: "$.data.chatRoom.id"
+            as: "chatRoomId"
+      - post:
+          url: "/api/chats/join"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            chatRoomId: "{{ chatRoomId }}"
+      - loop:
+          - post:
+              url: "/api/chats/{{ chatRoomId }}/messages"
+              headers:
+                Authorization: "Bearer {{ authToken }}"
+              json:
+                content: "Hello from {{ userId }} in {{ chatRoomId }}! Message: {{ $randomString(20) }}"
+            think: 1 # Simulate user think time between messages (1 second)
+        count: 5 # Each user sends 5 messages
+
+  # Uncomment for WebSocket testing (requires a slightly different setup for Artillery with WS)
+  # - name: "Real-time Messaging via WebSocket"
+  #   flow:
+  #     - function: "generateUserAndToken"
+  #     - get:
+  #         url: "/api/chats" # Get available chat rooms
+  #         headers:
+  #           Authorization: "Bearer {{ authToken }}"
+  #         capture:
+  #           json: "$.data.chatRooms[0].id"
+  #           as: "firstChatRoomId"
+  #     - emit: # Socket.IO specific event
+  #         channel: "ws"
+  #         event: "joinRoom"
+  #         data: "{{ firstChatRoomId }}"
+  #     - loop:
+  #         - emit:
+  #             channel: "ws"
+  #             event: "chatMessage"
+  #             data:
+  #               chatRoomId: "{{ firstChatRoomId }}"
+  #               senderId: "{{ userId }}"
+  #               content: "WebSocket message from {{ userId }}! {{ $randomString(20) }}"
+  #           think: 0.5
+  #       count: 10
+  #     - disconnect:
+
+```

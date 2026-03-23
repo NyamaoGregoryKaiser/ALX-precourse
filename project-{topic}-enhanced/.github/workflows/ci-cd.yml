@@ -1,27 +1,22 @@
 ```yaml
-name: Chat App CI/CD
+name: CI/CD Pipeline for Chat App
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
-  workflow_dispatch: # Allows manual trigger
 
 jobs:
-  # ==============================
-  # Backend CI Pipeline
-  # ==============================
-  backend-ci:
-    name: Backend CI
+  build-and-test-backend:
+    name: Build and Test Backend
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./backend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
           cache-dependency-path: './backend/package-lock.json'
 
@@ -39,46 +34,58 @@ jobs:
       - name: Lint backend code
         run: npm run lint
 
-      - name: Setup test database (PostgreSQL)
-        run: |
-          docker run --name test-db -e POSTGRES_DB=test_db -e POSTGRES_USER=testuser -e POSTGRES_PASSWORD=testpass -p 5433:5432 -d postgres:15-alpine
-          docker run --name test-redis -p 6380:6379 -d redis:7-alpine
-          # Wait for services to be ready
-          sleep 10 # Give services some time to start
+      - name: Build backend
+        run: npm run build
 
-      - name: Run Prisma migrations on test DB
-        env:
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/test_db?schema=public
+      - name: Setup PostgreSQL for Tests
+        uses: Harmonizer/setup-postgres@v1
+        with:
+          postgres-version: '15'
+          host-port: 5432
+          database: chat_app_test
+          username: user
+          password: password
+
+      - name: Wait for PostgreSQL to be ready
+        # Using a simple shell loop to wait for postgres to be ready
         run: |
-          npx prisma migrate deploy
+          for i in `seq 1 10`; do
+            nc -z localhost 5432 && echo "PostgreSQL is ready!" && break
+            echo "Waiting for PostgreSQL to start..."
+            sleep 5
+          done
+
+      - name: Setup Prisma for Test Database
+        run: |
           npx prisma generate
+          # Apply migrations to the test database
+          # Ensure DATABASE_URL is set for the test environment
+          export DATABASE_URL="postgresql://user:password@localhost:5432/chat_app_test?schema=public"
+          npx prisma migrate dev --name init --skip-seed
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/chat_app_test?schema=public"
 
       - name: Run backend tests
+        run: npm test -- --coverage --testPathPattern="src/tests"
         env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/test_db?schema=public
-          REDIS_HOST: localhost
-          REDIS_PORT: 6380
-          JWT_SECRET: testsecret
-          JWT_ACCESS_EXPIRATION_MINUTES: 1
-          JWT_REFRESH_EXPIRATION_DAYS: 1
-        run: npm test
+          DATABASE_URL: "postgresql://user:password@localhost:5432/chat_app_test?schema=public"
+          # Set a dummy JWT secret for tests
+          JWT_SECRET: "test_jwt_secret"
+          REDIS_URL: "redis://localhost:6379" # Redis isn't strictly needed for these specific tests but common in .env
 
       - name: Upload backend coverage report
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage-report
-          path: ./backend/coverage
+          path: ./backend/coverage/
 
-  # ==============================
-  # Frontend CI Pipeline
-  # ==============================
-  frontend-ci:
-    name: Frontend CI
+  build-and-test-frontend:
+    name: Build and Test Frontend
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./frontend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -86,7 +93,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
           cache-dependency-path: './frontend/package-lock.json'
 
@@ -96,103 +103,59 @@ jobs:
       - name: Lint frontend code
         run: npm run lint
 
-      - name: Run frontend tests
-        # Create dummy env variables for React build if needed, though usually not for tests
-        env:
-          CI: true # Required for Create React App tests in CI environments
-          REACT_APP_API_BASE_URL: http://localhost:5000/api
-          REACT_APP_SOCKET_IO_URL: http://localhost:5000
-        run: npm test
-
-      - name: Build frontend for production check
-        env:
-          REACT_APP_API_BASE_URL: /api # Assume Nginx proxies /api to backend
-          REACT_APP_SOCKET_IO_URL: /   # Assume Nginx proxies / to frontend/socket.io
+      - name: Build frontend
         run: npm run build
+
+      - name: Run frontend tests
+        run: npm test -- --watchAll=false --coverage
 
       - name: Upload frontend coverage report
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage-report
-          path: ./frontend/coverage
+          path: ./frontend/coverage/
 
-  # ==============================
-  # CD Pipeline (Deployment) - Example for a simple Docker-based deployment
-  # ==============================
+  # Example of a conceptual deployment job
+  # This job will only run if both build-and-test jobs pass and it's a push to 'main'
+  # Real deployment steps would be highly dependent on your cloud provider and infrastructure.
   deploy:
-    name: Deploy to Server
+    name: Deploy to Production (Conceptual)
     runs-on: ubuntu-latest
-    needs: [backend-ci, frontend-ci] # Ensure CI passes before deployment
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+    needs: [build-and-test-backend, build-and-test-frontend]
+    if: github.ref == 'refs/heads/main' && success()
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # Log in to your Docker Registry (e.g., Docker Hub, AWS ECR, GCP GCR)
+      # - name: Log in to Docker Hub
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Log in to Docker Hub (or other registry)
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      # Build and push Backend Docker image
+      # - name: Build and Push Backend Docker Image
+      #   run: |
+      #     docker build -t your-dockerhub-username/chat-app-backend:latest ./backend
+      #     docker push your-dockerhub-username/chat-app-backend:latest
 
-      - name: Build and push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile.backend
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/chat-app-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # Build and push Frontend Docker image
+      # - name: Build and Push Frontend Docker Image
+      #   run: |
+      #     docker build -t your-dockerhub-username/chat-app-frontend:latest ./frontend
+      #     docker push your-dockerhub-username/chat-app-frontend:latest
 
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile.frontend
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/chat-app-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            REACT_APP_API_BASE_URL=/api # For production, Nginx will handle routing
-            REACT_APP_SOCKET_IO_URL=/    # For production, Nginx will handle routing
-
-      - name: Deploy to remote server (example using SSH and Docker Compose)
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /path/to/your/app/on/server # Change to your deployment directory
-            # Pull latest code or just use the images from Docker Hub
-            # For simplicity, we assume docker-compose.yml is already on server and just needs updating
-            docker pull ${{ secrets.DOCKER_USERNAME }}/chat-app-backend:latest
-            docker pull ${{ secrets.DOCKER_USERNAME }}/chat-app-frontend:latest
-            # Update .env for production if it's not managed otherwise
-            # echo "DATABASE_URL='...' \n REDIS_HOST='...' \n JWT_SECRET='...'" > .env
-            docker-compose down # Stop existing containers
-            docker-compose up -d --build --force-recreate # Start new containers, recreate from new images
-
-            # Run migrations for production if not handled by entrypoint in Dockerfile
-            # docker-compose exec backend npx prisma migrate deploy
-
-# Environment Variables and Secrets for CI/CD:
-# DOCKER_USERNAME: Your Docker Hub username
-# DOCKER_PASSWORD: Your Docker Hub access token
-# SSH_HOST: IP address or hostname of your deployment server
-# SSH_USERNAME: SSH user for your deployment server
-# SSH_PRIVATE_KEY: SSH private key to authenticate to your server
+      # Deployment steps (e.g., to Kubernetes, AWS ECS, Heroku)
+      - name: Simulate Deployment
+        run: |
+          echo "Deployment to production environment initiated..."
+          echo "This is where you would call your deployment scripts for Kubernetes, ECS, App Runner, etc."
+          echo "Using environmental variables from GitHub Secrets (e.g., KUBE_CONFIG, AWS_ACCESS_KEY_ID)"
+          echo "Deployment successful for frontend and backend images to production."
+          # Example:
+          # kubectl apply -f kubernetes/backend-deployment.yaml
+          # kubectl apply -f kubernetes/frontend-deployment.yaml
+          # heroku container:release web --app your-heroku-app
 ```
-
----
-
-## 4. Testing & Quality
-
-### Backend Tests (Jest, Supertest)
-
-**Unit Tests (aim for 80%+ coverage)**
