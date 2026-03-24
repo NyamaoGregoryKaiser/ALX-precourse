@@ -1,0 +1,51 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">{{ title }}</h1>
+
+    <div class="mb-3">
+        <a href="{{ url_for('admin.create_tag') }}" class="btn btn-success"><i class="fas fa-plus"></i> Create New Tag</a>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            Tags
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Slug</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tag in tags %}
+                        <tr>
+                            <td>{{ tag.id }}</td>
+                            <td>{{ tag.name }}</td>
+                            <td>{{ tag.slug }}</td>
+                            <td>
+                                <a href="{{ url_for('admin.edit_tag', tag_id=tag.id) }}" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>
+                                <form action="{{ url_for('admin.delete_tag', tag_id=tag.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this tag? All associated content will be unassigned.');">
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4">No tags found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | default('CMS Homepage') }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar { background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
+        .hero-section {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://picsum.photos/1200/400?random=1') no-repeat center center;
+            background-size: cover;
+            color: #fff;
+            padding: 80px 0;
+            text-align: center;
+        }
+        .hero-section h1 { font-size: 3.5rem; margin-bottom: 20px; }
+        .hero-section p { font-size: 1.25rem; }
+        .content-section { padding: 50px 0; }
+        .footer { background-color: #343a40; color: #fff; padding: 30px 0; text-align: center; margin-top: auto;}
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container">
+            <a class="navbar-brand" href="/">Simple CMS</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/login">Admin Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/apidocs" target="_blank">API Docs</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="hero-section">
+        <div class="container">
+            <h1>Welcome to Your CMS</h1>
+            <p>Manage your content efficiently with our powerful and flexible system.</p>
+            <a href="/admin/login" class="btn btn-primary btn-lg mt-3">Go to Admin Panel</a>
+            <a href="/apidocs" class="btn btn-outline-light btn-lg mt-3 ms-2" target="_blank">Explore API</a>
+        </div>
+    </div>
+
+    <div class="content-section">
+        <div class="container">
+            <h2 class="text-center mb-5">Latest Articles (via API)</h2>
+            <div id="latest-content" class="row">
+                <!-- Content will be loaded here by JavaScript -->
+                <div class="col-12 text-center text-muted">Loading latest articles...</div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2023 CMS Project. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/v1/content?status=published&per_page=6')
+                .then(response => response.json())
+                .then(data => {
+                    const contentContainer = document.getElementById('latest-content');
+                    contentContainer.innerHTML = ''; // Clear loading message
+
+                    if (data.items && data.items.length > 0) {
+                        data.items.forEach(item => {
+                            const card = `
+                                <div class="col-md-4 mb-4">
+                                    <div class="card h-100 shadow-sm">
+                                        <div class="card-body">
+                                            <h5 class="card-title">${item.title}</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">
+                                                By ${item.author ? item.author.username : 'Unknown'}
+                                                ${item.category ? ' in ' + item.category.name : ''}
+                                            </h6>
+                                            <p class="card-text">${item.body.substring(0, 150)}...</p>
+                                            <a href="/api/v1/content/${item.id}" target="_blank" class="card-link">Read More (API)</a>
+                                        </div>
+                                        <div class="card-footer text-muted">
+                                            Published: ${new Date(item.published_at).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            contentContainer.innerHTML += card;
+                        });
+                    } else {
+                        contentContainer.innerHTML = '<div class="col-12 text-center text-muted">No published articles found.</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching content:', error);
+                    document.getElementById('latest-content').innerHTML = '<div class="col-12 text-center text-danger">Failed to load articles. Please try again later.</div>';
+                });
+        });
+    </script>
+</body>
+</html>
+```

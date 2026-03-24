@@ -1,0 +1,95 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Admin Dashboard</h1>
+
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-users"></i> Total Users</h5>
+                    <p class="card-text fs-2">{{ total_users }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-success h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-file-alt"></i> Total Content</h5>
+                    <p class="card-text fs-2">{{ total_content }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-info h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-check-circle"></i> Published Content</h5>
+                    <p class="card-text fs-2">{{ published_content }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-warning h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-tags"></i> Categories</h5>
+                    <p class="card-text fs-2">{{ total_categories }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-white bg-danger h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-hashtag"></i> Tags</h5>
+                    <p class="card-text fs-2">{{ total_tags }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if admin_jwt_token %}
+    <div class="card mt-4">
+        <div class="card-header">
+            <h4>API Access Token (for testing API endpoints)</h4>
+        </div>
+        <div class="card-body">
+            <p class="card-text text-muted">
+                Use this token in the `Authorization: Bearer &lt;token&gt;` header for API requests.
+                This token expires, refresh if needed.
+            </p>
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" value="{{ admin_jwt_token }}" readonly id="jwtTokenField">
+                <button class="btn btn-outline-secondary" type="button" id="copyJwtToken">Copy</button>
+            </div>
+            <p>Access the <a href="{{ url_for('flasgger.apidocs') }}" target="_blank">API Documentation (Swagger UI)</a></p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h4>Quick Links</h4>
+        </div>
+        <div class="card-body">
+            <a href="{{ url_for('admin.content_list') }}" class="btn btn-outline-primary me-2 mb-2"><i class="fas fa-list"></i> View All Content</a>
+            <a href="{{ url_for('admin.create_content') }}" class="btn btn-outline-success me-2 mb-2"><i class="fas fa-plus"></i> Add New Content</a>
+            <a href="{{ url_for('admin.category_list') }}" class="btn btn-outline-secondary me-2 mb-2"><i class="fas fa-tags"></i> Manage Categories</a>
+            <a href="{{ url_for('admin.tag_list') }}" class="btn btn-outline-info me-2 mb-2"><i class="fas fa-hashtag"></i> Manage Tags</a>
+            {% if current_admin_user and current_admin_user.role == 'admin' %}
+            <a href="{{ url_for('admin.user_list') }}" class="btn btn-outline-dark me-2 mb-2"><i class="fas fa-users"></i> Manage Users</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('copyJwtToken').addEventListener('click', function() {
+        var jwtTokenField = document.getElementById('jwtTokenField');
+        jwtTokenField.select();
+        jwtTokenField.setSelectionRange(0, 99999); // For mobile devices
+        document.execCommand('copy');
+        alert('JWT Token copied to clipboard!');
+    });
+</script>
+{% endblock %}
+```

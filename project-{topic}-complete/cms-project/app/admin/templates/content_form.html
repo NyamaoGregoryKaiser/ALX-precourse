@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">{{ title }}</h1>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.create_content') if not content else url_for('admin.edit_content', content_id=content.id) }}">
+                <div class="mb-3">
+                    <label for="title" class="form-label">Title</label>
+                    <input type="text" class="form-control" id="title" name="title" value="{{ content.title if content else '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="body" class="form-label">Body</label>
+                    <textarea class="form-control" id="body" name="body" rows="10" required>{{ content.body if content else '' }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="category_id" class="form-label">Category</label>
+                    <select class="form-select" id="category_id" name="category_id">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                            <option value="{{ category.id }}" {% if content and content.category and content.category.id == category.id %}selected{% endif %}>{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="tags" class="form-label">Tags</label>
+                    <select class="form-select" id="tags" name="tags" multiple>
+                        {% for tag in tags %}
+                            <option value="{{ tag.id }}" {% if content and tag.id in selected_tags %}selected{% endif %}>{{ tag.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Hold Ctrl (Windows) / Command (Mac) to select multiple tags.</div>
+                </div>
+                <div class="mb-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="draft" {% if content and content.status == 'draft' %}selected{% endif %}>Draft</option>
+                        <option value="published" {% if content and content.status == 'published' %}selected{% endif %}>Published</option>
+                        <option value="archived" {% if content and content.status == 'archived' %}selected{% endif %}>Archived</option>
+                    </select>
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="is_featured" name="is_featured" {% if content and content.is_featured %}checked{% endif %}>
+                    <label class="form-check-label" for="is_featured">Is Featured?</label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">{{ 'Update Content' if content else 'Create Content' }}</button>
+                <a href="{{ url_for('admin.content_list') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```

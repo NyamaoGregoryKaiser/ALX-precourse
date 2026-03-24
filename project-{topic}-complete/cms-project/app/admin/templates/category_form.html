@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">{{ title }}</h1>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.create_category') if not category else url_for('admin.edit_category', category_id=category.id) }}">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Category Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ category.name if category else '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description (Optional)</label>
+                    <textarea class="form-control" id="description" name="description" rows="3">{{ category.description if category else '' }}</textarea>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">{{ 'Update Category' if category else 'Create Category' }}</button>
+                <a href="{{ url_for('admin.category_list') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```

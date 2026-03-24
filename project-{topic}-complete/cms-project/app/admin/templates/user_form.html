@@ -1,0 +1,45 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">{{ title }}</h1>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.edit_user', user_id=user.id) }}">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">New Password (leave blank to keep current)</label>
+                    <input type="password" class="form-control" id="password" name="password">
+                </div>
+                <div class="mb-3">
+                    <label for="role" class="form-label">Role</label>
+                    <select class="form-select" id="role" name="role" {% if user.id == current_admin_user.id %}disabled{% endif %}> {# Disable self-role change #}
+                        {% for r in roles %}
+                            <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r | capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if user.id == current_admin_user.id %}
+                        <div class="form-text text-muted">You cannot change your own role.</div>
+                    {% endif %}
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active">Is Active?</label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Update User</button>
+                <a href="{{ url_for('admin.user_list') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```
