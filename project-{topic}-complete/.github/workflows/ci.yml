@@ -1,0 +1,68 @@
+```yaml
+name: C++ Task Management API CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        ./vcpkg/bootstrap-vcpkg.sh
+        ./vcpkg/vcpkg integrate install
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    - name: Build Application and Tests
+      run: cmake --build build
+
+    - name: Set up Database for Tests
+      run: |
+        mkdir -p build/database
+        sqlite3 build/database/test_db.sqlite < migrations/001_initial_schema.sql
+        sqlite3 build/database/test_db.sqlite < migrations/seed_data.sql
+      working-directory: ${{ github.workspace }}
+
+    - name: Run Tests
+      run: ./build/task_management_api_tests
+      working-directory: ${{ github.workspace }}
+
+  docker_build_and_push:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/main' # Only run on pushes to main branch
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }} # e.g., your-org/your-repo-name
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: docker build . --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Push Docker image
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+```

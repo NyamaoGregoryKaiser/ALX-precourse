@@ -1,0 +1,15 @@
+```json
+{
+  "name": "task-management-api",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "crow",
+    "nlohmann-json",
+    "sqlite3",
+    "jwt-cpp",
+    "spdlog",
+    "cryptopp",
+    "googletest"
+  ]
+}
+```
