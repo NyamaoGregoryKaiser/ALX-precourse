@@ -1,92 +1,44 @@
-```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:14-alpine
-    container_name: alx-payment-processor-db
+  app:
+    build: .
+    ports:
+      - "8080:8080"
     environment:
+      # These variables are read by Spring Boot (application.yml)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/productdb
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      # Set Spring profile to 'prod' or 'dev' if needed
+      # SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      - db
+    # Health check for the application to ensure it's ready
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432"
+      - "5432:5432" # Expose DB port for local access/tools
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - product_db_data:/var/lib/postgresql/data # Persistent data volume
+      # Optional: Copy custom init scripts if you need more elaborate setup
+      # - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:6-alpine
-    container_name: alx-payment-processor-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: alx-payment-processor-backend
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      API_PORT: ${API_PORT}
-      API_PREFIX: ${API_PREFIX}
-      CLIENT_URL: ${CLIENT_URL}
-      DB_HOST: db # Use service name for inter-container communication
-      DB_PORT: ${DB_PORT}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      REDIS_HOST: redis # Use service name
-      REDIS_PORT: ${REDIS_PORT}
-      LOG_LEVEL: ${LOG_LEVEL}
-    volumes:
-      - ./backend:/app # Mount for development, for production copy in Dockerfile
-      - /app/node_modules # Anonymous volume to prevent host node_modules overwriting container ones
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "npm run migration:run && npm run start" # Run migrations on startup
-    # Use 'command: npm run dev' for local development with nodemon and mounted volumes.
-    # For production, `npm run start` after migrations is appropriate.
-
-  # frontend: (Conceptual)
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   container_name: alx-payment-processor-frontend
-  #   ports:
-  #     - "3001:3000" # Frontend might run on 3000 inside container
-  #   environment:
-  #     NEXT_PUBLIC_API_BASE_URL: http://backend:3000/api/v1 # Internal backend URL
-  #     NODE_ENV: ${NODE_ENV}
-  #   depends_on:
-  #     - backend
 
 volumes:
-  pgdata:
-  redisdata:
-```
-**Usage:**
-1.  Create a `.env` file in the root of the project based on `backend/.env.example`.
-2.  `docker-compose up --build`
-
-### CI/CD Pipeline Configuration (GitHub Actions)
-
-This is a basic CI pipeline for the backend. A full CI/CD would include frontend builds, deployment stages, and more robust testing.
+  product_db_data: # Define named volume for database persistence

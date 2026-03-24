@@ -1,34 +1,38 @@
-# Use a specific version of Node.js for stability
-FROM node:18-alpine
+# Use a lighter OpenJDK image for Java 17
+FROM openjdk:17-jdk-slim as build
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
-# This means npm install won't run again if only source code changes
-COPY package*.json ./
+# Copy the Maven wrapper files to enable running mvnw inside the container
+COPY mvnw .
+COPY .mvn .mvn
 
-# Install dependencies. Use --omit=dev in production to exclude devDependencies.
-RUN npm install --omit=dev
+# Copy the pom.xml file to download dependencies first
+COPY pom.xml .
 
-# Copy the rest of the application code
-COPY . .
+# Download project dependencies. This step is cached as long as pom.xml doesn't change.
+RUN ./mvnw dependency:go-offline -B
 
-# Generate Prisma Client during the build process
-# This is crucial for the application to interact with the database
-RUN npx prisma generate
+# Copy the entire source code
+COPY src src
 
-# Expose the port the app runs on
-EXPOSE 3000
+# Build the application
+# Skip tests during Docker build if they are run in CI separately to speed up image creation
+RUN ./mvnw install -DskipTests
 
-# Set environment variables for production
-ENV NODE_ENV=production
+# Use a smaller base image for the final runtime
+FROM openjdk:17-jre-slim
 
-# Command to run the application
-# Use 'npm start' which runs 'node src/server.js'
-CMD [ "npm", "start" ]
-```
+# Set working directory
+WORKDIR /app
 
-#### `docker-compose.yml`
+# Copy the built JAR from the build stage
+COPY --from=build /app/target/*.jar app.jar
 
-```yaml
+# Expose the port the application runs on
+EXPOSE 8080
+
+# Run the application
+# Pass Spring Boot active profile or other environment variables if needed
+ENTRYPOINT ["java", "-jar", "app.jar"]

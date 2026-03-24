@@ -1,367 +1,528 @@
-```javascript
-const API_BASE_URL = '/api/v1';
-const WS_BASE_URL = 'http://localhost:8080/ws/chat'; // Use full URL for SockJS
-let stompClient = null;
-let currentRoomId = null;
-let currentUser = null; // Store user details after login
+const app = (function() {
+    const API_BASE_URL = '/api';
+    let authToken = localStorage.getItem('jwtToken') || null;
+    let currentUser = localStorage.getItem('username') || null;
+    let isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-// --- Elements ---
-const loginForm = document.getElementById('loginForm');
-const registerForm = document.getElementById('registerForm');
-const loginMessage = document.getElementById('loginMessage');
-const registerMessage = document.getElementById('registerMessage');
+    const elements = {
+        authStatus: document.getElementById('authStatus'),
+        loginForm: document.getElementById('loginForm'),
+        registerForm: document.getElementById('registerForm'),
+        loggedInPanel: document.getElementById('loggedInPanel'),
+        currentUsername: document.getElementById('currentUsername'),
+        appSections: document.getElementById('appSections'),
 
-const chatPage = document.getElementById('chat-page');
-const welcomeUser = document.getElementById('welcomeUser');
-const logoutButton = document.getElementById('logoutButton');
-const roomsList = document.getElementById('rooms');
-const createRoomForm = document.getElementById('createRoomForm');
-const newRoomNameInput = document.getElementById('newRoomName');
-const newRoomTypeSelect = document.getElementById('newRoomType');
-const currentRoomName = document.getElementById('currentRoomName');
-const messageArea = document.getElementById('messageArea');
-const messageForm = document.getElementById('messageForm');
-const messageInput = document.getElementById('messageInput');
-const sendMessageButton = messageForm.querySelector('button[type="submit"]');
+        loginUsername: document.getElementById('loginUsername'),
+        loginPassword: document.getElementById('loginPassword'),
+        registerUsername: document.getElementById('registerUsername'),
+        registerEmail: document.getElementById('registerEmail'),
+        registerPassword: document.getElementById('registerPassword'),
 
-// --- Utility Functions ---
-function showMessage(element, msg, isSuccess = false) {
-    element.textContent = msg;
-    element.className = 'message ' + (isSuccess ? 'success' : 'error');
-    setTimeout(() => { element.textContent = ''; element.className = 'message'; }, 5000);
-}
+        categoryMessage: document.getElementById('categoryMessage'),
+        categoryId: document.getElementById('categoryId'),
+        categoryName: document.getElementById('categoryName'),
+        categoryDescription: document.getElementById('categoryDescription'),
+        categoryTableBody: document.querySelector('#categoryTable tbody'),
+        editCategoryTitle: document.getElementById('editCategoryTitle'),
+        editCategoryId: document.getElementById('editCategoryId'),
+        cancelEditCategoryBtn: document.getElementById('cancelEditCategoryBtn'),
+        addCategoryForm: document.getElementById('addCategoryForm'),
 
-function getJwtToken() {
-    return localStorage.getItem('jwtToken');
-}
+        productMessage: document.getElementById('productMessage'),
+        productId: document.getElementById('productId'),
+        productName: document.getElementById('productName'),
+        productDescription: document.getElementById('productDescription'),
+        productPrice: document.getElementById('productPrice'),
+        productStockQuantity: document.getElementById('productStockQuantity'),
+        productCategorySelect: document.getElementById('productCategory'),
+        productTableBody: document.querySelector('#productTable tbody'),
+        editProductTitle: document.getElementById('editProductTitle'),
+        editProductId: document.getElementById('editProductId'),
+        cancelEditProductBtn: document.getElementById('cancelEditProductBtn'),
+        addProductForm: document.getElementById('addProductForm'),
+        productSearch: document.getElementById('productSearch')
+    };
 
-function setJwtToken(token) {
-    localStorage.setItem('jwtToken', token);
-}
-
-function removeJwtToken() {
-    localStorage.removeItem('jwtToken');
-}
-
-function goToChatPage() {
-    window.location.href = 'chat.html';
-}
-
-function goToLoginPage() {
-    window.location.href = 'index.html';
-}
-
-// --- Auth Handling ---
-if (window.location.pathname.endsWith('index.html') || window.location.pathname === '/') {
-    // On login/register page
-    if (getJwtToken()) {
-        // If token exists, try to go to chat page
-        fetchCurrentUser().then(user => {
-            if (user) goToChatPage();
-        }).catch(() => {
-            removeJwtToken(); // Token might be invalid
-        });
+    /**
+     * Helper function to display messages.
+     * @param {HTMLElement} element - The element to display the message in.
+     * @param {string} message - The message text.
+     * @param {boolean} isError - True if it's an error message, false for success.
+     */
+    function displayMessage(element, message, isError) {
+        element.textContent = message;
+        element.className = `message ${isError ? 'error' : 'success'}`;
+        element.classList.remove('hidden');
+        setTimeout(() => element.classList.add('hidden'), 5000);
     }
 
-    loginForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const usernameOrEmail = loginUsernameEmail.value;
-        const password = loginPassword.value;
+    /**
+     * Updates the UI based on authentication status.
+     */
+    function updateAuthUI() {
+        if (authToken && currentUser) {
+            elements.authStatus.textContent = `Logged in as: ${currentUser} (Admin: ${isAdmin})`;
+            elements.loginForm.classList.add('hidden');
+            elements.registerForm.classList.add('hidden');
+            elements.loggedInPanel.classList.remove('hidden');
+            elements.currentUsername.textContent = currentUser;
+            elements.appSections.classList.remove('hidden');
+            loadAllData();
+        } else {
+            elements.authStatus.textContent = 'Not logged in.';
+            elements.loginForm.classList.remove('hidden');
+            elements.registerForm.classList.remove('hidden');
+            elements.loggedInPanel.classList.add('hidden');
+            elements.appSections.classList.add('hidden');
+        }
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ usernameOrEmail, password })
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                setJwtToken(data.token);
-                showMessage(loginMessage, 'Login successful!', true);
-                setTimeout(goToChatPage, 1000);
+        // Enable/disable admin sections
+        const adminButtons = document.querySelectorAll('.category-section button, .product-section button, [id$="Form"] input, [id$="Form"] select');
+        adminButtons.forEach(btn => {
+            // Only disable if not admin AND it's a create/update/delete action, not 'load' or 'search'
+            if (!isAdmin && !(btn.textContent.includes('List') || btn.textContent.includes('Search') || btn.textContent.includes('Clear'))) {
+                btn.disabled = true;
             } else {
-                showMessage(loginMessage, data.message || 'Login failed.');
+                btn.disabled = false;
             }
-        } catch (error) {
-            console.error('Login error:', error);
-            showMessage(loginMessage, 'Network error or server unavailable.');
-        }
-    });
-
-    registerForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const username = registerUsername.value;
-        const email = registerEmail.value;
-        const password = registerPassword.value;
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, email, password })
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                showMessage(registerMessage, data || 'Registration successful!', true);
-                registerForm.reset();
-            } else {
-                showMessage(registerMessage, data.message || 'Registration failed.');
-            }
-        } catch (error) {
-            console.error('Register error:', error);
-            showMessage(registerMessage, 'Network error or server unavailable.');
-        }
-    });
-} else if (window.location.pathname.endsWith('chat.html')) {
-    // On chat page
-    if (!getJwtToken()) {
-        goToLoginPage(); // Redirect if no token
-    } else {
-        initChatPage();
-    }
-}
-
-async function fetchCurrentUser() {
-    const token = getJwtToken();
-    if (!token) return null;
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/users/me`, { // Assuming /users/me endpoint returns current user details
-            headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (response.ok) {
-            const user = await response.json();
-            currentUser = user;
-            return user;
-        } else if (response.status === 401 || response.status === 403) {
-            // Token expired or invalid
-            removeJwtToken();
-            goToLoginPage();
-        }
-    } catch (error) {
-        console.error('Error fetching current user:', error);
-        removeJwtToken();
-        goToLoginPage();
-    }
-    return null;
-}
 
-logoutButton.addEventListener('click', () => {
-    disconnectWebSocket();
-    removeJwtToken();
-    goToLoginPage();
-});
-
-// --- Chat Page Initialization ---
-async function initChatPage() {
-    currentUser = await fetchCurrentUser(); // Ensure currentUser is set
-    if (!currentUser) return; // Should have redirected by now if not logged in
-
-    welcomeUser.textContent = `Welcome, ${currentUser.username}!`;
-    chatPage.classList.remove('hidden');
-
-    await fetchAndDisplayRooms();
-    connectWebSocket();
-
-    createRoomForm.addEventListener('submit', handleCreateRoom);
-    messageForm.addEventListener('submit', handleSendMessage);
-}
-
-// --- Room Management ---
-async function fetchAndDisplayRooms() {
-    const token = getJwtToken();
-    try {
-        const response = await fetch(`${API_BASE_URL}/rooms/user/${currentUser.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-            const rooms = await response.json();
-            roomsList.innerHTML = '';
-            rooms.forEach(room => {
-                const li = document.createElement('li');
-                li.textContent = room.name;
-                li.dataset.roomId = room.id;
-                li.addEventListener('click', () => selectRoom(room.id, room.name));
-                roomsList.appendChild(li);
-            });
+        // Hide add/edit forms for non-admins
+        if (!isAdmin) {
+            elements.addCategoryForm.classList.add('hidden');
+            elements.addProductForm.classList.add('hidden');
         } else {
-            console.error('Failed to fetch rooms:', await response.text());
+            elements.addCategoryForm.classList.remove('hidden');
+            elements.addProductForm.classList.remove('hidden');
         }
-    } catch (error) {
-        console.error('Error fetching rooms:', error);
-    }
-}
-
-async function handleCreateRoom(event) {
-    event.preventDefault();
-    const roomName = newRoomNameInput.value;
-    const roomType = newRoomTypeSelect.value;
-    const token = getJwtToken();
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/rooms`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ name: roomName, type: roomType })
-        });
-        if (response.ok) {
-            newRoomNameInput.value = '';
-            await fetchAndDisplayRooms(); // Refresh room list
-            const newRoom = await response.json();
-            selectRoom(newRoom.id, newRoom.name); // Automatically join/select new room
-        } else {
-            alert('Failed to create room: ' + (await response.json()).message);
-        }
-    } catch (error) {
-        console.error('Error creating room:', error);
-        alert('Error creating room.');
-    }
-}
-
-async function selectRoom(roomId, roomName) {
-    if (currentRoomId && stompClient && stompClient.connected) {
-        // Unsubscribe from previous room if any
-        stompClient.unsubscribe(`/topic/rooms/${currentRoomId}`);
-        console.log(`Unsubscribed from /topic/rooms/${currentRoomId}`);
     }
 
-    currentRoomId = roomId;
-    currentRoomName.textContent = `Room: ${roomName}`;
-    messageArea.innerHTML = ''; // Clear previous messages
-    messageInput.disabled = false;
-    sendMessageButton.disabled = false;
-
-    // Highlight selected room
-    document.querySelectorAll('.room-list li').forEach(li => {
-        li.classList.remove('active');
-        if (li.dataset.roomId == roomId) {
-            li.classList.add('active');
-        }
-    });
-
-    await fetchAndDisplayMessages(roomId);
-
-    // Subscribe to new room
-    if (stompClient && stompClient.connected) {
-        stompClient.subscribe(`/topic/rooms/${currentRoomId}`, onMessageReceived, { 'Authorization': `Bearer ${getJwtToken()}` });
-        console.log(`Subscribed to /topic/rooms/${currentRoomId}`);
-    } else {
-        console.warn('STOMP client not connected, cannot subscribe to room.');
-    }
-}
-
-async function fetchAndDisplayMessages(roomId) {
-    const token = getJwtToken();
-    try {
-        const response = await fetch(`${API_BASE_URL}/messages/room/${roomId}?page=0&size=50`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-            const messages = await response.json();
-            messageArea.innerHTML = ''; // Clear existing messages before adding history
-            messages.forEach(msg => addMessageToArea(msg));
-            messageArea.scrollTop = messageArea.scrollHeight; // Scroll to bottom
-        } else {
-            console.error('Failed to fetch messages:', await response.text());
-        }
-    } catch (error) {
-        console.error('Error fetching messages:', error);
-    }
-}
-
-
-// --- WebSocket Handling ---
-function connectWebSocket() {
-    const socket = new SockJS(WS_BASE_URL);
-    stompClient = Stomp.over(socket);
-    stompClient.debug = null; // Disable STOMP debug logs for cleaner console
-
-    stompClient.connect(
-        { 'X-Auth-Token': getJwtToken() }, // Custom header for JWT token
-        onConnected,
-        onError
-    );
-}
-
-function disconnectWebSocket() {
-    if (stompClient) {
-        stompClient.disconnect(() => {
-            console.log("Disconnected from WebSocket");
-        });
-    }
-}
-
-function onConnected() {
-    console.log('Connected to WebSocket!');
-    stompClient.send("/app/chat.addUser",
-        { 'X-Auth-Token': getJwtToken() },
-        JSON.stringify({ sender: { username: currentUser.username } }) // This will be ignored by backend, but good to send something
-    );
-
-    // If a room was already selected, re-subscribe
-    if (currentRoomId) {
-        stompClient.subscribe(`/topic/rooms/${currentRoomId}`, onMessageReceived, { 'Authorization': `Bearer ${getJwtToken()}` });
-        console.log(`Re-subscribed to /topic/rooms/${currentRoomId}`);
-    }
-}
-
-function onError(error) {
-    console.error('Could not connect to WebSocket server:', error);
-    // Attempt to reconnect after a delay, or show error message
-    setTimeout(connectWebSocket, 5000); // Reconnect after 5 seconds
-}
-
-function handleSendMessage(event) {
-    event.preventDefault();
-    const messageContent = messageInput.value.trim();
-
-    if (messageContent && stompClient && currentRoomId) {
-        const chatMessage = {
-            roomId: currentRoomId,
-            content: messageContent
+    /**
+     * Handles API requests with authentication.
+     * @param {string} url - The API endpoint URL.
+     * @param {string} method - HTTP method (GET, POST, PUT, DELETE).
+     * @param {object} [body=null] - Request body for POST/PUT.
+     * @returns {Promise<Response>} - The fetch API response.
+     */
+    async function apiFetch(url, method, body = null) {
+        const headers = {
+            'Content-Type': 'application/json'
         };
-        stompClient.send("/app/chat.sendMessage", { 'X-Auth-Token': getJwtToken() }, JSON.stringify(chatMessage));
-        messageInput.value = '';
-    } else if (!currentRoomId) {
-        alert('Please select a room to send messages.');
-    }
-}
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
 
-function onMessageReceived(payload) {
-    const message = JSON.parse(payload.body);
-    console.log('Received message:', message);
+        const options = {
+            method: method,
+            headers: headers
+        };
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
 
-    if (message.roomId == currentRoomId) {
-        addMessageToArea(message);
-    }
-}
+        const response = await fetch(url, options);
 
-function addMessageToArea(message) {
-    const messageElement = document.createElement('li');
-
-    const timestamp = new Date(message.sentAt).toLocaleString();
-
-    if (message.sender.id === currentUser.id) {
-        messageElement.classList.add('self');
-        messageElement.innerHTML = `<strong>You</strong>: ${message.content} <span class="timestamp">${timestamp}</span>`;
-    } else {
-        messageElement.innerHTML = `<strong>${message.sender.username}</strong>: ${message.content} <span class="timestamp">${timestamp}</span>`;
+        if (response.status === 401 && authToken) {
+            // Token might be expired or invalid, force logout
+            console.error('Authentication token expired or invalid. Logging out.');
+            logout();
+        }
+        return response;
     }
 
-    messageArea.appendChild(messageElement);
-    messageArea.scrollTop = messageArea.scrollHeight; // Scroll to bottom
-}
+    /**
+     * User login function.
+     */
+    async function login() {
+        const username = elements.loginUsername.value;
+        const password = elements.loginPassword.value;
 
-// Initial check for chat page
-if (document.getElementById('chat-page')) {
-    initChatPage();
-} else if (document.getElementById('loginForm')) {
-    // Only run auth init if on login/register page
-    // (Auth init handled earlier)
-}
-```
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/auth/login`, 'POST', { username, password });
+            const data = await response.json();
+
+            if (response.ok) {
+                authToken = data.accessToken;
+                localStorage.setItem('jwtToken', authToken);
+                localStorage.setItem('username', username); // Store username
+                currentUser = username;
+
+                // Decode JWT to get roles (basic check for isAdmin)
+                const payload = JSON.parse(atob(authToken.split('.')[1]));
+                isAdmin = payload.roles && payload.roles.includes('ROLE_ADMIN');
+                localStorage.setItem('isAdmin', isAdmin);
+
+                displayMessage(elements.authStatus, 'Login successful!', false);
+                elements.loginPassword.value = '';
+                updateAuthUI();
+            } else {
+                displayMessage(elements.authStatus, `Login failed: ${data.message || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error during login:', error);
+            displayMessage(elements.authStatus, 'An error occurred during login.', true);
+        }
+    }
+
+    /**
+     * User registration function.
+     */
+    async function register() {
+        const username = elements.registerUsername.value;
+        const email = elements.registerEmail.value;
+        const password = elements.registerPassword.value;
+
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/auth/register`, 'POST', { username, email, password });
+            const text = await response.text(); // Register endpoint returns string
+
+            if (response.ok) {
+                displayMessage(elements.authStatus, text, false);
+                elements.registerUsername.value = '';
+                elements.registerEmail.value = '';
+                elements.registerPassword.value = '';
+            } else {
+                displayMessage(elements.authStatus, `Registration failed: ${text || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error during registration:', error);
+            displayMessage(elements.authStatus, 'An error occurred during registration.', true);
+        }
+    }
+
+    /**
+     * User logout function.
+     */
+    function logout() {
+        authToken = null;
+        currentUser = null;
+        isAdmin = false;
+        localStorage.removeItem('jwtToken');
+        localStorage.removeItem('username');
+        localStorage.removeItem('isAdmin');
+        displayMessage(elements.authStatus, 'Logged out successfully.', false);
+        updateAuthUI();
+        // Clear tables
+        elements.categoryTableBody.innerHTML = '';
+        elements.productTableBody.innerHTML = '';
+    }
+
+    // --- Category Management ---
+
+    /**
+     * Loads and displays all categories.
+     */
+    async function loadCategories() {
+        if (!authToken) return;
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/categories`, 'GET');
+            const categories = await response.json();
+
+            elements.categoryTableBody.innerHTML = '';
+            elements.productCategorySelect.innerHTML = '<option value="">Select Category</option>'; // Clear product category dropdown
+
+            if (response.ok) {
+                categories.forEach(category => {
+                    const row = elements.categoryTableBody.insertRow();
+                    row.insertCell(0).textContent = category.id;
+                    row.insertCell(1).textContent = category.name;
+                    row.insertCell(2).textContent = category.description;
+
+                    const actionsCell = row.insertCell(3);
+                    actionsCell.classList.add('actions');
+
+                    if (isAdmin) {
+                        const editButton = document.createElement('button');
+                        editButton.textContent = 'Edit';
+                        editButton.onclick = () => editCategory(category);
+                        actionsCell.appendChild(editButton);
+
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.onclick = () => deleteCategory(category.id);
+                        actionsCell.appendChild(deleteButton);
+                    }
+
+                    // Populate product category dropdown
+                    const option = document.createElement('option');
+                    option.value = category.id;
+                    option.textContent = category.name;
+                    elements.productCategorySelect.appendChild(option);
+                });
+            } else {
+                displayMessage(elements.categoryMessage, `Failed to load categories: ${categories.message || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error loading categories:', error);
+            displayMessage(elements.categoryMessage, 'An error occurred while loading categories.', true);
+        }
+    }
+
+    /**
+     * Saves (creates or updates) a category.
+     */
+    async function saveCategory() {
+        const id = elements.categoryId.value;
+        const name = elements.categoryName.value;
+        const description = elements.categoryDescription.value;
+
+        const categoryData = { name, description };
+
+        try {
+            let response;
+            if (id) {
+                response = await apiFetch(`${API_BASE_URL}/categories/${id}`, 'PUT', categoryData);
+            } else {
+                response = await apiFetch(`${API_BASE_URL}/categories`, 'POST', categoryData);
+            }
+            const data = await response.json();
+
+            if (response.ok || response.status === 201) {
+                displayMessage(elements.categoryMessage, `Category ${id ? 'updated' : 'created'} successfully!`, false);
+                clearCategoryForm();
+                await loadCategories();
+                await loadProducts(); // Reload products as category names might change
+            } else {
+                displayMessage(elements.categoryMessage, `Failed to save category: ${data.message || data.error || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error saving category:', error);
+            displayMessage(elements.categoryMessage, 'An error occurred while saving the category.', true);
+        }
+    }
+
+    /**
+     * Populates the category form for editing.
+     * @param {object} category - The category object to edit.
+     */
+    function editCategory(category) {
+        elements.categoryId.value = category.id;
+        elements.categoryName.value = category.name;
+        elements.categoryDescription.value = category.description;
+        elements.editCategoryTitle.classList.remove('hidden');
+        elements.editCategoryId.textContent = category.id;
+        elements.cancelEditCategoryBtn.classList.remove('hidden');
+    }
+
+    /**
+     * Deletes a category.
+     * @param {number} id - The ID of the category to delete.
+     */
+    async function deleteCategory(id) {
+        if (!confirm('Are you sure you want to delete this category?')) return;
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/categories/${id}`, 'DELETE');
+            if (response.status === 204) {
+                displayMessage(elements.categoryMessage, 'Category deleted successfully!', false);
+                await loadCategories();
+                await loadProducts(); // Reload products as associated category might be gone
+            } else {
+                const errorText = await response.text();
+                displayMessage(elements.categoryMessage, `Failed to delete category: ${errorText || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error deleting category:', error);
+            displayMessage(elements.categoryMessage, 'An error occurred while deleting the category.', true);
+        }
+    }
+
+    /**
+     * Clears the category form.
+     */
+    function clearCategoryForm() {
+        elements.categoryId.value = '';
+        elements.categoryName.value = '';
+        elements.categoryDescription.value = '';
+        elements.editCategoryTitle.classList.add('hidden');
+        elements.editCategoryId.textContent = '';
+        elements.cancelEditCategoryBtn.classList.add('hidden');
+    }
+
+    /**
+     * Cancels category editing.
+     */
+    function cancelCategoryEdit() {
+        clearCategoryForm();
+    }
+
+    // --- Product Management ---
+
+    /**
+     * Loads and displays all products, optionally filtered by a search keyword.
+     */
+    async function loadProducts() {
+        if (!authToken) return;
+        const searchKeyword = elements.productSearch.value;
+        const url = searchKeyword ? `${API_BASE_URL}/products?search=${encodeURIComponent(searchKeyword)}` : `${API_BASE_URL}/products`;
+
+        try {
+            const response = await apiFetch(url, 'GET');
+            const products = await response.json();
+
+            elements.productTableBody.innerHTML = ''; // Clear existing rows
+
+            if (response.ok) {
+                products.forEach(product => {
+                    const row = elements.productTableBody.insertRow();
+                    row.insertCell(0).textContent = product.id;
+                    row.insertCell(1).textContent = product.name;
+                    row.insertCell(2).textContent = product.description;
+                    row.insertCell(3).textContent = `$${product.price.toFixed(2)}`;
+                    row.insertCell(4).textContent = product.stockQuantity;
+                    row.insertCell(5).textContent = product.categoryName;
+
+                    const actionsCell = row.insertCell(6);
+                    actionsCell.classList.add('actions');
+
+                    if (isAdmin) {
+                        const editButton = document.createElement('button');
+                        editButton.textContent = 'Edit';
+                        editButton.onclick = () => editProduct(product);
+                        actionsCell.appendChild(editButton);
+
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.onclick = () => deleteProduct(product.id);
+                        actionsCell.appendChild(deleteButton);
+                    }
+                });
+            } else {
+                displayMessage(elements.productMessage, `Failed to load products: ${products.message || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error loading products:', error);
+            displayMessage(elements.productMessage, 'An error occurred while loading products.', true);
+        }
+    }
+
+    /**
+     * Saves (creates or updates) a product.
+     */
+    async function saveProduct() {
+        const id = elements.productId.value;
+        const name = elements.productName.value;
+        const description = elements.productDescription.value;
+        const price = parseFloat(elements.productPrice.value);
+        const stockQuantity = parseInt(elements.productStockQuantity.value);
+        const categoryId = parseInt(elements.productCategorySelect.value);
+
+        if (!name || isNaN(price) || isNaN(stockQuantity) || isNaN(categoryId)) {
+            displayMessage(elements.productMessage, 'Please fill all required product fields correctly.', true);
+            return;
+        }
+
+        const productData = { name, description, price, stockQuantity, categoryId };
+
+        try {
+            let response;
+            if (id) {
+                response = await apiFetch(`${API_BASE_URL}/products/${id}`, 'PUT', productData);
+            } else {
+                response = await apiFetch(`${API_BASE_URL}/products`, 'POST', productData);
+            }
+            const data = await response.json();
+
+            if (response.ok || response.status === 201) {
+                displayMessage(elements.productMessage, `Product ${id ? 'updated' : 'created'} successfully!`, false);
+                clearProductForm();
+                await loadProducts();
+            } else {
+                displayMessage(elements.productMessage, `Failed to save product: ${data.message || data.error || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error saving product:', error);
+            displayMessage(elements.productMessage, 'An error occurred while saving the product.', true);
+        }
+    }
+
+    /**
+     * Populates the product form for editing.
+     * @param {object} product - The product object to edit.
+     */
+    function editProduct(product) {
+        elements.productId.value = product.id;
+        elements.productName.value = product.name;
+        elements.productDescription.value = product.description;
+        elements.productPrice.value = product.price;
+        elements.productStockQuantity.value = product.stockQuantity;
+        elements.productCategorySelect.value = product.categoryId;
+        elements.editProductTitle.classList.remove('hidden');
+        elements.editProductId.textContent = product.id;
+        elements.cancelEditProductBtn.classList.remove('hidden');
+    }
+
+    /**
+     * Deletes a product.
+     * @param {number} id - The ID of the product to delete.
+     */
+    async function deleteProduct(id) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        try {
+            const response = await apiFetch(`${API_BASE_URL}/products/${id}`, 'DELETE');
+            if (response.status === 204) {
+                displayMessage(elements.productMessage, 'Product deleted successfully!', false);
+                await loadProducts();
+            } else {
+                const errorText = await response.text();
+                displayMessage(elements.productMessage, `Failed to delete product: ${errorText || response.statusText}`, true);
+            }
+        } catch (error) {
+            console.error('Error deleting product:', error);
+            displayMessage(elements.productMessage, 'An error occurred while deleting the product.', true);
+        }
+    }
+
+    /**
+     * Clears the product form.
+     */
+    function clearProductForm() {
+        elements.productId.value = '';
+        elements.productName.value = '';
+        elements.productDescription.value = '';
+        elements.productPrice.value = '';
+        elements.productStockQuantity.value = '';
+        elements.productCategorySelect.value = ''; // Reset to "Select Category"
+        elements.editProductTitle.classList.add('hidden');
+        elements.editProductId.textContent = '';
+        elements.cancelEditProductBtn.classList.add('hidden');
+    }
+
+    /**
+     * Cancels product editing.
+     */
+    function cancelProductEdit() {
+        clearProductForm();
+    }
+
+    /**
+     * Loads all data (categories and products).
+     */
+    async function loadAllData() {
+        await loadCategories();
+        await loadProducts();
+    }
+
+    /**
+     * Initializes the application.
+     */
+    function init() {
+        updateAuthUI();
+    }
+
+    return {
+        init,
+        login,
+        register,
+        logout,
+        loadCategories,
+        saveCategory,
+        editCategory,
+        deleteCategory,
+        cancelCategoryEdit,
+        loadProducts,
+        saveProduct,
+        editProduct,
+        deleteProduct,
+        cancelProductEdit
+    };
+})();

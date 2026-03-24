@@ -1,67 +1,69 @@
-```yaml
+server:
+  port: 8080 # Default port for the application
+
 spring:
   application:
-    name: scrapineer
+    name: product-service
   datasource:
-    url: jdbc:h2:mem:scrapineerdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:productdb}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update # 'update' for dev, 'validate' for prod/migrations
-    show-sql: true
+      ddl-auto: validate # Recommended for production; create-drop or update for development
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-        jdbc.time_zone: UTC
+    show-sql: false # Set to true to log SQL queries
   flyway:
     enabled: true
-    locations: classpath:/db/migration # Default location for Flyway scripts
-    baseline-on-migrate: true # Recommended for existing databases, or for initial setup
+    locations: classpath:db/migration # Location of migration scripts
+    baseline-on-migrate: true # Creates schema_version table if not exists, useful for existing DBs
 
-  security:
-    user:
-      name: admin
-      password: adminpassword # ONLY FOR DEVELOPMENT - USE SECURE PASSWORDS IN PROD
-
+  # Spring Cache configuration using Caffeine
   cache:
     caffeine:
-      spec: maximumSize=100,expireAfterWrite=60s # Example cache spec for Caffeine
+      spec: maximumSize=1000,expireAfterWrite=60s # Max 1000 entries, expire after 60 seconds of write
 
-server:
-  port: 8080
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:aVerySecretKeyForAlxDevOpsProjectThatIsLongEnoughAndSecureSoNoOneCanGuessItEasily} # IMPORTANT: Use a strong, random key in production and manage securely
+  expiration: 86400000 # 24 hours in milliseconds (24 * 60 * 60 * 1000)
 
+# Rate Limiting Configuration (custom interceptor)
+rate-limiting:
+  limit: 10 # Max requests per time unit
+  duration-seconds: 60 # Time unit in seconds (e.g., 10 requests per 60 seconds)
+
+# Logging Configuration (custom logback-spring.xml for advanced settings)
 logging:
   level:
-    root: INFO
-    com.alx.scrapineer: DEBUG # Detailed logging for our application
-    org.springframework: INFO
-    org.hibernate: INFO # Set to DEBUG for detailed JPA/Hibernate logs
+    com.alx.devops: INFO # Set base package logging level
+    org.springframework.web: INFO
+    org.hibernate: INFO
+    org.springframework.security: INFO
+    com.github.benmanes.caffeine: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %green([%thread]) %blue(%logger{36}): %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36}: %msg%n"
   file:
-    name: logs/scrapineer.log # Log to a file
+    name: logs/product-service.log # Log file path
 
-jwt:
-  secret: # This should be a strong, randomly generated secret key. Use environment variable in production.
-    # Example: openssl rand -base64 32
-    # Ensure it's at least 32 characters long for HS256 algorithm
-    # DO NOT COMMIT PRODUCTION SECRETS TO GIT
-    your_very_secure_and_long_jwt_secret_key_that_is_at_least_32_characters_long
-  expiration: 3600000 # 1 hour in milliseconds (3600 * 1000)
-
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html # Customize Swagger UI path
-  api-docs:
-    path: /v3/api-docs # Customize OpenAPI JSON path
-
-scheduler:
-  enabled: true # Enable/disable scheduler tasks globally
-  job-check-interval-minutes: 5 # How often the scheduler checks for jobs to run
-
-rate-limiter:
-  bucket-capacity: 10 # Max tokens in the bucket
-  refill-tokens: 5    # How many tokens to add per refill period
-  refill-period-seconds: 60 # How often to refill (e.g., 5 tokens every 60 seconds)
-
+# Actuator Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus # Expose useful actuator endpoints
+  endpoint:
+    health:
+      show-details: always
+    info:
+      enabled: true
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
 ```

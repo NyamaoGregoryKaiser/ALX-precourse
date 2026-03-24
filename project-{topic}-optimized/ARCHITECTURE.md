@@ -1,178 +1,167 @@
-```markdown
-# ALX Payment Processor - Architecture Documentation
+# Architecture Documentation: Product Management System
 
-This document provides a detailed overview of the architectural design of the ALX Payment Processor system.
+This document outlines the architecture of the Product Management System, focusing on its components, their interactions, data flow, and underlying technology choices.
 
-## 1. System Goals and Principles
+## Table of Contents
 
-**Goals:**
-*   **Reliability:** Ensure transactions are processed accurately and consistently.
-*   **Security:** Protect sensitive financial and personal data.
-*   **Scalability:** Ability to handle increasing loads and data volumes.
-*   **Maintainability:** Clear code structure, modularity, and good documentation.
-*   **Observability:** Easy to monitor, log, and debug.
-*   **Extensibility:** Simple to add new payment methods, features, or integrations.
+1.  [High-Level Overview](#1-high-level-overview)
+2.  [System Components](#2-system-components)
+    *   [Frontend](#frontend)
+    *   [Backend (Product Service)](#backend-product-service)
+    *   [Database](#database)
+3.  [Data Flow & Interaction](#3-data-flow--interaction)
+    *   [User Authentication Flow](#user-authentication-flow)
+    *   [CRUD Operation Flow (Example: Get Products)](#crud-operation-flow-example-get-products)
+4.  [Technology Stack](#4-technology-stack)
+5.  [Key Architectural Decisions & Principles](#5-key-architectural-decisions--principles)
+6.  [Scalability & Reliability Considerations](#6-scalability--reliability-considerations)
+7.  [Security Considerations](#7-security-considerations)
 
-**Principles:**
-*   **Separation of Concerns:** Each component/module has a single responsibility.
-*   **Layered Architecture:** Clear division between presentation, business logic, data access.
-*   **Loose Coupling:** Components should have minimal dependencies on each other.
-*   **Idempotency:** Operations can be safely retried without unintended side effects (especially critical for payments).
-*   **Security by Design:** Security considerations are integrated from the initial design phase.
+## 1. High-Level Overview
 
-## 2. High-Level Architecture
+The Product Management System is a **monolithic Spring Boot application** providing a RESTful API, backed by a **PostgreSQL database**. A simple **HTML/JavaScript frontend** interacts with this API. The entire system is **containerized with Docker** and orchestrated using **Docker Compose** for local development and deployment. A **CI/CD pipeline (GitHub Actions)** automates the build, test, and deployment processes.
 
-The system is designed as a **modular monolithic application** for the backend, supported by external services like PostgreSQL and Redis. While a full-scale production payment system might lean towards microservices, this approach offers simplicity in deployment and communication for this project, while still enforcing modularity.
-
-```mermaid
-graph TD
-    subgraph Clients
-        A[Web Frontend (React/Next.js)]
-        B[Mobile App (Conceptual)]
-        C[Third-Party Integrations (via Webhooks)]
-    end
-
-    subgraph Infrastructure
-        LB(Load Balancer / API Gateway)
-        DB(PostgreSQL Database)
-        REDIS(Redis Cache & Rate Limiter)
-        MQ(Message Queue - e.g., RabbitMQ, Kafka - Optional for async tasks)
-    end
-
-    subgraph Backend Application (Node.js/TypeScript - Modular Monolith)
-        MW[Middlewares: Auth, Logging, Error Handling, Rate Limiting]
-        API(API Routers: /auth, /users, /merchants, /transactions, ...)
-        CONTROLLERS[Controllers: Handles HTTP requests, delegates to Services]
-        SERVICES[Services: Business Logic, orchestrates Repositories & external calls]
-        REPOSITORIES[Repositories: Data Access Layer, abstracts ORM]
-        ENTITIES[Entities: TypeORM Models]
-        EXTERNAL_GW(External Payment Gateway Service - Mock)
-        LOGGER(Logging Service)
-        CACHESERVICE(Caching Service)
-    end
-
-    A -- HTTP/S --> LB
-    B -- HTTP/S --> LB
-    C -- HTTP/S --> LB
-    LB -- Route requests --> MW
-    MW -- Authenticate/Process --> API
-    API --> CONTROLLERS
-    CONTROLLERS --> SERVICES
-    SERVICES --> REPOSITORIES
-    REPOSITORIES --> DB
-    SERVICES --> EXTERNAL_GW
-    SERVICES --> CACHESERVICE
-    CACHESERVICE <--> REDIS
-    MW --> LOGGER
-    SERVICES --> LOGGER
-    CONTROLLERS --> LOGGER
-    EXTERNAL_GW --> LOGGER
-    DB -- Stores Data --> ENTITIES
-    DB -- Indexes --> ENTITIES
-    MQ -- Pub/Sub --> SERVICES
-    SERVICES -- Pub/Sub --> MQ
+```
++------------------+     +------------------------+     +-------------------+
+|     User (Browser) <--->|     Frontend           |     |                   |
+|                  |     | (HTML/JS)              |     |                   |
++------------------+     +--------v---------------+     |                   |
+                                  | HTTP/HTTPS             |                   |
+                                  | (API Calls)            |                   |
++---------------------------------+------------------------+-----------------+
+|                                 |                                           |
+|       +------------------------------------+                                |
+|       |   Backend (Product Service)        |                                |
+|       |   (Java Spring Boot)               |                                |
+|       |                                    |                                |
+|       |  +-----------------------------+   |                                |
+|       |  |  Controller Layer           |   |                                |
+|       |  |  (REST API, Auth, RateLimit)|   |                                |
+|       |  +--------------^--------------+   |                                |
+|       |                 |                    |                                |
+|       |  +--------------v--------------+   |                                |
+|       |  |  Service Layer              |   |                                |
+|       |  |  (Business Logic, Caching)  |   |                                |
+|       |  +--------------^--------------+   |                                |
+|       |                 |                    |                                |
+|       |  +--------------v--------------+   |                                |
+|       |  |  Repository Layer           |   |                                |
+|       |  |  (Spring Data JPA)          |   |                                |
+|       |  +--------------^--------------+   |                                |
+|       +-----------------|--------------------+                                |
+|                         | JDBC                                              |
+|                         |                                                   |
+|       +-----------------v-----------------+                                 |
+|       |          Database             |                                 |
+|       |          (PostgreSQL)         |                                 |
+|       |          (Flyway Migrations)  |                                 |
+|       +---------------------------------+                                 |
+|                                                                           |
++---------------------------------------------------------------------------+
+               (Containerized via Docker & Docker Compose)
 ```
 
-## 3. Backend Application (Node.js/TypeScript)
+## 2. System Components
 
-### 3.1. Layered Structure
+### Frontend
+*   **Technology:** Vanilla HTML, CSS, JavaScript.
+*   **Purpose:** Provides a basic user interface for interacting with the backend API.
+*   **Functionality:**
+    *   User registration and login.
+    *   Displaying lists of products and categories.
+    *   Forms for creating, updating, and deleting products and categories (admin-only).
+    *   Basic client-side error/success message display.
+*   **Deployment:** Served directly by the Spring Boot application as static content.
 
-The backend follows a strict layered architecture to ensure separation of concerns:
+### Backend (Product Service)
+*   **Technology:** Java 17, Spring Boot 3.x, Maven.
+*   **Architecture:** Layered (Controller, Service, Repository).
+*   **Core Modules:**
+    *   **`com.alx.devops.model`:** JPA Entities (`Product`, `Category`, `User`, `Role`) defining the data structure.
+    *   **`com.alx.devops.repository`:** Spring Data JPA repositories (`ProductRepository`, `CategoryRepository`, `UserRepository`) for data access abstraction.
+    *   **`com.alx.devops.service`:** Contains business logic for CRUD operations, validation, and domain-specific rules (`ProductService`, `CategoryService`, `AuthService`).
+    *   **`com.alx.devops.controller`:** RESTful API endpoints (`ProductController`, `CategoryController`, `AuthController`) for handling HTTP requests.
+    *   **`com.alx.devops.dto`:** Data Transfer Objects (`ProductDTO`, `CategoryDTO`, `AuthRequest`, `AuthResponse`) for request/response serialization.
+    *   **`com.alx.devops.config`:** Configuration classes (`SecurityConfig`, `CacheConfig`, `RateLimitingInterceptor`, `GlobalExceptionHandler`) for security, caching, rate limiting, and error handling.
+*   **Key Features:**
+    *   **RESTful API:** Standard HTTP methods (GET, POST, PUT, DELETE).
+    *   **Authentication & Authorization:** JWT-based using Spring Security for secure API access and role-based permissions (`ROLE_USER`, `ROLE_ADMIN`).
+    *   **Data Validation:** `jakarta.validation` annotations for input validation.
+    *   **Caching:** Spring's caching abstraction with Caffeine (in-memory) to reduce database load for read-heavy operations.
+    *   **Rate Limiting:** Custom `HandlerInterceptor` to protect against API abuse.
+    *   **Global Error Handling:** `@ControllerAdvice` for consistent error responses.
+    *   **Logging:** Configured with Logback for detailed application insights.
+    *   **Monitoring:** Spring Boot Actuator endpoints expose health, metrics, and Prometheus compatibility.
 
-*   **`server.ts`:** Entry point, initializes database, Redis, and starts the Express app.
-*   **`app.ts`:** Express application setup, global middlewares, and route registration.
-*   **Middlewares (`src/middlewares/`):**
-    *   `auth.middleware.ts`: Handles JWT verification and role-based authorization.
-    *   `errorHandler.middleware.ts`: Centralized error handling for consistent responses.
-    *   `logger.middleware.ts`: Request-level logging.
-    *   `rateLimiter.middleware.ts`: Protects endpoints from abuse.
-*   **Modules (`src/modules/`):** Each module represents a distinct business domain (e.g., `auth`, `users`, `merchants`, `transactions`).
-    *   **Controller:** Handles incoming HTTP requests, validates input (using Joi), and delegates to the corresponding service. Returns HTTP responses.
-    *   **Service:** Contains the core business logic. Orchestrates interactions between repositories, other services, and external APIs (like the payment gateway). Ensures transactional integrity.
-    *   **Repository:** Abstraction layer for data access. Interacts directly with TypeORM entities to perform CRUD operations on the database. Hides ORM specifics from the service layer.
-    *   **Routes:** Defines API endpoints and links them to controller methods, applying relevant middlewares (authentication, authorization, validation).
-    *   **Validation:** Joi schemas for input validation.
-*   **Services (`src/services/`):** Global, cross-cutting services.
-    *   `paymentGateway.service.ts`: Mocks an external payment gateway for processing payments and refunds. In production, this would integrate with actual third-party APIs (Stripe, PayPal, etc.).
-    *   `cache.service.ts`: Abstracts Redis interactions for caching.
-    *   `logger.service.ts`: Centralized Winston logger.
-*   **Configuration (`src/config/`):** Environment variables, constants.
-*   **Utilities (`src/utils/`):** Helper functions, custom error classes (`AppError`), async wrappers (`catchAsync`).
-*   **Types (`src/types/`):** Shared TypeScript type definitions.
+### Database
+*   **Technology:** PostgreSQL.
+*   **Purpose:** Relational database for persistent storage of product, category, user, and role data.
+*   **Schema:** Defined by JPA entities and managed by Flyway migration scripts (`V1__Initial_Schema.sql`, `V2__Seed_Data.sql`).
+*   **Migration:** Flyway ensures version-controlled and automated schema evolution.
+*   **Query Optimization:** Includes basic indexing (e.g., `idx_products_name`, `idx_products_category_id`). Further optimization would involve analyzing query plans and adding more specific indexes as needed.
 
-### 3.2. Data Flow for a Transaction (e.g., `POST /api/v1/transactions`)
+## 3. Data Flow & Interaction
 
-1.  **Client Request:** Frontend sends a `POST` request to `/api/v1/transactions` with transaction details.
-2.  **Load Balancer/API Gateway:** Routes the request to an available backend instance.
-3.  **Middlewares:**
-    *   `rateLimiter`: Checks if the client's IP has exceeded the allowed request rate.
-    *   `requestLogger`: Logs the incoming request.
-    *   `authenticate`: Verifies the JWT token in the `Authorization` header. If valid, attaches `req.user` (containing user ID and role).
-    *   `authorize`: Checks if `req.user.role` has permission to create a transaction.
-4.  **`TransactionController.createTransaction`:**
-    *   Receives the request.
-    *   Validates `req.body` using `transaction.validation.ts` (Joi).
-    *   Calls `TransactionService.createTransaction` with validated data and `initiatorUserId`.
-5.  **`TransactionService.createTransaction`:**
-    *   Begins a database transaction (`queryRunner.startTransaction()`).
-    *   Verifies the `merchantId` exists via `MerchantRepository`.
-    *   Creates a `PENDING` transaction record in the database via `TransactionRepository`.
-    *   Calls `PaymentGatewayService.processPayment` to simulate interaction with an external payment provider.
-    *   Based on the `PaymentGatewayService` result:
-        *   If successful, updates the transaction status to `COMPLETED` and stores `externalTransactionId` via `TransactionRepository`.
-        *   If failed, updates the transaction status to `FAILED` and stores `failureReason` via `TransactionRepository`.
-    *   Commits (`queryRunner.commitTransaction()`) or rolls back (`queryRunner.rollbackTransaction()`) the database transaction.
-    *   Returns the final transaction object.
-6.  **`TransactionController`:** Sends a `201 Created` response with the transaction data.
-7.  **Error Handling:** If any step encounters an error, the `errorHandler.middleware.ts` catches it, logs it, and sends a consistent error response to the client.
+### User Authentication Flow
+1.  **User (Frontend):** Submits username/password to `/api/auth/login`.
+2.  **Product Service (AuthController):** Receives credentials.
+3.  **AuthService:** Calls Spring Security's `AuthenticationManager` to authenticate.
+4.  **CustomUserDetailsService:** Loads user details from `UserRepository`.
+5.  **AuthService:** Upon successful authentication, `JwtTokenProvider` generates a JWT.
+6.  **Product Service (AuthController):** Returns the JWT to the Frontend.
+7.  **User (Frontend):** Stores the JWT (e.g., in `localStorage`) and includes it in `Authorization: Bearer <token>` header for subsequent protected requests.
+8.  **Product Service (JwtAuthFilter):** Intercepts incoming requests, validates the JWT, and sets up Spring Security context.
 
-## 4. Database (PostgreSQL with TypeORM)
+### CRUD Operation Flow (Example: Get Products)
+1.  **User (Frontend):** Sends GET request to `/api/products` with JWT in header.
+2.  **Product Service (JwtAuthFilter):** Validates JWT. If valid and authorized, request proceeds.
+3.  **Product Service (RateLimitingInterceptor):** Checks if the request exceeds rate limits. If so, returns 429.
+4.  **Product Service (ProductController):** Receives the request.
+5.  **ProductService:**
+    *   Checks if products are in **Caffeine cache**.
+    *   If found, returns cached data (cache hit).
+    *   If not found (cache miss), `ProductRepository` is called.
+6.  **ProductRepository:** Executes JPA query to fetch data from PostgreSQL.
+7.  **Database (PostgreSQL):** Returns product data.
+8.  **ProductService:** Maps JPA entities to `ProductDTO`s. If it was a cache miss, the results are stored in cache before returning.
+9.  **Product Service (ProductController):** Returns `List<ProductDTO>` to the Frontend.
+10. **User (Frontend):** Displays the product list.
 
-*   **Database:** PostgreSQL is chosen for its robustness, transactional support, and JSONB capabilities (for `metadata` columns).
-*   **ORM:** TypeORM provides an object-relational mapping, allowing us to interact with the database using TypeScript classes and objects.
-*   **Entities:** TypeScript classes decorated with `@Entity`, `@Column`, `@PrimaryGeneratedColumn`, `@OneToMany`, `@ManyToOne`, etc., define the database schema (e.g., `User`, `Merchant`, `Account`, `Transaction`).
-*   **Migrations:** Database schema changes are managed through TypeORM migrations (`src/database/migrations/`). This ensures schema evolution is controlled and reproducible across environments.
-*   **Repositories:** Custom repositories (e.g., `UserRepository`) encapsulate common data access logic, providing a cleaner interface for services and centralizing query definitions.
-*   **Transactions:** `QueryRunner` is explicitly used within services for complex operations that require database-level transactions (e.g., `createTransaction`) to ensure atomicity.
-*   **Indexing:** Crucial columns (foreign keys, frequently queried fields) are indexed to optimize read performance.
+## 4. Technology Stack
 
-## 5. Caching (Redis)
+(Refer to `README.md` for the full technology stack.)
 
-*   **Purpose:** Redis is used as an in-memory data store for caching frequently accessed but less frequently updated data. This reduces direct database load and improves API response times.
-*   **Implementation:** `cache.service.ts` provides a simple API (`set`, `get`, `delete`). Integration can occur within services to cache results of expensive database queries.
-*   **Session Storage:** Redis can also be used for storing user sessions if a stateless JWT approach is complemented by server-side sessions.
+## 5. Key Architectural Decisions & Principles
 
-## 6. Rate Limiting (Redis)
+*   **Monolithic Architecture:** Chosen for simplicity and ease of initial development and deployment for this demonstration project. For larger, more complex systems, a microservices architecture would be considered.
+*   **Layered Architecture:** Clear separation of concerns (Controller, Service, Repository) for maintainability, testability, and modularity.
+*   **RESTful API Design:** Adherence to REST principles for stateless, resource-oriented interactions.
+*   **Database-First for Schema:** While JPA handles object-relational mapping, Flyway is used for explicit, version-controlled database schema management, giving developers control over schema evolution.
+*   **Spring Security for Enterprise-Grade Security:** Leveraging a mature framework for authentication and authorization.
+*   **Caching for Performance:** Strategic use of in-memory caching to improve response times and reduce database load.
+*   **Containerization:** Docker provides environment consistency from development to production.
+*   **Automated Testing:** Emphasis on comprehensive unit, integration, and API tests to ensure quality and enable rapid iteration.
+*   **CI/CD:** Automating the build, test, and deployment process to accelerate delivery and reduce human error.
 
-*   **Purpose:** Protects API endpoints from abuse, denial-of-service attacks, and brute-force attempts.
-*   **Implementation:** `express-rate-limit` with a Redis store ensures distributed rate limiting across multiple backend instances. Different limits can be configured for sensitive endpoints (e.g., login).
+## 6. Scalability & Reliability Considerations
+
+*   **Scalability:**
+    *   **Horizontal Scaling (Application):** The Spring Boot application is stateless (due to JWT), allowing easy horizontal scaling by running multiple instances behind a load balancer.
+    *   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding, though more complex).
+    *   **Caching:** Caffeine provides in-memory caching for a single application instance. For distributed caching across multiple instances, solutions like Redis would be integrated.
+*   **Reliability:**
+    *   **Database Persistence:** Docker volumes ensure data persistence for the PostgreSQL container.
+    *   **Health Checks:** Configured in Docker Compose and Spring Boot Actuator to monitor service health.
+    *   **Error Handling:** Robust global error handling prevents application crashes from unhandled exceptions.
+    *   **Logging:** Centralized logging can be achieved by sending logs to an external system (e.g., ELK stack) for analysis and debugging.
+    *   **Automated Deployments:** CI/CD reduces manual errors during deployment, increasing reliability.
 
 ## 7. Security Considerations
 
-*   **Authentication:** JWT with secure secret management.
-*   **Authorization:** Role-based access control, enforced by middleware.
-*   **Password Hashing:** `bcryptjs` is used to securely hash passwords.
-*   **Data Validation:** Joi schemas enforce input integrity and prevent common injection attacks.
-*   **Security Headers:** `helmet` middleware sets various HTTP headers to enhance security (XSS protection, CSP, etc.).
-*   **CORS:** Configured to allow requests from trusted origins.
-*   **Environment Variables:** Sensitive information (database credentials, JWT secret) is stored in environment variables, not hardcoded.
-*   **Transactions:** Database transactions maintain data consistency and integrity, crucial for financial operations.
-*   **Input Sanitization:** While Joi validates, further sanitization (e.g., for user-generated content, though less critical in a pure payment API) might be needed.
-
-## 8. Observability
-
-*   **Logging:** `Winston` for structured application logs (errors, warnings, info). `Morgan` for HTTP access logs. Logs are directed to console (and can be configured to files/external services).
-*   **Error Reporting:** Centralized `errorHandler` captures all errors, logs them, and provides meaningful responses without leaking sensitive details in production.
-*   **Health Checks:** Basic `/` endpoint and Docker health checks ensure service availability.
-
-## 9. Future Enhancements
-
-*   **Microservices:** Decompose into smaller, independently deployable services (e.g., dedicated Auth Service, Transaction Service, Merchant Service).
-*   **Asynchronous Processing:** Integrate a message queue (RabbitMQ, Kafka) for non-blocking operations (e.g., webhook notifications, complex fraud detection, bulk payouts).
-*   **Real-time Updates:** WebSockets for real-time transaction status updates to dashboards.
-*   **Webhook System:** Allow merchants to subscribe to events (e.g., `transaction.completed`) for real-time notifications.
-*   **Advanced Fraud Detection:** Integrate with specialized fraud detection services.
-*   **Compliance:** PCI DSS compliance for handling cardholder data (would involve not storing sensitive data directly and using tokenization via payment gateways).
-*   **GraphQL API:** Provide a flexible API interface.
-*   **Frontend Development:** Implement a fully functional React/Next.js dashboard and potentially a public-facing payment page.
-```
+*   **Authentication & Authorization:** JWT-based Spring Security ensures that only authenticated and authorized users can access resources.
+*   **Password Hashing:** Passwords are never stored in plain text; `BCryptPasswordEncoder` is used.
+*   **Input Validation:** `@Valid` annotations and service-level checks prevent common vulnerabilities like SQL injection and cross-site scripting (though XSS is more a frontend concern).
+*   **Environment Variables for Secrets:** Database credentials and JWT secrets are externalized via `.env` and environment variables, avoiding hardcoding in the codebase. In production, these would be managed by a secrets management service (e.g., AWS Secrets Manager, HashiCorp Vault).
+*   **Rate Limiting:** Mitigates brute-force attacks and denial-of-service attempts.
+*   **HTTPS:** Although not explicitly configured in `docker-compose.yml`, production deployments would absolutely require HTTPS for all communication between the client and the backend to protect data in transit. This typically involves a reverse proxy (Nginx, API Gateway) handling SSL termination.
+*   **Dependency Security:** Regular security scans of dependencies (e.g., using Snyk, OWASP Dependency-Check) would be integrated into the CI pipeline.

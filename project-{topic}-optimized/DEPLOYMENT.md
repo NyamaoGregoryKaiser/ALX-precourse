@@ -1,152 +1,199 @@
-```markdown
-# ALX Payment Processor - Deployment Guide
+# Deployment Guide: Product Management System
 
-This document outlines the steps and considerations for deploying the ALX Payment Processor to a production environment. The recommended deployment strategy leverages Docker containers for portability and consistency.
+This document provides instructions for deploying the Product Management System to various environments. The primary method for deployment utilizes Docker and Docker Compose for easy local setup and can be extended for cloud deployments.
 
-## 1. Deployment Strategy Overview
+## Table of Contents
 
-We will deploy the application using Docker containers orchestrated by a platform like **Docker Compose** (for simpler, single-server deployments) or **Kubernetes/AWS ECS/Azure AKS** (for scalable, high-availability deployments).
+1.  [Local Deployment with Docker Compose](#1-local-deployment-with-docker-compose)
+    *   [Prerequisites](#prerequisites)
+    *   [Steps](#steps)
+2.  [Cloud Deployment Strategy (Conceptual)](#2-cloud-deployment-strategy-conceptual)
+    *   [AWS ECS (Elastic Container Service)](#aws-ecs-elastic-container-service)
+    *   [Kubernetes (EKS/GKE/AKS)](#kubernetes-eksgkeaks)
+    *   [Managed Service (e.g., AWS Elastic Beanstalk)](#managed-service-eg-aws-elastic-beanstalk)
+3.  [Post-Deployment Checks](#3-post-deployment-checks)
+4.  [Rollback Strategy](#4-rollback-strategy)
 
-**Key Components:**
-*   **Backend:** Node.js/TypeScript Express API (Docker container).
-*   **Database:** PostgreSQL (Docker container or managed service like AWS RDS, Azure Database for PostgreSQL).
-*   **Cache/Rate Limiter:** Redis (Docker container or managed service like AWS ElastiCache, Azure Cache for Redis).
-*   **Load Balancer/API Gateway:** Essential for distributing traffic, SSL termination, and potentially API management. (e.g., Nginx, AWS ALB, Cloudflare).
-*   **CI/CD Pipeline:** Automates testing, building, and deployment (e.g., GitHub Actions, GitLab CI, Jenkins).
+## 1. Local Deployment with Docker Compose
 
-## 2. Production Environment Setup
+This is the recommended way to run the application in a local development or testing environment, ensuring consistency with production-like setups.
 
-### 2.1. Server Infrastructure
+### Prerequisites
 
-*   **Cloud Provider:** AWS, Azure, Google Cloud, DigitalOcean, etc.
-*   **Virtual Machines / Containers:** EC2 instances, Azure VMs, or container orchestration services.
+*   **Docker & Docker Compose:** Installed on your deployment machine. [Download Docker Desktop](https://www.docker.com/products/docker-desktop).
+*   **Git:** To clone the repository.
+*   **`.env` file:** A `.env` file containing environment variables for the database and JWT secret should be present in the project root. Refer to `README.md` for its content.
 
-### 2.2. Networking Configuration
+### Steps
 
-*   **VPC/VNet:** Isolate your application components in a private network.
-*   **Security Groups/Network Security Groups:** Restrict inbound/outbound traffic:
-    *   **Backend:** Only allow traffic from the Load Balancer (port 3000).
-    *   **Database:** Only allow traffic from the backend (port 5432).
-    *   **Redis:** Only allow traffic from the backend (port 6379).
-    *   **Load Balancer:** Allow traffic from the internet (ports 80/443).
-*   **SSL/TLS:** Terminate SSL at the Load Balancer/API Gateway. Ensure communication between components within the VPC is encrypted (e.g., using mTLS or within trusted networks).
-
-### 2.3. Managed Services (Recommended for Production)
-
-Instead of running database and Redis in Docker containers on the same host, consider managed services for higher availability, scalability, backups, and operational ease.
-
-*   **Database:**
-    *   AWS RDS for PostgreSQL
-    *   Azure Database for PostgreSQL
-    *   Google Cloud SQL for PostgreSQL
-*   **Redis:**
-    *   AWS ElastiCache for Redis
-    *   Azure Cache for Redis
-    *   Google Cloud Memorystore for Redis
-
-## 3. Environment Variables & Secrets Management
-
-**NEVER hardcode secrets in your code or commit them to source control.**
-
-*   **`.env` file:** Only for local development.
-*   **Production:** Use a robust secrets management solution:
-    *   **Container Orchestrators:** Kubernetes Secrets, Docker Swarm Secrets.
-    *   **Cloud Providers:** AWS Secrets Manager, AWS Parameter Store, Azure Key Vault, Google Secret Manager.
-    *   **CI/CD:** GitHub Actions Secrets, GitLab CI/CD Variables.
-
-**Minimum Required Environment Variables:**
-*   `NODE_ENV=production`
-*   `API_PORT=<port_number>`
-*   `API_PREFIX=/api/v1`
-*   `CLIENT_URL=<your_frontend_domain>`
-*   `DB_HOST=<database_endpoint>`
-*   `DB_PORT=<database_port>`
-*   `DB_USERNAME=<database_user>`
-*   `DB_PASSWORD=<database_password>`
-*   `DB_NAME=<database_name>`
-*   `JWT_SECRET=<strong_jwt_secret>`
-*   `JWT_EXPIRES_IN=1h`
-*   `REDIS_HOST=<redis_endpoint>`
-*   `REDIS_PORT=<redis_port>`
-*   `LOG_LEVEL=info` (or `error`, `warn` for production)
-
-## 4. Building and Deploying the Application
-
-### 4.1. CI/CD Pipeline (e.g., GitHub Actions)
-
-The `ci.yml` file provides a basic workflow. For production deployment, you'd extend it:
-
-1.  **Build:**
-    *   Run tests (unit, integration).
-    *   Lint and format code.
-    *   Build TypeScript to JavaScript.
-    *   Build Docker images for backend (and frontend).
-    *   Tag Docker images with commit SHA or version number.
-    *   Push Docker images to a container registry (e.g., Docker Hub, AWS ECR, Azure Container Registry).
-2.  **Deploy:**
-    *   Trigger deployment to your chosen orchestration platform.
-    *   Update deployment configurations (e.g., Kubernetes YAML files, ECS Task Definitions) to use the newly built Docker image tags.
-    *   Perform database migrations (`npm run migration:run`) before application restart, ensuring schema compatibility.
-    *   Restart/roll out new instances of the backend application.
-
-### 4.2. Database Migrations in Production
-
-*   **Automated:** Configure your deployment process (e.g., in `docker-compose.yml` or Kubernetes pre-startup hooks) to run `npm run migration:run` *before* the application fully starts. This ensures the database schema is up-to-date with your application code.
-*   **Rollback:** Ensure you have a strategy for reverting migrations if a new deployment causes issues. TypeORM's `migration:revert` can be part of a rollback plan.
-*   **Backups:** Implement regular database backups.
-
-### 4.3. Docker Compose Deployment (Single Server)
-
-For small-scale deployments or self-hosting on a single VM:
-
-1.  **Install Docker & Docker Compose** on your server.
-2.  **Copy project files** to the server (e.g., via `git pull` or `scp`).
-3.  **Create `.env` file** on the server at the project root with production-specific values.
-4.  **Run Docker Compose:**
+1.  **Clone the Repository:**
     ```bash
-    docker-compose -f docker-compose.yml up --build -d
+    git clone https://github.com/your-username/alx-devops-product-service.git
+    cd alx-devops-product-service
     ```
-    *   Make sure `backend` service `command` in `docker-compose.yml` is `sh -c "npm run migration:run && npm run start"` to run migrations and then start the server.
-    *   Consider adding a `restart: always` policy to services in `docker-compose.yml`.
 
-### 4.4. Kubernetes / ECS / AKS Deployment (Scalable)
+2.  **Ensure `.env` file is present:**
+    Verify that the `.env` file is in the root directory and configured correctly with your `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, and `JWT_SECRET`.
 
-For highly available and scalable deployments, you'd use a container orchestration platform.
+3.  **Build and Run Services:**
+    Execute the following command to build the Docker images (if not already built or if code changes) and start the application and database containers:
 
-1.  **Container Registry:** Push your backend Docker image to a registry.
-2.  **Kubernetes Manifests (YAML files):**
-    *   `Deployment` for the backend application (specifying image, replicas, resources, probes).
-    *   `Service` to expose the backend pods.
-    *   `Ingress` to manage external access and SSL.
-    *   `ConfigMap` for non-sensitive configuration.
-    *   `Secret` for sensitive environment variables.
-    *   Jobs/Init Containers for database migrations.
-3.  **Deployment:** Apply your manifests using `kubectl apply -f .`
-4.  **Managed Services Integration:** Configure your backend to connect to managed PostgreSQL and Redis instances using their endpoints and credentials.
+    ```bash
+    docker-compose up --build -d
+    ```
+    *   `--build`: This flag forces Docker Compose to rebuild the images. Use it when you've made changes to the `Dockerfile` or your application code. If only environment variables or volumes change, you can omit `--build` to save time.
+    *   `-d`: Runs the containers in "detached" mode, meaning they run in the background.
 
-## 5. Monitoring and Logging
+4.  **Verify Deployment:**
+    *   Check container status:
+        ```bash
+        docker-compose ps
+        ```
+        Both `app` and `db` services should show `Up` status.
+    *   Check application logs (optional, for debugging):
+        ```bash
+        docker-compose logs -f app
+        ```
+    *   Access the application in your browser: [http://localhost:8080](http://localhost:8080)
+    *   Access Swagger UI: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
 
-*   **Centralized Logging:** Aggregate logs from all containers/services into a central system (e.g., ELK Stack - Elasticsearch, Logstash, Kibana; Grafana Loki; AWS CloudWatch Logs; Azure Monitor).
-*   **Performance Monitoring:** Use tools like Prometheus + Grafana to collect and visualize metrics (CPU, memory, network I/O, API response times, error rates, database query performance).
-*   **Alerting:** Set up alerts for critical events (e.g., high error rates, service downtime, database connection issues, low disk space).
-*   **Health Checks:** Implement detailed health check endpoints in your application beyond `/` (e.g., `/health/readiness` and `/health/liveness`) for orchestrators to use.
+5.  **Stop and Clean Up (when done):**
+    To stop the running containers:
+    ```bash
+    docker-compose down
+    ```
+    To stop containers and remove all associated data volumes (including PostgreSQL data, be careful!):
+    ```bash
+    docker-compose down --volumes
+    ```
 
-## 6. Security Best Practices in Production
+## 2. Cloud Deployment Strategy (Conceptual)
 
-*   **Least Privilege:** Grant only necessary permissions to users, services, and containers.
-*   **Network Segmentation:** Use VPCs, subnets, and security groups to isolate components.
-*   **SSL/TLS Everywhere:** Enforce HTTPS for all external traffic. Encrypt inter-service communication where possible.
-*   **Regular Updates:** Keep Node.js, npm packages, Docker images, and OS up-to-date to patch vulnerabilities.
-*   **Vulnerability Scanning:** Use tools to scan Docker images and dependencies for known vulnerabilities.
-*   **Web Application Firewall (WAF):** Place a WAF (e.g., AWS WAF, Cloudflare) in front of your application to mitigate common web attacks.
-*   **Audit Logs:** Enable and review audit logs for all cloud resources and application activities.
+For production environments, deploying to a cloud provider offers scalability, reliability, and advanced management features. Here are common strategies:
 
-## 7. Backups and Disaster Recovery
+### AWS ECS (Elastic Container Service)
 
-*   **Database Backups:** Configure automated daily/hourly backups for PostgreSQL. Test restore procedures regularly.
-*   **Point-in-Time Recovery:** Enable PITR for your database to recover to any specific point in time.
-*   **Redundancy:** Deploy multiple instances of your application across different availability zones.
-*   **Geographic Redundancy:** For critical systems, consider multi-region deployment for disaster recovery.
+AWS ECS is a fully managed container orchestration service that supports Docker containers.
 
----
-```
+1.  **Container Image:** The CI/CD pipeline (GitHub Actions) already builds and pushes the Docker image to Docker Hub (or AWS ECR if configured). This image will be used by ECS.
+
+2.  **VPC Setup:**
+    *   Create a Virtual Private Cloud (VPC) with public and private subnets across multiple Availability Zones for high availability.
+    *   Configure Internet Gateway, NAT Gateway, and Route Tables.
+
+3.  **ECS Cluster:**
+    *   Create an ECS Cluster (e.g., Fargate launch type for serverless containers or EC2 launch type for more control over instances). Fargate is often preferred for simplicity.
+
+4.  **Task Definition:**
+    *   Define an ECS Task Definition for the `product-service` application.
+    *   Specify the Docker image URL (e.g., `your_docker_username/alx-product-service:latest`).
+    *   Configure CPU and memory allocations.
+    *   Map container port `8080` to host port (Fargate handles this automatically).
+    *   Pass environment variables (DB credentials, JWT secret) securely using AWS Secrets Manager or Parameter Store.
+    *   Define a health check path (e.g., `/actuator/health`).
+
+5.  **Service:**
+    *   Create an ECS Service that runs and maintains the desired number of tasks (instances) of your `product-service`.
+    *   Associate it with an Application Load Balancer (ALB) for traffic distribution and HTTPS termination.
+    *   Configure auto-scaling policies based on CPU utilization, request count, etc.
+
+6.  **Database (AWS RDS PostgreSQL):**
+    *   Provision an AWS RDS (Relational Database Service) instance for PostgreSQL.
+    *   Configure it in a private subnet for security.
+    *   Ensure proper Security Group rules allow the ECS service to connect to RDS.
+    *   Flyway will handle migrations on application startup.
+
+7.  **CI/CD Integration:**
+    *   Extend the GitHub Actions pipeline to trigger an ECS service update after a successful Docker image push to a registry like ECR. This can be done using AWS CLI commands or a dedicated GitHub Action for ECS deployment.
+
+### Kubernetes (EKS/GKE/AKS)
+
+For larger, more complex deployments or multi-cloud strategies, Kubernetes is a powerful choice.
+
+1.  **Container Image:** Similar to ECS, the Docker image is built and pushed to a container registry.
+
+2.  **Kubernetes Cluster:**
+    *   Provision a managed Kubernetes cluster (e.g., AWS EKS, Google GKE, Azure AKS).
+
+3.  **Deployment:**
+    *   Create a Kubernetes `Deployment` manifest for the `product-service` specifying:
+        *   Number of replicas (for horizontal scaling).
+        *   Docker image name.
+        *   Resource limits (CPU, memory).
+        *   Readiness and Liveness probes (using `/actuator/health`).
+        *   Environment variables from Kubernetes `Secrets` (for DB credentials, JWT secret) and `ConfigMaps`.
+
+4.  **Service:**
+    *   Create a Kubernetes `Service` (e.g., `LoadBalancer` type) to expose the application to external traffic and integrate with the cloud provider's load balancer.
+
+5.  **Ingress:**
+    *   Use an `Ingress` controller (e.g., Nginx Ingress Controller) to manage external access, routing, and SSL termination.
+
+6.  **Database (Managed Service or StatefulSet):**
+    *   **Recommended:** Use a managed database service like AWS RDS, Google Cloud SQL, or Azure Database for PostgreSQL.
+    *   **Alternative (complex):** Deploy PostgreSQL within Kubernetes using a `StatefulSet` and persistent volumes, but this adds significant operational overhead.
+
+7.  **CI/CD Integration:**
+    *   Extend GitHub Actions to apply Kubernetes manifests (e.g., using `kubectl apply -f .`) or use tools like Argo CD/Flux for GitOps-style continuous deployment after a new image is available.
+
+### Managed Service (e.g., AWS Elastic Beanstalk)
+
+For simpler deployments where you want to abstract away much of the infrastructure, managed services can be beneficial.
+
+1.  **Deployment Bundle:** Elastic Beanstalk can deploy Docker containers. You would provide your `Dockerfile` and `docker-compose.yml` (for a single container environment) directly to Beanstalk.
+
+2.  **Environment Configuration:**
+    *   Elastic Beanstalk handles the provisioning of EC2 instances, load balancers, and auto-scaling.
+    *   You configure environment variables securely within the Beanstalk environment.
+
+3.  **Database:**
+    *   Link the Beanstalk application to an external AWS RDS PostgreSQL instance.
+
+4.  **CI/CD Integration:**
+    *   The GitHub Actions could build the Docker image, then use the AWS CLI to deploy the `Dockerfile` and `docker-compose.yml` (or a pre-built image) to an Elastic Beanstalk environment.
+
+## 3. Post-Deployment Checks
+
+After any deployment, perform these checks:
+
+*   **Health Endpoints:**
+    *   `GET /actuator/health`: Ensure the application is reporting `UP`.
+    *   Check status of all microservices if applicable.
+*   **Logs:**
+    *   Monitor application logs for any errors or unexpected behavior.
+    *   Verify successful Flyway migrations.
+*   **Basic API Functionality:**
+    *   Perform a sample `POST /api/auth/register` and `POST /api/auth/login` to ensure authentication works.
+    *   Execute `GET /api/products` (with a valid JWT) to confirm data retrieval.
+    *   Perform a sample `POST`, `PUT`, `DELETE` operation if possible (with admin role).
+*   **Monitoring Dashboards:**
+    *   Verify that application metrics are being collected (e.g., in Prometheus/Grafana, CloudWatch).
+    *   Check CPU, memory, network usage.
+
+## 4. Rollback Strategy
+
+A robust rollback strategy is crucial for production deployments.
+
+*   **Versioned Docker Images:** Our CI/CD pipeline tags Docker images with the Git SHA and a timestamp (`${{ github.sha }}` and `$(date +%Y%m%d%H%M%S)`). This allows easy identification and deployment of previous stable versions.
+
+*   **Stateless Application:** The `product-service` is stateless (JWT handles session), making it easier to roll back application instances without complex session management.
+
+*   **Database Rollback:**
+    *   **Flyway:** Flyway is designed for "forward-only" migrations. Rolling back a database schema can be complex and requires careful planning.
+    *   **Strategy:**
+        *   **Backup:** Always perform a database backup before a major deployment or migration.
+        *   **Reverse Migrations (Rare):** Avoid creating "down" migration scripts if possible. Instead, focus on additive changes. If a rollback is absolutely necessary, it often involves restoring a database backup, which can lead to data loss.
+        *   **Forward Fix:** For most issues, creating a new "forward" migration to fix the problem in the existing schema is preferred over rolling back.
+    *   **Data Integrity:** Ensure that any application rollback is compatible with the current database schema, or that the database is also rolled back to a compatible state (which is riskier).
+
+*   **Deployment Platform Rollback:**
+    *   **Docker Compose:** Simply execute `docker-compose up -d --build` with the desired older commit checked out.
+    *   **ECS/Kubernetes:** These platforms have built-in rollback capabilities.
+        *   **ECS:** Update the service to point to a previous Task Definition version (which uses an older Docker image tag).
+        *   **Kubernetes:** Use `kubectl rollout undo deployment/<deployment-name>` to revert to a previous `Deployment` revision.
+
+**General Rollback Best Practices:**
+*   Have clear go/no-go criteria for deployments.
+*   Monitor closely immediately after deployment.
+*   Automate rollback procedures where possible.
+*   Practice rollbacks in lower environments.
