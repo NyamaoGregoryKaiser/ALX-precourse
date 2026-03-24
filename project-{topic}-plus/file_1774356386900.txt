@@ -1,0 +1,2 @@
+2.  **Ensure Nginx is running and exposes port 80.**
+3.  **Request a certificate:**

@@ -1,0 +1,2 @@
+(Adjust the backend URL if running manually on a different port/host).
+4.  **Start the React development server:**
