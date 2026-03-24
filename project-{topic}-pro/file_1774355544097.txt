@@ -1,0 +1,14 @@
++----------------+          +------------------------+          +---------------+
+|     Client     |          |       Backend API      |          |               |
+|  (React/TS)    |          |     (NestJS/TS)        |          |   Database    |
+| - Browser      | <------> | - Authentication       | <------> | (PostgreSQL)  |
+| - Mobile App   |          | - User Management      |          | - Users       |
+|                |          | - Project Management   |          | - Projects    |
+|                |          | - Task Management      |          | - Tasks       |
+|                |          | - Comments             |          | - Comments    |
+|                |          | - Notifications        |          | - Notifications|
+|                |          | - Logging & Monitoring |          |               |
+|                |          | - Error Handling       |          |               |
++----------------+          | - Caching (Redis)      |          +---------------+
+                            | - Rate Limiting        |
+                            +------------------------+

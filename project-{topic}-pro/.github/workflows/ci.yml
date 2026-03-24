@@ -12,56 +12,186 @@ on:
       - develop
 
 jobs:
-  build:
+  backend-test:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
 
-    - name: Build Docker image
-      run: docker build -t payment-processor:latest .
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install
 
-    - name: Run unit and integration tests (in container)
-      run: |
-        docker run --rm payment-processor:latest ./PaymentProcessorTests
+      - name: Run Backend Unit Tests
+        working-directory: ./backend
+        run: npm test -- --coverage
+        env:
+          NODE_ENV: test
+          # Provide dummy env vars for tests that might rely on ConfigModule
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: testuser
+          DATABASE_PASSWORD: testpassword
+          DATABASE_NAME: testdb
+          JWT_SECRET: testsecret
+          REDIS_HOST: localhost
+          FRONTEND_URL: http://localhost:3000
 
+      - name: Upload Backend Coverage Report
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./backend/coverage
+          flags: backend
+          name: codecov-backend
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Run Frontend Unit Tests
+        working-directory: ./frontend
+        run: npm test -- --watchAll=false
+        env:
+          CI: true # Required for Jest in non-interactive mode
+          REACT_APP_API_BASE_URL: http://localhost:3001 # Dummy API URL for tests
+
+      - name: Lint Frontend Code
+        working-directory: ./frontend
+        run: npm run lint
+
+  # Backend E2E/Integration Test (requires Docker)
+  backend-e2e-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
+          ./wait-for-it.sh localhost:5432 --timeout=60
+          ./wait-for-it.sh localhost:6379 --timeout=60
+        env:
+          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin # Ensure wait-for-it is found
+        # (You'd typically need to add a wait-for-it.sh script to your repo or use a composite action)
+
+      - name: Run Backend Migrations for Test DB
+        working-directory: ./backend
+        run: npm run typeorm migration:run
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: testuser
+          DATABASE_PASSWORD: testpassword
+          DATABASE_NAME: testdb
+          JWT_SECRET: testsecret
+          REDIS_HOST: localhost
+          FRONTEND_URL: http://localhost:3000
+          NODE_ENV: test
+
+      - name: Run Backend E2E Tests
+        working-directory: ./backend
+        run: npm run test:e2e
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: testuser
+          DATABASE_PASSWORD: testpassword
+          DATABASE_NAME: testdb
+          JWT_SECRET: testsecret
+          REDIS_HOST: localhost
+          FRONTEND_URL: http://localhost:3000
+          NODE_ENV: test
+
+  # Build and Deploy (Example - adjust for your cloud provider)
   deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: [backend-test, frontend-test, backend-e2e-test]
     runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' # Deploy only from main branch
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Login to Docker Hub (or other registry)
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and Push Backend Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: your-docker-username/task-management-backend:latest
 
-    - name: Build and push Docker image
-      id: docker_build
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/payment-processor:${{ github.sha }}
-          ${{ secrets.DOCKER_USERNAME }}/payment-processor:latest
+      - name: Build and Push Frontend Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: your-docker-username/task-management-frontend:latest
+          build-args: |
+            REACT_APP_API_BASE_URL=https://your-api-domain.com # Adjust for production API URL
 
-    - name: Deploy to Staging/Production (Conceptual)
-      run: |
-        echo "Deployment script for staging/production would go here."
-        echo "This might involve SSHing to a server, running 'docker-compose pull' and 'docker-compose up -d', or updating Kubernetes manifests."
-        echo "Using image: ${{ secrets.DOCKER_USERNAME }}/payment-processor:${{ github.sha }}"
-        # Example: ssh user@your-server "docker-compose -f /path/to/docker-compose.yml pull payment-processor-app && docker-compose -f /path/to/docker-compose.yml up -d payment-processor-app"
-      # You would typically add environment-specific logic, e.g., using secrets for server credentials
+      - name: Deploy to Server (e.g., SSH and run docker compose pull/up)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /path/to/your/app # Your deployment directory on the server
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker system prune -f # Clean up old images
 ```

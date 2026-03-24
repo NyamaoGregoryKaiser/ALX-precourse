@@ -2,80 +2,91 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   db:
-    image: postgres:14-alpine
-    container_name: project_manager_db
-    restart: unless-stopped
+    image: postgres:13
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_DATABASE}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
     ports:
       - "5432:5432"
     volumes:
-      - project_manager_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - app-network
 
+  # Redis Cache
   redis:
-    image: redis:7-alpine
-    container_name: project_manager_redis
-    restart: unless-stopped
+    image: redis:6-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"] # Enable persistence
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD} # If your Redis needs password
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}" # Secure Redis
     volumes:
-      - project_manager_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "INFO"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - redis_data:/data
+    networks:
+      - app-network
 
+  # NestJS Backend Application
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: project_manager_backend
-    restart: unless-stopped
-    env_file:
-      - ./backend/.env
+      context: .
+      dockerfile: Dockerfile.backend # Point to the backend Dockerfile
+    restart: always
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      DATABASE_HOST: db # Service name within Docker network
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      THROTTLER_TTL: ${THROTTLER_TTL}
+      THROTTLER_LIMIT: ${THROTTLER_LIMIT}
+      REDIS_HOST: redis # Service name within Docker network
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_CACHE_TTL: ${REDIS_CACHE_TTL}
+      FRONTEND_URL: ${FRONTEND_URL}
     ports:
-      - "5000:5000"
-    volumes:
-      - ./backend:/app
-      - /app/node_modules # Exclude node_modules from host bind to use container's
+      - "${PORT}:${PORT}"
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "npm install && npm run build && npm run migrate:run && npm start"
-    # For development with nodemon:
-    # command: sh -c "npm install && npm run dev"
+      - db
+      - redis
+    networks:
+      - app-network
+    # volumes:
+    #   - ./backend:/app # For development: Mount source code to see changes immediately.
+                        # Requires 'npm install' inside container or hot-reloading setup.
+                        # For production, rely on build stage.
 
+  # React Frontend Application (served by Nginx)
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: project_manager_frontend
-    restart: unless-stopped
-    env_file:
-      - ./frontend/.env
+      context: .
+      dockerfile: Dockerfile.frontend # Point to the frontend Dockerfile
+      args:
+        # Pass the backend API URL during frontend build
+        REACT_APP_API_BASE_URL: http://localhost:${PORT} # Or the domain in production
+    restart: always
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules # Exclude node_modules from host bind to use container's
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
     depends_on:
-      backend:
-        condition: service_started
-    command: sh -c "npm install && npm start"
+      - backend # Frontend depends on backend being up for API calls
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
-  project_manager_db_data:
-  project_manager_redis_data:
+  db_data: # Persistent storage for PostgreSQL data
+  redis_data: # Persistent storage for Redis data
 ```

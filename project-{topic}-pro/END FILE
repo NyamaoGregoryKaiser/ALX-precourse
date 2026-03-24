@@ -1,1 +1,125 @@
-This setup aims to cover all the requirements, including the extensive line count, by providing a full-stack, secure, and testable application. The backend code alone (without tests) is well over 2000 lines, and with frontend, tests, and documentation, the total far exceeds the request.
+### ARCHITECTURE.md
+
+```markdown
+# TaskFlow: Architecture Documentation
+
+This document describes the architectural design of the TaskFlow Enterprise-Grade Task Management System.
+
+## 1. High-Level Overview
+
+TaskFlow is a full-stack web application following a client-server architecture. The frontend is a Single Page Application (SPA), and the backend provides a RESTful API. Both are containerized using Docker and orchestrated with Docker Compose.
+
+```mermaid
+graph TD
+    User[End User (Browser)] -- HTTP/HTTPS --> CDN(CDN / Load Balancer)
+    CDN --> Nginx(Nginx Proxy / Static Server)
+    Nginx -- Serve Frontend --> Browser[End User (Browser)]
+    Browser -- API Calls (HTTP/HTTPS) --> Nginx
+    Nginx -- Proxy API --> Backend(Backend API - NestJS)
+
+    Backend -- Reads/Writes --> PostgreSQL(PostgreSQL Database)
+    Backend -- Reads/Writes --> Redis(Redis Cache)
+
+    subgraph Infrastructure
+        Nginx
+        Backend
+        PostgreSQL
+        Redis
+    end
+```
+
+## 2. Core Components
+
+### 2.1 Frontend Application (React, TypeScript)
+
+*   **Technology Stack:** React v18, TypeScript, React Router DOM v6, Axios, Tailwind CSS.
+*   **Purpose:** Provides an intuitive and responsive user interface for users to interact with the task management system.
+*   **Key Features:**
+    *   **Authentication & Authorization UI:** Login, Registration forms.
+    *   **Dashboard:** Overview of user's projects and tasks.
+    *   **Project Management:** List, create, view details, update, and delete projects.
+    *   **Task Management:** List, create, view details, update, and delete tasks within projects.
+    *   **Commenting:** Add and view comments on tasks.
+    *   **State Management:** Utilizes React Context API for global authentication state, and `useState`/`useReducer` for local component state.
+    *   **API Interaction:** Uses `axios` with interceptors for token attachment and global error handling.
+*   **Deployment:** Built as static assets and served by Nginx.
+
+### 2.2 Backend API (NestJS, TypeScript)
+
+*   **Technology Stack:** Node.js v18+, NestJS v10, TypeScript, TypeORM, Passport.js, JWT, Winston, Redis, Swagger.
+*   **Purpose:** Serves as the central brain of the application, handling all business logic, data persistence, and API requests from the frontend.
+*   **Architectural Style:** Modular, following NestJS's opinionated structure (modules, controllers, services, entities, DTOs). This promotes separation of concerns and maintainability.
+*   **Key Modules:**
+    *   **AuthModule:** Manages user authentication (registration, login, JWT token generation, validation).
+    *   **UsersModule:** Handles CRUD operations for user profiles.
+    *   **ProjectsModule:** Manages project entities and their associated business logic (e.g., project ownership).
+    *   **TasksModule:** Manages task entities, their lifecycle (status, priority, due dates), and assignments.
+    *   **CommentsModule:** Handles comments linked to tasks.
+    *   **NotificationsModule:** Provides a basic system for creating and retrieving in-app notifications.
+    *   **CommonModule:** Contains shared components like global exception filters, interceptors (caching, logging), guards (authentication, roles), and decorators.
+    *   **LoggingModule:** Integrates Winston for structured logging.
+*   **Security:**
+    *   **JWT Authentication:** Stateless authentication using JSON Web Tokens.
+    *   **Role-Based Access Control (RBAC):** Custom Guards restrict access to endpoints based on user roles (Admin, User, Viewer).
+    *   **Rate Limiting:** `ThrottlerModule` protects against brute-force attacks and API abuse.
+*   **Data Persistence:** TypeORM as an ORM to interact with PostgreSQL.
+*   **Caching:** Redis integrated via `@nestjs/cache-manager` and a custom `CacheInterceptor` to cache GET responses and invalidate relevant caches on CUD operations.
+*   **Error Handling:** Global `HttpExceptionFilter` ensures consistent and informative error responses.
+*   **API Documentation:** Integrated Swagger (OpenAPI) for interactive API documentation.
+
+### 2.3 Database (PostgreSQL)
+
+*   **Technology Stack:** PostgreSQL v13 (or newer).
+*   **Purpose:** Relational database for persistent storage of all application data.
+*   **Schema:** Defined using TypeORM entities, with relationships (One-to-Many, Many-to-One) enforcing data integrity.
+    *   `users`: Stores user credentials and profile information.
+    *   `projects`: Stores project details, linked to `users` (owner).
+    *   `tasks`: Stores task details, linked to `projects`, `users` (creator, assignee).
+    *   `comments`: Stores comments, linked to `tasks` and `users` (author).
+    *   `notifications`: Stores in-app notifications, linked to `users`.
+*   **Management:** Schema changes are managed via TypeORM migrations, ensuring controlled database evolution.
+
+### 2.4 Caching Layer (Redis)
+
+*   **Technology Stack:** Redis v6 (or newer).
+*   **Purpose:** An in-memory data store used to cache frequently accessed data, reducing the load on the PostgreSQL database and improving API response times.
+*   **Implementation:** Used with `cache-manager` and `cache-manager-redis-yet` in NestJS. Custom `CacheInterceptor` decorates routes for automatic caching and invalidation.
+
+## 3. Communication
+
+*   **Client-Backend:** RESTful API over HTTP/HTTPS. Requests are authenticated using JWTs passed in the `Authorization: Bearer <token>` header.
+*   **Backend-Database:** TypeORM handles communication with PostgreSQL.
+*   **Backend-Cache:** NestJS `CacheManager` interacts with Redis.
+
+## 4. Design Patterns & Principles
+
+*   **Modular Monolith (Backend):** While using NestJS, the application is structured into loosely coupled modules that could potentially be extracted into microservices in the future if scale demands it.
+*   **Dependency Injection:** Heavily utilized in NestJS to manage dependencies, making the codebase testable and extensible.
+*   **Separation of Concerns:** Clear distinction between controllers (handling requests), services (business logic), and repositories (data access).
+*   **DTOs (Data Transfer Objects):** Used for strict data validation and type safety for incoming request payloads and outgoing responses.
+*   **Guards, Interceptors, Filters (NestJS):** Middleware-like components for handling cross-cutting concerns (authentication, authorization, caching, error handling) declaratively.
+*   **RESTful API Design:** Adheres to REST principles for clear and consistent endpoint design.
+
+## 5. Security Considerations
+
+*   **Authentication:** JWT with secure secrets and expiration.
+*   **Authorization:** RBAC enforced at the API level using Guards.
+*   **Password Hashing:** `bcrypt` used for secure password storage.
+*   **Data Validation:** `class-validator` ensures incoming data integrity.
+*   **Rate Limiting:** Protects against abuse.
+*   **CORS:** Configured to allow requests only from the specified frontend origin.
+*   **Environment Variables:** Sensitive configurations are managed via environment variables and validated using Joi.
+
+## 6. Scalability & Performance
+
+*   **Stateless Backend:** JWT-based authentication makes the backend stateless, enabling easy horizontal scaling.
+*   **Caching with Redis:** Reduces database load for read-heavy operations.
+*   **Database Indexing:** TypeORM entities can define indexes to optimize query performance (though not explicitly shown in migrations for all fields, it's a best practice).
+*   **Dockerization:** Facilitates easy deployment to container orchestration platforms like Kubernetes.
+*   **Asynchronous Operations:** Node.js's event-driven, non-blocking I/O model is inherently good for concurrent operations.
+
+## 7. Future Enhancements
+
+*   **WebSockets:** For real-time notifications (e.g., new comment, task assignment).
+*   **Advanced Search & Filtering:** More sophisticated search capabilities for projects and tasks.
+*
