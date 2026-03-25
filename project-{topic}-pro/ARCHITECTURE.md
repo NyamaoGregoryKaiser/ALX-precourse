@@ -1,163 +1,95 @@
-```markdown
-# Architecture Document: Enterprise-Grade Project Management System
+# Real-time Chat Application Architecture
 
-## 1. Introduction
+This document outlines the high-level architecture and key components of the Real-time Chat Application. The system is designed for scalability, reliability, and maintainability, following a microservices-inspired approach where the frontend and backend are decoupled.
 
-This document outlines the architectural design of the Enterprise-Grade Project Management System. The system is built to be scalable, secure, and maintainable, leveraging modern web technologies and best practices.
+## 1. High-Level Overview
 
-## 2. Goals and Principles
+The application follows a traditional client-server architecture with a strong emphasis on real-time communication.
 
-**Goals:**
-*   Provide a robust and secure platform for managing projects and tasks.
-*   Enable efficient collaboration among users with different roles.
-*   Ensure high availability and responsiveness.
-*   Maintain a clear separation of concerns for easier development and maintenance.
-*   Prioritize security throughout the design and implementation.
-
-**Principles:**
-*   **Modularity:** Break down the system into independent, cohesive modules.
-*   **Scalability:** Design components to scale horizontally to handle increased load.
-*   **Security by Design:** Integrate security measures from the initial design phase, not as an afterthought.
-*   **Maintainability:** Write clean, readable, and well-documented code with comprehensive testing.
-*   **API-First:** Design the backend as a comprehensive API to support multiple client applications.
-*   **Loose Coupling:** Components should be independent and interact through well-defined interfaces.
-
-## 3. High-Level Architecture
-
-The system employs a classic 3-tier architecture, augmented with dedicated services for caching and rate limiting, orchestrated using Docker Compose.
+*   **Client (Frontend)**: A single-page application (SPA) built with React.js and TypeScript, consuming RESTful APIs and interacting via WebSockets.
+*   **Server (Backend)**: A Node.js application built with Express.js and TypeScript, providing RESTful APIs for CRUD operations and handling real-time communication via Socket.IO.
+*   **Database**: PostgreSQL for persistent data storage.
+*   **Cache/Message Broker**: Redis, primarily used for JWT refresh token storage and potentially for managing user presence/distributed Socket.IO adapters.
+*   **Containerization**: Docker and Docker Compose for development and deployment environments.
 
 ```
-+-------------------+
-|      Client       |  (Web Browser / Mobile App)
-+---------+---------+
-          | HTTPS / HTTP
-          |
-+---------V---------+
-|     Load Balancer / Reverse Proxy (e.g., Nginx)  (Optional for single instance)
-+---------+---------+
-          | HTTPS / HTTP
-          |
-+---------V---------+
-|   Backend Service   |
-| (Node.js/Express)   |
-+---------+---------+
-    |         |
-    |  (Database Pool)
-    |         |
-+---V---------V---+
-|   PostgreSQL DB   |
-+-------------------+
-    |         ^
-    | (Cache & Rate Limit Data)
-    |         |
-+---V---------V---+
-|    Redis Cache    |
-+-------------------+
++------------------+     HTTP/WS     +---------------------+     TCP     +----------------+
+|                  | <-------------> |                     | <---------> |                |
+|  Client (React)  |                 | Backend (Node/Exp)  |             | PostgreSQL DB  |
+|                  | <-------------> |                     | <---------> |                |
++------------------+     Socket.IO   +---------------------+             +----------------+
+                                           ^        ^
+                                           |        | Redis Client
+                                           |        |
+                                           +--------+----------------+
+                                                    |                |
+                                                    |  Redis (Cache/PubSub)  |
+                                                    |                |
+                                                    +----------------+
 ```
 
-## 4. Component Breakdown
+## 2. Component Breakdown
 
-### 4.1. Client (Frontend)
+### 2.1. Frontend (React.js, TypeScript)
 
-*   **Technology:** React with TypeScript.
-*   **Role:** Provides the interactive user interface for managing projects and tasks.
-*   **Interaction:** Communicates with the Backend API exclusively through RESTful HTTP/HTTPS requests.
-*   **State Management:** Uses React Context API for global state (e.g., authentication status).
-*   **API Communication:** `Axios` for making HTTP requests.
-*   **Routing:** `React Router DOM` for client-side navigation.
+*   **Framework**: React.js for building the user interface.
+*   **Language**: TypeScript for type safety and improved developer experience.
+*   **State Management**: React Context API for global state (e.g., authentication, socket connection). Could be extended with Zustand/Redux Toolkit for larger scale.
+*   **Routing**: React Router DOM for navigation between pages.
+*   **API Integration**: Axios for making HTTP requests to the backend REST APIs.
+*   **Real-time Communication**: Socket.IO client library for establishing and managing WebSocket connections.
+*   **Styling**: Tailwind CSS for utility-first CSS.
+*   **Key Modules**:
+    *   `src/api`: Axios instances and functions for interacting with backend REST APIs.
+    *   `src/components`: Reusable UI components (e.g., `LoginForm`, `ChatRoomList`, `ChatWindow`).
+    *   `src/contexts`: Context providers for managing global state like `AuthContext` and `SocketContext`.
+    *   `src/pages`: Top-level components representing application views (e.g., `LoginPage`, `ChatDashboard`).
+    *   `src/types`: TypeScript interfaces for shared data structures (users, messages, chat rooms).
 
-### 4.2. Backend API
+### 2.2. Backend (Node.js, Express.js, Socket.IO, TypeORM, TypeScript)
 
-*   **Technology:** Node.js with Express.js and TypeScript.
-*   **Role:** The core business logic layer. Handles API requests, authentication, authorization, data validation, and persistence.
-*   **Structure:**
-    *   **`src/server.ts`:** Entry point, initializes Express app, connects to DB/Redis, and starts the server. Handles graceful shutdowns.
-    *   **`src/app.ts`:** Configures Express middleware (security headers, CORS, body parsers, rate limiting) and registers all API routes.
-    *   **`src/routes/`:** Defines API endpoints (`/api/auth`, `/api/users`, `/api/projects`, `/api/tasks`). Each route module groups related endpoints.
-    *   **`src/controllers/`:** Contains functions that handle incoming requests, parse request data, call appropriate services, and send HTTP responses.
-    *   **`src/services/`:** Encapsulates business logic. Services interact with repositories (ORM) to perform CRUD operations and implement complex workflows.
-    *   **`src/models/`:** TypeORM entities (`User`, `Project`, `Task`) defining the database schema and relationships.
-    *   **`src/middleware/`:** A critical layer for cross-cutting concerns:
-        *   `auth.middleware.ts`: Authenticates users using JWT.
-        *   `authorize.middleware.ts`: Implements Role-Based Access Control (RBAC).
-        *   `validate.middleware.ts`: Validates request payloads using Joi schemas.
-        *   `error.middleware.ts`: Centralized error handling, prevents sensitive data leakage.
-        *   `cache.middleware.ts`: Caching mechanism for GET requests using Redis.
-        *   `rateLimit.middleware.ts`: API rate limiting using Redis.
-    *   **`src/utils/`:** Helper functions for JWT generation/verification, password hashing, and custom error classes.
-    *   **`src/config/`:** Centralized configuration management (database, Redis, JWT secrets, logging levels) loaded from environment variables.
-*   **Security:** JWT-based authentication, RBAC authorization, input validation, bcrypt password hashing, rate limiting, Helmet for security headers, CORS, robust error handling, and structured logging.
-*   **Data Access:** TypeORM as an Object-Relational Mapper (ORM) for interacting with PostgreSQL. This provides type safety and protection against SQL injection.
+The backend is structured using a layered approach to separate concerns:
 
-### 4.3. Database (PostgreSQL)
+*   **Entry Point**: `src/server.ts` handles server startup, database initialization, and Socket.IO setup.
+*   **Application Core**: `src/app.ts` configures the Express application (middleware, routes).
+*   **Controllers**: `src/controllers` handle incoming HTTP requests, validate input, and orchestrate calls to services. They focus on request/response logic.
+*   **Services**: `src/services` encapsulate the core business logic. They interact with the database (via repositories) and other services (e.g., `SocketService` for broadcasting). This layer is responsible for data manipulation and complex operations.
+*   **Database Layer**:
+    *   **ORM**: TypeORM is used to interact with PostgreSQL.
+    *   **Entities**: `src/database/entities` define the database schema using TypeORM decorators (`User`, `ChatRoom`, `Message`, `ChatRoomParticipant`).
+    *   **Migrations**: `src/database/migrations` manage schema changes.
+    *   **Data Source**: `src/config/data-source.ts` configures the TypeORM `DataSource`.
+*   **Middleware**: `src/middleware` contains reusable Express middleware for common tasks:
+    *   `authMiddleware.ts`: JWT token verification and user authentication.
+    *   `errorHandler.ts`: Centralized error handling for consistent API responses.
+    *   `rateLimitMiddleware.ts`: Prevents abuse by limiting request rates.
+    *   `loggingMiddleware.ts`: Request/response logging using Winston.
+*   **Routes**: `src/routes` define the API endpoints and map them to controller methods.
+*   **Configuration**: `src/config` manages environmental settings (database, Redis, JWT secrets, logger).
+*   **Utilities**: `src/utils` contains helper functions (e.g., `catchAsync` for error handling in async routes).
+*   **Real-time Logic**: `src/services/socketService.ts` manages Socket.IO events, room management, and broadcasting messages.
 
-*   **Technology:** PostgreSQL relational database.
-*   **Role:** Primary data store for all application data (users, projects, tasks).
-*   **Persistence:** Docker volumes are used to ensure data persistence across container restarts.
-*   **Management:** TypeORM handles schema definition (entities), migrations, and query execution.
-*   **Query Optimization:** Potential for indexing critical columns (e.g., `user.email`, `project.ownerId`) for performance. TypeORM's query builder allows for optimized queries.
+### 2.3. Database (PostgreSQL)
 
-### 4.4. Cache and Rate Limiting Store (Redis)
+*   **Type**: Relational Database Management System (RDBMS).
+*   **Purpose**: Stores all persistent application data, including user accounts, chat rooms, messages, and participation records.
+*   **Schema Design**: Normalized schema to ensure data integrity and efficient querying. Key tables: `users`, `chat_rooms`, `messages`, `chat_room_participants`, `message_read_by_users`.
+*   **Query Optimization**: TypeORM's query builder is used, with explicit eager/lazy loading of relations to minimize N+1 problems. Indices are defined on foreign keys and frequently queried columns (e.g., `email`, `username`, `createdAt` on messages).
 
-*   **Technology:** Redis in-memory data store.
-*   **Role:**
-    *   **Caching:** Stores responses for frequently accessed GET endpoints (`cache.middleware.ts`) to reduce database load and improve response times.
-    *   **Rate Limiting:** Stores hit counts for API rate limiting (`rateLimit.middleware.ts`), providing efficient and distributed rate control.
-*   **Persistence:** Configured with `appendonly yes` in `docker-compose.yml` for basic data persistence (for rate limit states) across Redis container restarts.
+### 2.4. Cache / Pub/Sub (Redis)
 
-## 5. Security Considerations
+*   **Purpose**:
+    *   **JWT Refresh Token Storage**: Provides a persistent and fast lookup for refresh tokens, allowing for token invalidation on logout or security breaches.
+    *   **Session Management**: Can be extended to store user session data.
+    *   **Real-time Presence/State (Scalability)**: In a multi-instance backend deployment, Redis can act as a Socket.IO adapter (using `socket.io-redis`) to allow messages to be broadcast across all instances, and for managing user presence (who is online).
+*   **Implementation**: `ioredis` client for Node.js.
 
-Security is a paramount concern and is integrated into the architecture as follows:
+## 3. Communication Flows
 
-*   **Authentication & Authorization:** Implemented with JWT for access tokens (short-lived) and refresh tokens (longer-lived). RBAC controls access to resources based on user roles (`admin`, `manager`, `user`). Object-level access is further enforced in service layers.
-*   **Input Validation & Sanitization:** Joi is used for comprehensive server-side validation. This prevents malformed data from entering the system and mitigates various injection attacks.
-*   **Password Management:** Passwords are hashed using `bcryptjs` before storage, never stored in plaintext.
-*   **Rate Limiting:** Protects against brute-force attacks on login endpoints and denial-of-service attacks on other APIs.
-*   **Secure Communication:** Assumes HTTPS in production for all client-server communication to protect data in transit. (Docker Compose example uses HTTP for local dev simplicity).
-*   **Environment Variables:** Sensitive configurations and secrets are externalized using environment variables (`.env` files), never hardcoded.
-*   **Logging & Monitoring:** `Winston` provides structured logging for error tracking, performance metrics, and security audit trails (e.g., failed login attempts, critical resource access).
-*   **Error Handling:** A global error handler prevents leaking sensitive stack traces or internal server details to clients in production environments.
-*   **Security Headers:** `Helmet` middleware adds crucial HTTP headers to enhance security against common web vulnerabilities.
-*   **CORS Policies:** Explicitly defined CORS policies to control which origins can access the API.
-*   **Database Access:** All database interactions go through TypeORM, which uses parameterized queries to prevent SQL injection. Database user permissions are restricted to the minimum necessary.
-*   **Docker Security:** Using lean base images (`alpine`), multi-stage builds, and avoiding running as root within containers.
+### 3.1. Authentication Flow
 
-## 6. Development & Deployment Workflow
-
-*   **Local Development:** Developers use `docker-compose up` to spin up the entire stack locally for a consistent environment. `nodemon` is used for auto-reloading backend changes.
-*   **Version Control:** Git is used for source code management.
-*   **CI/CD (GitHub Actions):**
-    *   Automatically builds and tests both frontend and backend upon pushes/pull requests to `main` and `develop` branches.
-    *   Ensures code quality (linting), correctness (unit, integration, API tests), and satisfactory test coverage.
-    *   A simulated deployment step is configured for the `main` branch, representing a deployment to staging/production environments.
-
-## 7. Scaling Considerations
-
-*   **Backend:** Node.js can be scaled horizontally by running multiple instances behind a load balancer. The stateless nature of JWTs (for access tokens) facilitates this. Redis for caching and rate limiting is a shared, external service.
-*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally through read replicas for read-heavy workloads.
-*   **Redis:** Can be scaled using Redis Cluster for high availability and sharding.
-*   **Frontend:** The React app builds into static files, which can be served efficiently from a CDN or static file server (e.g., Nginx in the Docker setup).
-
-## 8. Data Flow (Example: User Login)
-
-1.  **Frontend:** User enters credentials and clicks login.
-2.  **Frontend:** Sends a `POST /api/auth/login` request with email and password to the Backend API.
-3.  **Backend (Rate Limit Middleware):** `apiRateLimiter` checks if the IP address has exceeded the request limit in Redis. If so, it blocks the request.
-4.  **Backend (Validation Middleware):** `validate(loginSchema)` checks if the email and password format are valid. If not, returns 400.
-5.  **Backend (Auth Controller):** Calls `authService.login()`.
-6.  **Auth Service:**
-    *   Queries `UserRepository` to find the user by email.
-    *   Uses `bcrypt` to compare the provided password with the stored hashed password.
-    *   If credentials are valid, generates an `accessToken` and `refreshToken` using `jwt.sign()`.
-    *   Logs successful login.
-7.  **Auth Controller:** Sends a 200 OK response with the `accessToken`, `refreshToken`, and user details.
-8.  **Frontend:** Stores the `accessToken` (e.g., in local storage or memory) and potentially the `refreshToken` (e.g., in an HTTP-only cookie). Navigates the user to the dashboard.
-9.  **Subsequent requests:** Frontend includes the `accessToken` in the `Authorization: Bearer <token>` header.
-10. **Backend (Auth Middleware):** `authenticate` middleware verifies the `accessToken` using `jwt.verify()`, extracts user ID and role, fetches the user from the DB, and attaches the `User` object to `req.user`. If token is invalid/expired, returns 401.
-11. **Backend (Authorize Middleware):** `authorize` middleware checks if `req.user.role` has permission for the requested resource. If not, returns 403.
-12. **Backend (Controller/Service):** Proceeds with the business logic.
-
-## 9. Conclusion
-
-This architecture provides a solid foundation for a secure and scalable Project Management System. The modular design, robust security measures, and comprehensive testing strategy aim to deliver a high-quality, enterprise-grade application.
-```
+1.  **Register/Login**: Client sends `POST /api/auth/register` or `POST /api/auth/login` with credentials.
+2.  **Server Response**: Backend authenticates/registers user, generates `accessToken` (short-lived) and `refreshToken` (long-lived) using JWT.
+3.  **Token Storage**: Client stores tokens (e.g., in `localStorage` for convenience in this example; `HttpOnly` cookies are more secure for refresh tokens in production).
+4.  **API Requests**: Client includes `accessToken` in the `Authorization: Bearer <token>` header for all protected REST API calls.
+5.  **Token Refresh**: If `accessToken` expires, client uses `refreshToken` (sent to `POST /api/auth/refresh-token` with the expired access token in the header) to obtain a new `

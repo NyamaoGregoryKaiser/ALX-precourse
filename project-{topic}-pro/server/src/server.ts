@@ -1,50 +1,60 @@
-import 'reflect-metadata'; // Required for TypeORM
-import { AppDataSource } from './database/data-source';
-import { createApp } from './app';
-import { config } from './config';
-import { Logger } from './utils/logger';
-import { RedisServiceInstance } from './services/redis.service';
+import 'reflect-metadata';
+import app from './app';
+import http from 'http';
+import { initializeDataSource } from './config/data-source';
+import socketService from './services/socketService';
+import logger from './config/logger';
+import redisClient from './config/redis'; // Import redis client to ensure it's initialized
 
-const startServer = async () => {
-  try {
-    // Initialize Database
-    await AppDataSource.initialize();
-    Logger.info('Database connected successfully!');
+const PORT = process.env.PORT || 5000;
 
-    // Initialize Redis Service
-    await RedisServiceInstance.set('server:status', 'active', 60); // Example Redis usage
+async function bootstrap() {
+    try {
+        // 1. Initialize Database Connection
+        await initializeDataSource();
+        logger.info('Database connection established.');
 
-    const { server } = createApp();
+        // 2. Create HTTP Server
+        const server = http.createServer(app);
 
-    server.listen(config.port, () => {
-      Logger.info(`Server running on port ${config.port}`);
-      Logger.info(`Client accessible at ${config.clientUrl}`);
-      Logger.info(`API documentation: /api-docs (if Swagger setup)`);
-    });
+        // 3. Initialize Socket.IO
+        socketService.initializeSocketIO(server);
+        logger.info('Socket.IO instance created and attached to HTTP server.');
 
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason: Error | any, promise: Promise<any>) => {
-      Logger.error('Unhandled Rejection at:', promise, 'reason:', reason.message || reason);
-      // Application specific logging, throwing an error, or other logic here
-      // For production, consider graceful shutdown
-      server.close(() => {
+        // 4. Start HTTP Server
+        server.listen(PORT, () => {
+            logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode.`);
+            logger.info(`For API, visit http://localhost:${PORT}/api`);
+            logger.info(`For Frontend, visit ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+        });
+
+        // Handle server shutdown gracefully
+        process.on('SIGTERM', async () => {
+            logger.info('SIGTERM received. Shutting down gracefully...');
+            await AppDataSource.destroy();
+            await redisClient.quit();
+            server.close(() => {
+                logger.info('HTTP server closed.');
+                process.exit(0);
+            });
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+            // Optionally, exit the process after logging
+            // process.exit(1);
+        });
+
+        process.on('uncaughtException', (error) => {
+            logger.error('Uncaught Exception:', error);
+            // Must exit for uncaught exceptions after logging
+            process.exit(1);
+        });
+
+    } catch (error) {
+        logger.error('Failed to start server:', error);
         process.exit(1);
-      });
-    });
+    }
+}
 
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (error: Error) => {
-      Logger.error('Uncaught Exception:', error.message, error.stack);
-      // For production, consider graceful shutdown
-      server.close(() => {
-        process.exit(1);
-      });
-    });
-
-  } catch (error) {
-    Logger.error('Failed to start server:', error);
-    process.exit(1);
-  }
-};
-
-startServer();
+bootstrap();

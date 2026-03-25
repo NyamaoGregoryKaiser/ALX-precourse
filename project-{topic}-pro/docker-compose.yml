@@ -1,92 +1,86 @@
-```yaml
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
-    image: postgres:13
+    image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - chat_db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    networks:
-      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # Redis Cache
   redis:
-    image: redis:6-alpine
+    image: redis:7-alpine
     restart: always
-    command: ["redis-server", "--appendonly", "yes"] # Enable persistence
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD} # If your Redis needs password
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
-    networks:
-      - app-network
+      - chat_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  # NestJS Backend Application
-  backend:
+  server:
     build:
       context: .
-      dockerfile: Dockerfile.backend # Point to the backend Dockerfile
-    restart: always
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      PORT: ${PORT}
-      DATABASE_HOST: db # Service name within Docker network
-      DATABASE_PORT: 5432
-      DATABASE_USER: ${DATABASE_USER}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_NAME: ${DATABASE_NAME}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      THROTTLER_TTL: ${THROTTLER_TTL}
-      THROTTLER_LIMIT: ${THROTTLER_LIMIT}
-      REDIS_HOST: redis # Service name within Docker network
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_CACHE_TTL: ${REDIS_CACHE_TTL}
-      FRONTEND_URL: ${FRONTEND_URL}
-    ports:
-      - "${PORT}:${PORT}"
-    depends_on:
-      - db
-      - redis
-    networks:
-      - app-network
-    # volumes:
-    #   - ./backend:/app # For development: Mount source code to see changes immediately.
-                        # Requires 'npm install' inside container or hot-reloading setup.
-                        # For production, rely on build stage.
-
-  # React Frontend Application (served by Nginx)
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend # Point to the frontend Dockerfile
+      dockerfile: Dockerfile.server
       args:
-        # Pass the backend API URL during frontend build
-        REACT_APP_API_BASE_URL: http://localhost:${PORT} # Or the domain in production
+        # Pass .env variables from host to Dockerfile.server if needed for build steps
+        # E.g., if any build step depends on specific NODE_ENV
+        NODE_ENV: ${NODE_ENV}
+    restart: always
+    env_file:
+      - ./server/.env # Load server-specific environment variables
+      - ./.env # Load shared DB/Redis envs
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./server/logs:/app/logs # Persist logs
+      # Optional: Bind mount source for hot-reloading in dev, remove for prod
+      - ./server/src:/app/src
+      - ./server/package.json:/app/package.json
+      - ./server/package-lock.json:/app/package-lock.json
+      - ./server/tsconfig.json:/app/tsconfig.json
+      - ./server/tsconfig.build.json:/app/tsconfig.build.json
+      - ./server/ormconfig.ts:/app/ormconfig.ts
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["npm", "run", "dev"] # Use dev command for hot-reloading in compose, change to "npm run start" for production
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://localhost:5000/api}
+        REACT_APP_WS_BASE_URL: ${REACT_APP_WS_BASE_URL:-http://localhost:5000}
     restart: always
     ports:
-      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
+      - "3000:80" # Map host port 3000 to container's port 80 (Nginx)
     depends_on:
-      - backend # Frontend depends on backend being up for API calls
-    networks:
-      - app-network
+      server:
+        condition: service_started
+    # For local development with React's dev server (optional alternative to Nginx):
+    # volumes:
+    #   - ./client:/app
+    #   - /app/node_modules # Exclude node_modules from host mount
+    # command: ["npm", "start"]
 
-networks:
-  app-network:
-    driver: bridge
 
 volumes:
-  db_data: # Persistent storage for PostgreSQL data
-  redis_data: # Persistent storage for Redis data
-```
+  chat_db_data:
+  chat_redis_data:

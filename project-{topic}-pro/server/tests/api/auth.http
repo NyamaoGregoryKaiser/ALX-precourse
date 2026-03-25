@@ -1,0 +1,95 @@
+### Register a new user
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser1",
+  "email": "testuser1@example.com",
+  "password": "password123"
+}
+
+### Login with existing user
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "password123"
+}
+
+### Refresh token (requires a valid access token to protect this endpoint)
+# Replace <YOUR_ACCESS_TOKEN> and <YOUR_REFRESH_TOKEN> with actual tokens from login response
+POST http://localhost:5000/api/auth/refresh-token
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+{
+  "refreshToken": "<YOUR_REFRESH_TOKEN>"
+}
+
+### Get current user profile (requires access token)
+# Replace <YOUR_ACCESS_TOKEN> with actual token from login response
+GET http://localhost:5000/api/users/me
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+### Update current user profile (requires access token)
+# Replace <YOUR_ACCESS_TOKEN> with actual token from login response
+PUT http://localhost:5000/api/users/me
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+{
+  "username": "AliceSmith"
+}
+
+### Get all users
+GET http://localhost:5000/api/users
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+### Create a new group chat
+# Replace <YOUR_ACCESS_TOKEN> and <BOB_USER_ID> with actual values
+POST http://localhost:5000/api/chat-rooms
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+{
+  "name": "Dev Team Discussion",
+  "type": "group",
+  "participantIds": ["<BOB_USER_ID>", "<CHARLIE_USER_ID>"]
+}
+
+### Get user's chat rooms
+# Replace <YOUR_ACCESS_TOKEN> with actual token
+GET http://localhost:5000/api/chat-rooms
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+### Get messages for a specific chat room
+# Replace <YOUR_ACCESS_TOKEN> and <ROOM_ID> with actual values
+GET http://localhost:5000/api/chat-rooms/<ROOM_ID>/messages?limit=20&offset=0
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+### Add a participant to a group chat
+# Replace <YOUR_ACCESS_TOKEN>, <ROOM_ID>, and <DIANA_USER_ID> with actual values
+POST http://localhost:5000/api/chat-rooms/<ROOM_ID>/participants
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+{
+  "userIdToAdd": "<DIANA_USER_ID>"
+}
+
+### Remove a participant from a group chat
+# Replace <YOUR_ACCESS_TOKEN>, <ROOM_ID>, and <DIANA_USER_ID> with actual values
+DELETE http://localhost:5000/api/chat-rooms/<ROOM_ID>/participants/<DIANA_USER_ID>
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
+
+### Delete a chat room
+# Replace <YOUR_ACCESS_TOKEN> and <ROOM_ID> with actual values
+DELETE http://localhost:5000/api/chat-rooms/<ROOM_ID>
+Content-Type: application/json
+Authorization: Bearer <YOUR_ACCESS_TOKEN>
