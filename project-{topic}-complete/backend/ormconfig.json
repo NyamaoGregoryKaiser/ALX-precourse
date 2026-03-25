@@ -1,0 +1,30 @@
+```json
+{
+  "type": "postgres",
+  "host": "localhost",
+  "port": 5432,
+  "username": "postgres",
+  "password": "password",
+  "database": "chat_app_db",
+  "synchronize": false,
+  "logging": true,
+  "entities": [
+    "src/database/entities/**/*.ts"
+  ],
+  "migrations": [
+    "src/database/migrations/**/*.ts"
+  ],
+  "subscribers": [
+    "src/database/subscribers/**/*.ts"
+  ],
+  "seeds": [
+    "src/database/seeds/**/*.ts"
+  ],
+  "cli": {
+    "entitiesDir": "src/database/entities",
+    "migrationsDir": "src/database/migrations",
+    "subscribersDir": "src/database/subscribers"
+  }
+}
+```
+**Note**: When running within Docker, `host` will be the service name (`db`). This file is primarily for CLI commands. In `data-source.ts`, we'll use environment variables.

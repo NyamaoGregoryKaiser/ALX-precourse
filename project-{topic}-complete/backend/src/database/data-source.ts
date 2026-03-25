@@ -1,38 +1,37 @@
 ```typescript
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
-import { config } from '../config';
-import { User } from '../modules/users/user.entity';
-import { Product } from '../modules/products/product.entity';
-import { Category } from '../modules/categories/category.entity';
-import { Cart } from '../modules/carts/cart.entity';
-import { CartItem } from '../modules/carts/cart-item.entity';
-import { Order } from '../modules/orders/order.entity';
-import { OrderItem } from '../modules/orders/order-item.entity';
-import { Review } from '../modules/reviews/review.entity';
+import config from '../config';
+import logger from '../utils/logger';
+import { User } from './entities/User';
+import { Room } from './entities/Room';
+import { Message } from './entities/Message';
+import path from 'path';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  host: config.DATABASE.HOST,
-  port: config.DATABASE.PORT,
-  username: config.DATABASE.USERNAME,
-  password: config.DATABASE.PASSWORD,
-  database: config.DATABASE.NAME,
-  synchronize: false, // Set to false in production to use migrations
-  logging: config.NODE_ENV === 'development' ? ['query', 'error'] : false,
-  entities: [
-    User,
-    Product,
-    Category,
-    Cart,
-    CartItem,
-    Order,
-    OrderItem,
-    Review,
-  ],
-  migrations: [
-    __dirname + '/migrations/**/*.ts' // Path to your migration files
-  ],
+  host: config.database.host,
+  port: config.database.port,
+  username: config.database.username,
+  password: config.database.password,
+  database: config.database.database,
+  synchronize: false, // Never use true in production! Use migrations.
+  logging: config.env === 'development',
+  entities: [User, Room, Message],
+  migrations: [path.join(__dirname, 'migrations/*.ts')],
   subscribers: [],
 });
+
+export const initializeDatabase = async () => {
+  try {
+    await AppDataSource.initialize();
+    logger.info('Database connected successfully!');
+    // Optionally run migrations here, though it's often done via CLI/CI/CD
+    // await AppDataSource.runMigrations();
+    // logger.info('Migrations executed successfully!');
+  } catch (error) {
+    logger.error('Database connection failed:', error);
+    process.exit(1); // Exit process if database connection fails
+  }
+};
 ```
