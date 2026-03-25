@@ -1,38 +1,63 @@
-```typescript jsx
-import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Flex, Spinner } from '@chakra-ui/react';
+import { useAuth } from './hooks/useAuth';
 import LoginPage from './pages/LoginPage';
-import DashboardLayout from './components/DashboardLayout';
-import PostsPage from './pages/PostsPage';
-import UsersPage from './pages/UsersPage';
-import { useAuthStore } from './store/authStore';
-import AuthGuard from './components/AuthGuard';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
+import Header from './components/Header';
 
+/**
+ * `App` component is the main routing component of the application.
+ * It uses `react-router-dom` for navigation and `useAuth` hook to
+ * protect routes that require authentication.
+ */
 function App() {
-  const { user } = useAuthStore(); // Access user state globally
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show a loading spinner while authentication status is being determined
+  if (isLoading) {
+    return (
+      <Flex minH="100vh" align="center" justify="center">
+        <Spinner size="xl" color="teal.500" />
+      </Flex>
+    );
+  }
 
   return (
-    <div className="App">
+    <Flex direction="column" minH="100vh">
+      {isAuthenticated && <Header />} {/* Show header only when authenticated */}
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        
-        {/* Protected Routes */}
-        <Route path="/" element={<AuthGuard children={<DashboardLayout />} />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<div>Welcome to Dashboard!</div>} /> {/* Simple welcome for now */}
-          <Route path="posts" element={<PostsPage />} />
-          <Route path="posts/new" element={<PostsPage isCreating={true} />} /> {/* For creating new post */}
-          <Route path="posts/edit/:id" element={<PostsPage isEditing={true} />} /> {/* For editing existing post */}
-          <Route path="users" element={<UsersPage />} />
-          {/* Add more protected routes here */}
-        </Route>
-
-        {/* Catch-all for unknown routes */}
-        <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
+        <Route
+          path="/login"
+          element={isAuthenticated ? <Navigate to="/dashboard" /> : <LoginPage />}
+        />
+        <Route
+          path="/register"
+          element={isAuthenticated ? <Navigate to="/dashboard" /> : <RegisterPage />}
+        />
+        <Route
+          path="/dashboard"
+          element={isAuthenticated ? <DashboardPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/projects/:projectId"
+          element={isAuthenticated ? <ProjectDetailPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
+          }
+        />
+        {/* Fallback for unmatched routes */}
+        <Route
+          path="*"
+          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
+        />
       </Routes>
-    </div>
+    </Flex>
   );
 }
 
 export default App;
-```
