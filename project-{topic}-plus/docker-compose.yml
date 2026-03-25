@@ -1,40 +1,47 @@
+```yaml
 version: '3.8'
 
 services:
-  web:
-    build: .
-    ports:
-      - "5000:5000"
+  db:
+    image: postgres:15-alpine
+    container_name: dataviz_db
     environment:
-      # These environment variables override values from .env for Docker environment
-      # In production, use a secrets management system (e.g., Docker Secrets, Vault, AWS Secrets Manager)
-      SECRET_KEY: "${SECRET_KEY}"
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY}"
-      SQLALCHEMY_DATABASE_URI: "${SQLALCHEMY_DATABASE_URI:-sqlite:////app/instance/app.db}" # Use /app/instance/app.db for persistent SQLite
-      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: "${JWT_ACCESS_TOKEN_EXPIRES_MINUTES:-15}"
-      JWT_REFRESH_TOKEN_EXPIRES_DAYS: "${JWT_REFRESH_TOKEN_EXPIRES_DAYS:-30}"
-      REDIS_URL: "redis://redis:6379/0"
-      CACHE_DEFAULT_TIMEOUT: "${CACHE_DEFAULT_TIMEOUT:-300}"
-      RATE_LIMIT_DEFAULT: "${RATE_LIMIT_DEFAULT:-200 per day;50 per hour}"
-      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
-      LOG_FILE_PATH: "/var/log/app/app.log" # Path within the container
-    volumes:
-      - .:/app
-      - app_logs:/var/log/app # Persistent volume for logs
-      - app_data:/app/instance # Persistent volume for SQLite DB
-    depends_on:
-      - redis
-    command: gunicorn --bind 0.0.0.0:5000 --workers 4 --threads 2 "main:app" # Override Dockerfile CMD for development
-
-  redis:
-    image: redis:6.2-alpine
+      POSTGRES_DB: datavizdb
+      POSTGRES_USER: datavizuser
+      POSTGRES_PASSWORD: datavizpass
     ports:
-      - "6379:6379"
+      - "5432:5432"
     volumes:
-      - redis_data:/data # Persistent volume for Redis data
+      - dataviz_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datavizuser -d datavizdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dataviz_app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/datavizdb
+      SPRING_DATASOURCE_USERNAME: datavizuser
+      SPRING_DATASOURCE_PASSWORD: datavizpass
+      # Ensure JWT secret and other sensitive info are passed securely in production
+      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      APPLICATION_SECURITY_JWT_EXPIRATION: 86400000
+    depends_on:
+      db:
+        condition: service_healthy # Wait for the DB to be healthy
+    # To attach a debugger, uncomment the following line and configure your IDE
+    # command: java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -jar app.jar
+    # ports:
+    #   - "5005:5005"
+
 
 volumes:
-  app_logs:
-  app_data:
-  redis_data:
+  dataviz_db_data:
 ```

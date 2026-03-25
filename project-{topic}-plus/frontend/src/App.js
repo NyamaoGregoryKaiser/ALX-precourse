@@ -1,52 +1,47 @@
-```javascript
+```jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import Header from './components/Header';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ProductList from './pages/ProductList';
-import ProductDetail from './pages/ProductDetail';
-import ProductForm from './pages/ProductForm';
-import UserList from './pages/UserList';
-import Unauthorized from './pages/Unauthorized';
-import './App.css';
+import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
+import PrivateRoute from './components/auth/PrivateRoute';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardListPage from './pages/DashboardListPage';
+import DashboardViewPage from './pages/DashboardViewPage';
+import DataSourceListPage from './pages/DataSourceListPage';
+import ChartEditorPage from './pages/ChartEditorPage';
+import NotFoundPage from './pages/NotFoundPage';
+import HomePage from './pages/HomePage';
+import { useAuth } from './context/AuthContext';
+import { CssBaseline, Box } from '@mui/material';
 
 function App() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <Router>
-      <AuthProvider>
-        <div className="App">
-          <Header />
-          <main className="content">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/unauthorized" element={<Unauthorized />} />
+      <CssBaseline /> {/* Normalize CSS */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <Header />
+        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
 
-              {/* Publicly accessible product list and detail */}
-              <Route path="/products" element={<ProductList />} />
-              <Route path="/products/:id" element={<ProductDetail />} />
+            {/* Protected Routes */}
+            <Route path="/dashboards" element={<PrivateRoute><DashboardListPage /></PrivateRoute>} />
+            <Route path="/dashboards/:id" element={<PrivateRoute><DashboardViewPage /></PrivateRoute>} />
+            <Route path="/data-sources" element={<PrivateRoute><DataSourceListPage /></PrivateRoute>} />
+            <Route path="/charts/new" element={<PrivateRoute><ChartEditorPage /></PrivateRoute>} />
+            <Route path="/charts/edit/:id" element={<PrivateRoute><ChartEditorPage /></PrivateRoute>} />
+            {/* Admin Routes can be added here with additional role checks */}
 
-              {/* Protected routes */}
-              <Route element={<ProtectedRoute />}>
-                {/* Any authenticated user can create/edit their own product */}
-                <Route path="/products/new" element={<ProductForm />} />
-                <Route path="/products/edit/:id" element={<ProductForm />} />
-              </Route>
-
-              {/* Admin-only routes */}
-              <Route element={<ProtectedRoute requiredRole="admin" />}>
-                <Route path="/users" element={<UserList />} />
-                {/* Additional admin-only product actions would go here if not handled by generic product routes */}
-              </Route>
-            </Routes>
-          </main>
-        </div>
-      </AuthProvider>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Box>
+        <Footer />
+      </Box>
     </Router>
   );
 }

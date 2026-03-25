@@ -1,319 +1,349 @@
-# API Documentation
+```markdown
+# ALX Data Visualization Tool - API Documentation
 
-This document describes the RESTful API for the Enterprise-Grade C++ DevOps Automation System. All API requests and responses are in JSON format.
+This document provides a detailed overview of the RESTful API endpoints for the ALX Data Visualization Tool. The API is designed to be consumed by a frontend application (e.g., React, Angular, Vue.js) to manage users, data sources, dashboards, and charts.
 
-**Base URL:** `http://localhost:8080` (or your deployed URL)
+## Base URL
+
+The base URL for all API endpoints is `http://localhost:8080/api` (or your deployment's base URL).
 
 ## Authentication
 
-### 1. Register User
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
 
-Registers a new user account.
+**Header Example:**
+`Authorization: Bearer <your_jwt_token_here>`
 
-*   **URL:** `/auth/register`
-*   **Method:** `POST`
-*   **Request Body:** `application/json`
-    ```json
-    {
-      "username": "string",        // Required, unique username
-      "email": "string",           // Required, unique email
-      "password": "string",        // Required, min 8 chars
-      "role": "string"             // Optional, default "USER". Can be "USER" or "ADMIN".
-    }
-    ```
-*   **Response (201 Created):** `application/json`
-    ```json
-    {
-      "message": "User registered successfully",
-      "user_id": 1,
-      "username": "newuser",
-      "email": "newuser@example.com",
-      "role": "USER",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." // JWT token
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Invalid input (e.g., missing fields, invalid email, weak password).
-    *   `409 Conflict`: Username or email already exists.
-    *   `500 Internal Server Error`: Server-side issues.
+## Error Responses
 
-### 2. Login User
+The API returns consistent JSON error responses for different error scenarios.
 
-Authenticates a user and returns a JWT token for subsequent protected requests.
-
-*   **URL:** `/auth/login`
-*   **Method:** `POST`
-*   **Request Body:** `application/json`
-    ```json
-    {
-      "username": "string",        // Required
-      "password": "string"         // Required
-    }
-    ```
-*   **Response (200 OK):** `application/json`
-    ```json
-    {
-      "message": "Login successful",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // JWT token
-      "user_id": 1,
-      "username": "testuser",
-      "role": "USER"
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Missing username or password.
-    *   `401 Unauthorized`: Invalid username or password.
-    *   `500 Internal Server Error`: Server-side issues.
-
-## User Management (Protected Routes - Requires JWT)
-
-All endpoints in this section require a valid JWT token in the `Authorization` header: `Authorization: Bearer <YOUR_JWT_TOKEN>`
-
-### 3. Get User Profile
-
-Retrieves the profile of the authenticated user.
-
-*   **URL:** `/users/me`
-*   **Method:** `GET`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Response (200 OK):** `application/json`
-    ```json
-    {
-      "id": 1,
-      "username": "testuser",
-      "email": "test@example.com",
-      "role": "USER",
-      "created_at": "2023-10-27T10:00:00Z",
-      "updated_at": "2023-10-27T10:00:00Z"
-    }
-    ```
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `404 Not Found`: User not found (shouldn't happen for authenticated user but good for robustness).
-    *   `500 Internal Server Error`.
-
-### 4. Get User by ID (Admin Only)
-
-Retrieves a user's profile by ID. Requires `ADMIN` role.
-
-*   **URL:** `/users/{id}`
-*   **Method:** `GET`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Path Parameters:**
-    *   `id`: `integer` - The ID of the user to retrieve.
-*   **Response (200 OK):** `application/json` (Same as "Get User Profile")
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `403 Forbidden`: User does not have `ADMIN` role.
-    *   `404 Not Found`: User with the given ID not found.
-    *   `500 Internal Server Error`.
-
-### 5. Update User Profile
-
-Updates the profile of the authenticated user.
-
-*   **URL:** `/users/me`
-*   **Method:** `PUT`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Request Body:** `application/json` (all fields are optional, only provided fields will be updated)
-    ```json
-    {
-      "email": "string",
-      "password": "string" // Will be hashed
-    }
-    ```
-*   **Response (200 OK):** `application/json`
-    ```json
-    {
-      "message": "User profile updated successfully",
-      "id": 1,
-      "username": "testuser",
-      "email": "updated@example.com",
-      "role": "USER",
-      "created_at": "2023-10-27T10:00:00Z",
-      "updated_at": "2023-10-27T10:30:00Z"
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Invalid input (e.g., invalid email, weak password).
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `409 Conflict`: Email already in use by another user.
-    *   `500 Internal Server Error`.
-
-### 6. Delete User (Admin Only)
-
-Deletes a user account by ID. Requires `ADMIN` role.
-
-*   **URL:** `/users/{id}`
-*   **Method:** `DELETE`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Path Parameters:**
-    *   `id`: `integer` - The ID of the user to delete.
-*   **Response (204 No Content):** No content is returned on successful deletion.
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `403 Forbidden`: User does not have `ADMIN` role.
-    *   `404 Not Found`: User with the given ID not found.
-    *   `500 Internal Server Error`.
-
-## Product Management (Protected Routes - Requires JWT, Admin for CRUD)
-
-All endpoints in this section require a valid JWT token.
-*   `GET /products` and `GET /products/{id}` are accessible to `USER` and `ADMIN`.
-*   `POST`, `PUT`, `DELETE` on products require `ADMIN` role.
-
-### 7. Create Product (Admin Only)
-
-Creates a new product.
-
-*   **URL:** `/products`
-*   **Method:** `POST`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Request Body:** `application/json`
-    ```json
-    {
-      "name": "string",        // Required, unique product name
-      "description": "string", // Optional
-      "price": "number",       // Required, positive value
-      "stock_quantity": "integer" // Required, non-negative value
-    }
-    ```
-*   **Response (201 Created):** `application/json`
-    ```json
-    {
-      "message": "Product created successfully",
-      "id": 1,
-      "name": "New Product",
-      "description": "A new product description.",
-      "price": 99.99,
-      "stock_quantity": 100,
-      "created_at": "2023-10-27T10:00:00Z",
-      "updated_at": "2023-10-27T10:00:00Z"
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Invalid input.
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `403 Forbidden`: User does not have `ADMIN` role.
-    *   `409 Conflict`: Product name already exists.
-    *   `500 Internal Server Error`.
-
-### 8. Get All Products
-
-Retrieves a list of all products.
-
-*   **URL:** `/products`
-*   **Method:** `GET`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Response (200 OK):** `application/json`
-    ```json
-    [
-      {
-        "id": 1,
-        "name": "Product A",
-        "description": "Description of Product A",
-        "price": 10.50,
-        "stock_quantity": 50,
-        "created_at": "2023-10-27T10:00:00Z",
-        "updated_at": "2023-10-27T10:00:00Z"
-      },
-      {
-        "id": 2,
-        "name": "Product B",
-        "description": "Description of Product B",
-        "price": 25.00,
-        "stock_quantity": 120,
-        "created_at": "2023-10-27T10:05:00Z",
-        "updated_at": "2023-10-27T10:05:00Z"
-      }
-    ]
-    ```
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `500 Internal Server Error`.
-
-### 9. Get Product by ID
-
-Retrieves a single product by its ID.
-
-*   **URL:** `/products/{id}`
-*   **Method:** `GET`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Path Parameters:**
-    *   `id`: `integer` - The ID of the product to retrieve.
-*   **Response (200 OK):** `application/json` (single product object, same format as above)
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `404 Not Found`: Product with the given ID not found.
-    *   `500 Internal Server Error`.
-
-### 10. Update Product (Admin Only)
-
-Updates an existing product by ID.
-
-*   **URL:** `/products/{id}`
-*   **Method:** `PUT`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Path Parameters:**
-    *   `id`: `integer` - The ID of the product to update.
-*   **Request Body:** `application/json` (all fields are optional, only provided fields will be updated)
-    ```json
-    {
-      "name": "string",
-      "description": "string",
-      "price": "number",
-      "stock_quantity": "integer"
-    }
-    ```
-*   **Response (200 OK):** `application/json`
-    ```json
-    {
-      "message": "Product updated successfully",
-      "id": 1,
-      "name": "Updated Product Name",
-      "description": "Updated description.",
-      "price": 12.99,
-      "stock_quantity": 45,
-      "created_at": "2023-10-27T10:00:00Z",
-      "updated_at": "2023-10-27T10:45:00Z"
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Invalid input.
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `403 Forbidden`: User does not have `ADMIN` role.
-    *   `404 Not Found`: Product with the given ID not found.
-    *   `409 Conflict`: Product name already exists (if name is updated to an existing one).
-    *   `500 Internal Server Error`.
-
-### 11. Delete Product (Admin Only)
-
-Deletes a product by ID.
-
-*   **URL:** `/products/{id}`
-*   **Method:** `DELETE`
-*   **Headers:** `Authorization: Bearer <JWT_TOKEN>`
-*   **Path Parameters:**
-    *   `id`: `integer` - The ID of the product to delete.
-*   **Response (204 No Content):** No content is returned on successful deletion.
-*   **Error Responses:**
-    *   `401 Unauthorized`: Missing or invalid token.
-    *   `403 Forbidden`: User does not have `ADMIN` role.
-    *   `404 Not Found`: Product with the given ID not found.
-    *   `500 Internal Server Error`.
-
-## Common Error Response Structure
-
-In case of an error, the API will return a JSON object with a consistent structure:
-
+**Example Error Response:**
 ```json
 {
-  "status_code": "integer",    // HTTP status code
-  "error": "string",           // Short error type (e.g., "Bad Request", "Unauthorized")
-  "message": "string"          // A more detailed, human-readable error message
+  "timestamp": "2023-10-27T10:30:00.123456",
+  "message": "Resource not found with id: 100",
+  "details": "uri=/api/dashboards/100",
+  "errorCode": "NOT_FOUND"
 }
 ```
 
+**Common Error Codes:**
+*   `NOT_FOUND`: Resource not found (HTTP 404)
+*   `UNAUTHORIZED`: Authentication failed or missing token (HTTP 401)
+*   `FORBIDDEN`: Access denied due to insufficient permissions (HTTP 403)
+*   `BAD_REQUEST`: Invalid request payload or parameters, validation errors (HTTP 400)
+*   `VALIDATION_ERROR`: Specific validation errors (HTTP 400), includes `fieldErrors` map for details.
+*   `BAD_CREDENTIALS`: Incorrect username or password during login (HTTP 401)
+*   `RATE_LIMIT_EXCEEDED`: Too many requests in a given period (HTTP 429)
+*   `INTERNAL_SERVER_ERROR`: Unexpected server error (HTTP 500)
+
+## Endpoints
+
 ---
-**Note:** The `/orders` endpoints are defined in models/services but not explicitly implemented in controllers in this example to keep the API docs concise. However, they would follow a similar CRUD pattern.
+
+### 1. Authentication Endpoints (`/api/auth`)
+
+#### 1.1 Register User
+*   **URL:** `/api/auth/register`
+*   **Method:** `POST`
+*   **Description:** Registers a new user with default `USER` role.
+*   **Request Body:** `application/json`
+    ```json
+    {
+      "username": "newuser",
+      "email": "newuser@example.com",
+      "password": "strongpassword123"
+    }
+    ```
+*   **Response (201 Created):** `application/json`
+    ```json
+    {
+      "id": 3,
+      "username": "newuser",
+      "email": "newuser@example.com",
+      "roles": ["USER"],
+      "createdAt": "2023-10-27T10:30:00.123456",
+      "updatedAt": "2023-10-27T10:30:00.123456"
+    }
+    ```
+*   **Error Codes:** `BAD_REQUEST` (e.g., username/email already exists, invalid input)
+
+#### 1.2 Login User
+*   **URL:** `/api/auth/login`
+*   **Method:** `POST`
+*   **Description:** Authenticates a user and returns a JWT token.
+*   **Request Body:** `application/json`
+    ```json
+    {
+      "username": "newuser",
+      "password": "strongpassword123"
+    }
+    ```
+*   **Response (200 OK):** `application/json`
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1Ni...",
+      "username": "newuser",
+      "message": "Login successful"
+    }
+    ```
+*   **Error Codes:** `BAD_CREDENTIALS`, `BAD_REQUEST` (invalid input)
+
 ---
+
+### 2. User Management Endpoints (`/api/users`)
+
+*   **Roles:**
+    *   `ADMIN`: Can perform any operation on any user.
+    *   `USER`: Can view/update/delete their own profile. Cannot change roles.
+
+#### 2.1 Get User by ID
+*   **URL:** `/api/users/{id}`
+*   **Method:** `GET`
+*   **Description:** Retrieves a user's details.
+*   **Path Variable:** `id` (Long) - The user's ID.
+*   **Response (200 OK):** `application/json` (UserDto, excluding password)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 2.2 Get All Users
+*   **URL:** `/api/users`
+*   **Method:** `GET`
+*   **Description:** Retrieves a paginated list of all users. (Admin only)
+*   **Query Parameters:**
+    *   `page` (int, default: 0)
+    *   `size` (int, default: 10)
+    *   `sort` (String[], default: `id,asc`) - e.g., `sort=username,desc&sort=email,asc`
+*   **Response (200 OK):** `application/json` (Page<UserDto>)
+*   **Error Codes:** `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 2.3 Update User
+*   **URL:** `/api/users/{id}`
+*   **Method:** `PUT`
+*   **Description:** Updates an existing user's details.
+*   **Path Variable:** `id` (Long) - The user's ID.
+*   **Request Body:** `application/json` (UserDto)
+    ```json
+    {
+      "username": "updated_user",
+      "email": "updated@example.com",
+      "password": "newstrongpassword"
+      // Roles can only be updated by ADMIN
+    }
+    ```
+*   **Response (200 OK):** `application/json` (updated UserDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `BAD_REQUEST`
+
+#### 2.4 Delete User
+*   **URL:** `/api/users/{id}`
+*   **Method:** `DELETE`
+*   **Description:** Deletes a user.
+*   **Path Variable:** `id` (Long) - The user's ID.
+*   **Response (204 No Content)**
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+---
+
+### 3. Data Source Endpoints (`/api/data-sources`)
+
+*   **Roles:**
+    *   `ADMIN`: Can perform any operation on any data source.
+    *   `USER`: Can create, view, update, delete their own data sources.
+
+#### 3.1 Create Data Source
+*   **URL:** `/api/data-sources`
+*   **Method:** `POST`
+*   **Description:** Creates a new data source.
+*   **Request Body:** `application/json`
+    ```json
+    {
+      "name": "My Sales CSV",
+      "connectionDetails": "path/to/sales.csv",
+      "type": "CSV",
+      "schemaDefinition": "{\"columns\": [{\"name\": \"date\", \"type\": \"date\"}, {\"name\": \"revenue\", \"type\": \"number\"}]}"
+    }
+    ```
+*   **Response (201 Created):** `application/json` (DataSourceDto)
+*   **Error Codes:** `UNAUTHORIZED`, `BAD_REQUEST`
+
+#### 3.2 Get Data Source by ID
+*   **URL:** `/api/data-sources/{id}`
+*   **Method:** `GET`
+*   **Description:** Retrieves details of a specific data source.
+*   **Path Variable:** `id` (Long)
+*   **Response (200 OK):** `application/json` (DataSourceDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 3.3 Get All Data Sources
+*   **URL:** `/api/data-sources`
+*   **Method:** `GET`
+*   **Description:** Retrieves a paginated list of data sources. Admins see all; Users see their own.
+*   **Query Parameters:** `page`, `size`, `sort`
+*   **Response (200 OK):** `application/json` (Page<DataSourceDto>)
+*   **Error Codes:** `UNAUTHORIZED`
+
+#### 3.4 Update Data Source
+*   **URL:** `/api/data-sources/{id}`
+*   **Method:** `PUT`
+*   **Description:** Updates an existing data source.
+*   **Path Variable:** `id` (Long)
+*   **Request Body:** `application/json` (DataSourceDto)
+*   **Response (200 OK):** `application/json` (updated DataSourceDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `BAD_REQUEST`
+
+#### 3.5 Delete Data Source
+*   **URL:** `/api/data-sources/{id}`
+*   **Method:** `DELETE`
+*   **Description:** Deletes a data source.
+*   **Path Variable:** `id` (Long)
+*   **Response (204 No Content)**
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 3.6 Get Data Source Data
+*   **URL:** `/api/data-sources/{id}/data`
+*   **Method:** `GET`
+*   **Description:** Fetches and processes raw data points from the specified data source.
+*   **Path Variable:** `id` (Long)
+*   **Response (200 OK):** `application/json` (List<DataPointDto>)
+    ```json
+    [
+      {"category": "A", "value": 10},
+      {"category": "B", "value": 20}
+    ]
+    ```
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `INTERNAL_SERVER_ERROR` (if data processing fails)
+
+---
+
+### 4. Dashboard Endpoints (`/api/dashboards`)
+
+*   **Roles:**
+    *   `ADMIN`: Can perform any operation on any dashboard.
+    *   `USER`: Can create, view, update, delete their own dashboards.
+
+#### 4.1 Create Dashboard
+*   **URL:** `/api/dashboards`
+*   **Method:** `POST`
+*   **Description:** Creates a new dashboard.
+*   **Request Body:** `application/json`
+    ```json
+    {
+      "name": "Quarterly Performance",
+      "description": "Dashboard for Q3 2023 performance review."
+    }
+    ```
+*   **Response (201 Created):** `application/json` (DashboardDto)
+*   **Error Codes:** `UNAUTHORIZED`, `BAD_REQUEST`
+
+#### 4.2 Get Dashboard by ID
+*   **URL:** `/api/dashboards/{id}`
+*   **Method:** `GET`
+*   **Description:** Retrieves details of a specific dashboard, optionally including its charts.
+*   **Path Variable:** `id` (Long)
+*   **Response (200 OK):** `application/json` (DashboardDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 4.3 Get All Dashboards
+*   **URL:** `/api/dashboards`
+*   **Method:** `GET`
+*   **Description:** Retrieves a paginated list of dashboards. Admins see all; Users see their own.
+*   **Query Parameters:** `page`, `size`, `sort`
+*   **Response (200 OK):** `application/json` (Page<DashboardDto>)
+*   **Error Codes:** `UNAUTHORIZED`
+
+#### 4.4 Update Dashboard
+*   **URL:** `/api/dashboards/{id}`
+*   **Method:** `PUT`
+*   **Description:** Updates an existing dashboard.
+*   **Path Variable:** `id` (Long)
+*   **Request Body:** `application/json` (DashboardDto)
+*   **Response (200 OK):** `application/json` (updated DashboardDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `BAD_REQUEST`
+
+#### 4.5 Delete Dashboard
+*   **URL:** `/api/dashboards/{id}`
+*   **Method:** `DELETE`
+*   **Description:** Deletes a dashboard and all associated charts.
+*   **Path Variable:** `id` (Long)
+*   **Response (204 No Content)**
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+---
+
+### 5. Chart Endpoints (`/api/charts`)
+
+*   **Roles:**
+    *   `ADMIN`: Can perform any operation on any chart.
+    *   `USER`: Can create, view, update, delete charts within their owned dashboards and using their owned data sources.
+
+#### 5.1 Create Chart
+*   **URL:** `/api/charts`
+*   **Method:** `POST`
+*   **Description:** Creates a new chart.
+*   **Request Body:** `application/json`
+    ```json
+    {
+      "title": "Revenue by Product Category",
+      "description": "Bar chart showing revenue per category.",
+      "type": "BAR",
+      "dataSourceId": 1,
+      "dashboardId": 1,
+      "configuration": "{\"xAxis\":\"category\",\"yAxis\":\"revenue\",\"color\":\"product\"}"
+    }
+    ```
+*   **Response (201 Created):** `application/json` (ChartDto)
+*   **Error Codes:** `NOT_FOUND` (if dataSourceId/dashboardId invalid), `UNAUTHORIZED`, `BAD_REQUEST`
+
+#### 5.2 Get Chart by ID
+*   **URL:** `/api/charts/{id}`
+*   **Method:** `GET`
+*   **Description:** Retrieves details of a specific chart.
+*   **Path Variable:** `id` (Long)
+*   **Response (200 OK):** `application/json` (ChartDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 5.3 Get Charts by Dashboard ID
+*   **URL:** `/api/charts/dashboard/{dashboardId}`
+*   **Method:** `GET`
+*   **Description:** Retrieves all charts belonging to a specific dashboard.
+*   **Path Variable:** `dashboardId` (Long)
+*   **Response (200 OK):** `application/json` (List<ChartDto>)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 5.4 Update Chart
+*   **URL:** `/api/charts/{id}`
+*   **Method:** `PUT`
+*   **Description:** Updates an existing chart.
+*   **Path Variable:** `id` (Long)
+*   **Request Body:** `application/json` (ChartDto)
+*   **Response (200 OK):** `application/json` (updated ChartDto)
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `BAD_REQUEST`
+
+#### 5.5 Delete Chart
+*   **URL:** `/api/charts/{id}`
+*   **Method:** `DELETE`
+*   **Description:** Deletes a chart.
+*   **Path Variable:** `id` (Long)
+*   **Response (204 No Content)**
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`
+
+#### 5.6 Get Chart Data
+*   **URL:** `/api/charts/{id}/data`
+*   **Method:** `GET`
+*   **Description:** Fetches and processes data points specific for rendering the chart, potentially applying aggregations/filters defined in the chart's configuration.
+*   **Path Variable:** `id` (Long)
+*   **Response (200 OK):** `application/json` (List<DataPointDto>)
+    ```json
+    [
+      {"category": "Electronics", "total_sales": 5000},
+      {"category": "Clothing", "total_sales": 2500}
+    ]
+    ```
+*   **Error Codes:** `NOT_FOUND`, `UNAUTHORIZED`, `FORBIDDEN`, `INTERNAL_SERVER_ERROR`
+
+---
+
+## Swagger UI
+
+For interactive exploration and testing of the API, please visit the Swagger UI at `http://localhost:8080/swagger-ui.html` after starting the application.
+```

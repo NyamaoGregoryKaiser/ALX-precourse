@@ -1,0 +1,32 @@
+```java
+package com.alx.dataviz.security;
+
+import com.alx.dataviz.model.Dashboard;
+import com.alx.dataviz.repository.DashboardRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+
+@Component("dashboardSecurity")
+@RequiredArgsConstructor
+public class DashboardSecurity {
+
+    private final DashboardRepository dashboardRepository;
+
+    public boolean isOwner(Long dashboardId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return false;
+        }
+
+        UserDetails currentUser = (UserDetails) authentication.getPrincipal();
+        Optional<Dashboard> dashboardOptional = dashboardRepository.findById(dashboardId);
+
+        return dashboardOptional.map(dashboard -> currentUser.getUsername().equals(dashboard.getOwner().getUsername())).orElse(false);
+    }
+}
+```

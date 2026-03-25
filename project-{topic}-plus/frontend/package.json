@@ -1,26 +1,31 @@
 ```json
 {
-  "name": "product-management-frontend",
+  "name": "dataviz-frontend",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^13.4.0",
-    "@testing-library/user-event": "^13.5.0",
-    "axios": "^1.6.8",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.0",
-    "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "@emotion/react": "^11.11.x",
+    "@emotion/styled": "^11.11.x",
+    "@mui/icons-material": "^5.15.x",
+    "@mui/material": "^5.15.x",
+    "@nivo/bar": "^0.84.x",
+    "@nivo/line": "^0.84.x",
+    "@nivo/pie": "^0.84.x",
+    "@testing-library/jest-dom": "^5.17.x",
+    "@testing-library/react": "^13.4.x",
+    "@testing-library/user-event": "^13.5.x",
+    "axios": "^1.6.x",
+    "react": "^18.2.x",
+    "react-dom": "^18.2.x",
+    "react-router-dom": "^6.22.x",
+    "react-scripts": "5.0.x",
+    "web-vitals": "^2.1.x"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test --coverage",
-    "eject": "react-scripts eject",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [
@@ -39,11 +44,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "devDependencies": {
-    "eslint": "^8.57.0",
-    "eslint-plugin-react": "^7.34.1",
-    "eslint-plugin-react-hooks": "^4.6.0"
   }
 }
 ```

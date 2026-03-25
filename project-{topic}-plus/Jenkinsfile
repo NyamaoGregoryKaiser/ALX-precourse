@@ -1,0 +1,139 @@
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE_NAME = "alx-dataviz-tool"
+        DOCKER_REGISTRY = "your_docker_registry_url" // e.g., myregistry.com
+        DOCKER_CREDENTIAL_ID = "docker-hub-credentials" // Jenkins credential ID for Docker login
+        DATABASE_URL = "jdbc:postgresql://db:5432/datavizdb"
+        DATABASE_USER = "datavizuser"
+        DATABASE_PASSWORD = "datavizpass"
+    }
+
+    stages {
+        stage('Checkout Source') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Backend') {
+            steps {
+                script {
+                    sh "./mvnw clean install -DskipTests"
+                }
+            }
+        }
+
+        stage('Unit and Integration Tests') {
+            steps {
+                script {
+                    sh "./mvnw test"
+                    // Generate JaCoCo report for code coverage
+                    sh "./mvnw jacoco:report"
+                    // Check coverage against configured threshold (e.g., 80%)
+                    sh "./mvnw jacoco:check"
+                }
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/**/*.xml'
+                    jacoco_coverage_report(jacocoHtmlFolder: 'target/site/jacoco') // For Jenkins JaCoCo plugin
+                }
+            }
+        }
+
+        stage('Static Code Analysis (SonarQube/SpotBugs)') {
+            # In a real pipeline, you'd integrate SonarQube Scanner here
+            steps {
+                echo 'Running static code analysis...'
+                # For SonarQube, you'd typically have:
+                # withSonarQubeEnv('your-sonarqube-server') {
+                #   sh './mvnw org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=alx-dataviz-tool'
+                # }
+                # For SpotBugs:
+                # sh './mvnw spotbugs:spotbugs'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIAL_ID) {
+                        def appImage = docker.build("${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}")
+                        appImage.push()
+                        appImage.push("latest") // Tag as latest too
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Dev (Kubernetes/Docker Compose)') {
+            steps {
+                echo 'Deploying to development environment...'
+                # Example for Docker Compose deployment (local/dev server)
+                # sh 'docker-compose -f docker-compose.yml up -d --build'
+                # Example for Kubernetes deployment (apply manifests)
+                # sh 'kubectl apply -f k8s/deployment.yml -f k8s/service.yml'
+            }
+            environment {
+                # Override datasource URL for dev environment if needed
+                SPRING_DATASOURCE_URL = "jdbc:postgresql://your-dev-db-host:5432/datavizdb"
+            }
+        }
+
+        stage('API Tests (Post-Deployment)') {
+            steps {
+                echo 'Running API integration tests against deployed dev environment...'
+                # This would typically involve running Postman collections via Newman,
+                # or a separate test framework like RestAssured/Karate DSL against the live API.
+                # E.g., sh 'newman run postman_collections/dataviz_api.json -e postman_environments/dev.json'
+            }
+        }
+
+        stage('Performance Tests (Post-Deployment)') {
+            steps {
+                echo 'Running performance tests (e.g., JMeter, Gatling) against dev environment...'
+                # sh 'jmeter -n -t perf_tests/dataviz_load_test.jmx -l results/test.jtl -e -o results/dashboard'
+            }
+        }
+
+        stage('Approve for Production') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                input message: 'Proceed to Production deployment?', ok: 'Deploy to Production'
+            }
+        }
+
+        stage('Deploy to Production') {
+            steps {
+                echo 'Deploying to production environment...'
+                # This would involve deploying the Docker image to a production Kubernetes cluster,
+                # cloud platform (AWS ECS, Google GKE, Azure AKS), etc.
+                # Example: sh 'kubectl apply -f k8s/prod-deployment.yml -f k8s/prod-service.yml'
+            }
+            environment {
+                # Production-specific variables (e.g., prod DB, different JWT secret, scaling factors)
+                SPRING_DATASOURCE_URL = "jdbc:postgresql://your-prod-db-host:5432/datavizdb"
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+            # Notify on success (e.g., Slack, email)
+        }
+        failure {
+            echo 'Pipeline failed!'
+            # Notify on failure
+        }
+    }
+}
+```

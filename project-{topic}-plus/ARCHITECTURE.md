@@ -1,159 +1,166 @@
-# System Architecture Document
+```markdown
+# ALX Data Visualization Tool - Architecture Documentation
 
-## 1. Introduction
+This document describes the architecture of the ALX Data Visualization Tool, detailing its components, their interactions, and the design decisions made to achieve an enterprise-grade, scalable, and maintainable system.
 
-This document outlines the architecture of the Enterprise-Grade C++ DevOps Automation System. It describes the high-level design, key components, their interactions, and the rationale behind significant design choices.
+---
 
-## 2. Goals and Principles
+## 1. System Overview
 
-The primary goals of this architecture are:
-*   **Modularity:** Clear separation of concerns to enhance maintainability and testability.
-*   **Scalability:** Design choices that allow the system to handle increased load and data volumes.
-*   **Reliability:** Robust error handling, logging, and monitoring to ensure operational stability.
-*   **Security:** Implementation of authentication, authorization, and secure coding practices.
-*   **Automation:** Full integration with CI/CD for rapid and reliable deployment.
-*   **Performance:** Efficient C++ implementation and strategic use of caching and rate limiting.
+The Data Visualization Tool is designed as a web application allowing users to manage data sources, create interactive dashboards, and design various charts. It follows a multi-tier architecture, separating presentation, business logic, and data persistence layers.
 
-Key architectural principles include:
-*   **Layered Architecture:** Clear division into presentation, service, and data access layers.
-*   **RESTful API Design:** Standardized and stateless communication interface.
-*   **Microservices-oriented thinking (within a monolith):** While a single C++ application, components are designed to be relatively independent.
-*   **Test-Driven Development (TDD) / Test-Friendly Design:** Components are designed to be easily testable.
+**Key Design Principles:**
+*   **Modularity:** Separation of concerns using Spring Boot's component model.
+*   **Scalability:** Stateless backend for horizontal scaling, caching layer, and database optimization considerations.
+*   **Security:** Robust authentication (JWT) and authorization (RBAC + resource-based).
+*   **Resilience:** Comprehensive error handling, rate limiting.
+*   **Observability:** Integrated logging and monitoring with Actuator/Prometheus.
+*   **Maintainability:** Clear code structure, DTOs for API consistency, automated testing.
 
-## 3. High-Level Architecture
+## 2. Component Breakdown
 
-The system is primarily composed of a C++ backend application that exposes a RESTful API. It interacts with a relational database. The entire system is containerized using Docker, enabling consistent deployment across different environments.
+### 2.1. Frontend (Conceptual)
 
-```mermaid
-graph TD
-    UserClient[User Client (Browser/Mobile/CLI)] -- HTTP/HTTPS --> LoadBalancer
-    LoadBalancer -- HTTP/HTTPS --> NginxProxy[Nginx/API Gateway]
-    NginxProxy -- HTTP/HTTPS --> AppContainer[C++ Application Container]
-    AppContainer -- SQL Queries --> DatabaseContainer[Database (SQLite/PostgreSQL) Container]
+*   **Technology:** React.js
+*   **Purpose:** Provides the user interface for interacting with the backend API.
+*   **Key Components:**
+    *   **Authentication/Authorization Module:** Handles user login, registration, and manages JWT tokens.
+    *   **Dashboard Listing/Viewing:** Displays user's dashboards, allows navigation to individual dashboards.
+    *   **Dashboard Editor:** Drag-and-drop interface for arranging charts on a dashboard.
+    *   **Chart Editor:** Interface for creating/editing charts, selecting data sources, defining chart types and configurations (e.g., axis mappings, aggregations).
+    *   **Data Source Manager:** UI for connecting to, configuring, and viewing data sources.
+    *   **Visualization Renderer:** Integrates with libraries like Recharts or Nivo to render charts based on data from the backend and chart configurations.
+*   **Communication:** Uses RESTful API calls to the Java backend.
 
-    subgraph CI/CD Pipeline
-        SourceCode[Source Code (GitHub)] --> GitHubActions[GitHub Actions]
-        GitHubActions -- Build --> DockerRegistry[Docker Registry]
-        GitHubActions -- Test --> TestingSuite[Unit/Integration/API/Performance Tests]
-        GitHubActions -- Deploy --> Kubernetes/VMs[Production Environment (Kubernetes/VMs)]
-    end
+### 2.2. Backend Application
 
-    AppContainer -- Logs --> CentralizedLogging[Centralized Logging (ELK/Loki)]
-    AppContainer -- Metrics --> MonitoringSystem[Monitoring (Prometheus/Grafana)]
+*   **Technology:** Spring Boot (Java 17)
+*   **Deployment:** Containerized (Docker), designed for cloud-native environments (Kubernetes).
+*   **Layers:**
+
+    #### 2.2.1. API Layer (Controllers)
+    *   **Purpose:** Exposes RESTful endpoints for the frontend and external clients. Handles HTTP requests, input validation, and marshaling/unmarshaling JSON data.
+    *   **Components:** `AuthController`, `UserController`, `DataSourceController`, `DashboardController`, `ChartController`.
+    *   **Key Responsibilities:**
+        *   Receive HTTP requests.
+        *   Validate request payloads using JSR 380 annotations (`@Valid`).
+        *   Delegate business logic to the Service Layer.
+        *   Return appropriate HTTP status codes and JSON responses.
+        *   Integrates with Spring Security for pre-authentication checks (`@PreAuthorize`).
+        *   `@RestControllerAdvice` for global error handling.
+
+    #### 2.2.2. Business Logic Layer (Services)
+    *   **Purpose:** Contains the core business rules, orchestrates operations across multiple repositories, and performs complex data transformations/aggregations.
+    *   **Components:** `UserService`, `DataSourceService`, `DashboardService`, `ChartService`, `JwtService`.
+    *   **Key Responsibilities:**
+        *   Implement business rules and workflows.
+        *   Interact with the Data Access Layer (Repositories).
+        *   Perform data processing for visualizations (`DataProcessor`).
+        *   Apply caching logic (`@Cacheable`, `@CacheEvict`).
+        *   Manage transactions (`@Transactional`).
+        *   Implement granular authorization checks (e.g., resource ownership).
+        *   Map between DTOs and Entity models using `ModelMapper`.
+
+    #### 2.2.3. Data Access Layer (Repositories)
+    *   **Technology:** Spring Data JPA with Hibernate
+    *   **Purpose:** Provides an abstraction over the underlying database, handling CRUD operations and complex queries.
+    *   **Components:** `UserRepository`, `DataSourceRepository`, `DashboardRepository`, `ChartRepository`.
+    *   **Key Responsibilities:**
+        *   Persistence of `Model` entities to the database.
+        *   Retrieval of data based on various criteria.
+        *   Error handling for database-specific exceptions.
+        *   Leverages Spring Data JPA's conventions for derived queries and pagination.
+
+    #### 2.2.4. Security Module
+    *   **Technology:** Spring Security, `jjwt` library
+    *   **Purpose:** Handles authentication and authorization for all API endpoints.
+    *   **Components:**
+        *   `SecurityConfig`: Main configuration for HTTP security rules, CORS, authentication providers.
+        *   `JwtAuthFilter`: Intercepts requests, validates JWT tokens, and sets up the Spring Security context.
+        *   `JwtService`: Utility for generating, validating, and parsing JWT tokens.
+        *   `CustomUserDetailsService`: Integrates user details from the database with Spring Security.
+        *   `JwtAuthEntryPoint`: Handles unauthorized access attempts.
+        *   `CustomAccessDeniedHandler`: Handles forbidden access attempts.
+        *   `UserSecurity`, `DataSourceSecurity`, etc.: Custom security predicates for `@PreAuthorize` annotations, enabling resource-level authorization.
+    *   **Authorization Strategy:** Role-Based Access Control (RBAC) complemented by resource ownership checks.
+
+    #### 2.2.5. Utilities & Cross-Cutting Concerns
+    *   **`DataProcessor`**: A service responsible for simulating data retrieval from various `DataSource` types (CSV, Database, API) and converting it into a standardized `DataPointDto` format suitable for visualization. In a real-world scenario, this would integrate with actual data connectors (JDBC, HTTP clients, file readers).
+    *   **`RateLimitingFilter`**: A custom `OncePerRequestFilter` that applies API rate limits based on client IP address using `Bucket4j`. This protects against abuse and ensures fair usage.
+    *   **Caching (`CacheConfig`, `Caffeine`)**: Configures Spring's caching abstraction with Caffeine as the underlying cache provider. Annotations like `@Cacheable` and `@CacheEvict` are used in service methods to cache frequently accessed data (e.g., user profiles, dashboard details, processed chart data).
+    *   **Error Handling (`GlobalExceptionHandler`)**: A `@ControllerAdvice` component that centralizes exception handling across all controllers, providing consistent JSON error responses.
+    *   **Logging (`logback-spring.xml`)**: Configured with SLF4J and Logback for structured logging to console and file, with different levels for various packages.
+    *   **Monitoring (`Actuator`, `OpenAPIConfig`)**: Spring Boot Actuator endpoints expose health, metrics, and environment details. Micrometer integration allows exporting metrics to Prometheus. Springdoc OpenAPI provides interactive API documentation (Swagger UI).
+
+### 2.3. Database Layer
+
+*   **Technology:** PostgreSQL
+*   **Purpose:** Persistent storage for application data.
+*   **Schema:** Defined by JPA entities and managed by Flyway migrations.
+    *   `app_user`: Stores user authentication and profile information.
+    *   `user_roles`: Maps users to roles (USER, ADMIN).
+    *   `data_source`: Stores connection details and metadata for external data sources.
+    *   `dashboard`: Stores metadata for user-created dashboards.
+    *   `chart`: Stores chart configurations, linking to data sources and dashboards.
+*   **Migration:** Flyway is used for version-controlled database schema migrations, ensuring consistent database states across environments. `V1__initial_schema.sql` creates tables and inserts seed data.
+*   **Query Optimization:** Repositories use Spring Data JPA features (e.g., pagination, derived queries). For complex reporting queries, custom JPA `@Query` or native SQL could be introduced.
+
+### 2.4. Infrastructure & DevOps
+
+*   **Docker:** Used for containerizing the Spring Boot application and PostgreSQL database, providing environment consistency.
+*   **Docker Compose:** Orchestrates the multi-container application locally, simplifying setup and development.
+*   **CI/CD (Jenkins):** A `Jenkinsfile` outlines a robust pipeline for:
+    *   Automated builds.
+    *   Running unit, integration, and API tests.
+    *   Code quality checks (e.g., JaCoCo for coverage, conceptual SonarQube integration).
+    *   Docker image building and pushing to a registry.
+    *   Automated deployment to development and production environments (e.g., Kubernetes, Docker Swarm).
+    *   Post-deployment API and performance testing.
+
+## 3. Data Flow
+
+1.  **User Interaction (Frontend):** User logs in, creates a dashboard, adds a chart.
+2.  **API Call (Frontend to Backend):** Frontend sends authenticated (JWT) HTTP requests to the backend API (e.g., `POST /api/dashboards`).
+3.  **Authentication & Authorization (Backend Security Filter Chain):**
+    *   `RateLimitingFilter` checks request rate.
+    *   `JwtAuthFilter` extracts and validates the JWT.
+    *   Spring Security authenticates the user and establishes their roles/permissions.
+    *   `@PreAuthorize` on controller/service methods checks if the user is authorized for the specific resource/action.
+4.  **Controller Processing:** The relevant controller (`DashboardController`) receives the request. Input `DashboardDto` is validated.
+5.  **Service Layer Logic:** The controller delegates to `DashboardService`.
+    *   `DashboardService` performs business logic (e.g., associates the dashboard with the current user).
+    *   It uses `ModelMapper` to convert `DashboardDto` to `Dashboard` entity.
+    *   It interacts with `DashboardRepository` to persist the new dashboard.
+    *   Caching might be involved (`@CacheEvict` on creation/update/delete, `@Cacheable` on read operations).
+6.  **Data Access (Repository to Database):** `DashboardRepository` uses JPA/Hibernate to interact with PostgreSQL, saving the `Dashboard` entity.
+7.  **Data Retrieval (for Charts):**
+    *   When a chart needs to display data, the frontend calls `GET /api/charts/{chartId}/data`.
+    *   `ChartService` retrieves the `Chart` and its associated `DataSource`.
+    *   It then calls `DataSourceService.getProcessedDataSourceData()` which uses `DataProcessor`.
+    *   `DataProcessor` (simulated): Determines data source type (CSV, DB, API) from `connectionDetails` and generates `List<DataPointDto>`. In a real scenario, this involves fetching data from external systems.
+    *   `ChartService` may apply further aggregations/filters based on `chart.getConfiguration()` (e.g., group by, sum, filter dates).
+8.  **Response Back to Frontend:** The processed `DataPointDto` list is sent back to the frontend for rendering by a visualization library.
+
+## 4. Scalability and Performance Considerations
+
+*   **Stateless Backend:** JWT-based authentication means no session state on the server, allowing for easy horizontal scaling of backend instances.
+*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding for very large datasets).
+*   **Caching:** In-memory caching with Caffeine (configured via Spring Cache) reduces database load for frequently accessed read operations (e.g., fetching dashboards, user profiles, chart data). Can be extended to distributed caches (Redis, Memcached) for multi-instance deployments.
+*   **Rate Limiting:** Protects the API from being overwhelmed by too many requests from a single client.
+*   **Efficient Data Access:** Spring Data JPA provides efficient repository methods and supports pagination, reducing data transfer over the network.
+*   **Asynchronous Processing:** For long-running data source processing or report generation, asynchronous tasks (e.g., Spring @Async, message queues like Kafka/RabbitMQ) could be introduced to avoid blocking API requests.
+
+## 5. Security Considerations
+
+*   **Authentication:** JWT ensures secure, stateless authentication. Tokens are short-lived and refreshed.
+*   **Authorization:**
+    *   **Role-Based:** `ADMIN` vs `USER` roles enforce broad access policies.
+    *   **Resource-Based:** `@PreAuthorize` with custom security evaluators (`UserSecurity`, `DashboardSecurity`, etc.) ensures users can only access/modify resources they own (or if they are an `ADMIN`).
+*   **Password Hashing:** `BCryptPasswordEncoder` is used to securely store passwords.
+*   **Input Validation:** JSR 380 ensures malformed inputs are rejected early.
+*   **CORS Configuration:** Explicitly configured to allow requests only from trusted frontend origins.
+*   **Secure Defaults:** Spring Security provides many out-of-the-box protections (CSRF disabled for stateless API, secure headers).
+*   **Dependency Security:** Regular updates of dependencies (via Maven) and use of tools like Dependabot to catch vulnerabilities.
+
+---
 ```
-
-## 4. Component Breakdown
-
-### 4.1 C++ Backend Application (`app/src`)
-
-The core of the system, implementing the business logic and API endpoints.
-
-#### 4.1.1 Web Server & Routing (`main.cpp`, `controllers/`)
-*   **Framework:** `CrowCpp` is used as a lightweight C++ web framework.
-*   **Role:** Handles HTTP request parsing, routing to appropriate controllers, and sending HTTP responses.
-*   **Middleware:** Integrates various middlewares for cross-cutting concerns (Authentication, Authorization, Logging, Rate Limiting, Error Handling).
-
-#### 4.1.2 Controllers (`app/src/controllers/`)
-*   **Responsibility:** Act as the entry points for API requests. They receive requests, extract data, perform input validation, and delegate business logic execution to the Service Layer.
-*   **Design:** Each resource (e.g., `User`, `Product`, `Auth`) has its dedicated controller.
-*   **Output:** Formats responses (JSON) and handles HTTP status codes.
-
-#### 4.1.3 Services (`app/src/services/`)
-*   **Responsibility:** Encapsulate the core business logic. They orchestrate operations involving one or more models, enforce business rules, and interact with the Data Access Layer.
-*   **Design:** Each logical domain (e.g., `UserService`, `ProductService`, `AuthService`) has a corresponding service.
-*   **Transaction Management:** (Implicitly handled by `Database` utility or explicit in complex operations).
-
-#### 4.1.4 Models (`app/src/models/`)
-*   **Responsibility:** Define the data structures for domain entities (e.g., `User`, `Product`, `Order`).
-*   **Design:** Simple C++ structs/classes that represent the data, often with methods for serialization/deserialization to/from JSON or database rows.
-
-#### 4.1.5 Utilities (`app/src/utils/`)
-*   **`Database`:** Wrapper around `SQLiteCpp` to manage database connections, execute queries, and handle transactions. Provides a higher-level abstraction for data persistence.
-*   **`JWT`:** Handles the creation, signing, and verification of JSON Web Tokens for authentication.
-*   **`Logger`:** A wrapper for `spdlog` to provide structured and configurable logging throughout the application.
-*   **`ErrorHandler`:** Defines custom exception types and provides a global exception handler middleware to catch exceptions and return consistent JSON error responses.
-*   **`Caching`:** A simple in-memory key-value cache with Time-To-Live (TTL) functionality, used to reduce database load for frequently accessed data.
-*   **`RateLimiter`:** Implements a fixed-window rate limiting algorithm to prevent abuse and protect API endpoints from excessive requests.
-*   **`Middleware`:** Contains custom Crow middleware for authentication, authorization, logging, and rate limiting, applied globally or per-route.
-
-### 4.2 Database Layer (`db/`)
-
-*   **Type:** SQLite for local development and simplicity. Can be easily swapped for PostgreSQL or MySQL in production by changing `Database` utility and `Dockerfile`.
-*   **Schema:** `schema.sql` defines tables, indexes, and constraints.
-*   **Migrations:** A `migrations/` directory holds scripts to evolve the database schema over time.
-*   **Seed Data:** `seed.sql` populates the database with initial data.
-
-### 4.3 Containerization (`Dockerfile`, `docker-compose.yml`)
-
-*   **`Dockerfile`:** Defines how to build the C++ application into a Docker image. It includes dependencies, build steps, and runtime configuration. Multi-stage builds are used for smaller production images.
-*   **`docker-compose.yml`:** Orchestrates multi-container Docker applications. Used for local development to easily spin up the C++ app and the database.
-
-### 4.4 CI/CD Pipeline (`.github/workflows/ci-cd.yml`)
-
-*   **Tool:** GitHub Actions.
-*   **Stages:**
-    *   **Build:** Compiles the C++ application and builds the Docker image.
-    *   **Test:** Executes unit, integration, API, and performance tests.
-    *   **Image Push:** Pushes the built Docker image to a container registry.
-    *   **Deployment:** (Placeholder) Triggers deployment to a production environment (e.g., Kubernetes, Cloud VMs).
-
-### 4.5 Testing Frameworks (`app/tests/`)
-
-*   **Unit/Integration:** Google Test for C++ code.
-*   **API:** `curl` scripts for basic endpoint validation.
-*   **Performance:** `hey` (or `ab`) for load generation and performance metrics.
-
-## 5. Data Flow Example: User Registration
-
-1.  **Client Request:** A client sends a `POST /auth/register` request with `username`, `email`, `password`, and `role`.
-2.  **Web Server (Crow):** Receives the request.
-3.  **Middleware:**
-    *   `LoggingMiddleware`: Logs the incoming request.
-    *   `RateLimiterMiddleware`: Checks if the client's IP has exceeded the rate limit. If so, rejects the request.
-4.  **AuthController:**
-    *   Receives the request body.
-    *   Validates input data (e.g., email format, password strength).
-    *   Calls `AuthService::registerUser()`.
-5.  **AuthService:**
-    *   Checks if the username or email already exists using `UserService`.
-    *   Hashes the password.
-    *   Creates a `User` object.
-    *   Calls `UserService::createUser()` to persist the user.
-    *   If successful, generates a JWT token using `JWT` utility.
-6.  **UserService:**
-    *   Constructs an SQL `INSERT` query.
-    *   Uses `Database` utility to execute the query.
-7.  **Database Utility:**
-    *   Obtains a database connection.
-    *   Executes the `INSERT` query.
-    *   Handles potential database errors.
-8.  **AuthService:** Returns the newly created user's ID and the JWT token.
-9.  **AuthController:** Formats a success JSON response with the user data and token, and sends it back to the client (HTTP 201 Created).
-10. **Error Handling:** If any component throws an exception, `ErrorHandlerMiddleware` catches it and returns a consistent JSON error response (e.g., HTTP 400, 401, 500).
-
-## 6. Security Considerations
-
-*   **Authentication:** JWT-based, ensuring stateless and secure API interactions. Tokens are short-lived.
-*   **Authorization:** Simple role-based access control implemented via middleware.
-*   **Password Hashing:** Passwords are never stored in plain text (use a strong hashing algorithm like bcrypt).
-*   **Rate Limiting:** Protects against brute-force attacks and denial-of-service.
-*   **Input Validation:** All API inputs are strictly validated to prevent injection attacks and other vulnerabilities.
-*   **HTTPS:** Assumed in production (handled by load balancer/reverse proxy).
-*   **Secrets Management:** Environment variables (`.env`) for local, dedicated secrets management in production (e.g., Kubernetes Secrets, AWS Secrets Manager).
-
-## 7. Observability
-
-*   **Logging:** `spdlog` provides structured logging with different levels. Logs can be collected by a centralized logging system (e.g., ELK Stack, Loki).
-*   **Monitoring:** Describe how to integrate with Prometheus (for metrics like request count, error rates, latency) and Grafana (for visualization). The C++ app can expose a `/metrics` endpoint.
-*   **Tracing:** For distributed systems, tracing (e.g., OpenTelemetry) would be integrated, but for a monolith, detailed logging is sufficient initially.
-
-## 8. Future Enhancements
-
-*   **Database Abstraction:** More robust ORM for C++ or a custom abstraction layer supporting multiple SQL databases.
-*   **Asynchronous Operations:** Integrating `boost::asio` or `libuv` for fully asynchronous I/O if `CrowCpp`'s internal model isn't sufficient under extreme load.
-*   **Microservices:** Decomposing specific domains into independent services.
-*   **Advanced Caching:** Distributed caching solutions (e.g., Redis).
-*   **Service Mesh:** For managing microservices (e.g., Istio).
-*   **Container Orchestration:** Full Kubernetes deployment setup.
-
-This architecture provides a solid foundation for building and operating a reliable and scalable C++ application within a modern DevOps environment.

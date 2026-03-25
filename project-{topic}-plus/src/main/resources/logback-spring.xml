@@ -1,70 +1,33 @@
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Define a property for the log directory -->
-    <property name="LOG_FILE_LOCATION" value="logs"/>
-    <!-- Define a property for the application name -->
-    <property name="APP_NAME" value="taskmgr-pro"/>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
-    <!-- Console Appender: Logs messages to the console -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/spring.log}"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <encoder>
-            <!-- Pattern for console output: Timestamp, Log Level, Thread, Logger Name, Message, New Line -->
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
         </encoder>
-    </appender>
-
-    <!-- Rolling File Appender: Logs messages to a file with daily rollover -->
-    <appender name="FILE-ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE_LOCATION}/${APP_NAME}.log</file>
-        <encoder>
-            <!-- Pattern for file output -->
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- Daily rollover: creates a new file each day -->
-            <fileNamePattern>${LOG_FILE_LOCATION}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <!-- Keep 30 days of history -->
-            <maxHistory>30</maxHistory>
-            <!-- Max file size for a single day before creating indexed files -->
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>10MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+        <file>${LOG_FILE}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>${LOG_FILE_MAX_SIZE:-10MB}</maxFileSize>
+            <maxHistory>${LOG_FILE_MAX_HISTORY:-7}</maxHistory>
+            <totalSizeCap>${LOG_FILE_TOTAL_SIZE_CAP:-1GB}</totalSizeCap>
         </rollingPolicy>
     </appender>
 
-    <!-- Root logger: All other loggers inherit from this -->
+    <logger name="com.alx.dataviz" level="DEBUG"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.hibernate" level="INFO"/>
+    <logger name="org.flywaydb" level="INFO"/>
+
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-ROLLING"/>
+        <appender-ref ref="FILE"/>
     </root>
-
-    <!-- Specific logger for the application package, set to DEBUG level -->
-    <logger name="com.alx.taskmgr" level="DEBUG" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-ROLLING"/>
-    </logger>
-
-    <!-- Specific logger for Hibernate SQL statements (useful for debugging ORM queries) -->
-    <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-ROLLING"/>
-    </logger>
-
-    <!-- Specific logger for Hibernate parameter binding -->
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-ROLLING"/>
-    </logger>
-
-    <!--
-        To see detailed Spring Security logs, uncomment the following:
-    <logger name="org.springframework.security" level="DEBUG" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE-ROLLING"/>
-    </logger>
-    -->
 
 </configuration>
 ```

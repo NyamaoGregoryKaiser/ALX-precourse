@@ -1,36 +1,34 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim-buster
+```dockerfile
+# Use a lighter base image for Spring Boot applications
+FROM openjdk:17-jdk-slim
 
-# Set the working directory in the container
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies needed for psycopg2 (if using PostgreSQL)
-# RUN apt-get update && apt-get install -y \
-#     libpq-dev \
-#     gcc \
-#     && rm -rf /var/lib/apt/lists/*
+# Copy the Maven wrapper files to enable building inside the container
+COPY .mvn .mvn
+COPY mvnw pom.xml ./
 
-# Copy the requirements file into the working directory
-COPY requirements.txt .
+# Build the application - this step can be optimized with multi-stage builds
+# to avoid including build tools in the final image.
+# For simplicity, we keep it in one stage for this example.
+RUN apt-get update && apt-get install -y maven \
+    && ./mvnw dependency:go-offline -B \
+    && rm -rf /root/.m2/repository
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the source code
+COPY src src
 
-# Copy the rest of the application code into the working directory
-COPY . .
+# Package the application into a JAR file
+RUN ./mvnw clean install -DskipTests
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Define the argument for the JAR file path
+ARG JAR_FILE=target/*.jar
+COPY ${JAR_FILE} app.jar
 
-# Set environment variables for Gunicorn and Flask
-ENV FLASK_APP=main.py
-ENV FLASK_ENV=production
-# In production, these should be managed by your orchestrator or CI/CD
-# ENV SECRET_KEY="your_production_secret_key"
-# ENV JWT_SECRET_KEY="your_production_jwt_secret_key"
-# ENV SQLALCHEMY_DATABASE_URI="postgresql://user:password@db:5432/mydatabase" # Example for PostgreSQL
+# Expose the port the Spring Boot application runs on
+EXPOSE 8080
 
-# Command to run the application using Gunicorn
-# Adjust workers and threads based on your server's CPU cores and expected load
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "main:app"]
+# Run the JAR file
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```

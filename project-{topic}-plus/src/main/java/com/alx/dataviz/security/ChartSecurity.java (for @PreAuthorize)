@@ -1,0 +1,32 @@
+```java
+package com.alx.dataviz.security;
+
+import com.alx.dataviz.model.Chart;
+import com.alx.dataviz.repository.ChartRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+
+@Component("chartSecurity")
+@RequiredArgsConstructor
+public class ChartSecurity {
+
+    private final ChartRepository chartRepository;
+
+    public boolean isOwner(Long chartId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return false;
+        }
+
+        UserDetails currentUser = (UserDetails) authentication.getPrincipal();
+        Optional<Chart> chartOptional = chartRepository.findById(chartId);
+
+        return chartOptional.map(chart -> currentUser.getUsername().equals(chart.getDashboard().getOwner().getUsername())).orElse(false);
+    }
+}
+```

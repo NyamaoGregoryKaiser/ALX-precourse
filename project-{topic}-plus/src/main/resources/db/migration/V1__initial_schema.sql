@@ -1,64 +1,84 @@
 ```sql
 -- V1__initial_schema.sql
+-- Initial schema for the Data Visualization Tool
 
--- Drop tables in reverse order of dependency to ensure clean recreation (for development/testing)
-DROP TABLE IF EXISTS tasks;
-DROP TABLE IF EXISTS user_roles;
-DROP TABLE IF EXISTS categories;
-DROP TABLE IF EXISTS users;
-
-
--- Create users table
-CREATE TABLE users (
+-- Table for application users
+CREATE TABLE app_user (
     id BIGSERIAL PRIMARY KEY,
-    full_name VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    email VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Add unique constraint for email
-ALTER TABLE users ADD CONSTRAINT uk_user_email UNIQUE (email);
-
--- Create user_roles table for many-to-many relationship with roles (if using separate role table)
--- Or as in our case, element collection
+-- Table for user roles (many-to-many relationship simplified with ElementCollection in JPA)
 CREATE TABLE user_roles (
     user_id BIGINT NOT NULL,
-    role VARCHAR(50) NOT NULL,
-    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    PRIMARY KEY (user_id, role) -- Composite primary key to ensure unique role per user
+    role VARCHAR(20) NOT NULL,
+    PRIMARY KEY (user_id, role),
+    FOREIGN KEY (user_id) REFERENCES app_user(id) ON DELETE CASCADE
 );
 
--- Create categories table
-CREATE TABLE categories (
+-- Table for data sources
+CREATE TABLE data_source (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    name VARCHAR(255) NOT NULL,
+    connection_details TEXT NOT NULL, -- e.g., CSV path, DB connection string, API endpoint
+    type VARCHAR(50) NOT NULL,       -- e.g., CSV, DATABASE, API
+    schema_definition TEXT,          -- JSON schema of the data
+    owner_id BIGINT NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (owner_id) REFERENCES app_user(id) ON DELETE CASCADE
 );
 
--- Add unique constraint for category name
-ALTER TABLE categories ADD CONSTRAINT uk_category_name UNIQUE (name);
+-- Table for dashboards
+CREATE TABLE dashboard (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    owner_id BIGINT NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (owner_id) REFERENCES app_user(id) ON DELETE CASCADE
+);
 
--- Create tasks table
-CREATE TABLE tasks (
+-- Table for charts
+CREATE TABLE chart (
     id BIGSERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    due_date TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    status VARCHAR(50) NOT NULL, -- PENDING, IN_PROGRESS, COMPLETED, CANCELLED
-    owner_id BIGINT NOT NULL,
-    category_id BIGINT NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_task_owner FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE,
-    CONSTRAINT fk_task_category FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+    type VARCHAR(50) NOT NULL,         -- e.g., BAR, LINE, PIE, SCATTER, TABLE
+    configuration TEXT,                -- JSON string for chart configuration (e.g., x-axis, y-axis, colors)
+    data_source_id BIGINT NOT NULL,
+    dashboard_id BIGINT NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (data_source_id) REFERENCES data_source(id) ON DELETE RESTRICT, -- Don't delete data source if charts depend on it
+    FOREIGN KEY (dashboard_id) REFERENCES dashboard(id) ON DELETE CASCADE
 );
 
--- Add indexes for common foreign key lookups
-CREATE INDEX idx_tasks_owner_id ON tasks (owner_id);
-CREATE INDEX idx_tasks_category_id ON tasks (category_id);
-CREATE INDEX idx_tasks_due_date ON tasks (due_date);
+-- Seed Data
+INSERT INTO app_user (username, password, email, created_at, updated_at) VALUES
+('admin', '$2a$10$iKq11B8iQ1c.90b0sC3.0.b.p.P2.0o0.0.0.0.0.0.0.0.0.0.0.0.0.0.0', 'admin@example.com', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP), -- password: password
+('user1', '$2a$10$iKq11B8iQ1c.90b0sC3.0.b.p.P2.0o0.0.0.0.0.0.0.0.0.0.0.0.0.0.0', 'user1@example.com', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); -- password: password
 
+INSERT INTO user_roles (user_id, role) VALUES
+((SELECT id FROM app_user WHERE username = 'admin'), 'ADMIN'),
+((SELECT id FROM app_user WHERE username = 'admin'), 'USER'),
+((SELECT id FROM app_user WHERE username = 'user1'), 'USER');
+
+INSERT INTO data_source (name, connection_details, type, schema_definition, owner_id, created_at, updated_at) VALUES
+('Sales Data', 'path/to/sales.csv', 'CSV', '{"columns": [{"name": "product", "type": "string"}, {"name": "sales", "type": "number"}]}', (SELECT id FROM app_user WHERE username = 'user1'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Customers DB', 'jdbc:postgresql://host:port/db?user=u&password=p', 'DATABASE', '{"columns": [{"name": "id", "type": "number"}, {"name": "name", "type": "string"}]}', (SELECT id FROM app_user WHERE username = 'admin'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Product Metrics API', 'https://api.example.com/metrics', 'API', '{"fields": {"metricName": "string", "value": "number"}}', (SELECT id FROM app_user WHERE username = 'user1'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+INSERT INTO dashboard (name, description, owner_id, created_at, updated_at) VALUES
+('User1 Sales Overview', 'Dashboard displaying sales performance for user1', (SELECT id FROM app_user WHERE username = 'user1'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Admin Global View', 'Admin dashboard for overall system metrics', (SELECT id FROM app_user WHERE username = 'admin'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+INSERT INTO chart (title, description, type, configuration, data_source_id, dashboard_id, created_at, updated_at) VALUES
+('Monthly Sales Bar Chart', 'Bar chart showing monthly sales by product', 'BAR', '{"xAxis": "product", "yAxis": "sales", "color": "category"}', (SELECT id FROM data_source WHERE name = 'Sales Data'), (SELECT id FROM dashboard WHERE name = 'User1 Sales Overview'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('Customer Growth Line Chart', 'Line chart for customer growth over time', 'LINE', '{"xAxis": "date", "yAxis": "count"}', (SELECT id FROM data_source WHERE name = 'Customers DB'), (SELECT id FROM dashboard WHERE name = 'Admin Global View'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 ```

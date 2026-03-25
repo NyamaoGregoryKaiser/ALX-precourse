@@ -1,0 +1,32 @@
+```java
+package com.alx.dataviz.security;
+
+import com.alx.dataviz.model.DataSource;
+import com.alx.dataviz.repository.DataSourceRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+
+@Component("dataSourceSecurity")
+@RequiredArgsConstructor
+public class DataSourceSecurity {
+
+    private final DataSourceRepository dataSourceRepository;
+
+    public boolean isOwner(Long dataSourceId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return false;
+        }
+
+        UserDetails currentUser = (UserDetails) authentication.getPrincipal();
+        Optional<DataSource> dataSourceOptional = dataSourceRepository.findById(dataSourceId);
+
+        return dataSourceOptional.map(dataSource -> currentUser.getUsername().equals(dataSource.getOwner().getUsername())).orElse(false);
+    }
+}
+```

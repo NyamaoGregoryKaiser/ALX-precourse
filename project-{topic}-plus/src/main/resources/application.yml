@@ -1,75 +1,79 @@
 ```yaml
-spring:
-  application:
-    name: taskmgr-pro
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskmgr_db}
-    username: ${DB_USERNAME:taskmgr_user}
-    password: ${DB_PASSWORD:password}
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: none # Flyway manages schema, so disable JPA's DDL auto-generation
-    show-sql: true # Log SQL statements
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-  flyway:
-    enabled: true
-    locations: classpath:/db/migration # Directory for migration scripts
-    baseline-on-migrate: true # Baseline existing database schema if migrations are applied to a non-empty DB
-  security:
-    user:
-      name: admin
-      password: adminpassword # Default admin user for basic tests, change in production
-  # Spring Cache configuration using Caffeine
-  cache:
-    caffeine:
-      spec: maximumSize=500,expireAfterWrite=60s # Default spec for all caches
-
-# Custom application security properties for JWT
-application:
-  security:
-    jwt:
-      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Base64 encoded secret key
-      expiration: 3600000 # 1 hour in milliseconds (3600 * 1000)
-
-# Server configuration
 server:
-  port: ${PORT:8080}
+  port: 8080
   servlet:
     context-path: /
 
-# Logging configuration (refer to logback-spring.xml for details)
+spring:
+  application:
+    name: data-viz-tool
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:postgresql://localhost:5432/datavizdb
+    username: datavizuser
+    password: datavizpass
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Should be 'validate' in production, 'update' or 'create-drop' for dev/test
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc.lob.non_contextual_creation: true # Fix for specific Hibernate/PostgreSQL issues
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true # Important for existing databases or initial deployments
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}
+  cache:
+    cache-names: users,dataSources,dashboards,charts,dataSourceData,chartData # Define cache names
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=10m # Default caching spec if not explicitly configured in CacheConfig
+
+application:
+  security:
+    jwt:
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      expiration: 86400000 # 24 hours in milliseconds (24 * 60 * 60 * 1000)
+    rate-limit:
+      requests-per-minute: 10 # For RateLimitingFilter
+
 logging:
   level:
-    com.alx.taskmgr: DEBUG
+    root: INFO
+    com.alx.dataviz: DEBUG
     org.springframework: INFO
     org.hibernate: INFO
     org.flywaydb: INFO
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 7
 
-# Springdoc OpenAPI (Swagger UI) configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,beans,cache
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+
 springdoc:
   swagger-ui:
-    path: /swagger-ui.html # Custom path for Swagger UI
-    disable-swagger-default-url: true # Disable default swagger-ui.html
+    path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
   api-docs:
-    path: /v3/api-docs # Custom path for OpenAPI JSON/YAML
-  default-produces-media-type: application/json # Default response type
-
-# Bucket4j for Rate Limiting
-bucket4j:
-  enabled: true
-  filters:
-    - cache-name: bucket4j-cache # Name of the cache to store buckets
-      url: "/api/v1/**" # Apply to all API endpoints
-      strategy: first # Use the first matching filter
-      rate-limits: # Define rate limits for this filter
-        - capacity: 10 # Maximum number of requests
-          initial-tokens: 10 # Initial tokens available
-          refill-speed: 10 # Number of tokens to refill
-          refill-interval-in-seconds: 60 # Refill interval (every 60 seconds)
+    path: /v3/api-docs
+    groups:
+      enabled: true
 ```
