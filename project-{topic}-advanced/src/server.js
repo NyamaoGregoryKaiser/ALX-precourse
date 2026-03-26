@@ -2,40 +2,42 @@
 const app = require('./app');
 const config = require('../config/config');
 const logger = require('./utils/logger');
-const db = require('../models');
-const redisClient = require('./config/database').redisClient;
+const { sequelize } = require('./models'); // Import sequelize instance
 
 let server;
 
-// Connect to PostgreSQL and sync models
-db.sequelize.authenticate()
-  .then(() => {
-    logger.info('Connected to PostgreSQL database successfully.');
-    // In production, migrations should be handled externally or carefully.
-    // For development/testing, sync can be useful:
-    // return db.sequelize.sync({ force: false });
-  })
-  .then(() => {
-    logger.info('PostgreSQL models synchronized.');
-    // Connect to Redis
-    return redisClient.connect();
-  })
-  .then(() => {
-    logger.info('Connected to Redis successfully.');
-    // Start the server
+// Function to establish database connection and start the server
+const startServer = async () => {
+  try {
+    // Test database connection
+    await sequelize.authenticate();
+    logger.info('Database connection has been established successfully.');
+
+    // Apply database migrations
+    // In production, you might run migrations explicitly or via CI/CD.
+    // For development, auto-migrate on startup can be convenient.
+    if (process.env.NODE_ENV !== 'test') { // Don't auto-migrate for tests, manage manually
+      await sequelize.sync({ alter: true }); // `alter: true` updates schema based on models
+      logger.info('Database schema synchronized.');
+    }
+
     server = app.listen(config.port, () => {
       logger.info(`Server listening on port ${config.port} in ${config.env} mode.`);
     });
-  })
-  .catch(err => {
-    logger.error('Database or Redis connection error:', err);
+  } catch (error) {
+    logger.error('Unable to connect to the database or start server:', error);
     process.exit(1);
-  });
+  }
+};
 
+// Start the application
+startServer();
+
+// Handle unhandled promise rejections
 const exitHandler = () => {
   if (server) {
     server.close(() => {
-      logger.info('Server closed.');
+      logger.info('Server closed');
       process.exit(1);
     });
   } else {
@@ -44,13 +46,14 @@ const exitHandler = () => {
 };
 
 const unexpectedErrorHandler = (error) => {
-  logger.error(error);
+  logger.error('Unhandled error:', error);
   exitHandler();
 };
 
 process.on('uncaughtException', unexpectedErrorHandler);
 process.on('unhandledRejection', unexpectedErrorHandler);
 
+// Handle SIGTERM (termination signal)
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received');
   if (server) {

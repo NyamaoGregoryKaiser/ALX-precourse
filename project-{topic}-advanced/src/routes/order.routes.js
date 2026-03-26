@@ -1,6 +1,6 @@
 ```javascript
 const express = require('express');
-const userController = require('../controllers/user.controller');
+const orderController = require('../controllers/order.controller');
 const { auth, authorize } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validation.middleware');
 const Joi = require('joi');
@@ -10,17 +10,17 @@ const router = express.Router();
 /**
  * @swagger
  * tags:
- *   name: Users
- *   description: User management and retrieval
+ *   name: Orders
+ *   description: Order management and retrieval
  */
 
 /**
  * @swagger
- * /users:
+ * /orders:
  *   post:
- *     summary: Create a user
- *     description: Only admins can create other users.
- *     tags: [Users]
+ *     summary: Create a new order
+ *     description: Authenticated users can create orders. Admins can create orders for any user.
+ *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -30,73 +30,59 @@ const router = express.Router();
  *           schema:
  *             type: object
  *             required:
- *               - name
- *               - email
- *               - password
- *               - role
+ *               - productId
+ *               - quantity
  *             properties:
- *               name:
- *                 type: string
- *               email:
- *                 type: string
- *                 format: email
- *               password:
- *                 type: string
- *                 format: password
- *                 minLength: 8
- *                 description: At least one number and one uppercase letter
- *               role:
- *                 type: string
- *                 enum: [user, admin]
+ *               userId:
+ *                 type: integer
+ *                 description: (Optional for users, defaults to current user; required for admins creating orders for others)
+ *                 example: 1
+ *               productId:
+ *                 type: integer
+ *                 example: 1
+ *               quantity:
+ *                 type: integer
+ *                 example: 1
  *             example:
- *               name: Test User
- *               email: test@example.com
- *               password: TestPassword1
- *               role: user
+ *               productId: 1
+ *               quantity: 2
  *     responses:
  *       "201":
  *         description: Created
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Order'
  *       "400":
  *         $ref: '#/components/schemas/Error'
  *       "401":
  *         $ref: '#/components/schemas/Error'
- *       "403":
- *         $ref: '#/components/schemas/Error'
  *
  *   get:
- *     summary: Get all users
- *     description: Only admins can retrieve all users.
- *     tags: [Users]
+ *     summary: Get all orders
+ *     description: Admins can retrieve all orders. Users can only retrieve their own orders.
+ *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: name
+ *         name: status
  *         schema:
  *           type: string
- *         description: User name
- *       - in: query
- *         name: role
- *         schema:
- *           type: string
- *           enum: [user, admin]
- *         description: User role
+ *           enum: [pending, completed, cancelled]
+ *         description: Filter by order status
  *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
- *         description: Sort by query param (e.g., name:asc,email:desc)
+ *         description: Sort by query param (e.g., createdAt:desc,totalPrice:asc)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           minimum: 1
  *         default: 10
- *         description: Maximum number of users
+ *         description: Maximum number of orders
  *       - in: query
  *         name: page
  *         schema:
@@ -115,7 +101,7 @@ const router = express.Router();
  *                 results:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/User'
+ *                     $ref: '#/components/schemas/Order'
  *                 page:
  *                   type: integer
  *                   example: 1
@@ -137,40 +123,35 @@ router
   .route('/')
   .post(
     auth,
-    authorize(['admin']),
     validate({
       body: Joi.object().keys({
-        name: Joi.string().required(),
-        email: Joi.string().required().email(),
-        password: Joi.string().required().min(8).regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/)
-          .message('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
-        role: Joi.string().valid('user', 'admin').required(),
+        userId: Joi.number().integer().optional(), // Optional, defaults to req.user.id
+        productId: Joi.number().integer().required(),
+        quantity: Joi.number().integer().min(1).required(),
       }),
     }),
-    userController.createUser
+    orderController.createOrder
   )
   .get(
     auth,
-    authorize(['admin']),
     validate({
       query: Joi.object().keys({
-        name: Joi.string(),
-        role: Joi.string().valid('user', 'admin'),
+        status: Joi.string().valid('pending', 'completed', 'cancelled'),
         sortBy: Joi.string(),
         limit: Joi.number().integer(),
         page: Joi.number().integer(),
       }),
     }),
-    userController.getUsers
+    orderController.getOrders
   );
 
 /**
  * @swagger
- * /users/{id}:
+ * /orders/{id}:
  *   get:
- *     summary: Get a user
- *     description: Logged in users can fetch their own user information. Admins can fetch any user information.
- *     tags: [Users]
+ *     summary: Get a single order
+ *     description: Admins can retrieve any order. Users can only retrieve their own orders.
+ *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -179,14 +160,14 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Order id
  *     responses:
  *       "200":
  *         description: OK
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Order'
  *       "401":
  *         $ref: '#/components/schemas/Error'
  *       "403":
@@ -195,9 +176,9 @@ router
  *         $ref: '#/components/schemas/Error'
  *
  *   patch:
- *     summary: Update a user
- *     description: Only admins can update other users. Users can update their own information (name, email, password).
- *     tags: [Users]
+ *     summary: Update an order
+ *     description: Only admins can update orders (e.g., status, quantity). Users can only update their own order status to 'cancelled'.
+ *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -206,7 +187,7 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Order id
  *     requestBody:
  *       required: true
  *       content:
@@ -214,30 +195,20 @@ router
  *           schema:
  *             type: object
  *             properties:
- *               name:
+ *               quantity:
+ *                 type: integer
+ *                 example: 3
+ *               status:
  *                 type: string
- *               email:
- *                 type: string
- *                 format: email
- *               password:
- *                 type: string
- *                 format: password
- *                 minLength: 8
- *                 description: At least one number and one uppercase letter
- *               role:
- *                 type: string
- *                 enum: [user, admin]
- *             example:
- *               name: Updated Name
- *               email: updated.email@example.com
- *               password: NewPassword1
+ *                 enum: [pending, completed, cancelled]
+ *                 example: "completed"
  *     responses:
  *       "200":
  *         description: OK
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Order'
  *       "400":
  *         $ref: '#/components/schemas/Error'
  *       "401":
@@ -248,9 +219,9 @@ router
  *         $ref: '#/components/schemas/Error'
  *
  *   delete:
- *     summary: Delete a user
- *     description: Only admins can delete users.
- *     tags: [Users]
+ *     summary: Delete an order
+ *     description: Only admins can delete orders.
+ *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -259,7 +230,7 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Order id
  *     responses:
  *       "204":
  *         description: No Content
@@ -271,26 +242,39 @@ router
  *         $ref: '#/components/schemas/Error'
  */
 router
-  .route('/:userId')
-  .get(auth, authorize(['admin', 'user']), userController.getUser)
-  .patch(
+  .route('/:orderId')
+  .get(
     auth,
-    authorize(['admin', 'user']), // Allow users to update their own profile
     validate({
       params: Joi.object().keys({
-        userId: Joi.number().integer().required(),
+        orderId: Joi.number().integer().required(),
+      }),
+    }),
+    orderController.getOrder
+  )
+  .patch(
+    auth,
+    validate({
+      params: Joi.object().keys({
+        orderId: Joi.number().integer().required(),
       }),
       body: Joi.object().keys({
-        name: Joi.string(),
-        email: Joi.string().email(),
-        password: Joi.string().min(8).regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/)
-          .message('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
-        role: Joi.string().valid('user', 'admin'), // Only admin can update role
+        quantity: Joi.number().integer().min(1),
+        status: Joi.string().valid('pending', 'completed', 'cancelled'),
       }).min(1),
     }),
-    userController.updateUser
+    orderController.updateOrder
   )
-  .delete(auth, authorize(['admin']), userController.deleteUser);
+  .delete(
+    auth,
+    authorize(['admin']),
+    validate({
+      params: Joi.object().keys({
+        orderId: Joi.number().integer().required(),
+      }),
+    }),
+    orderController.deleteOrder
+  );
 
 module.exports = router;
 ```

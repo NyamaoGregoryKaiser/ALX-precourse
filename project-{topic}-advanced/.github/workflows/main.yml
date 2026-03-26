@@ -1,5 +1,5 @@
 ```yaml
-name: CI/CD Pipeline
+name: Node.js CI/CD
 
 on:
   push:
@@ -12,102 +12,117 @@ on:
       - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
+    name: Build and Test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: enterprise_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Load .env file
-        uses: 'intact/env-file-action@v2'
-        with:
-          path: .env.example # Use example file for CI build, sensitive vars are in secrets
+      - name: Install dependencies
+        run: npm ci
 
-      # Backend steps
-      - name: Install Backend Dependencies
-        run: npm install --prefix src/backend
-
-      - name: Run Backend Lint
-        run: npm run lint --prefix src/backend
-
-      - name: Run Backend Tests
-        run: npm test --prefix src/backend
-        env:
-          # Use database setup from services for tests, or mock it
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-          DB_DIALECT: postgres
-          JWT_SECRET: ci_test_secret
-          JWT_EXPIRES_IN: 1h
-          ADMIN_EMAIL: admin@test.com
-          ADMIN_PASSWORD: password
-          CACHE_TTL_SECONDS: 1
-          LOG_LEVEL: debug
-          PORT: 5001 # Use a different port for CI tests
-
-      # Frontend steps
-      - name: Install Frontend Dependencies
-        run: npm install --prefix src/frontend
-
-      - name: Run Frontend Lint
-        run: npm run lint --prefix src/frontend
-
-      - name: Run Frontend Tests
-        run: npm test --prefix src/frontend
-        env:
-          CI: true # Required for React scripts test in CI environments
-          REACT_APP_API_URL: http://localhost:5001 # Mocked or pointing to a test backend if needed
-
-      - name: Build Frontend
-        run: npm run build --prefix src/frontend
-
-      # Docker build (optional, can be done in a separate job for deployment)
-      - name: Build Docker Images
+      - name: Set up environment variables for testing
         run: |
-          docker build -t product-backend:latest -f src/backend/Dockerfile src/backend
-          docker build -t product-frontend:latest -f src/frontend/Dockerfile src/frontend
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/enterprise_test" >> $GITHUB_ENV
+          echo "JWT_SECRET=test_jwt_secret" >> $GITHUB_ENV
+          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
 
-  # Placeholder for Deployment Job (e.g., to a cloud provider)
-  # deploy:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   environment: production # Or staging
-  #   if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-  #     - name: Log in to Docker Hub
-  #       uses: docker/login-action@v3
-  #       with:
-  #         username: ${{ secrets.DOCKER_USERNAME }}
-  #         password: ${{ secrets.DOCKER_PASSWORD }}
-  #     - name: Build and push backend image
-  #       run: |
-  #         docker build -t your-dockerhub-username/product-backend:latest -f src/backend/Dockerfile src/backend
-  #         docker push your-dockerhub-username/product-backend:latest
-  #     - name: Build and push frontend image
-  #       run: |
-  #         docker build -t your-dockerhub-username/product-frontend:latest -f src/frontend/Dockerfile src/frontend
-  #         docker push your-dockerhub-username/product-frontend:latest
-  #     - name: Deploy to Server (e.g., using SSH and docker-compose pull/up)
-  #       uses: appleboy/ssh-action@master
-  #       with:
-  #         host: ${{ secrets.SSH_HOST }}
-  #         username: ${{ secrets.SSH_USERNAME }}
-  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #         script: |
-  #           cd /path/to/your/app
-  #           docker-compose pull
-  #           docker-compose down
-  #           docker-compose up -d
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in $(seq 1 10); do
+            nc -z localhost 5432 && echo "PostgreSQL is ready" && break
+            echo "Waiting for PostgreSQL..."
+            sleep 5
+          done
+      - name: Wait for Redis to be ready
+        run: |
+          for i in $(seq 1 10); do
+            nc -z localhost 6379 && echo "Redis is ready" && break
+            echo "Waiting for Redis..."
+            sleep 5
+          done
+
+      - name: Run database migrations and seeds for tests
+        run: npx sequelize-cli db:create && npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run tests with coverage
+        run: npm test
+
+      - name: Archive production artifacts (e.g., build image)
+        if: success() && github.ref == 'refs/heads/main'
+        run: |
+          echo "Simulating Docker image build for production..."
+          # Example: docker build -t my-app:latest .
+          # Example: docker push my-app:latest
+          echo "Artifacts archived/pushed."
+
+  deploy_staging:
+    name: Deploy to Staging
+    needs: build_and_test
+    if: success() && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: staging # Define a GitHub environment for staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Simulate deployment to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Replace with actual deployment commands (e.g., SSH, kubectl, AWS CLI, Heroku CLI)
+          echo "Deployment to staging complete."
+
+  deploy_production:
+    name: Deploy to Production
+    needs: build_and_test
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production # Define a GitHub environment for production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Simulate deployment to production
+        run: |
+          echo "Deploying to production environment..."
+          # This step would typically involve pulling the built Docker image and deploying it
+          # to a production server/cluster.
+          echo "Deployment to production complete."
 ```

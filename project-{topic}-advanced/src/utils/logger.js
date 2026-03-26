@@ -15,16 +15,15 @@ const logger = winston.createLogger({
     enumerateErrorFormat(),
     config.env === 'development' ? winston.format.colorize() : winston.format.uncolorize(),
     winston.format.splat(),
-    winston.format.timestamp(),
-    winston.format.printf(({ level, message, timestamp }) => `${timestamp} ${level}: ${message}`)
+    winston.format.printf(({ level, message }) => `${level}: ${message}`)
   ),
   transports: [
     new winston.transports.Console({
       stderrLevels: ['error'],
     }),
-    // In production, consider adding file transports or cloud logging services
-    // new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    // new winston.transports.File({ filename: 'combined.log' }),
+    // Optionally add file transports for production environments
+    // new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    // new winston.transports.File({ filename: 'logs/combined.log' }),
   ],
 });
 

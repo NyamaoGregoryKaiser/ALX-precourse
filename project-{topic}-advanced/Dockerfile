@@ -1,31 +1,30 @@
 ```dockerfile
-# Use a slim OpenJDK 17 base image for smaller footprint
-FROM openjdk:17-jdk-slim as builder
+# Use an official Node.js runtime as a parent image
+FROM node:20-alpine
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the Maven pom.xml and source code
-COPY pom.xml .
-COPY src ./src
+# Copy package.json and package-lock.json to the working directory
+COPY package*.json ./
 
-# Build the application
-# Use -Dmaven.test.skip=true to skip tests during the build in the Dockerfile
-# For production builds, you might want to run tests in CI/CD before building the image.
-RUN --mount=type=cache,target=/root/.m2 ./mvnw package -DskipTests
+# Install app dependencies
+# Use `npm ci` for clean installs in CI/CD and production environments
+RUN npm ci --only=production
 
-# Stage 2: Create the final image
-FROM openjdk:17-jdk-slim
+# Copy the rest of the application code
+COPY . .
 
-# Set the working directory
-WORKDIR /app
+# Generate swagger.json during build if it's used for static serving
+# Remove this line if swagger.json is generated dynamically or not used directly.
+RUN npm run generate-docs
 
-# Copy the built JAR file from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
+# Expose the port the app runs on
+EXPOSE 3000
 
-# Expose the port the Spring Boot application runs on
-EXPOSE 8080
+# Define environment variable for production (can be overridden)
+ENV NODE_ENV=production
 
-# Define the entrypoint command to run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the application
+CMD ["npm", "start"]
 ```

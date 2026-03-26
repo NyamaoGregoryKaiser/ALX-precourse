@@ -1,24 +1,85 @@
 ```json
 {
-  "name": "devops-automation-system-root",
+  "name": "enterprise-security-system",
   "version": "1.0.0",
-  "description": "Root package for managing frontend and backend dependencies and scripts",
-  "main": "index.js",
+  "description": "A comprehensive, production-ready security implementation system.",
+  "main": "src/server.js",
   "scripts": {
-    "install-all": "npm install --prefix src/backend && npm install --prefix src/frontend",
-    "test-backend": "npm test --prefix src/backend",
-    "test-frontend": "npm test --prefix src/frontend",
-    "start-backend": "npm start --prefix src/backend",
-    "start-frontend": "npm start --prefix src/frontend",
-    "lint-backend": "npm run lint --prefix src/backend",
-    "lint-frontend": "npm run lint --prefix src/frontend"
+    "start": "node src/server.js",
+    "dev": "NODE_ENV=development nodemon src/server.js",
+    "test": "NODE_ENV=test jest --detectOpenHandles --forceExit --coverage",
+    "test:watch": "NODE_ENV=test jest --watchAll",
+    "migrate": "npx sequelize-cli db:migrate",
+    "migrate:undo": "npx sequelize-cli db:migrate:undo",
+    "seed": "npx sequelize-cli db:seed:all",
+    "seed:undo": "npx sequelize-cli db:seed:undo:all",
+    "db:reset": "npx sequelize-cli db:drop && npx sequelize-cli db:create && npm run migrate && npm run seed",
+    "generate-docs": "node -e 'require(\"./config/swagger\").generateSwaggerDoc()' > swagger.json",
+    "lint": "eslint \"src/**/*.js\""
   },
-  "keywords": [],
+  "keywords": [
+    "security",
+    "nodejs",
+    "express",
+    "authentication",
+    "authorization",
+    "jwt",
+    "rbac",
+    "postgresql",
+    "sequelize",
+    "docker",
+    "redis",
+    "rate-limiting",
+    "logging",
+    "testing",
+    "enterprise"
+  ],
   "author": "ALX Software Engineering Program",
-  "license": "MIT",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
+    "connect-redis": "^7.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "joi": "^17.12.3",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.11.5",
+    "pg-hstore": "^2.3.4",
+    "redis": "^4.6.14",
+    "sequelize": "^6.37.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
+    "winston": "^3.13.0",
+    "xss-clean": "^0.1.4"
+  },
   "devDependencies": {
     "eslint": "^8.57.0",
-    "eslint-plugin-react": "^7.34.1"
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
+    "sequelize-cli": "^6.6.2",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/app.js",
+      "!src/server.js",
+      "!src/utils/logger.js",
+      "!src/middleware/error.middleware.js",
+      "!src/routes/index.js",
+      "!src/models/index.js"
+    ]
   }
 }
 ```

@@ -1,56 +1,74 @@
 ```javascript
-const httpStatus = require('http-status-codes');
+const httpStatus = require('http-status');
 const jwt = require('jsonwebtoken');
-const config = require('../../config/config');
-const ApiError = require('../utils/apiError');
-const userService = require('../services/user.service');
+const ApiError = require('../utils/ApiError');
 const catchAsync = require('../utils/catchAsync');
-const logger = require('../utils/logger');
+const config = require('../../config/config');
+const { User } = require('../models');
 
-const auth = (requiredRoles) => catchAsync(async (req, res, next) => {
-  let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
+/**
+ * Authentication middleware to verify JWT token.
+ * Attaches user object to `req.user` if authenticated.
+ */
+const auth = catchAsync(async (req, res, next) => {
+  // 1. Check for token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required');
   }
 
-  if (!token) {
-    return next(new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required'));
-  }
+  const token = authHeader.split(' ')[1];
 
   try {
-    const payload = jwt.verify(token, config.jwt.secret);
-    const user = await userService.getUserById(payload.sub);
+    // 2. Verify token
+    const decoded = jwt.verify(token, config.jwt.secret);
+
+    // 3. Find user by ID from token payload
+    const user = await User.findByPk(decoded.sub);
 
     if (!user) {
-      return next(new ApiError(httpStatus.UNAUTHORIZED, 'User not found for token'));
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found or token invalid');
     }
 
-    // Attach user and payload to request
+    // 4. Attach user to request object
     req.user = user;
-    req.tokenPayload = payload;
-
-    // Check if roles are required and if user has them
-    if (requiredRoles && Array.isArray(requiredRoles) && requiredRoles.length > 0) {
-      if (!requiredRoles.includes(user.role)) {
-        return next(new ApiError(httpStatus.FORBIDDEN, 'Forbidden: Insufficient permissions'));
-      }
-    } else if (requiredRoles && !Array.isArray(requiredRoles) && requiredRoles !== user.role) {
-      // If a single role string is passed instead of an array
-      return next(new ApiError(httpStatus.FORBIDDEN, 'Forbidden: Insufficient permissions'));
-    }
-
     next();
   } catch (error) {
-    logger.error('Authentication error:', error.message);
+    // Handle specific JWT errors
     if (error instanceof jwt.TokenExpiredError) {
-      return next(new ApiError(httpStatus.UNAUTHORIZED, 'Token expired'));
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'Token expired');
     }
     if (error instanceof jwt.JsonWebTokenError) {
-      return next(new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token'));
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token');
     }
-    return next(new ApiError(httpStatus.UNAUTHORIZED, 'Authentication failed'));
+    // Re-throw generic error or wrap it
+    throw new ApiError(httpStatus.UNAUTHORIZED, error.message || 'Authentication failed');
   }
 });
 
-module.exports = auth;
+/**
+ * Authorization middleware for Role-Based Access Control (RBAC).
+ * Checks if the authenticated user has any of the required roles.
+ * @param {Array<string>} requiredRoles - An array of roles allowed to access the route (e.g., ['admin', 'manager']).
+ */
+const authorize = (requiredRoles) => (req, res, next) => {
+  // Check if req.user is set by the auth middleware
+  if (!req.user) {
+    return next(new ApiError(httpStatus.FORBIDDEN, 'User not authenticated. Authorization check failed.'));
+  }
+
+  const userRole = req.user.role;
+
+  // Check if the user's role is included in the required roles
+  if (!requiredRoles.includes(userRole)) {
+    return next(new ApiError(httpStatus.FORBIDDEN, 'Forbidden: Insufficient permissions'));
+  }
+
+  next();
+};
+
+module.exports = {
+  auth,
+  authorize,
+};
 ```

@@ -1,6 +1,6 @@
 ```javascript
 const express = require('express');
-const userController = require('../controllers/user.controller');
+const productController = require('../controllers/product.controller');
 const { auth, authorize } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validation.middleware');
 const Joi = require('joi');
@@ -10,17 +10,17 @@ const router = express.Router();
 /**
  * @swagger
  * tags:
- *   name: Users
- *   description: User management and retrieval
+ *   name: Products
+ *   description: Product management and retrieval
  */
 
 /**
  * @swagger
- * /users:
+ * /products:
  *   post:
- *     summary: Create a user
- *     description: Only admins can create other users.
- *     tags: [Users]
+ *     summary: Create a product
+ *     description: Only admins can create products.
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -31,35 +31,29 @@ const router = express.Router();
  *             type: object
  *             required:
  *               - name
- *               - email
- *               - password
- *               - role
+ *               - price
+ *               - stock
  *             properties:
  *               name:
  *                 type: string
- *               email:
+ *                 example: "New Gadget"
+ *               description:
  *                 type: string
- *                 format: email
- *               password:
- *                 type: string
- *                 format: password
- *                 minLength: 8
- *                 description: At least one number and one uppercase letter
- *               role:
- *                 type: string
- *                 enum: [user, admin]
- *             example:
- *               name: Test User
- *               email: test@example.com
- *               password: TestPassword1
- *               role: user
+ *                 example: "A revolutionary new gadget."
+ *               price:
+ *                 type: number
+ *                 format: float
+ *                 example: 99.99
+ *               stock:
+ *                 type: integer
+ *                 example: 100
  *     responses:
  *       "201":
  *         description: Created
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Product'
  *       "400":
  *         $ref: '#/components/schemas/Error'
  *       "401":
@@ -68,9 +62,9 @@ const router = express.Router();
  *         $ref: '#/components/schemas/Error'
  *
  *   get:
- *     summary: Get all users
- *     description: Only admins can retrieve all users.
- *     tags: [Users]
+ *     summary: Get all products
+ *     description: All authenticated users can retrieve products.
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -78,25 +72,19 @@ const router = express.Router();
  *         name: name
  *         schema:
  *           type: string
- *         description: User name
- *       - in: query
- *         name: role
- *         schema:
- *           type: string
- *           enum: [user, admin]
- *         description: User role
+ *         description: Product name
  *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
- *         description: Sort by query param (e.g., name:asc,email:desc)
+ *         description: Sort by query param (e.g., name:asc,price:desc)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           minimum: 1
  *         default: 10
- *         description: Maximum number of users
+ *         description: Maximum number of products
  *       - in: query
  *         name: page
  *         schema:
@@ -115,7 +103,7 @@ const router = express.Router();
  *                 results:
  *                   type: array
  *                   items:
- *                     $ref: '#/components/schemas/User'
+ *                     $ref: '#/components/schemas/Product'
  *                 page:
  *                   type: integer
  *                   example: 1
@@ -130,8 +118,6 @@ const router = express.Router();
  *                   example: 1
  *       "401":
  *         $ref: '#/components/schemas/Error'
- *       "403":
- *         $ref: '#/components/schemas/Error'
  */
 router
   .route('/')
@@ -140,37 +126,34 @@ router
     authorize(['admin']),
     validate({
       body: Joi.object().keys({
-        name: Joi.string().required(),
-        email: Joi.string().required().email(),
-        password: Joi.string().required().min(8).regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/)
-          .message('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
-        role: Joi.string().valid('user', 'admin').required(),
+        name: Joi.string().required().trim(),
+        description: Joi.string().optional().allow(''),
+        price: Joi.number().required().min(0),
+        stock: Joi.number().integer().required().min(0),
       }),
     }),
-    userController.createUser
+    productController.createProduct
   )
   .get(
     auth,
-    authorize(['admin']),
     validate({
       query: Joi.object().keys({
         name: Joi.string(),
-        role: Joi.string().valid('user', 'admin'),
         sortBy: Joi.string(),
         limit: Joi.number().integer(),
         page: Joi.number().integer(),
       }),
     }),
-    userController.getUsers
+    productController.getProducts
   );
 
 /**
  * @swagger
- * /users/{id}:
+ * /products/{id}:
  *   get:
- *     summary: Get a user
- *     description: Logged in users can fetch their own user information. Admins can fetch any user information.
- *     tags: [Users]
+ *     summary: Get a product
+ *     description: All authenticated users can retrieve product details.
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -179,25 +162,23 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Product id
  *     responses:
  *       "200":
  *         description: OK
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Product'
  *       "401":
- *         $ref: '#/components/schemas/Error'
- *       "403":
  *         $ref: '#/components/schemas/Error'
  *       "404":
  *         $ref: '#/components/schemas/Error'
  *
  *   patch:
- *     summary: Update a user
- *     description: Only admins can update other users. Users can update their own information (name, email, password).
- *     tags: [Users]
+ *     summary: Update a product
+ *     description: Only admins can update products.
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -206,7 +187,7 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Product id
  *     requestBody:
  *       required: true
  *       content:
@@ -216,28 +197,23 @@ router
  *             properties:
  *               name:
  *                 type: string
- *               email:
+ *               description:
  *                 type: string
- *                 format: email
- *               password:
- *                 type: string
- *                 format: password
- *                 minLength: 8
- *                 description: At least one number and one uppercase letter
- *               role:
- *                 type: string
- *                 enum: [user, admin]
+ *               price:
+ *                 type: number
+ *                 format: float
+ *               stock:
+ *                 type: integer
  *             example:
- *               name: Updated Name
- *               email: updated.email@example.com
- *               password: NewPassword1
+ *               name: "Updated Gadget Pro"
+ *               price: 109.99
  *     responses:
  *       "200":
  *         description: OK
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/Product'
  *       "400":
  *         $ref: '#/components/schemas/Error'
  *       "401":
@@ -248,9 +224,9 @@ router
  *         $ref: '#/components/schemas/Error'
  *
  *   delete:
- *     summary: Delete a user
- *     description: Only admins can delete users.
- *     tags: [Users]
+ *     summary: Delete a product
+ *     description: Only admins can delete products.
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -259,7 +235,7 @@ router
  *         required: true
  *         schema:
  *           type: string
- *         description: User id
+ *         description: Product id
  *     responses:
  *       "204":
  *         description: No Content
@@ -271,26 +247,42 @@ router
  *         $ref: '#/components/schemas/Error'
  */
 router
-  .route('/:userId')
-  .get(auth, authorize(['admin', 'user']), userController.getUser)
-  .patch(
+  .route('/:productId')
+  .get(
     auth,
-    authorize(['admin', 'user']), // Allow users to update their own profile
     validate({
       params: Joi.object().keys({
-        userId: Joi.number().integer().required(),
+        productId: Joi.number().integer().required(),
+      }),
+    }),
+    productController.getProduct
+  )
+  .patch(
+    auth,
+    authorize(['admin']),
+    validate({
+      params: Joi.object().keys({
+        productId: Joi.number().integer().required(),
       }),
       body: Joi.object().keys({
-        name: Joi.string(),
-        email: Joi.string().email(),
-        password: Joi.string().min(8).regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/)
-          .message('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
-        role: Joi.string().valid('user', 'admin'), // Only admin can update role
+        name: Joi.string().trim(),
+        description: Joi.string().optional().allow(''),
+        price: Joi.number().min(0),
+        stock: Joi.number().integer().min(0),
       }).min(1),
     }),
-    userController.updateUser
+    productController.updateProduct
   )
-  .delete(auth, authorize(['admin']), userController.deleteUser);
+  .delete(
+    auth,
+    authorize(['admin']),
+    validate({
+      params: Joi.object().keys({
+        productId: Joi.number().integer().required(),
+      }),
+    }),
+    productController.deleteProduct
+  );
 
 module.exports = router;
 ```

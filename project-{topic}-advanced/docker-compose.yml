@@ -1,62 +1,70 @@
+```yaml
 version: '3.8'
 
 services:
-  # PostgreSQL Database Service
   db:
-    image: postgres:15-alpine # Use a lightweight PostgreSQL image
-    container_name: auth_postgres_db
+    image: postgres:16-alpine
+    container_name: enterprise_db
+    restart: always
     environment:
-      POSTGRES_DB: auth_db       # Database name
-      POSTGRES_USER: admin       # Database user
-      POSTGRES_PASSWORD: password # Database password
+      POSTGRES_DB: enterprise_dev # Default database for development
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432" # Map container port 5432 to host port 5432
+      - "5432:5432"
     volumes:
-      - auth_db_data:/var/lib/postgresql/data # Persist data to a named volume
-    healthcheck: # Healthcheck to ensure the database is ready before the app starts
-      test: ["CMD-SHELL", "pg_isready -U admin -d auth_db"]
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d enterprise_dev"]
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s # Give the DB some time to start up initially
-    restart: unless-stopped # Restart policy
 
-  # Spring Boot Application Service
+  redis:
+    image: redis:7-alpine
+    container_name: enterprise_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
-      context: . # Build context is the current directory (where Dockerfile is)
+      context: .
       dockerfile: Dockerfile
-    container_name: auth_spring_app
+    container_name: enterprise_app
+    restart: always
     ports:
-      - "8080:8080" # Map container port 8080 to host port 8080
+      - "3000:3000"
     environment:
-      # Inject database connection details as environment variables
-      # These override the values in application.yml for the 'prod' profile
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/auth_db # 'db' is the service name in docker-compose
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate # Ensure schema is validated, not created/updated automatically
-      SPRING_PROFILES_ACTIVE: prod # Activate the 'prod' profile
-      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970 # Same as in application.yml
-      APPLICATION_SECURITY_JWT_EXPIRATION: 86400000 # 24 hours
+      # These environment variables link to the services within the docker-compose network
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/enterprise_dev
+      REDIS_URL: redis://redis:6379
+      # JWT_SECRET should be securely managed, not hardcoded here in production
+      # For development, you can use a placeholder
+      JWT_SECRET: your_super_secret_jwt_key_here
+      NODE_ENV: development # Can be overridden to production
     depends_on:
       db:
-        condition: service_healthy # Ensure 'db' service is healthy before starting 'app'
-    restart: unless-stopped # Restart policy
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules # Prevents host's node_modules from overriding container's
+    # Command to run migrations and seed data after the app starts, for development convenience
+    # In production, these should be handled by CI/CD or dedicated scripts
+    command: >
+      bash -c "npm run migrate && npm run seed && npm start"
 
 volumes:
-  auth_db_data: # Define the named volume for database persistence
-
-# Usage:
-# 1. To build and run: docker-compose up --build -d
-# 2. To stop: docker-compose down
-# 3. To view logs: docker-compose logs -f
+  pgdata:
+  redisdata:
 ```
-
----
-
-### 4. Testing & Quality
-
-#### `src/test/resources/application-test.yml`
-
-```yaml

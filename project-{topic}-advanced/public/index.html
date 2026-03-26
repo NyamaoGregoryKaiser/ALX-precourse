@@ -4,32 +4,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Processing System</title>
+    <title>Enterprise Security System - Demo Client</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; line-height: 1.6; }
-        h1 { color: #333; }
-        code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
-        pre { background-color: #eee; padding: 1em; border-radius: 5px; overflow-x: auto; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+            text-align: center;
+        }
+        div {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        textarea,
+        select {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: #ccc;
+            margin: 30px 0;
+        }
     </style>
 </head>
 <body>
-    <h1>Welcome to the Payment Processing System API</h1>
-    <p>This is a simple static page served by the Node.js backend.</p>
-    <p>The core functionality is exposed via RESTful API endpoints. You can interact with the API using tools like Postman, Insomnia, or by building a dedicated frontend application.</p>
+    <div class="container">
+        <h1>Enterprise Security System Demo Client</h1>
+        <p>This is a minimal client to interact with the backend API endpoints.</p>
+        <p>Refer to the <a href="/api-docs" target="_blank">Swagger API Documentation</a> for detailed endpoint information.</p>
 
-    <h2>API Endpoints (Examples):</h2>
-    <ul>
-        <li><code>POST /v1/auth/register</code> - Register a new user</li>
-        <li><code>POST /v1/auth/login</code> - Log in and get JWT tokens</li>
-        <li><code>GET /v1/users/&lt;userId&gt;</code> - Get user details (requires authentication)</li>
-        <li><code>POST /v1/accounts</code> - Create a new bank account (requires authentication)</li>
-        <li><code>GET /v1/accounts</code> - Get user's bank accounts (requires authentication)</li>
-        <li><code>POST /v1/transactions</code> - Initiate a payment transaction (requires authentication)</li>
-        <li><code>GET /v1/transactions</code> - Get user's transaction history (requires authentication)</li>
-    </ul>
+        <hr>
 
-    <p>Refer to the <a href="/docs/api.md" target="_blank">API Documentation</a> for detailed endpoint specifications.</p>
-    <p>For development, access the API on <code>http://localhost:3000/v1</code> (or your configured port).</p>
+        <h2>Authentication</h2>
+        <div>
+            <label for="email">Email:</label>
+            <input type="email" id="email" value="user@example.com">
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" value="UserPassword1">
+        </div>
+        <div>
+            <button onclick="registerUser()">Register</button>
+            <button onclick="loginUser()">Login</button>
+            <button onclick="logoutUser()">Logout</button>
+        </div>
+        <div>
+            <label for="accessToken">Access Token:</label>
+            <textarea id="accessToken" rows="3" readonly></textarea>
+        </div>
+
+        <hr>
+
+        <h2>User Management (Admin Role Required for most)</h2>
+        <div>
+            <label for="userId">User ID (for Get/Update/Delete):</label>
+            <input type="number" id="userId" value="">
+        </div>
+        <div>
+            <label for="userName">Name:</label>
+            <input type="text" id="userName" value="New User">
+        </div>
+        <div>
+            <label for="userEmail">Email:</label>
+            <input type="email" id="userEmail" value="new.user@example.com">
+        </div>
+        <div>
+            <label for="userPassword">Password:</label>
+            <input type="password" id="userPassword" value="NewPassword1">
+        </div>
+        <div>
+            <label for="userRole">Role:</label>
+            <select id="userRole">
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+            </select>
+        </div>
+        <div>
+            <button onclick="createUser()">Create User (Admin)</button>
+            <button onclick="getUsers()">Get All Users (Admin)</button>
+            <button onclick="getUser()">Get User by ID (Admin/Self)</button>
+            <button onclick="updateUser()">Update User by ID (Admin/Self)</button>
+            <button onclick="deleteUser()">Delete User by ID (Admin)</button>
+        </div>
+
+        <hr>
+
+        <h2>Product Management</h2>
+        <div>
+            <label for="productId">Product ID (for Get/Update/Delete):</label>
+            <input type="number" id="productId" value="">
+        </div>
+        <div>
+            <label for="productName">Name:</label>
+            <input type="text" id="productName" value="New Product">
+        </div>
+        <div>
+            <label for="productDescription">Description:</label>
+            <textarea id="productDescription" rows="2">A very useful new item.</textarea>
+        </div>
+        <div>
+            <label for="productPrice">Price:</label>
+            <input type="number" step="0.01" id="productPrice" value="199.99">
+        </div>
+        <div>
+            <label for="productStock">Stock:</label>
+            <input type="number" id="productStock" value="100">
+        </div>
+        <div>
+            <button onclick="createProduct()">Create Product (Admin)</button>
+            <button onclick="getProducts()">Get All Products (Auth)</button>
+            <button onclick="getProduct()">Get Product by ID (Auth)</button>
+            <button onclick="updateProduct()">Update Product by ID (Admin)</button>
+            <button onclick="deleteProduct()">Delete Product by ID (Admin)</button>
+        </div>
+
+        <hr>
+
+        <h2>Order Management</h2>
+        <div>
+            <label for="orderId">Order ID (for Get/Update/Delete):</label>
+            <input type="number" id="orderId" value="">
+        </div>
+        <div>
+            <label for="orderProductId">Product ID (for New Order):</label>
+            <input type="number" id="orderProductId" value="">
+        </div>
+        <div>
+            <label for="orderQuantity">Quantity (for New Order/Update):</label>
+            <input type="number" id="orderQuantity" value="1">
+        </div>
+        <div>
+            <label for="orderStatus">Status (for Update):</label>
+            <select id="orderStatus">
+                <option value="pending">pending</option>
+                <option value="completed">completed</option>
+                <option value="cancelled">cancelled</option>
+            </select>
+        </div>
+        <div>
+            <button onclick="createOrder()">Create Order (Auth)</button>
+            <button onclick="getOrders()">Get All Orders (Admin/Self)</button>
+            <button onclick="getOrder()">Get Order by ID (Admin/Self)</button>
+            <button onclick="updateOrder()">Update Order by ID (Admin/Self)</button>
+            <button onclick="deleteOrder()">Delete Order by ID (Admin)</button>
+        </div>
+
+
+        <hr>
+
+        <h2>API Response</h2>
+        <div id="response" class="response"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api/v1';
+        let accessToken = ''; // Store the access token globally
+
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            };
+        }
+
+        async function callApi(method, path, body = null, headers = {}) {
+            const url = `${API_BASE_URL}${path}`;
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers // Allow overriding or adding headers
+                }
+            };
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                displayResponse(data, response.status);
+                return data;
+            } catch (error) {
+                displayResponse({ message: 'Network error or unable to parse response.', error: error.message }, 0);
+                return null;
+            }
+        }
+
+        function displayResponse(data, status) {
+            const responseDiv = document.getElementById('response');
+            let output = `Status: ${status}\n`;
+            output += `Response:\n${JSON.stringify(data, null, 2)}`;
+            responseDiv.textContent = output;
+            responseDiv.className = `response ${status >= 200 && status < 300 ? 'success' : 'error'}`;
+        }
+
+        async function registerUser() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const name = "Registered User"; // Default name for demo
+            const role = "user"; // Default role for demo
+            const res = await callApi('POST', '/auth/register', { name, email, password, role });
+            if (res && res.tokens) {
+                accessToken = res.tokens.access.token;
+                document.getElementById('accessToken').value = accessToken;
+            }
+        }
+
+        async function loginUser() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const res = await callApi('POST', '/auth/login', { email, password });
+            if (res && res.tokens) {
+                accessToken = res.tokens.access.token;
+                document.getElementById('accessToken').value = accessToken;
+            }
+        }
+
+        async function logoutUser() {
+            await callApi('POST', '/auth/logout', null, getAuthHeaders());
+            accessToken = '';
+            document.getElementById('accessToken').value = '';
+        }
+
+        // --- User Management ---
+        async function createUser() {
+            const name = document.getElementById('userName').value;
+            const email = document.getElementById('userEmail').value;
+            const password = document.getElementById('userPassword').value;
+            const role = document.getElementById('userRole').value;
+            await callApi('POST', '/users', { name, email, password, role }, getAuthHeaders());
+        }
+
+        async function getUsers() {
+            await callApi('GET', '/users', null, getAuthHeaders());
+        }
+
+        async function getUser() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) { displayResponse({ message: 'User ID is required!' }, 400); return; }
+            await callApi('GET', `/users/${userId}`, null, getAuthHeaders());
+        }
+
+        async function updateUser() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) { displayResponse({ message: 'User ID is required!' }, 400); return; }
+            const updateBody = {};
+            if (document.getElementById('userName').value) updateBody.name = document.getElementById('userName').value;
+            if (document.getElementById('userEmail').value) updateBody.email = document.getElementById('userEmail').value;
+            if (document.getElementById('userPassword').value) updateBody.password = document.getElementById('userPassword').value;
+            // Role can only be updated by admin, and it should be sent if explicitly chosen
+            if (document.getElementById('userRole').value) updateBody.role = document.getElementById('userRole').value;
+
+            await callApi('PATCH', `/users/${userId}`, updateBody, getAuthHeaders());
+        }
+
+        async function deleteUser() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) { displayResponse({ message: 'User ID is required!' }, 400); return; }
+            await callApi('DELETE', `/users/${userId}`, null, getAuthHeaders());
+        }
+
+        // --- Product Management ---
+        async function createProduct() {
+            const name = document.getElementById('productName').value;
+            const description = document.getElementById('productDescription').value;
+            const price = parseFloat(document.getElementById('productPrice').value);
+            const stock = parseInt(document.getElementById('productStock').value);
+            await callApi('POST', '/products', { name, description, price, stock }, getAuthHeaders());
+        }
+
+        async function getProducts() {
+            await callApi('GET', '/products', null, getAuthHeaders());
+        }
+
+        async function getProduct() {
+            const productId = document.getElementById('productId').value;
+            if (!productId) { displayResponse({ message: 'Product ID is required!' }, 400); return; }
+            await callApi('GET', `/products/${productId}`, null, getAuthHeaders());
+        }
+
+        async function updateProduct() {
+            const productId = document.getElementById('productId').value;
+            if (!productId) { displayResponse({ message: 'Product ID is required!' }, 400); return; }
+            const updateBody = {};
+            if (document.getElementById('productName').value) updateBody.name = document.getElementById('productName').value;
+            if (document.getElementById('productDescription').value) updateBody.description = document.getElementById('productDescription').value;
+            if (document.getElementById('productPrice').value) updateBody.price = parseFloat(document.getElementById('productPrice').value);
+            if (document.getElementById('productStock').value) updateBody.stock = parseInt(document.getElementById('productStock').value);
+            await callApi('PATCH', `/products/${productId}`, updateBody, getAuthHeaders());
+        }
+
+        async function deleteProduct() {
+            const productId = document.getElementById('productId').value;
+            if (!productId) { displayResponse({ message: 'Product ID is required!' }, 400); return; }
+            await callApi('DELETE', `/products/${productId}`, null, getAuthHeaders());
+        }
+
+        // --- Order Management ---
+        async function createOrder() {
+            const productId = parseInt(document.getElementById('orderProductId').value);
+            const quantity = parseInt(document.getElementById('orderQuantity').value);
+            await callApi('POST', '/orders', { productId, quantity }, getAuthHeaders());
+        }
+
+        async function getOrders() {
+            await callApi('GET', '/orders', null, getAuthHeaders());
+        }
+
+        async function getOrder() {
+            const orderId = document.getElementById('orderId').value;
+            if (!orderId) { displayResponse({ message: 'Order ID is required!' }, 400); return; }
+            await callApi('GET', `/orders/${orderId}`, null, getAuthHeaders());
+        }
+
+        async function updateOrder() {
+            const orderId = document.getElementById('orderId').value;
+            if (!orderId) { displayResponse({ message: 'Order ID is required!' }, 400); return; }
+            const updateBody = {};
+            // For regular users, only status to 'cancelled' is allowed
+            if (document.getElementById('orderStatus').value) updateBody.status = document.getElementById('orderStatus').value;
+            // Admin can also update quantity
+            if (document.getElementById('orderQuantity').value) updateBody.quantity = parseInt(document.getElementById('orderQuantity').value);
+            await callApi('PATCH', `/orders/${orderId}`, updateBody, getAuthHeaders());
+        }
+
+        async function deleteOrder() {
+            const orderId = document.getElementById('orderId').value;
+            if (!orderId) { displayResponse({ message: 'Order ID is required!' }, 400); return; }
+            await callApi('DELETE', `/orders/${orderId}`, null, getAuthHeaders());
+        }
+    </script>
 </body>
 </html>
 ```

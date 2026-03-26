@@ -2,9 +2,8 @@
 const express = require('express');
 const authRoutes = require('./auth.routes');
 const userRoutes = require('./user.routes');
-const accountRoutes = require('./account.routes');
-const transactionRoutes = require('./transaction.routes');
-const config = require('../../config/config');
+const productRoutes = require('./product.routes');
+const orderRoutes = require('./order.routes');
 
 const router = express.Router();
 
@@ -18,24 +17,14 @@ const defaultRoutes = [
     route: userRoutes,
   },
   {
-    path: '/accounts',
-    route: accountRoutes,
+    path: '/products',
+    route: productRoutes,
   },
   {
-    path: '/transactions',
-    route: transactionRoutes,
+    path: '/orders',
+    route: orderRoutes,
   },
 ];
-
-// Add docs route only in development
-if (config.env === 'development') {
-  // Example for a docs route, you might use swagger-ui-express here
-  // const docsRoute = require('./docs.route');
-  // defaultRoutes.push({
-  //   path: '/docs',
-  //   route: docsRoute,
-  // });
-}
 
 defaultRoutes.forEach((route) => {
   router.use(route.path, route.route);
