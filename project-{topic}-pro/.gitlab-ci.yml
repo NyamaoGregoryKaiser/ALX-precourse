@@ -1,0 +1,94 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_TLS_CERTDIR: ""
+  APP_NAME: cms-backend
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE/$APP_NAME:$CI_COMMIT_SHORT_SHA
+  DOCKER_LATEST_IMAGE: $CI_REGISTRY_IMAGE/$APP_NAME:latest
+
+# Define a service for Docker-in-Docker
+services:
+  - docker:20.10.16-dind
+
+.docker_login: &docker_login
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+build_backend_image:
+  stage: build
+  <<: *docker_login
+  script:
+    - echo "Building backend Docker image..."
+    - docker build -t $DOCKER_IMAGE -t $DOCKER_LATEST_IMAGE ./backend
+    - echo "Pushing backend Docker image..."
+    - docker push $DOCKER_IMAGE
+    - docker push $DOCKER_LATEST_IMAGE
+  tags:
+    - docker
+
+build_frontend_image:
+  stage: build
+  <<: *docker_login
+  script:
+    - echo "Building frontend Docker image..."
+    - docker build -t $CI_REGISTRY_IMAGE/cms-frontend:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE/cms-frontend:latest ./frontend
+    - echo "Pushing frontend Docker image..."
+    - docker push $CI_REGISTRY_IMAGE/cms-frontend:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE/cms-frontend:latest
+  tags:
+    - docker
+
+test_backend:
+  stage: test
+  image: gcc:11-bullseye # Or a custom image with build tools and dependencies
+  before_script:
+    # Install dependencies for testing (Google Test, libpqxx, jwt-cpp, spdlog)
+    # This might require a more complex setup script or a dedicated Docker image for CI.
+    - apt-get update && apt-get install -y cmake libpq-dev libssl-dev git pkg-config
+    - git clone https://github.com/oktal/pistache.git /opt/pistache && cd /opt/pistache && git checkout 919e831 && cmake -DCMAKE_BUILD_TYPE=Release . && make -j$(nproc) && make install && cd -
+    - git clone https://github.com/Thalhammer/jwt-cpp.git /opt/jwt-cpp && cd /opt/jwt-cpp && cmake . && make -j$(nproc) && make install && cd -
+    - git clone https://github.com/gabime/spdlog.git /opt/spdlog && cd /opt/spdlog && cmake . && make -j$(nproc) && make install && cd -
+    - ldconfig # Update shared library cache
+  script:
+    - echo "Running backend tests..."
+    - mkdir ./backend/build && cd ./backend/build
+    - cmake .. -DENABLE_TESTS=ON # Enable tests in CMakeLists.txt
+    - make
+    - ./tests/cms_backend_tests # Run compiled tests executable
+  coverage: '/^TOTAL.*\s+(\d+\%)$/' # Example for gcovr/lcov output
+  tags:
+    - shared # Or your custom runner tags
+
+deploy_production:
+  stage: deploy
+  image: docker/compose:latest
+  environment:
+    name: production
+    url: http://your-cms-domain.com
+  script:
+    - echo "Deploying to production..."
+    # SSH into your server and run docker compose pull/up
+    - ssh -o StrictHostKeyChecking=no $SSH_USER@$DEPLOY_HOST "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        cd /path/to/your/cms-project &&
+        docker-compose pull &&
+        docker-compose up -d --remove-orphans &&
+        docker system prune -f
+      "
+  only:
+    - main # Deploy only on pushes to the main branch
+  tags:
+    - deploy-server # Use a specific runner for deployment
+```
+
+---
+
+### 4. Testing & Quality
+
+#### `backend/tests/CMakeLists.txt`
+```cmake
