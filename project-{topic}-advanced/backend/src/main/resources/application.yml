@@ -1,0 +1,65 @@
+```yaml
+spring:
+  application:
+    name: ml-utilities-system
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ml_utilities_db}
+    username: ${DB_USERNAME:ml_user}
+    password: ${DB_PASSWORD:ml_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Should be 'none' or 'validate' in production, 'update' for development
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false # Set to true for debugging SQL queries
+  flyway:
+    enabled: true
+    baseline-on-migrate: true # Good for existing DB, but be cautious. For new DBs, not strictly needed.
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:a_very_secret_key_that_is_at_least_32_characters_long_for_HS256} # Change in production! Base64 encoded is better
+  expiration: ${JWT_EXPIRATION_MS:3600000} # 1 hour in milliseconds
+
+logging:
+  level:
+    root: INFO
+    com.ml.utilities: DEBUG # Specific package logging
+    org.springframework.web: INFO
+    org.hibernate: INFO
+
+inference:
+  service:
+    url: http://${INFERENCE_HOST:localhost}:${INFERENCE_PORT:5001}/predict # URL for the Python inference service
+
+# Spring Boot Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+# Caching Configuration
+spring:
+  cache:
+    jcache:
+      config: classpath:ehcache.xml # Refer to ehcache.xml if using xml config for Ehcache
+
+ehcache: # Programmatic config is used in CacheConfig.java, but for reference:
+  config:
+    models:
+      max-entries-local-heap: 100
+      time-to-live-seconds: 600 # 10 minutes
+    modelVersions:
+      max-entries-local-heap: 200
+      time-to-live-seconds: 300 # 5 minutes
+
+```

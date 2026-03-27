@@ -1,0 +1,113 @@
+```css
+.App {
+  font-family: sans-serif;
+  text-align: center;
+  margin: 20px;
+  background-color: #f4f7f6;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  color: #2c3e50;
+}
+
+h2 {
+  color: #34495e;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 10px;
+  margin-top: 30px;
+}
+
+.auth-section, .section {
+  background-color: #ffffff;
+  margin: 20px auto;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  max-width: 800px;
+  text-align: left;
+}
+
+.auth-section form, .section form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+input[type="text"],
+input[type="password"],
+textarea,
+select {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+button:active {
+  background-color: #3e8e41;
+}
+
+.header button {
+  background-color: #f44336;
+}
+.header button:hover {
+  background-color: #da190b;
+}
+
+.message {
+  color: #e74c3c;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+.prediction-result {
+  margin-top: 20px;
+  background-color: #ecf0f1;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.prediction-result pre {
+  background-color: #bdc3c7;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap; /* Allows text to wrap */
+  word-wrap: break-word; /* Breaks long words */
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  background-color: #e9ecef;
+  margin-bottom: 8px;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+li strong {
+  color: #2c3e50;
+}
+
+```

@@ -1,280 +1,296 @@
 ```markdown
-# Enterprise Security System
+# ML Utilities System
 
-This is a comprehensive, production-ready security implementation system built with Node.js, Express.js, and PostgreSQL. It demonstrates best practices for authentication, authorization (RBAC), logging, error handling, caching, rate limiting, and extensive testing, making it suitable for enterprise-grade applications.
+A comprehensive, production-ready Machine Learning Utilities System designed to manage, version, and serve machine learning models through a robust API. This full-scale project demonstrates best practices in backend (Java Spring Boot), database management (PostgreSQL), ML inference (Python Flask), frontend (React), and DevOps (Docker, CI/CD).
 
 ## Table of Contents
 
 1.  [Features](#features)
 2.  [Architecture Overview](#architecture-overview)
-3.  [Setup and Installation](#setup-and-installation)
+3.  [Technology Stack](#technology-stack)
+4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
+    *   [Clone the Repository](#clone-the-repository)
     *   [Environment Variables](#environment-variables)
-    *   [Local Setup (without Docker)](#local-setup-without-docker)
-    *   [Docker Setup](#docker-setup)
-    *   [Running the Application](#running-the-application)
-4.  [Database Operations](#database-operations)
+    *   [Running with Docker Compose (Recommended)](#running-with-docker-compose-recommended)
+    *   [Running Locally (Backend & Inference)](#running-locally-backend--inference)
+    *   [Running Frontend Locally](#running-frontend-locally)
 5.  [API Documentation](#api-documentation)
 6.  [Testing](#testing)
-    *   [Unit, Integration, and API Tests](#unit-integration-and-api-tests)
-    *   [Test Coverage](#test-coverage)
-    *   [Performance Testing (k6)](#performance-testing-k6)
 7.  [CI/CD](#cicd)
-8.  [Deployment Guide](#deployment-guide)
-9.  [Additional Security Considerations](#additional-security-considerations)
-10. [ALX Software Engineering Focus](#alx-software-engineering-focus)
-11. [Contributing](#contributing)
+8.  [Logging and Monitoring](#logging-and-monitoring)
+9.  [Additional Features](#additional-features)
+10. [Deployment Guide](#deployment-guide)
+11. [ALX Software Engineering Focus](#alx-software-engineering-focus)
 12. [License](#license)
 
 ## 1. Features
 
-*   **Authentication**: JWT (JSON Web Tokens) for stateless authentication, `bcrypt` for secure password hashing.
-*   **Authorization**: Role-Based Access Control (RBAC) middleware supporting `user` and `admin` roles, enforcing granular access to API endpoints.
-*   **Input Validation**: `Joi` schema validation for all incoming request payloads to prevent common vulnerabilities (e.g., SQL injection, XSS).
-*   **Error Handling**: Centralized error handling middleware with custom `ApiError` class for consistent and informative error responses.
-*   **Logging**: Structured logging with `Winston` for application events and request monitoring (`Morgan` for HTTP access logs).
-*   **Rate Limiting**: `express-rate-limit` with `Redis` store to protect against brute-force attacks and API abuse.
-*   **Security Headers**: `Helmet` middleware to set various HTTP headers for enhanced security (e.g., XSS protection, HSTS, CSP).
-*   **CORS**: Configured `cors` middleware for controlled cross-origin resource sharing.
-*   **Database**: PostgreSQL with `Sequelize` ORM, including migrations and seed data.
-*   **Caching**: `Redis` integrated for rate limiting, extendable for general data caching.
-*   **API**: RESTful API with full CRUD operations for Users, Products, and Orders.
-*   **Dockerization**: `Dockerfile` and `docker-compose.yml` for easy setup and deployment.
-*   **Testing**: Comprehensive unit, integration, and API tests using `Jest` and `Supertest`, aiming for high code coverage. Performance testing with `k6`.
-*   **Documentation**: Auto-generated API documentation using `Swagger/OpenAPI`.
-*   **CI/CD**: Basic GitHub Actions workflow for automated testing and deployment to staging/production.
+*   **Model Management:** CRUD operations for ML models (name, description, type).
+*   **Model Versioning:** Associate multiple versions with a model, track model paths, metadata, and designate a default version for inference.
+*   **User Authentication & Authorization:** JWT-based security with user registration and role-based access control (USER, ADMIN).
+*   **ML Inference Serving:** API endpoint to request predictions from specific or default model versions. Delegates actual inference to a separate Python microservice.
+*   **Database Management:** PostgreSQL with Flyway for schema migrations and seed data.
+*   **Caching:** Ehcache for model metadata and prediction results to improve performance.
+*   **Global Error Handling:** Consistent API error responses.
+*   **Logging:** Structured logging with Logback.
+*   **API Documentation:** Integrated OpenAPI (Swagger UI).
+*   **Containerization:** Dockerfiles and `docker-compose.yml` for easy setup and deployment.
+*   **CI/CD:** GitHub Actions workflow for automated builds and tests.
+*   **Comprehensive Testing:** Unit, Integration, and API tests.
+*   **Frontend UI:** A minimal React application to demonstrate API interaction.
 
 ## 2. Architecture Overview
 
-The application follows a layered architecture, common in enterprise applications:
+The system follows a microservices-inspired architecture, separating concerns into distinct services:
 
-*   **Presentation Layer (`src/routes`, `src/controllers`)**: Handles incoming HTTP requests, validates input, calls business logic, and sends responses. Routes define API endpoints, and controllers implement the request handlers.
-*   **Business Logic Layer (`src/services`)**: Contains the core business logic, orchestrating interactions between controllers and the data layer. It ensures data consistency and enforces business rules.
-*   **Data Access Layer (`src/models`)**: Interacts with the database using `Sequelize` ORM. Models define the database schema and provide an interface for CRUD operations.
-*   **Middleware (`src/middleware`)**: Contains reusable functions for authentication, authorization, error handling, rate limiting, and validation, applied before or after route handlers.
-*   **Utilities (`src/utils`, `config/`)**: Helper functions (JWT, logging), custom error classes, and application-wide configurations.
+```
++----------------+        +---------------------+        +---------------------+
+|    Frontend    | ---->  |      Nginx Proxy    | ---->  |       Backend       |
+|    (React)     |        |   (Port 3000 -> 80) |        |    (Java Spring)    |
++----------------+        +---------------------+        +---------------------+
+                                   | HTTP/REST              | JWT Auth, Cache,
+                                   |                        | Model CRUD,
+                                   |                        | Orchestrates Inference
+                                   |                        |
+                                   V HTTP/REST              V HTTP/REST (internal)
+                             +---------------------+   +---------------------+
+                             |   Inference Service |<-- |   PostgreSQL DB     |
+                             |      (Python)       |    | (Model Metadata)    |
+                             |   (Port 5001)       |    +---------------------+
+                             |                     |
+                             | Loads & serves ML   |
+                             | models (.pkl)       |
+                             +---------------------+
+```
 
-**Data Flow:**
-`Client Request` -> `Express.js` -> `Middleware (Rate Limit, CORS, Auth, Validation)` -> `Controller` -> `Service (Business Logic)` -> `Model (Database Interaction)` -> `Database` -> (response back)
+*   **Frontend (React):** A user interface to interact with the backend API, allowing users to log in, view models, and request predictions.
+*   **Nginx Proxy:** Serves the static frontend assets and proxies API requests to the backend.
+*   **Backend (Java Spring Boot):** The core application. It handles API gateway responsibilities, user authentication, model and model version management (CRUD), and orchestrates prediction requests by calling the Python Inference Service.
+*   **PostgreSQL Database:** Stores all persistent data, including user details, model metadata, and model version information.
+*   **Inference Service (Python Flask):** A lightweight service responsible for loading trained ML models (e.g., `.pkl` files) and performing actual predictions based on input data. It's designed to be stateless and scalable.
 
-## 3. Setup and Installation
+## 3. Technology Stack
+
+**Backend (Java Spring Boot)**
+*   **Language:** Java 17+
+*   **Framework:** Spring Boot 3+
+*   **Data Access:** Spring Data JPA with Hibernate
+*   **Database:** PostgreSQL
+*   **Migrations:** Flyway
+*   **Security:** Spring Security (JWT)
+*   **Caching:** Ehcache
+*   **API Docs:** OpenAPI (Swagger UI)
+*   **Testing:** JUnit 5, Mockito, RestAssured, Testcontainers
+*   **Utilities:** Lombok
+
+**Inference Service (Python)**
+*   **Language:** Python 3.9+
+*   **Web Framework:** Flask
+*   **ML Libraries:** scikit-learn (for dummy model), numpy, pandas
+*   **WSGI Server:** Gunicorn
+
+**Frontend (React)**
+*   **Framework:** React 18+
+*   **HTTP Client:** Axios
+
+**Infrastructure & DevOps**
+*   **Containerization:** Docker, Docker Compose
+*   **Web Server:** Nginx (for frontend)
+*   **CI/CD:** GitHub Actions
+
+## 4. Setup and Installation
 
 ### Prerequisites
 
-*   Node.js (v20 or higher)
-*   npm (v9 or higher)
-*   PostgreSQL (v16 or higher, if not using Docker)
-*   Redis (v7 or higher, if not using Docker)
-*   Docker & Docker Compose (recommended for easy setup)
+*   **Git:** For cloning the repository.
+*   **Java 17+ JDK:** If running backend locally.
+*   **Maven:** If building backend locally.
+*   **Python 3.9+:** If running inference service locally.
+*   **pip:** Python package installer.
+*   **Node.js & npm/yarn:** If running frontend locally.
+*   **Docker & Docker Compose:** **Highly Recommended** for running the entire system.
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/your-username/ml-utilities-system.git
+cd ml-utilities-system
+```
 
 ### Environment Variables
 
-Create a `.env` file in the project root based on `.env.example`.
+Create a `.env` file in the root directory (where `docker-compose.yml` is located) with the following variables. These will be picked up by Docker Compose.
 
-```ini
-# .env file (example)
-NODE_ENV=development
-PORT=3000
+```dotenv
+# .env file
 
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/enterprise_dev
-JWT_SECRET=your_super_secret_jwt_key_here # Generate a strong random string (e.g., node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
-JWT_ACCESS_EXPIRATION_MINUTES=30
-JWT_REFRESH_EXPIRATION_DAYS=30
+# Database Configuration
+DB_NAME=ml_utilities_db
+DB_USERNAME=ml_user
+DB_PASSWORD=ml_password
 
-REDIS_URL=redis://localhost:6379
+# JWT Configuration
+# IMPORTANT: Change this to a strong, randomly generated key in production. Must be at least 32 characters for HS256.
+JWT_SECRET=your_super_secret_jwt_key_that_is_long_enough_and_random
+JWT_EXPIRATION_MS=3600000 # 1 hour
+
+# Inference Service Configuration (used by Java backend)
+INFERENCE_HOST=inference-service # Docker internal hostname
+INFERENCE_PORT=5001
 ```
-**Important**: Do not commit your actual `.env` file to version control. Use `.env.example` as a template.
 
-### Local Setup (without Docker)
+### Running with Docker Compose (Recommended)
 
-1.  **Clone the repository:**
+This is the easiest way to get the entire system up and running.
+
+1.  **Build and Start Services:**
     ```bash
-    git clone https://github.com/your-username/enterprise-security-system.git
-    cd enterprise-security-system
+    docker compose up --build -d
     ```
-2.  **Install dependencies:**
+    *   `--build`: Builds images from Dockerfiles.
+    *   `-d`: Runs services in detached mode (in the background).
+
+2.  **Verify Services:**
     ```bash
-    npm install
+    docker ps
     ```
-3.  **Set up PostgreSQL and Redis:**
-    *   Ensure PostgreSQL is running on `localhost:5432` with a database named `enterprise_dev` and user `postgres`/password `postgres` (or update `DATABASE_URL` in `.env`).
-    *   Ensure Redis is running on `localhost:6379` (or update `REDIS_URL` in `.env`).
-4.  **Run database migrations and seed data:**
+    You should see `ml-utilities-db`, `ml-utilities-backend`, `ml-inference-service`, and `ml-utilities-frontend` running.
+
+3.  **Access the Applications:**
+    *   **Frontend UI:** `http://localhost:3000`
+    *   **Backend API (Swagger UI):** `http://localhost:8080/swagger-ui/index.html` (if not using frontend Nginx proxy)
+    *   **Backend API (via Nginx):** `http://localhost:3000/api/swagger-ui/index.html` (frontend Nginx proxy is configured to forward `/api` requests)
+    *   **Inference Service (direct, for debugging):** `http://localhost:5001` (though typically accessed only by the backend)
+
+4.  **Stop Services:**
     ```bash
-    npm run migrate
-    npm run seed
+    docker compose down
     ```
-
-### Docker Setup (Recommended)
-
-1.  **Clone the repository:**
+    To also remove volumes (database data):
     ```bash
-    git clone https://github.com/your-username/enterprise-security-system.git
-    cd enterprise-security-system
+    docker compose down --volumes
     ```
-2.  **Build and run containers:**
+
+### Running Locally (Backend & Inference)
+
+You can run the backend and inference services directly on your machine.
+
+1.  **Start PostgreSQL Database (e.g., via Docker):**
     ```bash
-    docker-compose up --build -d
+    docker run --name ml-utilities-db -e POSTGRES_DB=ml_utilities_db -e POSTGRES_USER=ml_user -e POSTGRES_PASSWORD=ml_password -p 5432:5432 -d postgres:15-alpine
     ```
-    This command will:
-    *   Build the Node.js application image.
-    *   Start PostgreSQL and Redis services.
-    *   Run database migrations and seed data automatically (configured in `docker-compose.yml` for the `app` service).
-    *   Start the Node.js application.
 
-    Wait a few moments for all services to become healthy and the application to start. You can check the status with `docker-compose ps`.
-
-### Running the Application
-
-*   **Development Mode (with Nodemon for auto-restarts):**
+2.  **Run Inference Service:**
     ```bash
-    npm run dev
+    cd inference-service
+    pip install -r requirements.txt
+    python app.py
     ```
-    The application will be available at `http://localhost:3000`.
+    The inference service will start on `http://localhost:5001`. It will create a `sample_model.pkl` in the `model/` directory if it doesn't exist.
 
-*   **Production Mode:**
+3.  **Run Backend Application:**
     ```bash
-    npm start
+    cd backend
+    ./mvnw spring-boot:run
     ```
-    The application will be available at `http://localhost:3000`.
+    Ensure your `application.yml` (or environment variables) point to `localhost:5432` for the DB and `localhost:5001` for the inference service.
+    The backend will start on `http://localhost:8080`.
 
-## 4. Database Operations
+### Running Frontend Locally
 
-*   **Create Migration:** `npx sequelize-cli migration:generate --name your-migration-name`
-*   **Create Seeder:** `npx sequelize-cli seed:generate --name your-seeder-name`
-*   **Run Migrations:** `npm run migrate`
-*   **Undo Last Migration:** `npm run migrate:undo`
-*   **Run All Seeders:** `npm run seed`
-*   **Undo All Seeders:** `npm run seed:undo`
-*   **Reset Database (Drop, Create, Migrate, Seed):** `npm run db:reset` (Use with caution, this will delete all data!)
+1.  **Start Backend and Inference Services (as above).**
+2.  **Install Dependencies:**
+    ```bash
+    cd frontend
+    npm install # or yarn install
+    ```
+3.  **Start Frontend:**
+    ```bash
+    npm start # or yarn start
+    ```
+    The frontend will open in your browser, usually at `http://localhost:3000`. It is configured to proxy API requests to `/api` (which then needs to be mapped to the backend via Nginx or a similar setup if not running the full Docker Compose stack). For local dev, you might need to adjust `REACT_APP_API_BASE_URL` in `frontend/.env` or `App.js` directly to point to `http://localhost:8080/api` if you don't run Nginx.
 
 ## 5. API Documentation
 
-The API documentation is automatically generated using Swagger/OpenAPI.
+The backend includes integrated OpenAPI (Swagger UI) documentation.
 
-*   **Generate `swagger.json`:**
-    ```bash
-    npm run generate-docs
-    ```
-*   **View API Docs (interactive UI):**
-    Once the application is running, navigate to `http://localhost:3000/api-docs` in your browser.
-    You can try out endpoints directly from the Swagger UI. For authenticated endpoints, obtain a JWT access token from the `/api/v1/auth/login` endpoint and paste it into the "Authorize" button (use "Bearer YOUR_TOKEN_HERE").
+*   When running via Docker Compose, access at: `http://localhost:3000/api/swagger-ui/index.html` (proxied through Nginx).
+*   If running backend locally, access at: `http://localhost:8080/swagger-ui/index.html`.
+
+**Authentication:**
+To test authenticated endpoints in Swagger UI:
+1.  Click the "Authorize" button.
+2.  Enter the JWT token obtained from `/api/auth/login`.
+    *   Default admin user: `username=admin`, `password=adminpass`
+    *   Default regular user: `username=user`, `password=userpass`
+    (These are seeded by the `DataLoader` on first startup if the database is empty).
+3.  Click "Authorize" and then "Close". Your token will be applied to subsequent requests.
 
 ## 6. Testing
 
-Tests are written using `Jest` and `Supertest`. `k6` is used for performance testing.
+The project includes various types of tests:
 
-### Unit, Integration, and API Tests
-
-To run all tests (unit, integration, API) and generate a coverage report:
-
-```bash
-npm test
-```
-
-To run tests in watch mode during development:
-
-```bash
-npm run test:watch
-```
-
-The `tests/setup.js` script handles database setup and cleanup for tests to ensure isolated and repeatable test runs.
-
-### Test Coverage
-
-The `npm test` command will output a coverage report in your console and generate an HTML report in the `coverage/` directory. Aim is for 80%+ coverage for critical code paths.
-
-### Performance Testing (k6)
-
-1.  **Install k6:** Follow the instructions on the [k6 website](https://k6.io/docs/getting-started/installation/).
-2.  **Prepare `tests/k6_users.json`:** Add credentials for multiple `user` role accounts that are already registered in your test database (e.g., via `npm run db:reset` and then manually registering users, or modifying the seeder to create many users).
-3.  **Run the performance test:**
-    ```bash
-    k6 run k6_performance_test.js
-    ```
-    This script simulates users logging in, fetching products, creating orders, and fetching their own orders. It includes thresholds for response times and error rates.
+*   **Unit Tests:** Located in `backend/src/test/java/com/ml/utilities/service`, `controller`, etc. These test individual components in isolation using Mockito.
+    *   Run with: `cd backend && ./mvnw test`
+*   **Integration Tests:** Located in `backend/src/test/java/com/ml/utilities/integration`. These use `@SpringBootTest` and Testcontainers to spin up a real PostgreSQL database, testing the interaction between layers and verifying API endpoints.
+    *   Run with: `cd backend && ./mvnw verify` (the `install` goal also runs tests by default)
+*   **API Tests:** The integration tests (e.g., `ApiIntegrationTest.java`) use RestAssured to make actual HTTP requests to the running Spring Boot application and assert on responses, covering the full request-response cycle.
+*   **Coverage:** JaCoCo is configured in `pom.xml` to aim for 80%+ line and branch coverage for the backend. After running tests, a report can be found at `backend/target/site/jacoco/index.html`.
 
 ## 7. CI/CD
 
-A basic CI/CD pipeline is configured using GitHub Actions (`.github/workflows/main.yml`).
+A basic GitHub Actions workflow (`.github/workflows/main.yml`) is configured for:
+*   **Backend Build & Test:** Compiles the Java backend, runs unit and integration tests (using Testcontainers).
+*   **Docker Image Build & Push:** On `main` branch pushes, it builds Docker images for the backend, inference service, and frontend, and pushes them to Docker Hub. (Requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets configured in GitHub).
 
-*   **Push to `develop` branch**: Triggers `build_and_test` and `deploy_staging` jobs.
-*   **Push to `main` branch**: Triggers `build_and_test` and `deploy_production` jobs.
-*   The `build_and_test` job sets up the environment, installs dependencies, runs linting, database migrations/seeds for tests, and executes all tests.
-*   `deploy_staging` and `deploy_production` are placeholder steps that you would replace with your actual deployment commands (e.g., Docker image push, Kubernetes deployment, SSH commands to a server).
+To trigger the CI pipeline, commit and push changes to the `main` branch or open a Pull Request.
 
-## 8. Deployment Guide
+## 8. Logging and Monitoring
 
-This project is containerized using Docker, making deployment relatively straightforward.
+*   **Logging:** The Java backend uses SLF4J with Logback (`logback-spring.xml`). Logs are written to console and `logs/ml-utilities-system.log` (with daily rolling).
+*   **Monitoring:** Spring Boot Actuator is enabled (`/actuator/**`).
+    *   Health checks: `/actuator/health`
+    *   Metrics: `/actuator/metrics`, `/actuator/prometheus` (can be scraped by Prometheus)
+    *   Info: `/actuator/info`
+    In a production environment, these metrics would be collected by tools like Prometheus and visualized in Grafana. Centralized logging solutions (e.g., ELK stack, Splunk) would aggregate logs from all services.
 
-1.  **Ensure Docker environment is ready**:
-    *   For cloud providers like AWS ECS/EKS, Google Kubernetes Engine (GKE), Azure Kubernetes Service (AKS), or Heroku, ensure your environment is set up to deploy Docker containers.
-    *   For a simple VPS, ensure Docker and Docker Compose are installed.
-2.  **Build the Docker image (if not done by CI/CD):**
-    ```bash
-    docker build -t your-repo/enterprise-app:latest .
-    ```
-3.  **Push the image to a container registry:**
-    ```bash
-    docker push your-repo/enterprise-app:latest
-    ```
-4.  **Configure Environment Variables:**
-    *   Ensure all necessary environment variables (especially `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `NODE_ENV=production`) are securely configured in your deployment environment. Do NOT embed secrets directly in Docker images or `docker-compose.yml` for production. Use secrets management services (e.g., AWS Secrets Manager, Kubernetes Secrets, Vault).
-    *   Update `DATABASE_URL` and `REDIS_URL` to point to your *production* database and Redis instances, respectively.
-5.  **Deploy the application:**
-    *   **Docker Compose (single server):**
-        Create a `docker-compose.prod.yml` that overrides development settings with production-ready ones (e.g., expose only necessary ports, bind mounts for production logs, use named volumes for data, remove `command` that runs migrations/seeds).
-        ```bash
-        docker-compose -f docker-compose.prod.yml up -d
-        ```
-    *   **Kubernetes:**
-        Write Kubernetes deployment, service, ingress, and secret manifests to deploy your application.
-    *   **Cloud Services (e.g., AWS ECS, Heroku):**
-        Follow your cloud provider's instructions for deploying containerized applications.
-6.  **Run Database Migrations:**
-    In a production environment, database migrations should be run as a separate, controlled step, often as part of your CI/CD pipeline or a pre-deployment hook, **before** the application fully starts. Do not rely on `sequelize.sync({ alter: true })` in production, as it can be risky.
-    A common pattern:
-    ```bash
-    docker run --rm your-repo/enterprise-app:latest npm run migrate
-    ```
-    Ensure the `DATABASE_URL` environment variable is correctly passed to this migration container.
+## 9. Additional Features
 
-## 9. Additional Security Considerations
+*   **Authentication/Authorization:** Implemented using JWT tokens with Spring Security. Role-based access (`ROLE_USER`, `ROLE_ADMIN`) is enforced using `@PreAuthorize` annotations.
+*   **Logging:** Configured with `logback-spring.xml` for file and console output.
+*   **Error Handling Middleware:** A `@ControllerAdvice` (`GlobalExceptionHandler`) provides consistent, structured error responses for various exceptions (e.g., `ResourceNotFoundException`, `IllegalArgumentException`, validation errors).
+*   **Caching Layer:** Ehcache is integrated (`CacheConfig.java`) with `@Cacheable`, `@CachePut`, and `@CacheEvict` annotations to cache model metadata and prediction results, reducing database load and improving response times.
+*   **Rate Limiting:** Not explicitly implemented as a separate component in this scope, but can be added using Spring Cloud Gateway for API Gateway level rate limiting, or a simple custom filter.
 
-This project implements many foundational security practices. For an even more robust enterprise system, consider:
+## 10. Deployment Guide
 
-*   **API Gateway**: For advanced routing, traffic management, additional security (WAF), and centralized authentication.
-*   **Input Validation (Client-Side)**: While server-side validation is critical, client-side validation provides a better user experience.
-*   **Content Security Policy (CSP)**: Further restrict content sources to prevent XSS.
-*   **CSRF Protection**: For stateful sessions or forms that are vulnerable to CSRF. JWTs with proper `SameSite` cookie settings for refresh tokens can mitigate this.
-*   **Data Encryption at Rest and in Transit**: Ensure your database and other data stores encrypt sensitive data. Use HTTPS (SSL/TLS) for all network communication.
-*   **Vulnerability Scanning**: Regularly scan your code and dependencies for known vulnerabilities (SAST, DAST, SCA).
-*   **Security Audits**: Professional security audits and penetration testing.
-*   **Monitoring & Alerting**: Set up comprehensive monitoring for security events, anomalies, and performance issues, with alerts for critical incidents.
-*   **Secrets Management**: Use dedicated secrets management services (e.g., HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) for production environment variables, especially `JWT_SECRET` and database credentials.
-*   **Least Privilege**: Ensure all services and users operate with the minimum necessary permissions.
-*   **Web Application Firewall (WAF)**: Deploy a WAF to protect against common web exploits.
-*   **Distributed Tracing**: For complex microservices architectures, distributed tracing helps understand request flow and identify performance bottlenecks.
+The `docker-compose.yml` provides a blueprint for deploying the entire system. For production deployments:
 
-## 10. ALX Software Engineering Focus
+1.  **Cloud Provider:** Choose a cloud provider (AWS, Azure, GCP).
+2.  **Container Orchestration:** Use Kubernetes (EKS, AKS, GKE) or Docker Swarm for managing containers at scale.
+    *   Convert `docker-compose.yml` to Kubernetes manifests (`deployment.yaml`, `service.yaml`, `ingress.yaml`) or use `kompose`.
+3.  **Database:** Use a managed database service (AWS RDS, Azure Database for PostgreSQL) instead of a Docker container for persistence, backups, and scalability.
+4.  **Secrets Management:** Store `JWT_SECRET` and database credentials in a secure secrets manager (AWS Secrets Manager, Kubernetes Secrets) instead of environment variables directly.
+5.  **Domain & TLS:** Configure a custom domain and HTTPS/TLS certificates (e.g., via Nginx Ingress Controller with Cert-Manager on Kubernetes).
+6.  **Monitoring & Logging:** Integrate with cloud-native monitoring (CloudWatch, Stackdriver) and logging (CloudWatch Logs, Fluentd/Fluent Bit for log aggregation).
+7.  **Scalability:** Configure auto-scaling for backend and inference services based on load.
 
-This project explicitly addresses the ALX Software Engineering precourse materials by emphasizing:
+## 11. ALX Software Engineering Focus
 
-*   **Programming Logic**: Clean, modular, and well-structured JavaScript code (`src/utils`, `src/services`, `src/controllers`). Clear function definitions, separation of concerns, and defensive programming.
-*   **Algorithm Design**:
-    *   **Hashing**: `bcrypt` for password hashing, demonstrating one-way cryptographic functions.
-    *   **Tokenization**: JWT generation and verification, involving cryptographic signing and payload structure.
-    *   **Search/Filtering/Sorting**: Efficient query building in services layer using `Sequelize` and database indexing concepts (implicitly, for performance).
-    *   **Rate Limiting**: Implementation of a sliding window or fixed window counter algorithm (via Redis store) to control request frequency.
-*   **Technical Problem Solving**: Each feature (authentication, authorization, error handling, caching, rate limiting) represents a common technical challenge in software development, addressed with established patterns and best practices. This project demonstrates practical solutions to these problems.
-*   **Modular Design**: The project is broken down into distinct modules (models, services, controllers, middleware, routes, utils), promoting maintainability, testability, and scalability.
-*   **Robustness**: Comprehensive error handling, input validation, and logging ensure the application behaves predictably and provides useful feedback.
+This project explicitly addresses ALX Software Engineering precourse materials:
 
-## 11. Contributing
-
-Feel free to fork this repository, submit issues, or propose pull requests. Contributions are welcome!
+*   **Programming Logic:** Demonstrates clear, modular Java and Python code with well-defined functions and classes, adhering to object-oriented principles. Logical flows are designed for robustness and maintainability.
+*   **Algorithm Design:** While the core backend logic focuses on system orchestration rather than complex new algorithms, the selection of data structures (e.g., `Set` for roles), efficient database queries (implicitly via JPA, explicitly with indexing), and caching mechanisms (Ehcache) reflects considerations for performance and algorithmic efficiency in data handling. The inference service's dummy prediction logic can be replaced with any complex ML algorithm.
+*   **Technical Problem Solving:** Tackles common enterprise challenges:
+    *   **Authentication & Authorization:** JWT implementation.
+    *   **Database Management:** Flyway for schema evolution, JPA for data mapping.
+    *   **Inter-service Communication:** HTTP/REST calls between Java and Python.
+    *   **Error Handling:** Centralized, structured error responses.
+    *   **Scalability & Reliability:** Containerization with Docker Compose, caching, and an architecture suitable for microservices deployment.
+    *   **Maintainability:** Clear project structure, comprehensive testing, and documentation.
 
 ## 12. License
 
-This project is licensed under the ISC License. See the `LICENSE` file for details.
+This project is open-source and available under the [MIT License](LICENSE).
 ```

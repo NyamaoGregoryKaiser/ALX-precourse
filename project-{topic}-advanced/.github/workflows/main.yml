@@ -1,128 +1,114 @@
 ```yaml
-name: Node.js CI/CD
+name: CI/CD Pipeline for ML Utilities System
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  build-and-test-backend:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: enterprise_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'maven'
 
-      - name: Install dependencies
-        run: npm ci
+    - name: Set up Docker Compose (for Testcontainers)
+      run: |
+        docker compose version
+        docker info
 
-      - name: Set up environment variables for testing
-        run: |
-          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/enterprise_test" >> $GITHUB_ENV
-          echo "JWT_SECRET=test_jwt_secret" >> $GITHUB_ENV
-          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
-          echo "NODE_ENV=test" >> $GITHUB_ENV
+    - name: Build and Test Backend
+      working-directory: ./backend
+      run: |
+        # Use Testcontainers for integration tests, requiring docker-compose.yml or local docker daemon
+        # Spring Boot tests will spin up a PostgreSQL container via Testcontainers
+        ./mvnw clean install
+      env:
+        # Provide dummy values for Testcontainers to avoid connection issues if not fully mocked
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: testdb
+        DB_USERNAME: testuser
+        DB_PASSWORD: testpassword
+        JWT_SECRET: a_very_secret_key_for_testing_purposes_only_1234
+        JWT_EXPIRATION_MS: 3600000
+        INFERENCE_HOST: localhost # Not used in unit/integration tests directly, but needs to be set
+        INFERENCE_PORT: 5001
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          for i in $(seq 1 10); do
-            nc -z localhost 5432 && echo "PostgreSQL is ready" && break
-            echo "Waiting for PostgreSQL..."
-            sleep 5
-          done
-      - name: Wait for Redis to be ready
-        run: |
-          for i in $(seq 1 10); do
-            nc -z localhost 6379 && echo "Redis is ready" && break
-            echo "Waiting for Redis..."
-            sleep 5
-          done
+    - name: Upload JaCoCo test report
+      uses: actions/upload-artifact@v4
+      with:
+        name: jacoco-report
+        path: backend/target/site/jacoco/jacoco.xml
 
-      - name: Run database migrations and seeds for tests
-        run: npx sequelize-cli db:create && npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Run tests with coverage
-        run: npm test
-
-      - name: Archive production artifacts (e.g., build image)
-        if: success() && github.ref == 'refs/heads/main'
-        run: |
-          echo "Simulating Docker image build for production..."
-          # Example: docker build -t my-app:latest .
-          # Example: docker push my-app:latest
-          echo "Artifacts archived/pushed."
-
-  deploy_staging:
-    name: Deploy to Staging
-    needs: build_and_test
-    if: success() && github.ref == 'refs/heads/develop'
+  build-docker-images:
     runs-on: ubuntu-latest
-    environment: staging # Define a GitHub environment for staging
-
+    needs: build-and-test-backend # Ensure tests pass before building images
+    if: github.ref == 'refs/heads/main' # Only push images on main branch
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Simulate deployment to staging
-        run: |
-          echo "Deploying to staging environment..."
-          # Replace with actual deployment commands (e.g., SSH, kubectl, AWS CLI, Heroku CLI)
-          echo "Deployment to staging complete."
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-  deploy_production:
-    name: Deploy to Production
-    needs: build_and_test
-    if: success() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production # Define a GitHub environment for production
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Build and push Backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/ml-utilities-backend:latest
+          ${{ secrets.DOCKER_USERNAME }}/ml-utilities-backend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
-      - name: Simulate deployment to production
-        run: |
-          echo "Deploying to production environment..."
-          # This step would typically involve pulling the built Docker image and deploying it
-          # to a production server/cluster.
-          echo "Deployment to production complete."
+    - name: Build and push Inference Service image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./inference-service
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/ml-inference-service:latest
+          ${{ secrets.DOCKER_USERNAME }}/ml-inference-service:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push Frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/ml-utilities-frontend:latest
+          ${{ secrets.DOCKER_USERNAME }}/ml-utilities-frontend:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # This job would typically trigger a deployment to a cloud provider
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: build-docker-images
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Deploy to Kubernetes / ECS / etc.
+  #       run: echo "Deployment logic here using kubectl, aws cli, etc."
+  #       # For example, update k8s deployment with new image tag
 ```

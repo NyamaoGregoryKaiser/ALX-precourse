@@ -3,68 +3,76 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:16-alpine
-    container_name: enterprise_db
-    restart: always
+    image: postgres:15-alpine
+    container_name: ml-utilities-db
     environment:
-      POSTGRES_DB: enterprise_dev # Default database for development
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-ml_utilities_db}
+      POSTGRES_USER: ${DB_USERNAME:-ml_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ml_password}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d enterprise_dev"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ml_user} -d ${DB_NAME:-ml_utilities_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - ml-net
 
-  redis:
-    image: redis:7-alpine
-    container_name: enterprise_redis
-    restart: always
+  backend:
+    build: ./backend
+    container_name: ml-utilities-backend
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: enterprise_app
-    restart: always
-    ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
-      # These environment variables link to the services within the docker-compose network
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/enterprise_dev
-      REDIS_URL: redis://redis:6379
-      # JWT_SECRET should be securely managed, not hardcoded here in production
-      # For development, you can use a placeholder
-      JWT_SECRET: your_super_secret_jwt_key_here
-      NODE_ENV: development # Can be overridden to production
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-ml_utilities_db}
+      DB_USERNAME: ${DB_USERNAME:-ml_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ml_password}
+      JWT_SECRET: ${JWT_SECRET:-a_very_secret_key_that_is_at_least_32_characters_long_for_HS256}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
+      INFERENCE_HOST: inference-service
+      INFERENCE_PORT: 5001
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+      inference-service:
+        condition: service_started # Inference service doesn't have healthcheck in this minimal example
+    networks:
+      - ml-net
+
+  inference-service:
+    build: ./inference-service
+    container_name: ml-inference-service
+    ports:
+      - "5001:5001"
     volumes:
-      - .:/app
-      - /app/node_modules # Prevents host's node_modules from overriding container's
-    # Command to run migrations and seed data after the app starts, for development convenience
-    # In production, these should be handled by CI/CD or dedicated scripts
-    command: >
-      bash -c "npm run migrate && npm run seed && npm start"
+      - ./inference-service/model:/app/model # Persist dummy model
+    environment:
+      MODEL_DIR: /app/model
+    networks:
+      - ml-net
+
+  frontend:
+    build: ./frontend
+    container_name: ml-utilities-frontend
+    ports:
+      - "3000:80" # Map host port 3000 to container port 80 (Nginx)
+    depends_on:
+      - backend
+    environment:
+      # Pass the backend API URL to the React app at build time (or runtime via Nginx proxy)
+      # For Nginx proxy, REACT_APP_API_BASE_URL should point to the Nginx /api path.
+      REACT_APP_API_BASE_URL: /api
+    networks:
+      - ml-net
+
+networks:
+  ml-net:
+    driver: bridge
 
 volumes:
   pgdata:
-  redisdata:
 ```
