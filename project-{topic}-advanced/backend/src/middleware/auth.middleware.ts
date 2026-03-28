@@ -1,74 +1,68 @@
-```typescript
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import config from '../config';
-import { AppDataSource } from '../config/database';
-import { User, UserRole } from '../entities/User';
-import { CustomError } from '../utils/error';
+import { PrismaClient, UserRole } from '@prisma/client';
+import { CustomError } from '../utils/errors.util';
+import { config } from '../config/env.config';
 
-// Extend the Request type to include `user`
+const prisma = new PrismaClient();
+
+// Extend the Request type to include user information
 declare global {
   namespace Express {
     interface Request {
-      user?: User;
+      user?: {
+        id: string;
+        email: string;
+        role: UserRole;
+      };
     }
   }
 }
 
-/**
- * Middleware to authenticate JWT token.
- * Populates req.user if token is valid.
- */
-export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+export const protect = async (req: Request, res: Response, next: NextFunction) => {
+  let token: string | undefined;
+
+  // Check for token in headers
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return next(new CustomError('Not authorized, no token', 401));
+  }
+
   try {
-    const authHeader = req.headers.authorization;
+    // Verify token
+    const decoded = jwt.verify(token, config.jwtSecret) as { id: string };
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new CustomError('Authentication invalid: No token provided or malformed.', 401);
-    }
-
-    const token = authHeader.split(' ')[1];
-
-    if (!token) {
-      throw new CustomError('Authentication invalid: No token provided.', 401);
-    }
-
-    const payload = jwt.verify(token, config.jwt.secret) as { id: string, email: string, role: UserRole };
-    const userRepository = AppDataSource.getRepository(User);
-    const user = await userRepository.findOneBy({ id: payload.id });
+    // Find user by ID
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, email: true, role: true } // Select only necessary fields
+    });
 
     if (!user) {
-      throw new CustomError('Authentication invalid: User not found.', 401);
+      return next(new CustomError('User not found for this token', 401));
     }
 
-    req.user = user;
+    req.user = user; // Attach user to the request object
     next();
-  } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      return next(new CustomError('Authentication invalid: Invalid token.', 401));
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      return next(new CustomError('Token has expired', 401));
     }
-    next(error); // Pass other errors to the error handling middleware
+    return next(new CustomError('Not authorized, token failed', 401));
   }
 };
 
-/**
- * Middleware to authorize user roles.
- * @param roles An array of roles allowed to access the route.
- */
-export const authorize = (roles: UserRole[]) => {
+export const authorize = (...roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      // This should ideally not happen if 'authenticate' middleware runs before 'authorize'
-      return next(new CustomError('Authorization failed: User not authenticated.', 403));
+      return next(new CustomError('No user attached to request, authentication required', 401));
     }
-
     if (!roles.includes(req.user.role)) {
-      return next(new CustomError('Authorization failed: Insufficient permissions.', 403));
+      return next(new CustomError(`User role ${req.user.role} is not authorized to access this route`, 403));
     }
-
     next();
   };
 };
-```
-
-#### `backend/src/middleware/error.middleware.ts`

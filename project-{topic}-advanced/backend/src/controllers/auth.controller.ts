@@ -1,106 +1,63 @@
-```typescript
 import { Request, Response, NextFunction } from 'express';
-import { registerUser, loginUser, refreshAccessToken, logoutUser } from '../services/auth.service';
-import { BadRequestError } from '../middleware/errorHandler.middleware';
-import logger from '../utils/logger';
-import { validate } from 'class-validator';
-import { plainToInstance } from 'class-transformer';
-import { LoginDto, RegisterDto, RefreshTokenDto } from './dtos/auth.dto';
+import { AuthService } from '../services/auth.service';
+import { catchAsync } from '../utils/catchAsync.util';
+import { logger } from '../utils/logger.util';
 
-// Helper for sending tokens in HTTP-only cookies
-const sendTokenResponse = (res: Response, accessToken: string, refreshToken: string, user: any) => {
-  // Set refresh token in an HTTP-only cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-    sameSite: 'lax', // CSRF protection
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (matches JWT_REFRESH_EXPIRES_IN)
-  });
+export class AuthController {
+  private authService: AuthService;
 
-  res.status(200).json({
-    status: 'success',
-    accessToken,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      roles: user.roles,
-    },
-  });
-};
-
-export const register = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { username, email, password } = req.body;
-    const user = await registerUser(username, email, password);
-    logger.info(`User registration successful: ${user.email}`);
-
-    // Log in immediately after registration
-    const { accessToken, refreshToken } = await loginUser(user.email, password);
-    sendTokenResponse(res, accessToken, refreshToken, user);
-
-  } catch (error) {
-    next(error);
+  constructor() {
+    this.authService = new AuthService();
   }
-};
 
-export const login = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { emailOrUsername, password } = req.body;
-    const { user, accessToken, refreshToken } = await loginUser(emailOrUsername, password);
-    logger.info(`User login successful: ${user.email}`);
-    sendTokenResponse(res, accessToken, refreshToken, user);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const refresh = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const oldRefreshToken = req.cookies.refreshToken;
-
-    if (!oldRefreshToken) {
-      return next(new BadRequestError('No refresh token provided.'));
-    }
-
-    const { accessToken, refreshToken: newRefreshToken } = await refreshAccessToken(oldRefreshToken);
-    logger.info(`Access token refreshed for user: ${req.user?.id}`);
-    sendTokenResponse(res, accessToken, newRefreshToken, req.user); // req.user populated from old token payload
-
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const logout = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const refreshToken = req.cookies.refreshToken;
-    if (req.user && refreshToken) {
-      await logoutUser(req.user.id, refreshToken);
-    }
-
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+  register = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    logger.debug('Attempting user registration', { email: req.body.email });
+    const { user, token } = await this.authService.register(req.body);
+    logger.info('User registered successfully', { userId: user.id });
+    res.status(201).json({
+      message: 'Registration successful',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      token,
     });
+  });
 
-    res.status(200).json({ status: 'success', message: 'Logged out successfully' });
-    logger.info(`User logged out: ${req.user?.id}`);
-  } catch (error) {
-    next(error);
-  }
-};
+  login = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    logger.debug('Attempting user login', { email: req.body.email });
+    const { user, token } = await this.authService.login(req.body.email, req.body.password);
+    logger.info('User logged in successfully', { userId: user.id });
+    res.status(200).json({
+      message: 'Login successful',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      token,
+    });
+  });
 
-export const getMe = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    // User object is attached to req by the protect middleware
+  getMe = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(new BadRequestError('User not found after authentication.'));
+      return res.status(401).json({ message: 'User not authenticated' });
     }
-    res.status(200).json({ status: 'success', user: req.user });
-  } catch (error) {
-    next(error);
-  }
-};
-```
+    logger.debug('Fetching profile for user', { userId: req.user.id });
+    const userProfile = await this.authService.getProfile(req.user.id);
+    if (!userProfile) {
+      return res.status(404).json({ message: 'User profile not found' });
+    }
+    res.status(200).json({
+      id: userProfile.id,
+      name: userProfile.name,
+      email: userProfile.email,
+      role: userProfile.role,
+      createdAt: userProfile.createdAt,
+      updatedAt: userProfile.updatedAt,
+    });
+  });
+}

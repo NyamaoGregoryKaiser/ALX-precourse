@@ -1,213 +1,181 @@
-```markdown
-# ALX E-commerce System - Architecture Documentation
+# E-commerce Solutions System: Architecture Document
 
-## Table of Contents
+## 1. Introduction
 
-1.  [Overview](#1-overview)
-2.  [Architectural Style](#2-architectural-style)
-3.  [Core Components and Layers](#3-core-components-and-layers)
-    *   [Presentation Layer (API Gateway / Frontend)](#31-presentation-layer-api-gateway--frontend)
-    *   [Application Layer (Controllers)](#32-application-layer-controllers)
-    *   [Domain/Business Logic Layer (Services)](#33-domainbusiness-logic-layer-services)
-    *   [Data Access Layer (Repositories)](#34-data-access-layer-repositories)
-    *   [Database Layer](#35-database-layer)
-4.  [Data Flow and Interactions](#4-data-flow-and-interactions)
-5.  [Key Design Decisions](#5-key-design-decisions)
-    *   [Technology Choices](#51-technology-choices)
-    *   [Authentication & Authorization (JWT)](#52-authentication--authorization-jwt)
-    *   [Caching (Redis)](#53-caching-redis)
-    *   [Database Migrations (Flyway)](#54-database-migrations-flyway)
-    *   [Error Handling](#55-error-handling)
-    *   [Rate Limiting](#56-rate-limiting)
-    *   [Logging & Monitoring](#57-logging--monitoring)
-6.  [Scalability and Performance Considerations](#6-scalability-and-performance-considerations)
-7.  [Security Considerations](#7-security-considerations)
-8.  [Future Enhancements](#8-future-enhancements)
+This document outlines the architectural design of the ALX E-commerce Solutions System. The goal is to provide a clear understanding of the system's structure, components, data flow, and key design decisions, emphasizing scalability, maintainability, and reliability.
 
----
+## 2. High-Level Overview
 
-## 1. Overview
+The system employs a **monorepo** structure for managing both frontend and backend codebases within a single repository. Architecturally, it's a **modularized monolith** for the backend, providing a robust API layer, and a **Single Page Application (SPA)** built with Next.js for the frontend.
 
-The ALX E-commerce System is a robust, scalable, and secure backend solution for an online store. It's built with modern Java (Spring Boot) technologies, designed to handle typical e-commerce workflows from user authentication to order processing. The architecture emphasizes modularity, clean separation of concerns, and ease of deployment.
+**Key Components:**
+*   **Frontend (Next.js/React):** User interface for customers and administrators.
+*   **Backend (Node.js/Express):** RESTful API providing business logic and data access.
+*   **Database (PostgreSQL):** Primary data store for persistent data.
+*   **Cache (Redis - conceptual):** For improving API response times and reducing database load.
+*   **Containerization (Docker):** For consistent development, testing, and deployment environments.
 
-## 2. Architectural Style
+## 3. Detailed Component Architecture
 
-The system primarily adopts a **Layered Architecture** (also known as N-tier architecture) with elements of **Domain-Driven Design (DDD)** in its service and model layers.
+### 3.1. Frontend (Next.js Application)
 
-*   **Monolithic (Modular) Application:** For simplicity and ease of initial development/deployment, it's structured as a single Spring Boot application. However, within this monolith, modules are logically separated (e.g., `controller`, `service`, `repository`, `model`) to prepare for potential future microservices decomposition.
-*   **RESTful API:** All external communication is via a RESTful API, adhering to principles like statelessness, resource-based URLs, and standard HTTP methods.
+*   **Framework:** Next.js (React)
+*   **Styling:** Tailwind CSS
+*   **State Management:** React Context API for global states like authentication and shopping cart.
+*   **API Client:** `axios` for making HTTP requests to the backend API.
+*   **Structure:**
+    *   `src/app/`: Next.js App Router for routing and layout.
+    *   `src/components/`: Reusable UI components (e.g., `Navbar`, `ProductList`, `ProductDetail`).
+    *   `src/context/`: React Context providers (e.g., `AuthContext`, `CartContext`).
+    *   `src/lib/api.ts`: Centralized API client with interceptors for authentication and error handling.
+    *   `src/types/`: TypeScript type definitions matching backend DTOs.
 
-### High-Level Diagram
+**Data Flow (Frontend):**
+1.  User interacts with the UI (e.g., clicks "Add to Cart", "Login").
+2.  UI component calls a function from a context (e.g., `useCart().addToCart`) or `api.ts` directly (e.g., `loginUser`).
+3.  Context updates local state or `api.ts` makes an HTTP request to the Backend API.
+4.  Backend processes the request and sends a response.
+5.  Frontend receives the response, updates its state, and re-renders the UI.
 
-```mermaid
-graph TD
-    A[Clients/Frontend] -->|HTTP/HTTPS| B(API Gateway / Load Balancer)
-    B -->|HTTP/HTTPS| C[Spring Boot Application]
-    C -->|JPA/JDBC| D(PostgreSQL Database)
-    C -->|Redis Client| E(Redis Cache)
-    C -->|Logs| F(Logging System - e.g., ELK Stack)
-    C -->|Metrics| G(Monitoring System - e.g., Prometheus/Grafana)
+### 3.2. Backend (Node.js/Express.js API)
 
-    subgraph Spring Boot Application
-        C1[Controllers] --> C2[Services]
-        C2 --> C3[Repositories]
-        C3 --> C4[Models/Entities]
-    end
+The backend is built with a layered architecture, promoting separation of concerns and testability.
 
-    style C fill:#f9f,stroke:#333,stroke-width:2px
-    style D fill:#ccf,stroke:#333,stroke-width:2px
-    style E fill:#fcc,stroke:#333,stroke-width:2px
-    style F fill:#cfc,stroke:#333,stroke-width:2px
-    style G fill:#ffc,stroke:#333,stroke-width:2px
+*   **Language:** TypeScript
+*   **Framework:** Express.js
+*   **ORM:** Prisma
+*   **Database:** PostgreSQL
+*   **Authentication:** JWT
+*   **Logging:** Winston
+
+**Layers:**
+
+1.  **`server.ts`:** Entry point, initializes the Express app, connects to DB, and starts the server.
+2.  **`app.ts`:** Express application setup, applies global middleware (security, logging, rate limiting, error handling) and registers routes.
+3.  **`routes/`:** Defines API endpoints and maps them to controller methods.
+    *   Example: `auth.routes.ts`, `product.routes.ts`.
+4.  **`middleware/`:** Functions that process requests before they reach the route handler or after (e.g., `auth.middleware.ts` for JWT verification and role-based access, `error.middleware.ts` for global error handling, `validation.middleware.ts` for Joi schema validation, `rateLimit.middleware.ts`, `logger.middleware.ts`).
+5.  **`controllers/`:** Handle incoming HTTP requests. They parse request data, validate it (delegating to `validation.middleware`), call appropriate methods in `services`, and send HTTP responses. They should be thin.
+    *   Example: `auth.controller.ts`, `product.controller.ts`.
+6.  **`services/`:** Contain the core business logic of the application. They orchestrate interactions between different repositories, apply domain rules, and ensure data integrity. Services are responsible for transactions, complex calculations, and coordinating multiple data operations.
+    *   Example: `auth.service.ts`, `product.service.ts`.
+7.  **`repositories/` (Conceptual, implemented via Prisma Client directly):** Abstracts database interactions. In this setup, `PrismaClient` directly serves as the repository layer, with service methods making direct calls to `prisma.modelName.findMany()`, `create()`, etc. This keeps the data access logic encapsulated within the service and reduces boilerplate for explicit repository classes.
+8.  **`utils/`:** Helper functions (e.g., `jwt.util.ts` for token generation/verification, `password.util.ts` for hashing, `errors.util.ts` for custom errors, `cache.util.ts` for caching).
+9.  **`config/`:** Environment variables, application constants, and Swagger configuration.
+10. **`validation/`:** Joi schemas for request body validation.
+11. **`types/`:** Shared TypeScript interfaces and types.
+
+**Data Flow (Backend):**
+1.  Request arrives at `server.ts` -> `app.ts`.
+2.  Global middleware (`helmet`, `cors`, `rateLimiter`, `requestLogger`) process the request.
+3.  Request is routed by `routes/index.ts` to a specific route handler (e.g., `auth.routes.ts`).
+4.  Route-specific middleware (e.g., `protect`, `authorize`, `validate`) execute.
+5.  The request reaches a `controller` method (e.g., `authController.login`).
+6.  Controller calls a `service` method (e.g., `authService.login`).
+7.  Service interacts with `PrismaClient` (acting as the repository) to perform database operations. It may also use `utils` like `cache.util` or `password.util`.
+8.  Service returns data to the Controller.
+9.  Controller sends an HTTP response to the client.
+10. If an error occurs at any stage, `error.middleware.ts` catches it and sends a standardized error response.
+
+### 3.3. Database (PostgreSQL with Prisma)
+
+*   **Database:** PostgreSQL (relational database, ACID compliant).
+*   **ORM:** Prisma.
+*   **`prisma/schema.prisma`:** Defines the database schema, including models (User, Product, Category, Order, OrderItem), enums (UserRole, OrderStatus), relations, and indexes.
+*   **Migrations:** Prisma Migrate manages schema changes, ensuring database evolution is tracked and reproducible.
+*   **Seeding:** `prisma/seed.ts` provides initial data for development and testing.
+
+**Query Optimization:**
+*   **Indexing:** Explicit indexes are defined in `schema.prisma` on frequently queried columns (e.g., `Product.categoryId`, `Product.name`, `Order.userId`, `Order.status`) to speed up read operations.
+*   **Prisma's Efficiency:** Prisma generates optimized SQL queries and includes features like batching and connection pooling.
+*   **Caching:** Integrating Redis (as demonstrated conceptually) can reduce database load for frequently accessed, less volatile data.
+
+### 3.4. Caching (Redis - Conceptual)
+
+*   **Purpose:** Improve performance by storing frequently accessed data in memory, reducing database round trips.
+*   **Integration:** The `cache.util.ts` demonstrates a simple in-memory cache, with comments showing how to integrate with Redis (`ioredis`).
+*   **Strategies:**
+    *   **Read-Through/Cache-Aside:** Data is fetched from the cache. If a cache miss, it's fetched from the database, stored in cache, and then returned.
+    *   **Write-Through/Write-Back:** Data updates are written directly to the database and then the cache is invalidated or updated.
+
+### 3.5. Authentication & Authorization (JWT)
+
+*   **Authentication:** Users log in with email/password, receive a JSON Web Token (JWT). This token is then sent with subsequent requests.
+*   **`protect` Middleware:** Verifies the JWT, extracts user ID, fetches user details, and attaches them to `req.user`.
+*   **Authorization:**
+    *   **`authorize` Middleware:** Checks `req.user.role` against a list of allowed roles for a specific route.
+    *   `UserRole` enum (`CUSTOMER`, `ADMIN`) for clear role definition.
+
+## 4. Deployment Architecture (Conceptual)
+
+For production deployment, a scalable and resilient setup is crucial.
+
+*   **Container Orchestration:** Kubernetes or Docker Swarm for managing containerized applications (backend, frontend, database, Redis).
+*   **Load Balancer:** Distributes incoming traffic across multiple instances of the frontend and backend services.
+*   **Reverse Proxy (Nginx):** Serves static assets, forwards API requests to the backend, and handles SSL termination.
+*   **Database Management:** Managed PostgreSQL service (AWS RDS, GCP Cloud SQL) for high availability, backups, and scaling.
+*   **Monitoring & Logging:** Centralized logging (ELK stack, Grafana Loki) and monitoring (Prometheus, Grafana) for operational insights.
+*   **CI/CD Pipeline:** Automates testing, building, and deployment (e.g., GitHub Actions).
+
+```
++----------------+       +-------------------+       +--------------------+
+|                |       |                   |       |                    |
+|    Browser     | <---> |   Load Balancer   | <---> |    Nginx Reverse   |
+|     / User     |       |   (e.g., AWS ALB) |       |       Proxy        |
+|                |       |                   |       |                    |
++----------------+       +-------------------+       +---------+----------+
+                                                               |
+                                                 +-------------+-------------+
+                                                 |                           |
+                                                 v                           v
++------------------+                    +---------------------+   +---------------------+
+|                  |                    |                     |   |                     |
+|  Frontend Service| <------------------|    Backend Service  |---|    Redis Cache    |
+|  (Next.js)       | (API Calls)        |    (Node/Express)   |   |     (for session,   |
+|  (Multiple Instances)                  |    (Multiple Instances) |     product cache)  |
++------------------+                    +---------------------+   +---------------------+
+                                                 |
+                                                 | (Database Queries)
+                                                 v
+                                        +---------------------+
+                                        |                     |
+                                        |    PostgreSQL DB    |
+                                        |  (Managed Service)  |
+                                        +---------------------+
+
+Centralized Logging & Monitoring (Prometheus, Grafana, ELK)
+                               ^
+                               |
+                               +-----------------------------+
+                               |                             |
+                       Backend Service             Frontend Service
+                       (Application Logs)          (Browser Logs/Metrics)
 ```
 
-## 3. Core Components and Layers
+## 5. Security Considerations
 
-### 3.1. Presentation Layer (API Gateway / Frontend)
+*   **HTTPS:** All communication should be over SSL/TLS.
+*   **Input Validation:** Joi schemas are used on the backend.
+*   **Authentication:** JWT with secure secret and appropriate expiry. Password hashing with bcrypt.
+*   **Authorization:** Role-based access control.
+*   **CORS:** Explicitly configured to allow requests only from the frontend domain.
+*   **Helmet:** Express middleware for setting various HTTP headers to protect against common web vulnerabilities.
+*   **Rate Limiting:** Prevents brute-force attacks and API abuse.
+*   **Environment Variables:** Sensitive information stored in `.env` and not committed to source control.
+*   **Database Security:** Least privilege principle for database users, network isolation.
 
-*   **Role:** Exposes the REST API to clients (web browsers, mobile apps). In a production setup, an API Gateway (e.g., Nginx, Spring Cloud Gateway, AWS API Gateway) would sit in front of the Spring Boot application for routing, load balancing, SSL termination, and possibly initial authentication/rate limiting.
-*   **Implementation:** Not directly implemented in this backend project, but assumed to exist. The backend's `/api/v1` prefix is intended to be behind such a gateway.
-*   **Frontend:** A separate application (e.g., React, Angular, Vue.js) would consume this API.
+## 6. Future Enhancements
 
-### 3.2. Application Layer (Controllers)
+*   Payment Gateway Integration (Stripe, PayPal).
+*   Full-text search with dedicated search engine (Elasticsearch, Algolia).
+*   Image upload/CDN integration (AWS S3, Cloudinary).
+*   Webhooks for external service integration.
+*   Microservices architecture for larger scale.
+*   GraphQL API.
+*   Real-time features (e.g., stock updates) with WebSockets.
+*   Internationalization (i18n).
+*   Email notifications for orders, password resets.
+*   More sophisticated monitoring and alerting.
 
-*   **Location:** `com.alx.ecommerce.controller` package.
-*   **Role:**
-    *   Receives incoming HTTP requests.
-    *   Performs input validation (using `@Valid` and JSR-303 annotations).
-    *   Delegates business logic execution to the Service layer.
-    *   Constructs HTTP responses.
-    *   Handles authentication and authorization at the endpoint level (`@PreAuthorize`).
-*   **Technologies:** Spring Web (RestController), OpenAPI annotations, Jakarta Validation.
-*   **Key Design:** Keeps controllers thin, focusing on request/response handling and delegating complex logic.
-
-### 3.3. Domain/Business Logic Layer (Services)
-
-*   **Location:** `com.alx.ecommerce.service` package.
-*   **Role:**
-    *   Contains the core business rules and logic.
-    *   Coordinates multiple repository calls to fulfill complex transactions.
-    *   Applies transaction management (`@Transactional`).
-    *   Manages caching operations (`@Cacheable`, `@CacheEvict`).
-    *   Performs data transformations between DTOs and Entities (using MapStruct mappers).
-    *   Handles domain-specific exceptions.
-*   **Technologies:** Spring `@Service`, `@Transactional`, Spring Cache, MapStruct.
-*   **Key Design:** This is the heart of the application, ensuring data consistency and implementing business flows.
-
-### 3.4. Data Access Layer (Repositories)
-
-*   **Location:** `com.alx.ecommerce.repository` package.
-*   **Role:**
-    *   Provides an abstraction over the persistence store.
-    *   Handles CRUD operations for entities.
-    *   Defines custom query methods (Spring Data JPA).
-*   **Technologies:** Spring Data JPA, Hibernate.
-*   **Key Design:** Follows the Repository pattern, insulating the business logic from persistence technology details.
-
-### 3.5. Database Layer
-
-*   **Technology:** PostgreSQL (Relational Database).
-*   **Role:** Stores all persistent data for the e-commerce system (users, products, orders, etc.).
-*   **Schema:** Defined in Flyway migration scripts (`db/migration`). Utilizes UUIDs for primary keys where appropriate and `BIGSERIAL` for others for scalability and collision avoidance. Includes `created_at` and `updated_at` timestamps for auditing.
-*   **Migration:** Flyway is used for version control of database schema, ensuring smooth updates across environments.
-*   **Query Optimization:** Includes basic indexing (e.g., `idx_products_category_id`, `idx_users_email`) in migration scripts. Further optimization would involve analyzing query plans in production.
-
-## 4. Data Flow and Interactions
-
-1.  **Client Request:** A client (e.g., web frontend) sends an HTTP request to the API Gateway.
-2.  **API Gateway:** Routes the request to the Spring Boot application (e.g., to `/api/v1/products`).
-3.  **Rate Limiting Filter:** `RateLimitFilter` checks if the client's IP has exceeded the allowed request rate. If so, it returns `429 Too Many Requests`.
-4.  **JWT Authentication Filter:** `JwtAuthFilter` extracts the JWT token from the `Authorization` header, validates it, and sets the `SecurityContext` with the authenticated user's details.
-5.  **Spring Security:** Checks if the authenticated user has the necessary roles/permissions (`@PreAuthorize`) to access the requested endpoint.
-6.  **Controller:** Receives the request, validates input DTOs, and calls the appropriate service method.
-7.  **Service:**
-    *   May check the Redis cache first (`@Cacheable`).
-    *   Performs business logic (e.g., validate product availability, calculate order total).
-    *   Interacts with one or more repositories to fetch or persist data.
-    *   If data is modified, it might evict relevant cache entries (`@CacheEvict`).
-    *   Uses MapStruct mappers to convert JPA entities to DTOs for the response.
-8.  **Repository:** Executes database operations (e.g., `productRepository.findById()`, `orderRepository.save()`).
-9.  **Database:** Processes SQL queries, stores/retrieves data.
-10. **Response:** The service returns a DTO to the controller, which then constructs an HTTP response back to the client.
-
-## 5. Key Design Decisions
-
-### 5.1. Technology Choices
-
-*   **Spring Boot:** Chosen for its rapid development, convention-over-configuration, and robust ecosystem for building enterprise-grade applications.
-*   **Java 17:** Current LTS version, offering modern language features and performance improvements.
-*   **PostgreSQL:** A powerful, open-source, and highly reliable relational database, suitable for complex transactional workloads.
-*   **Redis:** Excellent choice for a fast, in-memory data store for caching, session management, and rate limiting.
-*   **Lombok:** Reduces boilerplate code (getters, setters, constructors, builders), improving code readability and maintainability.
-*   **MapStruct:** Compile-time safe and efficient object mapping, reducing manual mapping errors and improving performance compared to reflection-based mappers.
-
-### 5.2. Authentication & Authorization (JWT)
-
-*   **Stateless Authentication:** JWT (JSON Web Tokens) are used for stateless authentication. This is crucial for scalability, as the server does not need to store session information. Each request contains the necessary authentication credentials.
-*   **Spring Security:** Provides comprehensive security features, integrating JWT validation and role-based access control seamlessly. `JwtAuthFilter` intercepts requests to validate tokens.
-*   **`@PreAuthorize`:** Used at the service and controller levels to enforce fine-grained authorization rules based on user roles (e.g., only `ADMIN` can create products).
-
-### 5.3. Caching (Redis)
-
-*   **Spring Cache Abstraction:** Used with Redis as the caching provider.
-*   **`@Cacheable`:** Improves read performance by storing method results in Redis, avoiding repeated database calls for frequently accessed, immutable, or slowly changing data (e.g., product details, category lists).
-*   **`@CacheEvict`:** Ensures data consistency by removing stale cache entries when underlying data is modified (e.g., after product update/delete).
-*   **Configuration:** Configured with specific TTL (Time-To-Live) and JSON serialization for values.
-
-### 5.4. Database Migrations (Flyway)
-
-*   **Version Control for Database Schema:** Flyway manages database schema evolution. Each change to the database is recorded in a versioned SQL script.
-*   **Automated Updates:** Migrations run automatically on application startup, ensuring the database schema matches the application code across all environments.
-*   **Baseline:** `baseline-on-migrate` is enabled for easy initial setup, but should be used with caution in production.
-
-### 5.5. Error Handling
-
-*   **Global Exception Handler:** `@ControllerAdvice` (`GlobalExceptionHandler`) provides a centralized mechanism to handle exceptions across all controllers.
-*   **Meaningful Responses:** Catches common exceptions (e.g., `ResourceNotFoundException`, `MethodArgumentNotValidException`, `DataIntegrityViolationException`, `AccessDeniedException`, JWT-related exceptions) and returns consistent, descriptive error responses with appropriate HTTP status codes.
-*   **Logging:** Errors are logged with relevant details, including stack traces for critical errors.
-
-### 5.6. Rate Limiting
-
-*   **Purpose:** Protects the API from abuse, brute-force attacks, and ensures fair usage by limiting the number of requests a client (identified by IP address) can make within a specified time window.
-*   **Implementation:** A custom `OncePerRequestFilter` (`RateLimitFilter`) uses the Bucket4j library, which is a token-bucket algorithm implementation, backed by a `ConcurrentHashMap` for storing client buckets. In a distributed environment, this would be backed by Redis or another distributed cache.
-*   **Configuration:** Configurable window and max requests in `application.yml`.
-
-### 5.7. Logging & Monitoring
-
-*   **Structured Logging:** SLF4J and Logback are used for flexible and structured logging. `logback-spring.xml` defines console and rolling file appenders. Log levels are configurable per package.
-*   **Spring Boot Actuator:** Provides production-ready features like `/health` (application health), `/info` (custom application info), and `/prometheus` (metrics in Prometheus format).
-*   **Monitoring Integration (Conceptual):** The exposed Prometheus endpoint allows integration with Prometheus for scraping metrics and Grafana for visualization, providing insights into application performance and health.
-
-## 6. Scalability and Performance Considerations
-
-*   **Statelessness:** JWT-based authentication means the application can be scaled horizontally by simply adding more instances without session affinity issues.
-*   **Caching:** Redis caching reduces database load for read-heavy operations.
-*   **Database Scaling:** PostgreSQL supports various scaling strategies (read replicas, sharding) for future growth.
-*   **Load Balancing:** Deployment behind a load balancer (e.g., Nginx, cloud load balancers) is assumed to distribute traffic across multiple application instances.
-*   **Asynchronous Processing:** For very heavy tasks (e.g., large data imports, complex reporting), offloading to message queues (e.g., Kafka, RabbitMQ) and separate worker services could be introduced. (Not implemented, but a future consideration).
-*   **Connection Pooling:** HikariCP (default in Spring Boot) is used for efficient database connection management.
-
-## 7. Security Considerations
-
-*   **Input Validation:** Extensive use of `@Valid` and JSR-303 annotations on DTOs to prevent injection attacks and ensure data integrity.
-*   **Password Hashing:** BCrypt is used for strong, one-way password hashing.
-*   **HTTPS:** Assumed to be enforced at the API Gateway/Load Balancer layer.
-*   **JWT Security:** Tokens are signed to prevent tampering. Expiration is enforced. Secret key is managed via environment variables.
-*   **SQL Injection Prevention:** Spring Data JPA's parameterized queries inherently prevent SQL injection.
-*   **Access Control:** Robust RBAC with `ADMIN` and `CUSTOMER` roles, enforced at both API gateway (if applicable) and application levels (`@PreAuthorize`).
-*   **Dependency Security:** Regular dependency updates (managed by Maven) help mitigate known vulnerabilities.
-*   **Environment Variables:** Sensitive information (database credentials, JWT secret) is externalized into environment variables.
-
-## 8. Future Enhancements
-
-*   **Frontend Application:** Develop a UI using React, Angular, or Vue.js to consume the backend API.
-*   **Shopping Cart Logic:** Implement a persistent shopping cart, potentially leveraging Redis for temporary storage and PostgreSQL for user-saved carts.
-*   **Payment Gateway Integration:** Integrate with external payment providers (e.g., Stripe, PayPal).
-*   **Search Engine:** Implement a dedicated search engine (e.g., Elasticsearch) for advanced product search and filtering.
-*   **Image Management:** Integrate with cloud storage solutions (e.g., AWS S3) for product images.
-*   **Email Notifications:** Implement email services for order confirmations, password resets, etc.
-*   **Distributed Tracing:** Integrate with OpenTelemetry or Zipkin for better observability in distributed systems.
-*   **Advanced Analytics:** Collect and analyze user behavior data.
-*   **Container Orchestration:** Deploy to Kubernetes for advanced scalability, self-healing, and management.
-*   **GraphQL API:** Consider a GraphQL layer for more flexible data fetching by clients.
+This architecture provides a solid foundation for building a scalable and maintainable e-commerce platform, adhering to modern software engineering principles.
 ```

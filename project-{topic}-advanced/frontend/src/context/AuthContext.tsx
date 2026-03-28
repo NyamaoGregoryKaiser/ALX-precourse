@@ -1,145 +1,111 @@
-```typescript
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, AuthResponse } from '../types';
-import * as api from '../services/api';
-import Cookies from 'js-cookie';
-import { toast } from 'react-toastify';
-import { useNavigate } from 'react-router-dom';
+"use client";
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { loginUser, registerUser } from '@/lib/api';
+import { LoginPayload, RegisterPayload, User } from '@/types/auth'; // Assuming types defined
 
 interface AuthContextType {
   user: User | null;
-  isAuthenticated: boolean;
-  login: (credentials: any) => Promise<void>;
-  register: (userData: any) => Promise<void>;
-  logout: () => Promise<void>;
-  loading: boolean;
+  token: string | null;
+  login: (credentials: LoginPayload) => Promise<void>;
+  register: (userData: RegisterPayload) => Promise<void>;
+  logout: () => void;
+  isLoading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
-  const navigate = useNavigate();
-
-  const loadUserFromCookies = useCallback(async () => {
-    const accessToken = Cookies.get('accessToken');
-    const refreshToken = Cookies.get('refreshToken'); // For future refresh logic
-    if (accessToken) {
-      try {
-        setLoading(true);
-        const res = await api.getMe();
-        if (res.data.success) {
-          setUser(res.data.data);
-          setIsAuthenticated(true);
-        } else {
-          // Token might be invalid or expired, clear and force login
-          Cookies.remove('accessToken');
-          Cookies.remove('refreshToken');
-          setUser(null);
-          setIsAuthenticated(false);
-        }
-      } catch (error) {
-        console.error('Failed to fetch user data with existing token:', error);
-        Cookies.remove('accessToken');
-        Cookies.remove('refreshToken');
-        setUser(null);
-        setIsAuthenticated(false);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setLoading(false);
-      setUser(null);
-      setIsAuthenticated(false);
-    }
-  }, []);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadUserFromCookies();
-  }, [loadUserFromCookies]);
+    // Attempt to load user from localStorage on mount
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
 
-  const handleAuthSuccess = (authData: AuthResponse) => {
-    setUser(authData.user);
-    setIsAuthenticated(true);
-    // Set cookies with appropriate expiration (e.g., access token short, refresh token long)
-    Cookies.set('accessToken', authData.accessToken, { expires: new Date(Date.now() + (30 * 60 * 1000)), secure: true, sameSite: 'Strict' }); // 30 minutes
-    Cookies.set('refreshToken', authData.refreshToken, { expires: new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)), secure: true, sameSite: 'Strict' }); // 7 days
-    toast.success('Authentication successful!');
-  };
-
-  const handleAuthError = (error: any, action: string) => {
-    const errorMessage = error.response?.data?.message || `Failed to ${action}. Please try again.`;
-    toast.error(errorMessage);
-    console.error(`Error during ${action}:`, error);
-    throw error; // Re-throw so calling component can handle navigation/state
-  };
-
-  const loginFn = async (credentials: any) => {
-    try {
-      setLoading(true);
-      const res = await api.login(credentials);
-      if (res.data.success) {
-        handleAuthSuccess(res.data.data);
-        navigate('/dashboard');
+    if (storedToken && storedUser) {
+      try {
+        const parsedUser: User = JSON.parse(storedUser);
+        setUser(parsedUser);
+        setToken(storedToken);
+      } catch (err) {
+        console.error('Failed to parse user from localStorage', err);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
       }
-    } catch (error) {
-      handleAuthError(error, 'login');
+    }
+    setIsLoading(false);
+  }, []);
+
+  const handleLogin = async (credentials: LoginPayload) => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const { token: newToken, user: userData } = await loginUser(credentials);
+      setUser(userData);
+      setToken(newToken);
+      localStorage.setItem('token', newToken);
+      localStorage.setItem('user', JSON.stringify(userData));
+      // Optionally fetch user profile to ensure it's up-to-date
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+      throw err; // Re-throw to allow component to catch and display specific error
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const registerFn = async (userData: any) => {
+  const handleRegister = async (userData: RegisterPayload) => {
+    setError(null);
+    setIsLoading(true);
     try {
-      setLoading(true);
-      const res = await api.register(userData);
-      if (res.data.success) {
-        handleAuthSuccess(res.data.data);
-        navigate('/dashboard');
-      }
-    } catch (error) {
-      handleAuthError(error, 'registration');
+      const { token: newToken, user: newUser } = await registerUser(userData);
+      setUser(newUser);
+      setToken(newToken);
+      localStorage.setItem('token', newToken);
+      localStorage.setItem('user', JSON.stringify(newUser));
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+      throw err;
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const logoutFn = async () => {
-    try {
-      await api.logout(); // Inform backend to invalidate refresh token (if implemented)
-      Cookies.remove('accessToken');
-      Cookies.remove('refreshToken');
-      setUser(null);
-      setIsAuthenticated(false);
-      toast.info('Logged out successfully.');
-      navigate('/login');
-    } catch (error) {
-      console.error('Error during logout:', error);
-      toast.error('Failed to log out.');
-    }
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setError(null);
+    setIsLoading(false);
   };
 
   const value = {
     user,
-    isAuthenticated,
-    login: loginFn,
-    register: registerFn,
-    logout: logoutFn,
-    loading,
+    token,
+    login: handleLogin,
+    register: handleRegister,
+    logout: handleLogout,
+    isLoading,
+    error,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
-```
-
-#### `frontend/src/components/AuthForm.tsx`
+}

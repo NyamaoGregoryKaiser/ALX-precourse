@@ -1,58 +1,41 @@
-```tsx
-import React from 'react';
-import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
-import { Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+"use client";
 
-const Navbar: React.FC = () => {
-  const { isAuthenticated, logout, user } = useAuth();
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
+
+export default function Navbar() {
+  const { user, logout } = useAuth();
+  const { cartItems } = useCart();
+  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   return (
-    <AppBar position="static" sx={{ bgcolor: '#2c3e50' }}>
-      <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          <RouterLink to="/" style={{ color: 'inherit', textDecoration: 'none' }}>
-            SQLInsight Pro
-          </RouterLink>
-        </Typography>
-        <Box>
-          {isAuthenticated ? (
+    <nav className="bg-gray-800 p-4 text-white">
+      <div className="container mx-auto flex justify-between items-center">
+        <Link href="/" className="text-2xl font-bold">
+          ALX Shop
+        </Link>
+        <div className="space-x-4">
+          <Link href="/products" className="hover:text-gray-300">Products</Link>
+          <Link href="/cart" className="hover:text-gray-300">
+            Cart ({cartItemCount})
+          </Link>
+          {user ? (
             <>
-              <Button color="inherit" component={RouterLink} to="/dashboard">
-                Dashboard
-              </Button>
-              <Button color="inherit" component={RouterLink} to="/queries">
-                Queries
-              </Button>
-              <Button color="inherit" component={RouterLink} to="/databases">
-                Databases
-              </Button>
-              {user?.role === 'admin' && (
-                 <Button color="inherit" component={RouterLink} to="/admin/users">
-                 Users
-               </Button>
+              <span className="text-gray-300">Hello, {user.name}</span>
+              {user.role === 'ADMIN' && (
+                <Link href="/admin/dashboard" className="hover:text-gray-300">Admin</Link>
               )}
-              <Button color="inherit" onClick={logout}>
-                Logout ({user?.email})
-              </Button>
+              <button onClick={logout} className="hover:text-gray-300">Logout</button>
             </>
           ) : (
             <>
-              <Button color="inherit" component={RouterLink} to="/login">
-                Login
-              </Button>
-              <Button color="inherit" component={RouterLink} to="/register">
-                Register
-              </Button>
+              <Link href="/login" className="hover:text-gray-300">Login</Link>
+              <Link href="/register" className="hover:text-gray-300">Register</Link>
             </>
           )}
-        </Box>
-      </Toolbar>
-    </AppBar>
+        </div>
+      </div>
+    </nav>
   );
-};
-
-export default Navbar;
-```
-
-#### `frontend/src/components/Layout.tsx`
+}

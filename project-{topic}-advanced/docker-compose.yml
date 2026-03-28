@@ -1,78 +1,82 @@
-```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: ml-utilities-db
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-ml_utilities_db}
-      POSTGRES_USER: ${DB_USERNAME:-ml_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-ml_password}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ecommerce_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ml_user} -d ${DB_NAME:-ml_utilities_db}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d ecommerce_db"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - ml-net
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
-    build: ./backend
-    container_name: ml-utilities-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "5000:5000"
     environment:
-      DB_HOST: db
-      DB_NAME: ${DB_NAME:-ml_utilities_db}
-      DB_USERNAME: ${DB_USERNAME:-ml_user}
-      DB_PASSWORD: ${DB_PASSWORD:-ml_password}
-      JWT_SECRET: ${JWT_SECRET:-a_very_secret_key_that_is_at_least_32_characters_long_for_HS256}
-      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
-      INFERENCE_HOST: inference-service
-      INFERENCE_PORT: 5001
+      NODE_ENV: production
+      PORT: 5000
+      API_VERSION: /api/v1
+      DATABASE_URL: "postgresql://user:password@db:5432/ecommerce_db?schema=public"
+      JWT_SECRET: supersecretjwtkey  # In production, use a strong, generated secret
+      JWT_EXPIRES_IN: 1h
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: adminpassword123
+      FRONTEND_URL: http://localhost:3000 # Or your deployed frontend URL
+      LOG_LEVEL: info
+      REDIS_URL: redis://redis:6379
     depends_on:
       db:
         condition: service_healthy
-      inference-service:
-        condition: service_started # Inference service doesn't have healthcheck in this minimal example
-    networks:
-      - ml-net
-
-  inference-service:
-    build: ./inference-service
-    container_name: ml-inference-service
-    ports:
-      - "5001:5001"
+      redis:
+        condition: service_healthy
     volumes:
-      - ./inference-service/model:/app/model # Persist dummy model
-    environment:
-      MODEL_DIR: /app/model
-    networks:
-      - ml-net
+      - ./backend:/app
+      - /app/node_modules # Prevent host node_modules from overwriting container's
+    command: sh -c "npx prisma migrate deploy && npx prisma generate && node dist/server.js"
+    restart: always
 
   frontend:
-    build: ./frontend
-    container_name: ml-utilities-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "3000:80" # Map host port 3000 to container port 80 (Nginx)
-    depends_on:
-      - backend
+      - "3000:3000"
     environment:
-      # Pass the backend API URL to the React app at build time (or runtime via Nginx proxy)
-      # For Nginx proxy, REACT_APP_API_BASE_URL should point to the Nginx /api path.
-      REACT_APP_API_BASE_URL: /api
-    networks:
-      - ml-net
-
-networks:
-  ml-net:
-    driver: bridge
+      NEXT_PUBLIC_API_BASE_URL: http://backend:5000/api/v1 # Internal Docker network hostname
+    depends_on:
+      backend:
+        condition: service_started # Frontend only needs backend to be accessible
+    volumes:
+      - ./frontend:/app
+      - /app/.next # Allow Next.js build output to persist
+      - /app/node_modules
+    restart: always
 
 volumes:
-  pgdata:
-```
+  postgres_data:
+  redis_data:

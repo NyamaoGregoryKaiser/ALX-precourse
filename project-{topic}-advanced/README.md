@@ -1,296 +1,281 @@
-```markdown
-# ML Utilities System
+# ALX E-commerce Solutions System
 
-A comprehensive, production-ready Machine Learning Utilities System designed to manage, version, and serve machine learning models through a robust API. This full-scale project demonstrates best practices in backend (Java Spring Boot), database management (PostgreSQL), ML inference (Python Flask), frontend (React), and DevOps (Docker, CI/CD).
+This repository contains a comprehensive, production-ready e-commerce solution built with a modern TypeScript stack. It features a robust backend API, a dynamic Next.js frontend, a PostgreSQL database, and includes essential enterprise-grade features like authentication, authorization, logging, caching, and a full testing suite.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Architecture Overview](#architecture-overview)
+1.  [Project Overview](#project-overview)
+2.  [Features](#features)
 3.  [Technology Stack](#technology-stack)
-4.  [Setup and Installation](#setup-and-installation)
+4.  [Architecture](#architecture)
+5.  [Setup & Installation](#setup--installation)
     *   [Prerequisites](#prerequisites)
-    *   [Clone the Repository](#clone-the-repository)
-    *   [Environment Variables](#environment-variables)
-    *   [Running with Docker Compose (Recommended)](#running-with-docker-compose-recommended)
-    *   [Running Locally (Backend & Inference)](#running-locally-backend--inference)
-    *   [Running Frontend Locally](#running-frontend-locally)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-7.  [CI/CD](#cicd)
-8.  [Logging and Monitoring](#logging-and-monitoring)
-9.  [Additional Features](#additional-features)
-10. [Deployment Guide](#deployment-guide)
-11. [ALX Software Engineering Focus](#alx-software-engineering-focus)
-12. [License](#license)
+    *   [Local Development (with Docker)](#local-development-with-docker)
+    *   [Backend Only (without Docker)](#backend-only-without-docker)
+    *   [Frontend Only (without Docker)](#frontend-only-without-docker)
+6.  [Running Tests](#running-tests)
+    *   [Backend Tests](#backend-tests)
+7.  [API Documentation](#api-documentation)
+8.  [Deployment](#deployment)
+9.  [Contribution](#contribution)
+10. [License](#license)
 
-## 1. Features
+---
 
-*   **Model Management:** CRUD operations for ML models (name, description, type).
-*   **Model Versioning:** Associate multiple versions with a model, track model paths, metadata, and designate a default version for inference.
-*   **User Authentication & Authorization:** JWT-based security with user registration and role-based access control (USER, ADMIN).
-*   **ML Inference Serving:** API endpoint to request predictions from specific or default model versions. Delegates actual inference to a separate Python microservice.
-*   **Database Management:** PostgreSQL with Flyway for schema migrations and seed data.
-*   **Caching:** Ehcache for model metadata and prediction results to improve performance.
-*   **Global Error Handling:** Consistent API error responses.
-*   **Logging:** Structured logging with Logback.
-*   **API Documentation:** Integrated OpenAPI (Swagger UI).
-*   **Containerization:** Dockerfiles and `docker-compose.yml` for easy setup and deployment.
-*   **CI/CD:** GitHub Actions workflow for automated builds and tests.
-*   **Comprehensive Testing:** Unit, Integration, and API tests.
-*   **Frontend UI:** A minimal React application to demonstrate API interaction.
+## 1. Project Overview
 
-## 2. Architecture Overview
+This project is designed to be a full-scale e-commerce platform demonstrating best practices in software engineering. It provides a foundational system for managing products, users, categories, and orders, with a focus on scalability, maintainability, and security.
 
-The system follows a microservices-inspired architecture, separating concerns into distinct services:
+## 2. Features
 
-```
-+----------------+        +---------------------+        +---------------------+
-|    Frontend    | ---->  |      Nginx Proxy    | ---->  |       Backend       |
-|    (React)     |        |   (Port 3000 -> 80) |        |    (Java Spring)    |
-+----------------+        +---------------------+        +---------------------+
-                                   | HTTP/REST              | JWT Auth, Cache,
-                                   |                        | Model CRUD,
-                                   |                        | Orchestrates Inference
-                                   |                        |
-                                   V HTTP/REST              V HTTP/REST (internal)
-                             +---------------------+   +---------------------+
-                             |   Inference Service |<-- |   PostgreSQL DB     |
-                             |      (Python)       |    | (Model Metadata)    |
-                             |   (Port 5001)       |    +---------------------+
-                             |                     |
-                             | Loads & serves ML   |
-                             | models (.pkl)       |
-                             +---------------------+
-```
+**Core E-commerce:**
+*   Product catalog management (CRUD)
+*   Category management (CRUD)
+*   User registration and authentication
+*   Shopping cart functionality (frontend state-based, for demo)
+*   Order creation (conceptual backend endpoint, not fully implemented in provided code)
 
-*   **Frontend (React):** A user interface to interact with the backend API, allowing users to log in, view models, and request predictions.
-*   **Nginx Proxy:** Serves the static frontend assets and proxies API requests to the backend.
-*   **Backend (Java Spring Boot):** The core application. It handles API gateway responsibilities, user authentication, model and model version management (CRUD), and orchestrates prediction requests by calling the Python Inference Service.
-*   **PostgreSQL Database:** Stores all persistent data, including user details, model metadata, and model version information.
-*   **Inference Service (Python Flask):** A lightweight service responsible for loading trained ML models (e.g., `.pkl` files) and performing actual predictions based on input data. It's designed to be stateless and scalable.
+**Enterprise-Grade Capabilities:**
+*   **Authentication & Authorization:** JWT-based user authentication, role-based access control (Admin/Customer).
+*   **Data Validation:** Joi schema validation for API requests.
+*   **Error Handling:** Centralized error handling middleware with custom error types.
+*   **Logging & Monitoring:** Winston for structured application logging. (Monitoring conceptual)
+*   **Caching Layer:** In-memory cache demonstrated, designed for Redis integration for improved performance.
+*   **Rate Limiting:** Protects API from abuse and DDoS attacks.
+*   **Database Management:** PostgreSQL with Prisma ORM for schema, migrations, and seeding.
+*   **Containerization:** Docker for consistent development and deployment environments.
+*   **Comprehensive Testing:** Unit, Integration, and API tests to ensure quality and reliability.
+*   **Documentation:** Detailed README, API docs, Architecture, and Deployment guides.
 
 ## 3. Technology Stack
 
-**Backend (Java Spring Boot)**
-*   **Language:** Java 17+
-*   **Framework:** Spring Boot 3+
-*   **Data Access:** Spring Data JPA with Hibernate
+**Backend:**
+*   **Runtime:** Node.js
+*   **Framework:** Express.js
+*   **Language:** TypeScript
 *   **Database:** PostgreSQL
-*   **Migrations:** Flyway
-*   **Security:** Spring Security (JWT)
-*   **Caching:** Ehcache
-*   **API Docs:** OpenAPI (Swagger UI)
-*   **Testing:** JUnit 5, Mockito, RestAssured, Testcontainers
-*   **Utilities:** Lombok
+*   **ORM:** Prisma
+*   **Authentication:** `jsonwebtoken`, `bcryptjs`
+*   **Validation:** `joi`
+*   **Logging:** `winston`
+*   **Caching:** In-memory demo (`redis` integration ready)
+*   **Rate Limiting:** `express-rate-limit`
+*   **Testing:** `jest`, `supertest`
 
-**Inference Service (Python)**
-*   **Language:** Python 3.9+
-*   **Web Framework:** Flask
-*   **ML Libraries:** scikit-learn (for dummy model), numpy, pandas
-*   **WSGI Server:** Gunicorn
+**Frontend:**
+*   **Framework:** Next.js (React)
+*   **Language:** TypeScript
+*   **Styling:** Tailwind CSS (conceptual, minimal styling for demo)
+*   **HTTP Client:** `axios`
+*   **State Management:** React Context API (Auth, Cart)
 
-**Frontend (React)**
-*   **Framework:** React 18+
-*   **HTTP Client:** Axios
-
-**Infrastructure & DevOps**
+**DevOps & Tools:**
 *   **Containerization:** Docker, Docker Compose
-*   **Web Server:** Nginx (for frontend)
-*   **CI/CD:** GitHub Actions
+*   **CI/CD:** GitHub Actions (conceptual configuration)
+*   **API Documentation:** Swagger/OpenAPI (via `swagger-ui-express`)
+*   **Code Quality:** ESLint, Prettier (via Husky/lint-staged)
 
-## 4. Setup and Installation
+## 4. Architecture
+
+The system follows a typical layered architecture for the backend and a component-based architecture for the frontend.
+
+*   **Monorepo Structure (Conceptual):** The project is structured as a monorepo containing `backend` and `frontend` applications.
+*   **Backend (Node.js/Express):**
+    *   **Controllers:** Handle incoming HTTP requests, delegate to services, and send responses.
+    *   **Services:** Encapsulate business logic and orchestrate data operations.
+    *   **Repositories (Prisma Client):** Directly interact with the database.
+    *   **Middleware:** For authentication, authorization, error handling, logging, rate limiting, and validation.
+    *   **Utilities:** Helper functions for JWT, password hashing, etc.
+    *   **Routes:** Define API endpoints.
+*   **Frontend (Next.js/React):**
+    *   **Pages:** Top-level components for different routes.
+    *   **Components:** Reusable UI elements.
+    *   **Context:** Global state management (Auth, Cart).
+    *   **Lib/API:** Centralized API client for interacting with the backend.
+
+See `ARCHITECTURE.md` for a more detailed diagram and explanation.
+
+## 5. Setup & Installation
 
 ### Prerequisites
 
-*   **Git:** For cloning the repository.
-*   **Java 17+ JDK:** If running backend locally.
-*   **Maven:** If building backend locally.
-*   **Python 3.9+:** If running inference service locally.
-*   **pip:** Python package installer.
-*   **Node.js & npm/yarn:** If running frontend locally.
-*   **Docker & Docker Compose:** **Highly Recommended** for running the entire system.
+*   Node.js (v18+) & npm (or yarn)
+*   Docker & Docker Compose (recommended for easy setup)
+*   PostgreSQL client (optional, if running backend without Docker DB)
+*   Redis (optional, if running backend without Docker Redis)
 
-### Clone the Repository
+### Local Development (with Docker) - Recommended
 
-```bash
-git clone https://github.com/your-username/ml-utilities-system.git
-cd ml-utilities-system
-```
+The easiest way to get the entire system running is using Docker Compose.
 
-### Environment Variables
-
-Create a `.env` file in the root directory (where `docker-compose.yml` is located) with the following variables. These will be picked up by Docker Compose.
-
-```dotenv
-# .env file
-
-# Database Configuration
-DB_NAME=ml_utilities_db
-DB_USERNAME=ml_user
-DB_PASSWORD=ml_password
-
-# JWT Configuration
-# IMPORTANT: Change this to a strong, randomly generated key in production. Must be at least 32 characters for HS256.
-JWT_SECRET=your_super_secret_jwt_key_that_is_long_enough_and_random
-JWT_EXPIRATION_MS=3600000 # 1 hour
-
-# Inference Service Configuration (used by Java backend)
-INFERENCE_HOST=inference-service # Docker internal hostname
-INFERENCE_PORT=5001
-```
-
-### Running with Docker Compose (Recommended)
-
-This is the easiest way to get the entire system up and running.
-
-1.  **Build and Start Services:**
+1.  **Clone the repository:**
     ```bash
-    docker compose up --build -d
-    ```
-    *   `--build`: Builds images from Dockerfiles.
-    *   `-d`: Runs services in detached mode (in the background).
-
-2.  **Verify Services:**
-    ```bash
-    docker ps
-    ```
-    You should see `ml-utilities-db`, `ml-utilities-backend`, `ml-inference-service`, and `ml-utilities-frontend` running.
-
-3.  **Access the Applications:**
-    *   **Frontend UI:** `http://localhost:3000`
-    *   **Backend API (Swagger UI):** `http://localhost:8080/swagger-ui/index.html` (if not using frontend Nginx proxy)
-    *   **Backend API (via Nginx):** `http://localhost:3000/api/swagger-ui/index.html` (frontend Nginx proxy is configured to forward `/api` requests)
-    *   **Inference Service (direct, for debugging):** `http://localhost:5001` (though typically accessed only by the backend)
-
-4.  **Stop Services:**
-    ```bash
-    docker compose down
-    ```
-    To also remove volumes (database data):
-    ```bash
-    docker compose down --volumes
+    git clone https://github.com/your-username/ecommerce-system.git
+    cd ecommerce-system
     ```
 
-### Running Locally (Backend & Inference)
+2.  **Create `.env` files:**
+    *   Create `backend/.env` from `backend/.env.example`
+    *   Create `frontend/.env.local` from `frontend/.env.local.example`
 
-You can run the backend and inference services directly on your machine.
-
-1.  **Start PostgreSQL Database (e.g., via Docker):**
-    ```bash
-    docker run --name ml-utilities-db -e POSTGRES_DB=ml_utilities_db -e POSTGRES_USER=ml_user -e POSTGRES_PASSWORD=ml_password -p 5432:5432 -d postgres:15-alpine
+    **`backend/.env` content example:**
+    ```
+    NODE_ENV=development
+    PORT=5000
+    API_VERSION=/api/v1
+    DATABASE_URL="postgresql://user:password@db:5432/ecommerce_db?schema=public" # 'db' is the service name in docker-compose
+    JWT_SECRET=your_super_secret_jwt_key_here # **CHANGE THIS IN PRODUCTION**
+    JWT_EXPIRES_IN=1h
+    ADMIN_EMAIL=admin@example.com
+    ADMIN_PASSWORD=adminpassword123
+    FRONTEND_URL=http://localhost:3000
+    LOG_LEVEL=debug
+    REDIS_URL=redis://redis:6379 # 'redis' is the service name in docker-compose
     ```
 
-2.  **Run Inference Service:**
-    ```bash
-    cd inference-service
-    pip install -r requirements.txt
-    python app.py
+    **`frontend/.env.local` content example:**
     ```
-    The inference service will start on `http://localhost:5001`. It will create a `sample_model.pkl` in the `model/` directory if it doesn't exist.
-
-3.  **Run Backend Application:**
-    ```bash
-    cd backend
-    ./mvnw spring-boot:run
+    NEXT_PUBLIC_API_BASE_URL=http://localhost:5000/api/v1 # Use localhost:5000 for frontend to access backend
     ```
-    Ensure your `application.yml` (or environment variables) point to `localhost:5432` for the DB and `localhost:5001` for the inference service.
-    The backend will start on `http://localhost:8080`.
 
-### Running Frontend Locally
-
-1.  **Start Backend and Inference Services (as above).**
-2.  **Install Dependencies:**
+3.  **Build and run services with Docker Compose:**
     ```bash
-    cd frontend
-    npm install # or yarn install
+    docker-compose up --build -d
     ```
-3.  **Start Frontend:**
+    This command will:
+    *   Build Docker images for backend and frontend.
+    *   Start PostgreSQL, Redis, backend, and frontend containers.
+    *   Apply Prisma database migrations and generate client in the backend container.
+    *   Run the backend server on `http://localhost:5000`.
+    *   Run the frontend application on `http://localhost:3000`.
+
+4.  **Seed the database (important for initial data):**
     ```bash
-    npm start # or yarn start
+    docker-compose exec backend npm run prisma:seed
     ```
-    The frontend will open in your browser, usually at `http://localhost:3000`. It is configured to proxy API requests to `/api` (which then needs to be mapped to the backend via Nginx or a similar setup if not running the full Docker Compose stack). For local dev, you might need to adjust `REACT_APP_API_BASE_URL` in `frontend/.env` or `App.js` directly to point to `http://localhost:8080/api` if you don't run Nginx.
+    This will create an admin user, categories, and some products.
 
-## 5. API Documentation
+5.  **Access the applications:**
+    *   Frontend: `http://localhost:3000`
+    *   Backend API: `http://localhost:5000/api/v1`
+    *   API Docs: `http://localhost:5000/api/v1/docs`
 
-The backend includes integrated OpenAPI (Swagger UI) documentation.
+6.  **Stop services:**
+    ```bash
+    docker-compose down
+    ```
 
-*   When running via Docker Compose, access at: `http://localhost:3000/api/swagger-ui/index.html` (proxied through Nginx).
-*   If running backend locally, access at: `http://localhost:8080/swagger-ui/index.html`.
+### Backend Only (without Docker for backend services)
 
-**Authentication:**
-To test authenticated endpoints in Swagger UI:
-1.  Click the "Authorize" button.
-2.  Enter the JWT token obtained from `/api/auth/login`.
-    *   Default admin user: `username=admin`, `password=adminpass`
-    *   Default regular user: `username=user`, `password=userpass`
-    (These are seeded by the `DataLoader` on first startup if the database is empty).
-3.  Click "Authorize" and then "Close". Your token will be applied to subsequent requests.
+If you prefer to run Node.js/Prisma locally:
 
-## 6. Testing
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd ecommerce-system/backend
+    ```
 
-The project includes various types of tests:
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-*   **Unit Tests:** Located in `backend/src/test/java/com/ml/utilities/service`, `controller`, etc. These test individual components in isolation using Mockito.
-    *   Run with: `cd backend && ./mvnw test`
-*   **Integration Tests:** Located in `backend/src/test/java/com/ml/utilities/integration`. These use `@SpringBootTest` and Testcontainers to spin up a real PostgreSQL database, testing the interaction between layers and verifying API endpoints.
-    *   Run with: `cd backend && ./mvnw verify` (the `install` goal also runs tests by default)
-*   **API Tests:** The integration tests (e.g., `ApiIntegrationTest.java`) use RestAssured to make actual HTTP requests to the running Spring Boot application and assert on responses, covering the full request-response cycle.
-*   **Coverage:** JaCoCo is configured in `pom.xml` to aim for 80%+ line and branch coverage for the backend. After running tests, a report can be found at `backend/target/site/jacoco/index.html`.
+3.  **Set up `.env`:**
+    Create `backend/.env` from `backend/.env.example`.
+    **Important:** Update `DATABASE_URL` to point to a local PostgreSQL instance (e.g., `postgresql://user:password@localhost:5432/ecommerce_db?schema=public`).
+    You can use the `db` service from `docker-compose` if you just want to run the DB in Docker: `docker-compose up -d db redis`.
 
-## 7. CI/CD
+4.  **Run Prisma migrations:**
+    ```bash
+    npx prisma migrate dev --name init
+    ```
 
-A basic GitHub Actions workflow (`.github/workflows/main.yml`) is configured for:
-*   **Backend Build & Test:** Compiles the Java backend, runs unit and integration tests (using Testcontainers).
-*   **Docker Image Build & Push:** On `main` branch pushes, it builds Docker images for the backend, inference service, and frontend, and pushes them to Docker Hub. (Requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets configured in GitHub).
+5.  **Generate Prisma client:**
+    ```bash
+    npx prisma generate
+    ```
 
-To trigger the CI pipeline, commit and push changes to the `main` branch or open a Pull Request.
+6.  **Seed the database:**
+    ```bash
+    npm run prisma:seed
+    ```
 
-## 8. Logging and Monitoring
+7.  **Start the backend server:**
+    ```bash
+    npm run dev
+    ```
+    (Or `npm start` for production build)
 
-*   **Logging:** The Java backend uses SLF4J with Logback (`logback-spring.xml`). Logs are written to console and `logs/ml-utilities-system.log` (with daily rolling).
-*   **Monitoring:** Spring Boot Actuator is enabled (`/actuator/**`).
-    *   Health checks: `/actuator/health`
-    *   Metrics: `/actuator/metrics`, `/actuator/prometheus` (can be scraped by Prometheus)
-    *   Info: `/actuator/info`
-    In a production environment, these metrics would be collected by tools like Prometheus and visualized in Grafana. Centralized logging solutions (e.g., ELK stack, Splunk) would aggregate logs from all services.
+### Frontend Only (without Docker for frontend services)
 
-## 9. Additional Features
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd ecommerce-system/frontend
+    ```
 
-*   **Authentication/Authorization:** Implemented using JWT tokens with Spring Security. Role-based access (`ROLE_USER`, `ROLE_ADMIN`) is enforced using `@PreAuthorize` annotations.
-*   **Logging:** Configured with `logback-spring.xml` for file and console output.
-*   **Error Handling Middleware:** A `@ControllerAdvice` (`GlobalExceptionHandler`) provides consistent, structured error responses for various exceptions (e.g., `ResourceNotFoundException`, `IllegalArgumentException`, validation errors).
-*   **Caching Layer:** Ehcache is integrated (`CacheConfig.java`) with `@Cacheable`, `@CachePut`, and `@CacheEvict` annotations to cache model metadata and prediction results, reducing database load and improving response times.
-*   **Rate Limiting:** Not explicitly implemented as a separate component in this scope, but can be added using Spring Cloud Gateway for API Gateway level rate limiting, or a simple custom filter.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-## 10. Deployment Guide
+3.  **Set up `.env.local`:**
+    Create `frontend/.env.local` from `frontend/.env.local.example`.
+    **Important:** Ensure `NEXT_PUBLIC_API_BASE_URL` points to your running backend (e.g., `http://localhost:5000/api/v1`).
 
-The `docker-compose.yml` provides a blueprint for deploying the entire system. For production deployments:
+4.  **Start the frontend development server:**
+    ```bash
+    npm run dev
+    ```
 
-1.  **Cloud Provider:** Choose a cloud provider (AWS, Azure, GCP).
-2.  **Container Orchestration:** Use Kubernetes (EKS, AKS, GKE) or Docker Swarm for managing containers at scale.
-    *   Convert `docker-compose.yml` to Kubernetes manifests (`deployment.yaml`, `service.yaml`, `ingress.yaml`) or use `kompose`.
-3.  **Database:** Use a managed database service (AWS RDS, Azure Database for PostgreSQL) instead of a Docker container for persistence, backups, and scalability.
-4.  **Secrets Management:** Store `JWT_SECRET` and database credentials in a secure secrets manager (AWS Secrets Manager, Kubernetes Secrets) instead of environment variables directly.
-5.  **Domain & TLS:** Configure a custom domain and HTTPS/TLS certificates (e.g., via Nginx Ingress Controller with Cert-Manager on Kubernetes).
-6.  **Monitoring & Logging:** Integrate with cloud-native monitoring (CloudWatch, Stackdriver) and logging (CloudWatch Logs, Fluentd/Fluent Bit for log aggregation).
-7.  **Scalability:** Configure auto-scaling for backend and inference services based on load.
+## 6. Running Tests
 
-## 11. ALX Software Engineering Focus
+### Backend Tests
 
-This project explicitly addresses ALX Software Engineering precourse materials:
+Navigate to the `backend` directory.
 
-*   **Programming Logic:** Demonstrates clear, modular Java and Python code with well-defined functions and classes, adhering to object-oriented principles. Logical flows are designed for robustness and maintainability.
-*   **Algorithm Design:** While the core backend logic focuses on system orchestration rather than complex new algorithms, the selection of data structures (e.g., `Set` for roles), efficient database queries (implicitly via JPA, explicitly with indexing), and caching mechanisms (Ehcache) reflects considerations for performance and algorithmic efficiency in data handling. The inference service's dummy prediction logic can be replaced with any complex ML algorithm.
-*   **Technical Problem Solving:** Tackles common enterprise challenges:
-    *   **Authentication & Authorization:** JWT implementation.
-    *   **Database Management:** Flyway for schema evolution, JPA for data mapping.
-    *   **Inter-service Communication:** HTTP/REST calls between Java and Python.
-    *   **Error Handling:** Centralized, structured error responses.
-    *   **Scalability & Reliability:** Containerization with Docker Compose, caching, and an architecture suitable for microservices deployment.
-    *   **Maintainability:** Clear project structure, comprehensive testing, and documentation.
+1.  **Ensure test database is configured:**
+    Update `backend/.env` with `TEST_DATABASE_URL` or ensure your `DATABASE_URL` is pointing to a dedicated test database (e.g., `postgresql://testuser:testpassword@localhost:5433/ecommerce_test_db?schema=public`). You may want to spin up a separate PostgreSQL container for tests.
 
-## 12. License
+2.  **Run all tests (unit and integration):**
+    ```bash
+    npm test
+    ```
 
-This project is open-source and available under the [MIT License](LICENSE).
+3.  **Run unit tests only:**
+    ```bash
+    npm run test:unit
+    ```
+
+4.  **Run integration tests only:**
+    ```bash
+    npm run test:integration
+    ```
+
+## 7. API Documentation
+
+The backend API includes built-in Swagger UI documentation.
+Once the backend is running, access it at: `http://localhost:5000/api/v1/docs`
+
+This interface allows you to explore all available endpoints, their request/response schemas, and even try out requests directly from your browser.
+
+## 8. Deployment
+
+A detailed deployment guide is provided in `DEPLOYMENT.md`. It covers strategies for production deployments, including:
+*   Cloud Providers (AWS, GCP, Azure, DigitalOcean)
+*   Container Orchestration (Kubernetes, Docker Swarm)
+*   Load Balancing & Reverse Proxies (Nginx)
+*   Process Management (PM2)
+*   Continuous Integration/Continuous Deployment (CI/CD) with GitHub Actions (see `.github/workflows/ci-cd.yml`)
+
+## 9. Contribution
+
+Feel free to fork the repository, open issues, or submit pull requests.
+Please ensure your contributions adhere to the following guidelines:
+*   Follow the existing code style.
+*   Write clear and concise commit messages.
+*   Add or update tests for any new features or bug fixes.
+*   Update documentation as necessary.
+
+## 10. License
+
+This project is licensed under the ISC License. See the `LICENSE` file for details.
 ```

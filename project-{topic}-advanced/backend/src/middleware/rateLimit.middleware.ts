@@ -1,38 +1,16 @@
-```typescript
 import rateLimit from 'express-rate-limit';
-import config from '../config';
-import logger from '../services/logger.service';
+import { logger } from '../utils/logger.util';
 
-/**
- * Global API rate limiter middleware.
- * Limits requests from the same IP address.
- */
-export const apiRateLimiter = rateLimit({
-  windowMs: config.rateLimit.windowMs, // 1 minute window
-  max: config.rateLimit.max, // limit each IP to 100 requests per window
-  message: 'Too many requests from this IP, please try again after a minute.',
+export const rateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  handler: (req, res, next, options) => {
-    logger.warn(`Rate limit exceeded for IP: ${req.ip}. URL: ${req.originalUrl}`);
-    res.status(options.statusCode).send(options.message);
+  message: async (req, res) => {
+    logger.warn(`Rate limit exceeded for IP: ${req.ip} on ${req.method} ${req.originalUrl}`);
+    res.status(429).json({
+      message: 'Too many requests, please try again after 15 minutes.',
+    });
   },
+  // store: new RedisStore({ client: redisClient, prefix: 'rate_limit:' }), // Optional: Use Redis for distributed rate limiting
 });
-
-/**
- * Stricter rate limit for authentication endpoints.
- */
-export const authRateLimiter = rateLimit({
-  windowMs: config.rateLimit.windowMs, // 1 minute window
-  max: Math.floor(config.rateLimit.max / 5), // e.g., 20 requests per minute
-  message: 'Too many authentication attempts from this IP, please try again after a minute.',
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res, next, options) => {
-    logger.warn(`Auth rate limit exceeded for IP: ${req.ip}. URL: ${req.originalUrl}`);
-    res.status(options.statusCode).send(options.message);
-  },
-});
-```
-
-#### `backend/src/services/cache.service.ts`

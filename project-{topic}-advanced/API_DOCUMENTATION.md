@@ -1,372 +1,380 @@
-# Task Management System API Documentation
+# ALX E-commerce Solutions System: API Documentation (OpenAPI/Swagger)
 
-This document provides a comprehensive overview of the RESTful API endpoints for the Task Management System.
+This document provides an overview of the RESTful API endpoints for the E-commerce Solutions System. The API is designed to be consumed by the frontend application and potentially by other third-party services.
 
-**Base URL**: `http://localhost:5000/api` (or your deployed backend URL)
+For an interactive, up-to-date API documentation, please visit the Swagger UI endpoint:
+**Interactive API Docs:** `http://localhost:5000/api/v1/docs` (when backend is running locally)
 
-## Authentication
+---
 
-All protected endpoints require a JSON Web Token (JWT) sent in the `Authorization` header as a Bearer token: `Authorization: Bearer <YOUR_JWT_TOKEN>`.
+## 1. Base URL
 
-### 1. Auth Endpoints
+`http://localhost:5000/api/v1` (for local development)
+`https://api.yourdomain.com/api/v1` (for production)
 
-*   **`POST /api/auth/register`**
-    *   **Description**: Register a new user.
-    *   **Access**: Public
-    *   **Request Body**:
-        ```json
-        {
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "password": "strongpassword123"
-        }
-        ```
-    *   **Response (201 Created)**:
-        ```json
-        {
-            "id": "uuid-of-user",
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "role": "user",
-            "token": "jwt-token-string"
-        }
-        ```
-    *   **Error (400 Bad Request)**: If email already exists or validation fails.
+## 2. Authentication
 
-*   **`POST /api/auth/login`**
-    *   **Description**: Authenticate user and get a JWT.
-    *   **Access**: Public
-    *   **Request Body**:
-        ```json
-        {
-            "email": "user@example.com",
-            "password": "password123"
-        }
-        ```
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "id": "uuid-of-user",
-            "username": "user",
-            "email": "user@example.com",
-            "role": "user",
-            "token": "jwt-token-string"
-        }
-        ```
-    *   **Error (401 Unauthorized)**: If invalid credentials.
+The API uses **JWT (JSON Web Token) Bearer Token** authentication.
 
-*   **`GET /api/auth/me`**
-    *   **Description**: Get current authenticated user's profile.
-    *   **Access**: Private (Authenticated User)
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "id": "uuid-of-user",
-            "username": "user",
-            "email": "user@example.com",
-            "role": "user",
-            "createdAt": "2023-01-01T10:00:00.000Z",
-            "updatedAt": "2023-01-01T10:00:00.000Z"
-        }
-        ```
-    *   **Error (401 Unauthorized)**: If token is missing or invalid.
+1.  **Register** or **Login** to get a JWT.
+2.  Include the JWT in the `Authorization` header of all protected requests: `Authorization: Bearer <your_jwt_token>`
 
-### 2. User Endpoints
+## 3. Error Handling
 
-*   **`GET /api/users`**
-    *   **Description**: Get a list of all users.
-    *   **Access**: Private (Admin Only)
-    *   **Response (200 OK)**: Array of user objects (without passwords).
-        ```json
-        [
-            {
-                "id": "uuid-of-user1",
-                "username": "adminuser",
-                "email": "admin@example.com",
-                "role": "admin",
-                "createdAt": "...",
-                "updatedAt": "..."
+API errors are returned in a standardized JSON format:
+
+```json
+{
+  "message": "Error description here",
+  "stack": "Stack trace (only in development environment)"
+}
+```
+
+**Common Status Codes:**
+*   `200 OK`: Successful request.
+*   `201 Created`: Resource successfully created.
+*   `204 No Content`: Successful request, but no content to return (e.g., DELETE).
+*   `400 Bad Request`: Invalid request payload or parameters (e.g., validation error).
+*   `401 Unauthorized`: Authentication required or failed (e.g., missing/invalid token).
+*   `403 Forbidden`: Authenticated, but not authorized to access the resource.
+*   `404 Not Found`: Resource not found.
+*   `409 Conflict`: Resource conflict (e.g., duplicate email during registration).
+*   `429 Too Many Requests`: Rate limit exceeded.
+*   `500 Internal Server Error`: Unexpected server error.
+
+---
+
+## 4. API Endpoints
+
+### 4.1. Authentication (`/auth`)
+
+**`POST /auth/register`**
+*   **Description:** Registers a new user with `CUSTOMER` role.
+*   **Request Body:**
+    ```json
+    {
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "password": "strongpassword123"
+    }
+    ```
+*   **Responses:**
+    *   `201 Created`: `{"message": "Registration successful", "user": {...}, "token": "..."}`
+    *   `400 Bad Request`: Validation error.
+    *   `409 Conflict`: User with email already exists.
+
+**`POST /auth/login`**
+*   **Description:** Logs in a user and returns a JWT.
+*   **Request Body:**
+    ```json
+    {
+      "email": "john.doe@example.com",
+      "password": "strongpassword123"
+    }
+    ```
+*   **Responses:**
+    *   `200 OK`: `{"message": "Login successful", "user": {...}, "token": "..."}`
+    *   `400 Bad Request`: Validation error.
+    *   `401 Unauthorized`: Invalid credentials.
+
+**`GET /auth/me`**
+*   **Description:** Retrieves the profile of the currently authenticated user.
+*   **Authentication:** Required (Bearer Token).
+*   **Responses:**
+    *   `200 OK`: User object (`{"id": "...", "name": "...", "email": "...", "role": "CUSTOMER"}`)
+    *   `401 Unauthorized`: Invalid or missing token.
+
+### 4.2. Products (`/products`)
+
+**`GET /products`**
+*   **Description:** Retrieves a list of all products, with optional filtering and pagination.
+*   **Query Parameters:**
+    *   `categoryId`: Filter by category ID (UUID).
+    *   `search`: Search by product name or description (case-insensitive).
+    *   `page`: Page number (default: `1`).
+    *   `limit`: Number of items per page (default: `10`).
+*   **Responses:**
+    *   `200 OK`: `{"products": [...], "total": 100, "page": 1, "limit": 10}`
+
+**`GET /products/:id`**
+*   **Description:** Retrieves a single product by its ID.
+*   **Path Parameters:**
+    *   `id` (string, UUID): The product's unique identifier.
+*   **Responses:**
+    *   `200 OK`: Product object.
+    *   `404 Not Found`: Product not found.
+
+**`POST /products`**
+*   **Description:** Creates a new product.
+*   **Authentication:** Required (Admin role).
+*   **Request Body:**
+    ```json
+    {
+      "name": "New Awesome Gadget",
+      "description": "This is a detailed description of the new gadget.",
+      "price": 99.99,
+      "stock": 150,
+      "categoryId": "uuid-of-an-existing-category",
+      "imageUrl": "http://example.com/gadget.jpg"
+    }
+    ```
+*   **Responses:**
+    *   `201 Created`: Newly created Product object.
+    *   `400 Bad Request`: Validation error or category not found.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an ADMIN.
+
+**`PUT /products/:id`**
+*   **Description:** Updates an existing product by its ID.
+*   **Authentication:** Required (Admin role).
+*   **Path Parameters:**
+    *   `id` (string, UUID): The product's unique identifier.
+*   **Request Body:** (Partial update allowed)
+    ```json
+    {
+      "name": "Updated Gadget Name",
+      "price": 109.99
+    }
+    ```
+*   **Responses:**
+    *   `200 OK`: Updated Product object.
+    *   `400 Bad Request`: Validation error or category not found.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an ADMIN.
+    *   `404 Not Found`: Product not found.
+
+**`DELETE /products/:id`**
+*   **Description:** Deletes a product by its ID.
+*   **Authentication:** Required (Admin role).
+*   **Path Parameters:**
+    *   `id` (string, UUID): The product's unique identifier.
+*   **Responses:**
+    *   `204 No Content`: Product successfully deleted.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an ADMIN.
+    *   `404 Not Found`: Product not found.
+
+### 4.3. Categories (`/categories`)
+
+*(Conceptual endpoints, implemented following the same pattern as products)*
+
+**`GET /categories`**
+*   **Description:** Retrieves a list of all product categories.
+*   **Responses:** `200 OK`
+
+**`POST /categories`**
+*   **Description:** Creates a new category.
+*   **Authentication:** Required (Admin role).
+*   **Request Body:** `{"name": "Electronics", "slug": "electronics", "description": "Electronic gadgets"}`
+*   **Responses:** `201 Created`
+
+### 4.4. Users (`/users`)
+
+*(Conceptual endpoints, implemented following the same pattern as products)*
+
+**`GET /users`**
+*   **Description:** Retrieves a list of all users.
+*   **Authentication:** Required (Admin role).
+*   **Responses:** `200 OK`
+
+**`GET /users/:id`**
+*   **Description:** Retrieves a single user by ID.
+*   **Authentication:** Required (Admin role).
+*   **Responses:** `200 OK`
+
+### 4.5. Orders (`/orders`)
+
+*(Conceptual endpoints, basic implementation for order creation would involve validating cart, checking stock, creating order and order items, updating product stock, and clearing cart)*
+
+**`POST /orders`**
+*   **Description:** Creates a new order from the user's cart.
+*   **Authentication:** Required (Customer or Admin role).
+*   **Request Body:** `{"shippingAddress": "123 Main St, City, Country", "items": [{"productId": "...", "quantity": 1}]}` (simplified for conceptual)
+*   **Responses:** `201 Created`
+
+**`GET /orders/me`**
+*   **Description:** Retrieves orders for the authenticated user.
+*   **Authentication:** Required.
+*   **Responses:** `200 OK`
+
+**`GET /orders/:id`**
+*   **Description:** Retrieves a single order by ID.
+*   **Authentication:** Required (user must own order OR be Admin).
+*   **Responses:** `200 OK`
+
+---
+
+## 5. Swagger/OpenAPI Configuration
+
+The API documentation is generated using `swagger-jsdoc` and served by `swagger-ui-express`.
+
+**`backend/src/config/swagger.config.ts`:**
+```typescript
+import swaggerJsdoc from 'swagger-jsdoc';
+import { config } from './env.config';
+
+const swaggerOptions = {
+  swaggerDefinition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'ALX E-commerce API',
+      version: '1.0.0',
+      description: 'Comprehensive API documentation for the ALX E-commerce Solutions System.',
+      contact: {
+        name: 'ALX Team',
+        url: 'https://www.alx-africa.com/',
+        email: 'support@alx-ecommerce.com',
+      },
+    },
+    servers: [
+      {
+        url: `http://localhost:${config.port}${config.apiVersion}`,
+        description: 'Local Development Server',
+      },
+      {
+        url: 'https://api.yourdomain.com/api/v1',
+        description: 'Production Server',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Enter the access token obtained from /auth/login or /auth/register',
+        },
+      },
+      schemas: {
+        // --- Shared Models ---
+        User: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            email: { type: 'string', format: 'email' },
+            role: { type: 'string', enum: ['CUSTOMER', 'ADMIN'] },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+          example: {
+            id: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
+            name: 'John Doe',
+            email: 'john.doe@example.com',
+            role: 'CUSTOMER',
+            createdAt: '2023-01-01T10:00:00Z',
+            updatedAt: '2023-01-01T10:00:00Z',
+          },
+        },
+        Category: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            slug: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+          example: {
+            id: 'e290f1ee-6c54-4b01-90e6-d701748f0851',
+            name: 'Electronics',
+            slug: 'electronics',
+            description: 'Gadgets and electronic devices',
+            createdAt: '2023-01-01T10:00:00Z',
+            updatedAt: '2023-01-01T10:00:00Z',
+          },
+        },
+        Product: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            price: { type: 'number', format: 'float' },
+            stock: { type: 'integer' },
+            imageUrl: { type: 'string', format: 'uri', nullable: true },
+            categoryId: { type: 'string', format: 'uuid' },
+            category: { $ref: '#/components/schemas/Category' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+          example: {
+            id: 'f290f1ee-6c54-4b01-90e6-d701748f0851',
+            name: 'Wireless Bluetooth Headphones',
+            description: 'Premium sound quality with noise-cancelling features and long battery life.',
+            price: 129.99,
+            stock: 120,
+            imageUrl: 'https://example.com/headphones.jpg',
+            categoryId: 'e290f1ee-6c54-4b01-90e6-d701748f0851',
+            category: {
+              id: 'e290f1ee-6c54-4b01-90e6-d701748f0851',
+              name: 'Electronics',
+              slug: 'electronics',
+              description: 'Gadgets and electronic devices',
+              createdAt: '2023-01-01T10:00:00Z',
+              updatedAt: '2023-01-01T10:00:00Z',
             },
-            ...
-        ]
-        ```
-    *   **Error (403 Forbidden)**: If authenticated user is not an admin.
+            createdAt: '2023-01-01T10:00:00Z',
+            updatedAt: '2023-01-01T10:00:00Z',
+          },
+        },
+        // --- DTOs (Data Transfer Objects) ---
+        CreateProductDTO: {
+          type: 'object',
+          required: ['name', 'description', 'price', 'stock', 'categoryId'],
+          properties: {
+            name: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', minLength: 10, maxLength: 1000 },
+            price: { type: 'number', format: 'float', minimum: 0.01 },
+            stock: { type: 'integer', minimum: 0 },
+            categoryId: { type: 'string', format: 'uuid' },
+            imageUrl: { type: 'string', format: 'uri', nullable: true },
+          },
+          example: {
+            name: 'New Gadget',
+            description: 'A fantastic new product.',
+            price: 50.00,
+            stock: 200,
+            categoryId: 'e290f1ee-6c54-4b01-90e6-d701748f0851',
+            imageUrl: 'http://example.com/new-gadget.jpg',
+          },
+        },
+        UpdateProductDTO: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', minLength: 10, maxLength: 1000 },
+            price: { type: 'number', format: 'float', minimum: 0.01 },
+            stock: { type: 'integer', minimum: 0 },
+            categoryId: { type: 'string', format: 'uuid' },
+            imageUrl: { type: 'string', format: 'uri', nullable: true },
+          },
+          example: {
+            name: 'Updated Gadget Name',
+            price: 55.00,
+          },
+        },
+      },
+    },
+  },
+  apis: [
+    './src/routes/*.ts', // Path to your API route files
+    './src/types/*.ts',  // Path to your types/DTOs if you define swagger components there
+  ],
+};
 
-*   **`GET /api/users/:id`**
-    *   **Description**: Get a single user by ID. Includes owned projects and assigned tasks.
-    *   **Access**: Private (Admin or User's own profile)
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "id": "uuid-of-user",
-            "username": "testuser",
-            "email": "user@example.com",
-            "role": "user",
-            "createdAt": "...",
-            "updatedAt": "...",
-            "ownedProjects": [...],
-            "assignedTasks": [...]
-        }
-        ```
-    *   **Error (403 Forbidden)**: If authenticated user is neither admin nor the requested user.
-    *   **Error (404 Not Found)**: If user not found.
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
-*   **`PUT /api/users/:id`**
-    *   **Description**: Update user details. Cannot change password via this route. Regular users cannot change their `role`.
-    *   **Access**: Private (Admin or User's own profile)
-    *   **Request Body**:
-        ```json
-        {
-            "username": "updatedusername",
-            "email": "updated@example.com",
-            "role": "admin" // Only admin can change this
-        }
-        ```
-    *   **Response (200 OK)**: Updated user object.
-    *   **Error (400 Bad Request)**: If trying to change password.
-    *   **Error (403 Forbidden)**: If not authorized (not admin, or not own profile).
-    *   **Error (404 Not Found)**: If user not found.
+export default swaggerSpec;
+```
+---
 
-*   **`DELETE /api/users/:id`**
-    *   **Description**: Delete a user.
-    *   **Access**: Private (Admin Only)
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "message": "User deleted successfully"
-        }
-        ```
-    *   **Error (400 Bad Request)**: If admin tries to delete their own account (for safety).
-    *   **Error (403 Forbidden)**: If authenticated user is not an admin.
-    *   **Error (404 Not Found)**: If user not found.
+## 6. Versioning
 
-### 3. Project Endpoints
+The API uses URI versioning: `api/v1`. This allows for future backward-incompatible changes to be introduced under a new version (e.g., `api/v2`) without breaking existing clients.
 
-*   **`POST /api/projects`**
-    *   **Description**: Create a new project. The `ownerId` is automatically set to the authenticated user's ID.
-    *   **Access**: Private (Authenticated User)
-    *   **Request Body**:
-        ```json
-        {
-            "name": "New Project Title",
-            "description": "Details about the project.",
-            "status": "active"
-        }
-        ```
-    *   **Response (201 Created)**:
-        ```json
-        {
-            "id": "uuid-of-project",
-            "name": "New Project Title",
-            "description": "Details about the project.",
-            "status": "active",
-            "ownerId": "uuid-of-current-user",
-            "createdAt": "...",
-            "updatedAt": "..."
-        }
-        ```
-    *   **Error (400 Bad Request)**: If `name` is missing.
+---
 
-*   **`GET /api/projects`**
-    *   **Description**: Get a list of projects.
-    *   **Access**: Private (Authenticated User)
-    *   **Query Parameters**:
-        *   `myProjects=true`: (Optional) If set to `true`, only returns projects owned by the authenticated user. Otherwise, all accessible projects are returned (can be configured to be only owned projects by default for regular users).
-    *   **Response (200 OK)**: Array of project objects, including owner and tasks details.
-        ```json
-        [
-            {
-                "id": "uuid-of-project1",
-                "name": "Website Redesign",
-                "description": "...",
-                "status": "active",
-                "ownerId": "uuid-of-owner",
-                "owner": { "id": "...", "username": "...", "email": "..." },
-                "tasks": [...]
-            },
-            ...
-        ]
-        ```
-
-*   **`GET /api/projects/:id`**
-    *   **Description**: Get a single project by ID. Includes owner and associated tasks.
-    *   **Access**: Private (Project Owner, Admin, or user assigned to a task within the project).
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "id": "uuid-of-project",
-            "name": "Website Redesign",
-            "description": "...",
-            "status": "active",
-            "ownerId": "uuid-of-owner",
-            "owner": { "id": "...", "username": "...", "email": "..." },
-            "tasks": [
-                {
-                    "id": "uuid-of-task1",
-                    "title": "Design homepage",
-                    "status": "in-progress",
-                    "priority": "high",
-                    "dueDate": "...",
-                    "assignedTo": "...",
-                    "assignee": { "id": "...", "username": "..." }
-                },
-                ...
-            ]
-        }
-        ```
-    *   **Error (403 Forbidden)**: If not authorized to view the project.
-    *   **Error (404 Not Found)**: If project not found.
-
-*   **`PUT /api/projects/:id`**
-    *   **Description**: Update project details.
-    *   **Access**: Private (Project Owner or Admin Only)
-    *   **Request Body**:
-        ```json
-        {
-            "name": "Updated Project Name",
-            "description": "Revised description.",
-            "status": "completed"
-        }
-        ```
-    *   **Response (200 OK)**: Updated project object.
-    *   **Error (403 Forbidden)**: If not authorized to update the project.
-    *   **Error (404 Not Found)**: If project not found.
-
-*   **`DELETE /api/projects/:id`**
-    *   **Description**: Delete a project. This will also cascade delete all associated tasks.
-    *   **Access**: Private (Project Owner or Admin Only)
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "message": "Project deleted successfully"
-        }
-        ```
-    *   **Error (403 Forbidden)**: If not authorized to delete the project.
-    *   **Error (404 Not Found)**: If project not found.
-
-### 4. Task Endpoints
-
-*   **`POST /api/tasks`**
-    *   **Description**: Create a new task. The `creatorId` is automatically set to the authenticated user's ID.
-    *   **Access**: Private (Authenticated User)
-    *   **Request Body**:
-        ```json
-        {
-            "title": "Implement authentication API",
-            "description": "Develop login, register, JWT generation endpoints.",
-            "status": "to-do",
-            "priority": "high",
-            "dueDate": "2024-07-30T10:00:00.000Z",
-            "projectId": "uuid-of-project",
-            "assignedTo": "uuid-of-user" // Optional, can be null
-        }
-        ```
-    *   **Response (201 Created)**:
-        ```json
-        {
-            "id": "uuid-of-task",
-            "title": "Implement authentication API",
-            "description": "...",
-            "status": "to-do",
-            "priority": "high",
-            "dueDate": "2024-07-30T10:00:00.000Z",
-            "projectId": "uuid-of-project",
-            "assignedTo": "uuid-of-user",
-            "creatorId": "uuid-of-current-user",
-            "createdAt": "...",
-            "updatedAt": "..."
-        }
-        ```
-    *   **Error (400 Bad Request)**: If `title` or `projectId` are missing.
-    *   **Error (404 Not Found)**: If `projectId` or `assignedTo` user does not exist.
-
-*   **`GET /api/tasks`**
-    *   **Description**: Get a list of tasks. Supports filtering.
-    *   **Access**: Private (Authenticated User)
-    *   **Query Parameters**:
-        *   `projectId`: (Optional) Filter tasks by project ID.
-        *   `assignedTo`: (Optional) Filter tasks by assignee ID.
-        *   `status`: (Optional) Filter tasks by status (`to-do`, `in-progress`, `done`).
-        *   `priority`: (Optional) Filter tasks by priority (`low`, `medium`, `high`).
-        *   `dueDate`: (Optional) Filter tasks with `dueDate` on or after the specified date (e.g., `2024-07-15`).
-        *   `search`: (Optional) Search tasks by title (case-insensitive partial match).
-    *   **Authorization Notes**:
-        *   Admins can view all tasks.
-        *   Regular users can view their assigned tasks, or tasks within projects they own, or tasks where they are the creator.
-        *   If no filter is provided by a regular user, it defaults to tasks assigned to them.
-    *   **Response (200 OK)**: Array of task objects, including project, assignee, and creator details.
-        ```json
-        [
-            {
-                "id": "uuid-of-task1",
-                "title": "Design UI/UX",
-                "description": "...",
-                "status": "in-progress",
-                "priority": "high",
-                "dueDate": "2024-07-30T10:00:00.000Z",
-                "projectId": "uuid-of-project",
-                "assignedTo": "uuid-of-assignee",
-                "creatorId": "uuid-of-creator",
-                "project": { "id": "...", "name": "..." },
-                "assignee": { "id": "...", "username": "...", "email": "..." },
-                "creator": { "id": "...", "username": "...", "email": "..." }
-            },
-            ...
-        ]
-        ```
-
-*   **`GET /api/tasks/:id`**
-    *   **Description**: Get a single task by ID. Includes project, assignee, and creator details.
-    *   **Access**: Private (Assigned User, Task Creator, Project Owner, or Admin).
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "id": "uuid-of-task",
-            "title": "Design UI/UX",
-            "description": "...",
-            "status": "in-progress",
-            "priority": "high",
-            "dueDate": "2024-07-30T10:00:00.000Z",
-            "projectId": "uuid-of-project",
-            "assignedTo": "uuid-of-assignee",
-            "creatorId": "uuid-of-creator",
-            "project": { "id": "...", "name": "..." },
-            "assignee": { "id": "...", "username": "...", "email": "..." },
-            "creator": { "id": "...", "username": "...", "email": "..." },
-            "createdAt": "...",
-            "updatedAt": "..."
-        }
-        ```
-    *   **Error (403 Forbidden)**: If not authorized to view the task.
-    *   **Error (404 Not Found)**: If task not found.
-
-*   **`PUT /api/tasks/:id`**
-    *   **Description**: Update task details.
-    *   **Access**: Private (Assigned User, Task Creator, Project Owner, or Admin).
-    *   **Request Body**:
-        ```json
-        {
-            "title": "Refined UI/UX Design",
-            "description": "Updated details for the design.",
-            "status": "done",
-            "priority": "low",
-            "dueDate": "2024-07-25T10:00:00.000Z",
-            "assignedTo": "uuid-of-new-assignee" // Can change assignee
-        }
-        ```
-    *   **Response (200 OK)**: Updated task object.
-    *   **Error (403 Forbidden)**: If not authorized to update the task.
-    *   **Error (404 Not Found)**: If task or new assignee not found.
-
-*   **`DELETE /api/tasks/:id`**
-    *   **Description**: Delete a task.
-    *   **Access**: Private (Task Creator, Project Owner, or Admin).
-    *   **Response (200 OK)**:
-        ```json
-        {
-            "message": "Task deleted successfully"
-        }
-        ```
-    *   **Error (403 Forbidden)**: If not authorized to delete the task.
-    *   **Error (404 Not Found)**: If task not found.
+This API documentation provides a clear contract for interacting with the E-commerce system.
 ```

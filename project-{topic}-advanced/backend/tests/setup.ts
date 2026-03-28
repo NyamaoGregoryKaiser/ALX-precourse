@@ -1,60 +1,62 @@
-```typescript
-import 'reflect-metadata';
-import { AppDataSource, initializeDataSource } from '../src/data-source';
-import { getRedisClient, connectRedis } from '../src/config/redis';
-import logger from '../src/utils/logger';
-import { RedisClientType } from 'redis'; // Import RedisClientType for typing
+// This file runs once before all tests
+import 'dotenv/config'; // Load environment variables for tests
 
-// Mock logger in tests to prevent excessive console output and file writes
-jest.mock('../src/utils/logger', () => ({
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  debug: jest.fn(),
-}));
+// Set NODE_ENV to test to prevent accidental database operations on dev/prod DB
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || "postgresql://testuser:testpassword@localhost:5433/ecommerce_test_db?schema=public";
+process.env.JWT_SECRET = process.env.TEST_JWT_SECRET || 'testsecretkey';
+process.env.ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'testadmin@example.com';
+process.env.ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'testpassword123';
+process.env.LOG_LEVEL = 'error'; // Suppress logs during tests
 
-let redisTestClient: RedisClientType;
+// Mock Prisma Client to clear database between integration tests or ensure isolation
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
+// This runs before all tests are executed.
 beforeAll(async () => {
-  // Ensure NODE_ENV is set to 'test'
-  process.env.NODE_ENV = 'test';
-  process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://user:password@localhost:5433/perf_monitor_test_db';
-  process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
-  process.env.JWT_SECRET = 'test_jwt_secret';
-  process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret';
-  process.env.CORS_ORIGIN = 'http://localhost:3000';
-
-  // Connect to the test database
-  await initializeDataSource();
-  await AppDataSource.runMigrations(); // Ensure migrations run for tests
-
-  // Connect to the test Redis
-  await connectRedis();
-  redisTestClient = getRedisClient();
-
-  logger.info('Test environment setup complete.');
-}, 60000); // Increased timeout for database and redis setup
-
-beforeEach(async () => {
-  // Clear all data from test database before each test
-  // This ensures tests are isolated and don't affect each other
-  const entities = AppDataSource.entityMetadatas;
-  for (const entity of entities) {
-    const repository = AppDataSource.getRepository(entity.name);
-    await repository.query(`TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`);
+  // Ensure the test database is clean before running tests.
+  // This is a destructive operation, be careful with DATABASE_URL.
+  console.log('Setting up test environment...');
+  try {
+    // Apply migrations to the test database
+    // This is typically done via a shell command in CI/CD, but for local testing:
+    // await exec('npx prisma migrate deploy', { cwd: './backend' }); // Or use programmatic migration
+    console.log('Test database setup complete.');
+  } catch (error) {
+    console.error('Failed to setup test database:', error);
+    process.exit(1);
   }
-
-  // Flush Redis before each test
-  await redisTestClient.flushDb();
 });
 
+// This runs after all tests are executed.
 afterAll(async () => {
-  if (AppDataSource.isInitialized) {
-    await AppDataSource.destroy();
-  }
-  if (redisTestClient && redisTestClient.isReady) {
-    await redisTestClient.quit();
-  }
-  logger.info('Test environment teardown complete.');
+  console.log('Tearing down test environment...');
+  // Disconnect Prisma
+  await prisma.$disconnect();
 });
-```
+
+// For integration tests, we often want to clear the database between each test suite or test.
+// This is a common pattern for Jest's `afterEach` in integration test files.
+// Example:
+// import { PrismaClient } from '@prisma/client';
+// const prisma = new PrismaClient();
+// afterEach(async () => {
+//   await prisma.orderItem.deleteMany();
+//   await prisma.order.deleteMany();
+//   await prisma.product.deleteMany();
+//   await prisma.category.deleteMany();
+//   await prisma.user.deleteMany({ where: { email: { not: 'testadmin@example.com' } } }); // Keep admin if needed
+// });
+// Or simply:
+// afterEach(async () => {
+//   const transactions = [
+//     prisma.orderItem.deleteMany(),
+//     prisma.order.deleteMany(),
+//     prisma.product.deleteMany(),
+//     prisma.category.deleteMany(),
+//     prisma.user.deleteMany(),
+//   ];
+//   await prisma.$transaction(transactions);
+// });
+// Note: For actual integration tests, you'd typically manage test data setup/teardown more carefully.

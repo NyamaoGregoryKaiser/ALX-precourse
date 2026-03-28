@@ -1,20 +1,31 @@
-```Dockerfile
-# Dockerfile for React Frontend
-# Stage 1: Build the React app
-FROM node:18-alpine as builder
-WORKDIR /app
-COPY package.json ./
-COPY yarn.lock ./
-RUN yarn install --frozen-lockfile
-COPY . ./
-RUN yarn build
+# Stage 1: Build the Next.js application
+FROM node:20-alpine AS builder
 
-# Stage 2: Serve the app with Nginx
-FROM nginx:alpine
-# Copy the build output from the builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
-# Copy custom Nginx configuration
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
+WORKDIR /app
+
+COPY package*.json ./
+COPY .env.local ./.env.local # Copy .env.local for build time env vars (NEXT_PUBLIC_...)
+
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+# Stage 2: Run the Next.js application
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# The Next.js app is pre-built, only production dependencies are needed
+COPY --from=builder /app/package*.json ./
+RUN npm install --only=production
+
+# Copy the Next.js build output from the builder stage
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.env.local ./.env.local # .env.local for runtime env vars
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

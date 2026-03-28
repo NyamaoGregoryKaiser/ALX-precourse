@@ -1,62 +1,35 @@
-```typescript
+import 'dotenv/config'; // Load environment variables first
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import config from './config';
+import { config } from './config/env.config';
+import { setupRoutes } from './routes';
 import { errorHandler } from './middleware/error.middleware';
-import { requestLogger } from './middleware/logging.middleware';
-import { apiRateLimiter } from './middleware/rateLimit.middleware';
-
-// Import route modules
-import authRoutes from './modules/auth/auth.routes';
-import userRoutes from './modules/users/user.routes';
-import databaseRoutes from './modules/databases/database.routes';
-import queryRoutes from './modules/queries/query.routes';
-import { CustomError } from './utils/error';
+import { rateLimiter } from './middleware/rateLimit.middleware';
+import { requestLogger } from './middleware/logger.middleware';
+import { logger } from './utils/logger.util';
 
 const app: Application = express();
 
-// Security Middleware
+// Security Middlewares
 app.use(helmet());
+app.use(cors({ origin: config.frontendUrl, credentials: true })); // Configure CORS for frontend
+app.use(express.json()); // Body parser for JSON
+app.use(express.urlencoded({ extended: true })); // Body parser for URL-encoded data
 
-// CORS - Allow cross-origin requests
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from your frontend
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
-
-// Request body parsing
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Custom request logger
+// Request Logging Middleware
 app.use(requestLogger);
 
-// Apply rate limiting to all requests
-app.use(apiRateLimiter);
+// Rate Limiting Middleware
+app.use(rateLimiter);
 
-// --- API Routes ---
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/databases', databaseRoutes);
-app.use('/api/v1/queries', queryRoutes);
-
-// --- Health Check ---
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+// API Routes
+app.get(`${config.apiVersion}/health`, (req, res) => {
+  res.status(200).json({ message: 'Service operational', uptime: process.uptime() });
 });
+setupRoutes(app);
 
-// --- Catch 404 and forward to error handler ---
-app.use((req, res, next) => {
-  next(new CustomError(`Not Found - ${req.originalUrl}`, 404));
-});
-
-// --- Global Error Handler ---
+// Global Error Handler Middleware
 app.use(errorHandler);
 
 export default app;
-```
-
-#### `backend/src/server.ts`
