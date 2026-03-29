@@ -1,8 +1,9 @@
-import os
+```python
+import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
@@ -10,40 +11,36 @@ from alembic import context
 # access to values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Interpret the config file for Python's standard logging.
+# This sets up loggers for 'alembic' itself and other things.
+fileConfig(config.config_file_name)
 
-# add your model's database to path
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from app.models import db, User, Task # Import your models here
-
-# Set up the database URL from environment variables for Flask-Migrate
-# This is crucial for local dev and CI/CD, where DB_URI might change
-from dotenv import load_dotenv
-load_dotenv()
-SQLALCHEMY_DATABASE_URI = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///app.db')
-config.set_main_option('sqlalchemy.url', SQLALCHEMY_DATABASE_URI)
-
-# target metadata for autogenerate support
-target_metadata = db.metadata
+# add your model's MetaData object here
+# for 'autogenerate' support
+from app.db.base import Base # Import your custom Base
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+# Get the database URL from your application's config, not alembic.ini directly
+# This ensures consistency with your application's runtime database connection.
+from app.core.config import settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
     This configures the context with just a URL
-    and a list of tables but no DBAPI connection.
-    To take advantage of Flask's application context,
-    we configure the target_metadata from your Flask app's db object.
+    and not an Engine, though an Engine is additionally needed
+    for Alembic's autogenerate functionality.
+    By setting up a context just with a URL
+    and calling context.run_migrations(), the script
+    emits the SQL statements to stdout.
+
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -51,34 +48,45 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True, # Enable type comparison for autogenerate
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
+def do_run_migrations(connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True, # Enable type comparison for autogenerate
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
+
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
 
-        with context.begin_transaction():
-            context.run_migrations()
+    await connectable.dispose()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    asyncio.run(run_migrations_online())
 ```

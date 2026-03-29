@@ -1,319 +1,245 @@
-# Deployment Guide
+```markdown
+# Mobile App Backend System: Deployment Guide
 
-This document outlines the steps and considerations for deploying the Enterprise-Grade C++ DevOps Automation System to various environments. The primary deployment strategy leverages Docker containers.
+This document provides instructions and considerations for deploying the Mobile App Backend System to a production environment. The primary deployment strategy involves containerization with Docker and can be adapted to various cloud platforms.
 
-## 1. Deployment Strategy Overview
+## Table of Contents
 
-The recommended deployment strategy involves:
+1.  [Prerequisites](#prerequisites)
+2.  [Production Environment Configuration](#production-environment-configuration)
+3.  [Containerization](#containerization)
+4.  [Database Setup](#database-setup)
+5.  [Redis Setup](#redis-setup)
+6.  [Running Migrations](#running-migrations)
+7.  [Deployment Options](#deployment-options)
+    *   [Docker Swarm / Single Server](#docker-swarm--single-server)
+    *   [Kubernetes (K8s)](#kubernetes-k8s)
+    *   [Cloud-Specific Services (AWS, GCP, Azure)](#cloud-specific-services-aws-gcp-azure)
+8.  [CI/CD Integration](#cicd-integration)
+9.  [Monitoring & Logging](#monitoring--logging)
+10. [Security Best Practices](#security-best-practices)
+11. [Troubleshooting](#troubleshooting)
 
-1.  **Containerization:** The C++ application is containerized using Docker.
-2.  **Container Registry:** The built Docker image is pushed to a container registry (e.g., Docker Hub, GitHub Container Registry, AWS ECR, GCP GCR).
-3.  **Orchestration:** For production, a container orchestration platform like Kubernetes is recommended. For simpler deployments, Docker Compose on a single VM can suffice.
-4.  **Database:** While SQLite is used for local development, a more robust relational database (e.g., PostgreSQL, MySQL) managed as a separate service or a managed database service (RDS, Cloud SQL) is recommended for production.
+## 1. Prerequisites
 
-## 2. Prerequisites for Production Deployment
+*   **Docker & Docker Compose:** For building and managing containers.
+*   **Cloud Provider Account (Optional):** AWS, GCP, Azure, etc., if deploying to the cloud.
+*   **Domain Name:** For exposing your API via HTTPS.
+*   **SSL/TLS Certificate:** Essential for HTTPS.
 
-*   **Cloud Provider Account:** AWS, GCP, Azure, etc. (or a dedicated server/VM).
-*   **Docker & Docker Compose:** Installed on target machines (if not using Kubernetes).
-*   **Kubernetes Cluster:** Configured and running (if using Kubernetes).
-*   **Container Registry Credentials:** For pushing/pulling images.
-*   **Managed Database Service:** (Highly recommended) e.g., AWS RDS PostgreSQL, GCP Cloud SQL.
-*   **DNS Management:** For mapping domain names to your service.
-*   **SSL/TLS Certificates:** For HTTPS (handled by Load Balancer/Reverse Proxy).
+## 2. Production Environment Configuration
 
-## 3. Environment Variables & Secrets Management
+Before deploying, ensure your `.env` file is configured for production:
 
-Never hardcode sensitive information. Use environment variables.
+*   `DEBUG=False`: Disables debug mode, suppresses detailed error messages, and turns off interactive API docs (`/docs`, `/redoc`).
+*   `SECRET_KEY`: **Generate a strong, unique, and long secret key.** Never use the development key in production. Store it securely (e.g., AWS Secrets Manager, Vault).
+*   `ACCESS_TOKEN_EXPIRE_MINUTES`: Adjust token expiration as needed for your security policy.
+*   `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_HOST`, `POSTGRES_PORT`: Use credentials for your production PostgreSQL instance. **These should be strong and distinct from development.**
+*   `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`: Use credentials for your production Redis instance.
+*   `LOG_LEVEL`: Set to `INFO` or `WARNING` to reduce verbosity in production.
 
-*   **Local Development:** Use the `.env` file (copied from `.env.example`).
-*   **Production:**
-    *   **Docker:** Pass environment variables via `-e` flags or `--env-file`.
-    *   **Docker Compose:** Reference `.env` file or define directly in `docker-compose.prod.yml`.
-    *   **Kubernetes:** Use `Secret` objects for sensitive data and `ConfigMap` for non-sensitive configurations.
-    *   **Cloud Services:** Use cloud-specific secrets managers (e.g., AWS Secrets Manager, Azure Key Vault, GCP Secret Manager).
+**Example Production `.env` (values should be replaced with actual secrets):**
+```dotenv
+DEBUG=False
+PROJECT_NAME="Mobile App Prod Backend"
+SECRET_KEY="YOUR_SUPER_STRONG_PRODUCTION_SECRET_KEY_HERE"
+ACCESS_TOKEN_EXPIRE_MINUTES=60 # Example: 1 hour
 
-**Critical environment variables include:**
-*   `APP_PORT`: Port the application listens on.
-*   `JWT_SECRET_KEY`: Secret key for signing/verifying JWT tokens.
-*   `DATABASE_PATH`: Path to the SQLite database file (for local) or connection string for external DB.
-*   `LOG_LEVEL`: Application logging level.
-*   `CACHE_TTL_SECONDS`: Caching time-to-live.
-*   `RATE_LIMIT_ENABLED`: Enable/disable rate limiting.
-*   `RATE_LIMIT_MAX_REQUESTS`: Max requests per window.
-*   `RATE_LIMIT_WINDOW_SECONDS`: Rate limit window.
+POSTGRES_USER="prod_user"
+POSTGRES_PASSWORD="YOUR_PROD_DB_PASSWORD"
+POSTGRES_DB="prod_app_db"
+POSTGRES_HOST="prod-db-instance.xxxx.us-east-1.rds.amazonaws.com"
+POSTGRES_PORT=5432
 
-## 4. Docker-Based Deployment (Single VM/Server)
+REDIS_HOST="prod-redis-cache.xxxx.us-east-1.cache.amazonaws.com"
+REDIS_PORT=6379
+REDIS_DB=0
 
-This is suitable for smaller-scale deployments or as a stepping stone to orchestration.
-
-### 4.1. Build and Push Docker Image
-
-The CI/CD pipeline (`.github/workflows/ci-cd.yml`) automates this. Manually:
-
-1.  **Ensure you are in the project root directory.**
-2.  **Build the Docker image:**
-    ```bash
-    docker build -t your-registry/cpp-devops-system:latest .
-    ```
-    *Replace `your-registry` with your Docker Hub username or other registry prefix.*
-3.  **Log in to your Docker registry:**
-    ```bash
-    docker login your-registry # e.g., docker login docker.io
-    ```
-4.  **Push the image:**
-    ```bash
-    docker push your-registry/cpp-devops-system:latest
-    ```
-
-### 4.2. Prepare Production Database
-
-*   **Recommendation:** Use a managed database service (AWS RDS, GCP Cloud SQL, Azure Database for PostgreSQL/MySQL).
-*   **Local SQLite (Discouraged for Prod):** If you must use SQLite, ensure the `db/app.db` file is persistent (e.g., mounted to a host volume outside the container). This is *not* production-grade for scalability or resilience.
-*   **Schema and Seed:** Connect to your production database and apply `db/schema.sql` and `db/seed.sql` using your database client.
-
-### 4.3. Run with Docker Compose on a VM
-
-Create a `docker-compose.prod.yml` file:
-
-```yaml
-# docker-compose.prod.yml
-version: '3.8'
-
-services:
-  app:
-    image: your-registry/cpp-devops-system:latest
-    container_name: cpp-devops-app-prod
-    restart: always
-    ports:
-      - "80:8080" # Map host port 80 to container port 8080
-    env_file:
-      - .env.prod # Your production environment variables
-    environment:
-      # Override DATABASE_PATH for external DB
-      # Example for PostgreSQL:
-      # - DATABASE_URL=postgresql://user:password@db-host:5432/dbname
-      - DATABASE_PATH=/app/data/app.db # If still using SQLite with persistent volume
-    volumes:
-      # If using SQLite, persist the database file
-      # - app_data:/app/data
-      # Mount log directory
-      - app_logs:/app/logs
-    depends_on:
-      # If you have a separate DB container for prod, list it here
-      # - postgres-db 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"] # Add a health endpoint
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Example for a separate PostgreSQL container (NOT recommended for production, use managed service)
-  # postgres-db:
-  #   image: postgres:13
-  #   container_name: cpp-devops-postgres-prod
-  #   restart: always
-  #   environment:
-  #     POSTGRES_DB: your_db_name
-  #     POSTGRES_USER: your_db_user
-  #     POSTGRES_PASSWORD: your_db_password
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-
-volumes:
-  app_data: # For persistent SQLite data
-  app_logs: # For persistent logs
-  postgres_data: # For persistent PostgreSQL data
+LOG_LEVEL=INFO
+DEFAULT_RATE_LIMIT="1000/hour" # More aggressive rate limit for production
 ```
 
-1.  **Create `.env.prod`:**
-    ```bash
-    cp .env.example .env.prod
-    # Edit .env.prod with production-specific values, especially JWT_SECRET_KEY, DB connection, etc.
-    ```
-2.  **Deploy:**
-    ```bash
-    docker-compose -f docker-compose.prod.yml up --build -d
-    ```
-3.  **Monitoring:** Monitor logs using `docker-compose logs -f app` and ensure health checks pass.
+## 3. Containerization
 
-### 4.4. Reverse Proxy and SSL
+The `Dockerfile` in the root of the project is optimized for building the application image.
 
-For production, put a reverse proxy (Nginx, Caddy) in front of your Docker container to handle SSL/TLS termination, load balancing (if multiple app containers), and domain routing.
-
-```nginx
-# Example Nginx configuration
-server {
-    listen 80;
-    server_name yourdomain.com;
-    return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
-}
-
-server {
-    listen 443 ssl;
-    server_name yourdomain.com;
-
-    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
-    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
-
-    location / {
-        proxy_pass http://localhost:8080; # Or the Docker container's IP/port
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-## 5. Kubernetes Deployment (Recommended for Production)
-
-For high availability, scalability, and robust management, Kubernetes is the preferred choice.
-
-### 5.1. Docker Image in Registry
-
-Ensure your Docker image is pushed to a registry accessible by your Kubernetes cluster.
-
-### 5.2. Kubernetes Manifests
-
-You would create Kubernetes YAML files for:
-
-*   **Deployment:** Defines how to run your application containers (number of replicas, image, resources).
-*   **Service:** Exposes your application to the network internally within the cluster.
-*   **Ingress:** Exposes your application externally via an Ingress controller, handling routing, SSL termination.
-*   **Secret:** Stores sensitive environment variables like `JWT_SECRET_KEY` and database credentials.
-*   **ConfigMap:** Stores non-sensitive configuration.
-*   **PersistentVolumeClaim (PVC):** If you need persistent storage for logs or (not recommended) SQLite data.
-
-**Example `k8s-deployment.yaml` (simplified):**
-
-```yaml
-# k8s-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cpp-devops-app
-  labels:
-    app: cpp-devops-app
-spec:
-  replicas: 3 # Run 3 instances of your app
-  selector:
-    matchLabels:
-      app: cpp-devops-app
-  template:
-    metadata:
-      labels:
-        app: cpp-devops-app
-    spec:
-      containers:
-      - name: cpp-devops-app
-        image: your-registry/cpp-devops-system:latest # Your Docker image
-        ports:
-        - containerPort: 8080
-        env:
-        - name: APP_PORT
-          value: "8080"
-        - name: JWT_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets # Kubernetes Secret
-              key: jwt_secret_key
-        - name: DATABASE_URL # For external DB like PostgreSQL
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: database_url
-        resources:
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-        livenessProbe: # Check if the application is still running
-          httpGet:
-            path: /health # A /health endpoint in your app
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe: # Check if the application is ready to serve traffic
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        volumeMounts:
-        - name: app-logs
-          mountPath: /app/logs
-      volumes:
-      - name: app-logs
-        emptyDir: {} # For temporary logs within the pod, consider a sidecar for persistent logging
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cpp-devops-service
-spec:
-  selector:
-    app: cpp-devops-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080
-  type: ClusterIP # Or LoadBalancer for external access directly
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cpp-devops-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    # Add cert-manager annotations for automatic SSL
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx # Use your ingress controller class
-  rules:
-  - host: yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: cpp-devops-service
-            port:
-              number: 80
-  # tls: # Enable TLS
-  # - hosts:
-  #   - yourdomain.com
-  #   secretName: yourdomain-com-tls # K8s secret for TLS cert
-```
-
-### 5.3. Apply Kubernetes Manifests
+**Building the Production Image:**
 
 ```bash
-# Create secrets first
-kubectl create secret generic app-secrets \
-  --from-literal=jwt_secret_key='YOUR_VERY_STRONG_JWT_SECRET' \
-  --from-literal=database_url='postgresql://user:password@managed-db-host:5432/dbname'
-
-# Apply all manifests
-kubectl apply -f k8s-deployment.yaml
-# ... and other manifest files
+docker build -t mobile-app-backend:latest .
 ```
+Consider tagging with a version number for better version control (e.g., `mobile-app-backend:v1.0.0`).
 
-### 5.4. Monitoring and Logging in Kubernetes
+## 4. Database Setup
 
-*   **Logging:** Use a centralized logging solution like ELK Stack (Elasticsearch, Logstash, Kibana) or Loki + Grafana. Kubernetes automatically collects container logs (stdout/stderr).
-*   **Monitoring:** Integrate with Prometheus and Grafana for metrics collection from your Kubernetes cluster and applications. The C++ application would expose a `/metrics` endpoint in Prometheus format.
+For production, it's highly recommended to use a **managed database service** (e.g., AWS RDS PostgreSQL, Google Cloud SQL for PostgreSQL, Azure Database for PostgreSQL).
 
-## 6. Post-Deployment Checks
+1.  **Provision a PostgreSQL instance:** Choose a suitable instance size, enable backups, multi-AZ deployment (for high availability), and configure security groups/firewalls to allow connections only from your application servers.
+2.  **Create the database and user:** Create the database (e.g., `prod_app_db`) and a dedicated user (e.g., `prod_user`) with strong credentials, granting necessary permissions.
+3.  **Update `.env`:** Configure your `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in your production environment to point to this managed instance.
 
-*   **Health Checks:** Verify `GET /health` endpoint or Kubernetes probes are healthy.
-*   **API Functionality:** Perform basic CRUD operations to ensure all endpoints work as expected.
-*   **Logging:** Check application logs for errors or warnings.
-*   **Performance:** Run performance tests against the deployed environment.
-*   **Security Scans:** Conduct vulnerability scans.
+## 5. Redis Setup
 
-This guide provides a foundational understanding. Real-world production deployments will involve more advanced configurations, networking, security groups, and cloud-specific optimizations.
+Similar to PostgreSQL, use a **managed Redis service** for caching and rate limiting (e.g., AWS ElastiCache for Redis, Google Cloud Memorystore for Redis, Azure Cache for Redis).
+
+1.  **Provision a Redis instance:** Select an appropriate instance type, configure high availability if needed, and set up security to allow connections only from your application servers.
+2.  **Update `.env`:** Configure your `REDIS_HOST`, `REDIS_PORT`, and `REDIS_DB` to point to this managed instance.
+
+## 6. Running Migrations
+
+Database migrations (`alembic upgrade head`) are critical for production deployments.
+
+**Option 1: During Container Startup (as configured in `Dockerfile`/`docker-compose.yml`)**
+The provided `Dockerfile` and `docker-compose.yml` include `alembic upgrade head` as part of the `CMD`. This is convenient for simple setups but has caveats in highly scaled environments (race conditions if multiple instances try to migrate simultaneously).
+
+```bash
+# Dockerfile CMD
+CMD ["/bin/bash", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+```
+**Considerations:** Ensure your deployment platform handles only one instance running migrations at a time during an update (e.g., by running a dedicated migration job).
+
+**Option 2: Dedicated Migration Job (Recommended for Production)**
+For robust deployments, run migrations as a separate, one-off job before deploying new application versions.
+
+1.  **Build the image:** `docker build -t mobile-app-backend:vX.Y.Z .`
+2.  **Run migrations:**
+    ```bash
+    docker run --rm \
+      --env-file /path/to/your/prod.env \
+      mobile-app-backend:vX.Y.Z alembic upgrade head
+    ```
+    Replace `/path/to/your/prod.env` with the path to your production environment variables file.
+3.  **Deploy the application instances** after migrations are successfully applied.
+
+## 7. Deployment Options
+
+### 7.1. Docker Swarm / Single Server
+
+For simpler deployments or smaller scale, Docker Swarm or directly running Docker containers on a single VM/server might suffice.
+
+1.  **Prepare a `docker-compose.prod.yml`:**
+    *   Remove `volumes` mount (code should be in the image).
+    *   Set `restart: always` for all services.
+    *   Point `db` and `redis` services to your *managed* cloud instances by updating environment variables to use their respective hostnames/IPs. You might remove the `db` and `redis` service definitions if using managed services entirely, only providing their connection strings to the `app` service.
+    *   Add a reverse proxy (e.g., Nginx) for HTTPS termination and load balancing (if multiple app instances).
+
+    ```yaml
+    # Example docker-compose.prod.yml (partial)
+    version: '3.8'
+
+    services:
+      app:
+        image: mobile-app-backend:latest
+        environment:
+          # Production specific env vars (e.g., from external secret management)
+          # Point to managed DB/Redis
+          POSTGRES_HOST: prod-db-instance.xxxx.rds.amazonaws.com
+          REDIS_HOST: prod-redis-cache.xxxx.elasticache.amazonaws.com
+          DEBUG: False
+          SECRET_KEY: # ... from secrets manager
+        deploy:
+          replicas: 3 # Run multiple instances for high availability
+          restart_policy:
+            condition: on-failure
+        ports:
+          - "8000:8000" # Expose to reverse proxy
+
+      nginx: # Optional: if managing reverse proxy in same compose
+        image: nginx:alpine
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - ./nginx.conf:/etc/nginx/nginx.conf:ro
+          - ./certs:/etc/nginx/certs:ro # SSL certificates
+        depends_on:
+          - app
+        # ... more nginx configuration
+    ```
+2.  **Deploy:** `docker-compose -f docker-compose.prod.yml up -d`
+
+### 7.2. Kubernetes (K8s)
+
+For larger-scale, highly available, and auto-scaling deployments, Kubernetes is the industry standard.
+
+1.  **Container Registry:** Push your `mobile-app-backend` image to a container registry (e.g., Docker Hub, AWS ECR, GCP GCR).
+    ```bash
+    docker tag mobile-app-backend:latest your-registry/mobile-app-backend:v1.0.0
+    docker push your-registry/mobile-app-backend:v1.0.0
+    ```
+2.  **Kubernetes Manifests:** Create Kubernetes YAML manifests for:
+    *   **Deployments:** For the FastAPI application (e.g., `app-deployment.yaml`), specifying multiple replicas and resource limits.
+    *   **Services:** For internal load balancing and exposing the API within the cluster.
+    *   **Ingress:** For external access, HTTPS termination, and routing to your FastAPI service.
+    *   **Secrets:** For securely storing database credentials, JWT secret key, etc. (e.g., Kubernetes Secrets or integration with external secret managers).
+    *   **ConfigMaps:** For non-sensitive configurations.
+    *   **Jobs/CronJobs:** For running Alembic migrations or seed scripts.
+    *   **Horizontal Pod Autoscalers (HPA):** To automatically scale pods based on CPU/memory utilization.
+
+3.  **Managed Kubernetes Service:** Deploy to a managed K8s service (e.g., AWS EKS, GCP GKE, Azure AKS) for ease of management.
+
+### 7.3. Cloud-Specific Services (AWS, GCP, Azure)
+
+Each major cloud provider offers services that can host containerized applications.
+
+*   **AWS:**
+    *   **ECS (Elastic Container Service):** Orchestrates Docker containers. Can use Fargate (serverless) or EC2 (managed VMs).
+    *   **EKS (Elastic Kubernetes Service):** Managed Kubernetes.
+    *   **API Gateway + Lambda (Serverless):** For very high-scale, event-driven, cost-optimized scenarios, you could refactor some parts into AWS Lambda functions triggered via API Gateway. FastAPI can run on Lambda using mangum.
+*   **Google Cloud Platform (GCP):**
+    *   **Cloud Run:** Serverless platform for containerized applications.
+    *   **GKE (Google Kubernetes Engine):** Managed Kubernetes.
+    *   **App Engine Flexible Environment:** PaaS for containerized apps.
+*   **Azure:**
+    *   **Azure Container Instances (ACI):** Run containers without managing VMs.
+    *   **Azure Kubernetes Service (AKS):** Managed Kubernetes.
+    *   **Azure App Service:** PaaS for web apps, supports containers.
+
+## 8. CI/CD Integration
+
+Set up a Continuous Integration/Continuous Deployment (CI/CD) pipeline to automate testing, building, and deployment. The `.github/workflows/ci_cd.yml` file provides an example using GitHub Actions.
+
+**Typical CI/CD Workflow:**
+
+1.  **Code Commit:** Developer pushes code to a Git repository.
+2.  **CI Trigger:** CI system (e.g., GitHub Actions, Jenkins, GitLab CI) triggers.
+3.  **Build:** Build Docker image.
+4.  **Test:** Run unit, integration, and API tests. Check code coverage.
+5.  **Security Scan (Optional):** Scan code/dependencies for vulnerabilities.
+6.  **Push to Registry:** If tests pass, push the Docker image to a container registry.
+7.  **CD Trigger:** If image push is successful, trigger deployment to staging/production.
+8.  **Deployment:**
+    *   Run database migrations (as a job).
+    *   Update application deployment (e.g., Kubernetes Deployment, ECS Service).
+    *   Perform health checks.
+9.  **Notifications:** Notify relevant teams of deployment status.
+
+## 9. Monitoring & Logging
+
+*   **Logging:** The application uses Python's standard `logging` module with custom request IDs.
+    *   In production, configure logs to be sent to a centralized logging system (e.g., ELK Stack, Splunk, Datadog, AWS CloudWatch Logs, GCP Cloud Logging).
+*   **Metrics:** Collect application metrics (e.g., request count, latency, error rates, CPU/memory usage of containers).
+    *   Use Prometheus for collection and Grafana for visualization. FastAPI can expose Prometheus metrics.
+    *   Cloud providers offer their own monitoring services (e.g., AWS CloudWatch, GCP Monitoring).
+*   **Alerting:** Set up alerts for critical errors, high latency, low resource availability, or failed deployments.
+
+## 10. Security Best Practices
+
+*   **HTTPS Everywhere:** Always use HTTPS for all communication.
+*   **Secrets Management:** Never hardcode secrets. Use environment variables and integrate with a dedicated secrets management service (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, HashiCorp Vault).
+*   **Least Privilege:** Grant only necessary permissions to database users, API keys, and service accounts.
+*   **Network Security:** Configure firewalls and security groups to restrict network access to your services.
+*   **Regular Updates:** Keep all dependencies (OS, Python, libraries, Docker images) updated to patch security vulnerabilities.
+*   **Vulnerability Scanning:** Regularly scan your Docker images and dependencies for known vulnerabilities.
+*   **Backup & Restore:** Implement a robust database backup strategy and test restoration procedures.
+*   **Input Validation:** Continue to rely on Pydantic for strict input validation to prevent injection attacks and other vulnerabilities.
+
+## 11. Troubleshooting
+
+*   **Check container logs:** `docker-compose logs -f app` or `kubectl logs -f <pod-name>`
+*   **Verify network connectivity:** Ensure your application container can reach the database and Redis instances.
+*   **Review environment variables:** Double-check that all production environment variables are correctly set.
+*   **Test database connection:** Try to connect to your database from the app container shell (e.g., `psql -h <host> -U <user> -d <db>`).
+*   **Alembic issues:** If you suspect migration problems, check the `alembic_version` table in your database.
+*   **Redis connection:** Verify Redis is accessible and working.
+```

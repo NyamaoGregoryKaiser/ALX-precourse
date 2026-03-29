@@ -2,46 +2,42 @@
 version: '3.8'
 
 services:
+  app:
+    build: .
+    command: /bin/bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    # For development, you might want to use the reload option:
+    # command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
   db:
     image: postgres:15-alpine
-    container_name: dataviz_db
+    restart: always
     environment:
-      POSTGRES_DB: datavizdb
-      POSTGRES_USER: datavizuser
-      POSTGRES_PASSWORD: datavizpass
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - dataviz_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U datavizuser -d datavizdb"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dataviz_app
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/datavizdb
-      SPRING_DATASOURCE_USERNAME: datavizuser
-      SPRING_DATASOURCE_PASSWORD: datavizpass
-      # Ensure JWT secret and other sensitive info are passed securely in production
-      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-      APPLICATION_SECURITY_JWT_EXPIRATION: 86400000
-    depends_on:
-      db:
-        condition: service_healthy # Wait for the DB to be healthy
-    # To attach a debugger, uncomment the following line and configure your IDE
-    # command: java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -jar app.jar
-    # ports:
-    #   - "5005:5005"
+      - "5432:5432" # Expose for local development/debugging
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379" # Expose for local development/debugging
+    volumes:
+      - redis_data:/data
 
 volumes:
-  dataviz_db_data:
+  postgres_data:
+  redis_data:
 ```

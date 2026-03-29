@@ -1,166 +1,133 @@
 ```markdown
-# ALX Data Visualization Tool - Architecture Documentation
+# Mobile App Backend System: Architecture Documentation
 
-This document describes the architecture of the ALX Data Visualization Tool, detailing its components, their interactions, and the design decisions made to achieve an enterprise-grade, scalable, and maintainable system.
+This document outlines the architectural design of the Mobile App Backend System, detailing its components, interactions, and design principles.
 
----
+## 1. High-Level Overview
 
-## 1. System Overview
+The system is designed as a **monolithic API service** built with FastAPI, orchestrated using Docker Compose for local development. It provides a RESTful interface for mobile applications to manage users, items, and orders.
 
-The Data Visualization Tool is designed as a web application allowing users to manage data sources, create interactive dashboards, and design various charts. It follows a multi-tier architecture, separating presentation, business logic, and data persistence layers.
+**Key Components:**
 
-**Key Design Principles:**
-*   **Modularity:** Separation of concerns using Spring Boot's component model.
-*   **Scalability:** Stateless backend for horizontal scaling, caching layer, and database optimization considerations.
-*   **Security:** Robust authentication (JWT) and authorization (RBAC + resource-based).
-*   **Resilience:** Comprehensive error handling, rate limiting.
-*   **Observability:** Integrated logging and monitoring with Actuator/Prometheus.
-*   **Maintainability:** Clear code structure, DTOs for API consistency, automated testing.
+*   **FastAPI Application (Python):** The core backend service responsible for handling API requests, business logic, and interacting with other services.
+*   **PostgreSQL Database:** The primary data store for all persistent application data.
+*   **Redis Cache:** Used for caching frequently accessed data and for rate limiting.
+*   **Alembic:** Database migration tool for managing schema changes.
+*   **Docker & Docker Compose:** Containerization for consistent development and deployment environments.
 
-## 2. Component Breakdown
+```mermaid
+graph TD
+    User[Mobile App User] -- HTTP/HTTPS --> LoadBalancer[Load Balancer / API Gateway (e.g., Nginx, AWS ALB)]
+    LoadBalancer -- HTTP/HTTPS --> FastAPIApp(FastAPI Application)
+    FastAPIApp -- Read/Write --> PostgreSQL(PostgreSQL Database)
+    FastAPIApp -- Read/Write --> Redis(Redis Cache / Rate Limiting)
 
-### 2.1. Frontend (Conceptual)
+    subgraph "Development Environment (Docker Compose)"
+        FastAPIAppDEV(FastAPI App)
+        PostgreSQLDEV(PostgreSQL DB)
+        RedisDEV(Redis Cache)
+        FastAPIAppDEV --> PostgreSQLDEV
+        FastAPIAppDEV --> RedisDEV
+    end
+    FastAPIApp -. deploys to .-> "Container Orchestration (e.g., Kubernetes)"
+    PostgreSQL -. manages .-> "Cloud DB Service (e.g., AWS RDS)"
+    Redis -. manages .-> "Cloud Cache Service (e.g., AWS ElastiCache)"
+```
 
-*   **Technology:** React.js
-*   **Purpose:** Provides the user interface for interacting with the backend API.
-*   **Key Components:**
-    *   **Authentication/Authorization Module:** Handles user login, registration, and manages JWT tokens.
-    *   **Dashboard Listing/Viewing:** Displays user's dashboards, allows navigation to individual dashboards.
-    *   **Dashboard Editor:** Drag-and-drop interface for arranging charts on a dashboard.
-    *   **Chart Editor:** Interface for creating/editing charts, selecting data sources, defining chart types and configurations (e.g., axis mappings, aggregations).
-    *   **Data Source Manager:** UI for connecting to, configuring, and viewing data sources.
-    *   **Visualization Renderer:** Integrates with libraries like Recharts or Nivo to render charts based on data from the backend and chart configurations.
-*   **Communication:** Uses RESTful API calls to the Java backend.
+## 2. Core Application (FastAPI)
 
-### 2.2. Backend Application
+The FastAPI application is the heart of the backend. It follows a modular and layered architecture to separate concerns and promote maintainability.
 
-*   **Technology:** Spring Boot (Java 17)
-*   **Deployment:** Containerized (Docker), designed for cloud-native environments (Kubernetes).
-*   **Layers:**
+### 2.1. Layered Architecture
 
-    #### 2.2.1. API Layer (Controllers)
-    *   **Purpose:** Exposes RESTful endpoints for the frontend and external clients. Handles HTTP requests, input validation, and marshaling/unmarshaling JSON data.
-    *   **Components:** `AuthController`, `UserController`, `DataSourceController`, `DashboardController`, `ChartController`.
-    *   **Key Responsibilities:**
-        *   Receive HTTP requests.
-        *   Validate request payloads using JSR 380 annotations (`@Valid`).
-        *   Delegate business logic to the Service Layer.
-        *   Return appropriate HTTP status codes and JSON responses.
-        *   Integrates with Spring Security for pre-authentication checks (`@PreAuthorize`).
-        *   `@RestControllerAdvice` for global error handling.
+The application adopts a layered architecture, common in many backend systems:
 
-    #### 2.2.2. Business Logic Layer (Services)
-    *   **Purpose:** Contains the core business rules, orchestrates operations across multiple repositories, and performs complex data transformations/aggregations.
-    *   **Components:** `UserService`, `DataSourceService`, `DashboardService`, `ChartService`, `JwtService`.
-    *   **Key Responsibilities:**
-        *   Implement business rules and workflows.
-        *   Interact with the Data Access Layer (Repositories).
-        *   Perform data processing for visualizations (`DataProcessor`).
-        *   Apply caching logic (`@Cacheable`, `@CacheEvict`).
-        *   Manage transactions (`@Transactional`).
-        *   Implement granular authorization checks (e.g., resource ownership).
-        *   Map between DTOs and Entity models using `ModelMapper`.
+1.  **API Layer (`app/api`):**
+    *   **Purpose:** Defines the HTTP endpoints and handles request parsing, validation, and serialization.
+    *   **Components:** FastAPI Routers, Pydantic request/response models.
+    *   **Interaction:** Delegates business logic to the Service Layer and interacts with authentication dependencies.
+    *   **Dependencies:** `fastapi.APIRouter`, `fastapi.Depends`, `app.schemas`, `app.services`.
 
-    #### 2.2.3. Data Access Layer (Repositories)
-    *   **Technology:** Spring Data JPA with Hibernate
-    *   **Purpose:** Provides an abstraction over the underlying database, handling CRUD operations and complex queries.
-    *   **Components:** `UserRepository`, `DataSourceRepository`, `DashboardRepository`, `ChartRepository`.
-    *   **Key Responsibilities:**
-        *   Persistence of `Model` entities to the database.
-        *   Retrieval of data based on various criteria.
-        *   Error handling for database-specific exceptions.
-        *   Leverages Spring Data JPA's conventions for derived queries and pagination.
+2.  **Service Layer (`app/services`):**
+    *   **Purpose:** Encapsulates the core business logic, data processing, and orchestrates interactions with the Database Layer.
+    *   **Components:** Python classes or functions that contain business rules.
+    *   **Interaction:** Receives validated data from the API Layer, performs operations, and returns results. It uses `AsyncSession` for database operations.
+    *   **Dependencies:** `app.db.models`, `app.core.security`, `app.core.exceptions`, `app.core.cache`.
 
-    #### 2.2.4. Security Module
-    *   **Technology:** Spring Security, `jjwt` library
-    *   **Purpose:** Handles authentication and authorization for all API endpoints.
-    *   **Components:**
-        *   `SecurityConfig`: Main configuration for HTTP security rules, CORS, authentication providers.
-        *   `JwtAuthFilter`: Intercepts requests, validates JWT tokens, and sets up the Spring Security context.
-        *   `JwtService`: Utility for generating, validating, and parsing JWT tokens.
-        *   `CustomUserDetailsService`: Integrates user details from the database with Spring Security.
-        *   `JwtAuthEntryPoint`: Handles unauthorized access attempts.
-        *   `CustomAccessDeniedHandler`: Handles forbidden access attempts.
-        *   `UserSecurity`, `DataSourceSecurity`, etc.: Custom security predicates for `@PreAuthorize` annotations, enabling resource-level authorization.
-    *   **Authorization Strategy:** Role-Based Access Control (RBAC) complemented by resource ownership checks.
+3.  **Database Layer (`app/db`):**
+    *   **Purpose:** Manages persistent data storage and retrieval.
+    *   **Components:** SQLAlchemy ORM models (`app/db/models`), `AsyncSession` for asynchronous database interactions (`app/db/session`), Alembic for migrations.
+    *   **Interaction:** Provides an abstraction over the raw database, allowing services to interact with Python objects instead of SQL.
+    *   **Dependencies:** `sqlalchemy`, `asyncpg`.
 
-    #### 2.2.5. Utilities & Cross-Cutting Concerns
-    *   **`DataProcessor`**: A service responsible for simulating data retrieval from various `DataSource` types (CSV, Database, API) and converting it into a standardized `DataPointDto` format suitable for visualization. In a real-world scenario, this would integrate with actual data connectors (JDBC, HTTP clients, file readers).
-    *   **`RateLimitingFilter`**: A custom `OncePerRequestFilter` that applies API rate limits based on client IP address using `Bucket4j`. This protects against abuse and ensures fair usage.
-    *   **Caching (`CacheConfig`, `Caffeine`)**: Configures Spring's caching abstraction with Caffeine as the underlying cache provider. Annotations like `@Cacheable` and `@CacheEvict` are used in service methods to cache frequently accessed data (e.g., user profiles, dashboard details, processed chart data).
-    *   **Error Handling (`GlobalExceptionHandler`)**: A `@ControllerAdvice` component that centralizes exception handling across all controllers, providing consistent JSON error responses.
-    *   **Logging (`logback-spring.xml`)**: Configured with SLF4J and Logback for structured logging to console and file, with different levels for various packages.
-    *   **Monitoring (`Actuator`, `OpenAPIConfig`)**: Spring Boot Actuator endpoints expose health, metrics, and environment details. Micrometer integration allows exporting metrics to Prometheus. Springdoc OpenAPI provides interactive API documentation (Swagger UI).
+### 2.2. Core Modules (`app/core`)
 
-### 2.3. Database Layer
+This directory contains foundational utilities and configurations used across multiple layers:
 
-*   **Technology:** PostgreSQL
-*   **Purpose:** Persistent storage for application data.
-*   **Schema:** Defined by JPA entities and managed by Flyway migrations.
-    *   `app_user`: Stores user authentication and profile information.
-    *   `user_roles`: Maps users to roles (USER, ADMIN).
-    *   `data_source`: Stores connection details and metadata for external data sources.
-    *   `dashboard`: Stores metadata for user-created dashboards.
-    *   `chart`: Stores chart configurations, linking to data sources and dashboards.
-*   **Migration:** Flyway is used for version-controlled database schema migrations, ensuring consistent database states across environments. `V1__initial_schema.sql` creates tables and inserts seed data.
-*   **Query Optimization:** Repositories use Spring Data JPA features (e.g., pagination, derived queries). For complex reporting queries, custom JPA `@Query` or native SQL could be introduced.
+*   **`config.py`:** Manages application settings, loaded from environment variables (`.env`). Uses `pydantic-settings`.
+*   **`security.py`:** Handles authentication-related logic, including password hashing (bcrypt), JWT token creation, and validation.
+*   **`exceptions.py`:** Defines custom application-specific exceptions for consistent error handling.
+*   **`middleware.py`:** Implements global HTTP middleware for logging, error handling, and request ID generation.
+*   **`cache.py`:** Provides an interface for interacting with the Redis caching layer.
 
-### 2.4. Infrastructure & DevOps
+### 2.3. Data Validation & Serialization (`app/schemas`)
 
-*   **Docker:** Used for containerizing the Spring Boot application and PostgreSQL database, providing environment consistency.
-*   **Docker Compose:** Orchestrates the multi-container application locally, simplifying setup and development.
-*   **CI/CD (Jenkins):** A `Jenkinsfile` outlines a robust pipeline for:
-    *   Automated builds.
-    *   Running unit, integration, and API tests.
-    *   Code quality checks (e.g., JaCoCo for coverage, conceptual SonarQube integration).
-    *   Docker image building and pushing to a registry.
-    *   Automated deployment to development and production environments (e.g., Kubernetes, Docker Swarm).
-    *   Post-deployment API and performance testing.
+Pydantic models are extensively used for:
+
+*   **Request Validation:** Ensuring incoming API request bodies conform to expected structures and types.
+*   **Response Serialization:** Structuring outgoing API responses consistently, often excluding sensitive data (e.g., hashed passwords).
 
 ## 3. Data Flow
 
-1.  **User Interaction (Frontend):** User logs in, creates a dashboard, adds a chart.
-2.  **API Call (Frontend to Backend):** Frontend sends authenticated (JWT) HTTP requests to the backend API (e.g., `POST /api/dashboards`).
-3.  **Authentication & Authorization (Backend Security Filter Chain):**
-    *   `RateLimitingFilter` checks request rate.
-    *   `JwtAuthFilter` extracts and validates the JWT.
-    *   Spring Security authenticates the user and establishes their roles/permissions.
-    *   `@PreAuthorize` on controller/service methods checks if the user is authorized for the specific resource/action.
-4.  **Controller Processing:** The relevant controller (`DashboardController`) receives the request. Input `DashboardDto` is validated.
-5.  **Service Layer Logic:** The controller delegates to `DashboardService`.
-    *   `DashboardService` performs business logic (e.g., associates the dashboard with the current user).
-    *   It uses `ModelMapper` to convert `DashboardDto` to `Dashboard` entity.
-    *   It interacts with `DashboardRepository` to persist the new dashboard.
-    *   Caching might be involved (`@CacheEvict` on creation/update/delete, `@Cacheable` on read operations).
-6.  **Data Access (Repository to Database):** `DashboardRepository` uses JPA/Hibernate to interact with PostgreSQL, saving the `Dashboard` entity.
-7.  **Data Retrieval (for Charts):**
-    *   When a chart needs to display data, the frontend calls `GET /api/charts/{chartId}/data`.
-    *   `ChartService` retrieves the `Chart` and its associated `DataSource`.
-    *   It then calls `DataSourceService.getProcessedDataSourceData()` which uses `DataProcessor`.
-    *   `DataProcessor` (simulated): Determines data source type (CSV, DB, API) from `connectionDetails` and generates `List<DataPointDto>`. In a real scenario, this involves fetching data from external systems.
-    *   `ChartService` may apply further aggregations/filters based on `chart.getConfiguration()` (e.g., group by, sum, filter dates).
-8.  **Response Back to Frontend:** The processed `DataPointDto` list is sent back to the frontend for rendering by a visualization library.
+1.  **Client Request:** A mobile app sends an HTTP request to an API endpoint (e.g., `POST /api/v1/users/register`).
+2.  **Middleware Processing:**
+    *   `logging_middleware`: Logs the incoming request and assigns a unique `X-Request-ID`.
+    *   `rate_limit_middleware`: Checks if the request exceeds rate limits (if configured for the endpoint).
+    *   `exception_handling_middleware`: Catches any unhandled exceptions to return a consistent error format.
+3.  **FastAPI Routing:** FastAPI matches the request to the appropriate endpoint function.
+4.  **Dependency Injection:** Dependencies like database sessions (`get_db`), current user (`get_current_user`), or rate limiters are injected.
+    *   `get_current_user` uses `app.core.security` to validate the JWT token from the `Authorization` header.
+5.  **Pydantic Validation:** The request body is automatically validated against the endpoint's Pydantic schema. If invalid, FastAPI returns a 422 Unprocessable Entity error.
+6.  **Service Layer Call:** The endpoint calls a function in the `app/services` layer, passing validated data and the database session.
+7.  **Business Logic & Database Interaction:** The service function executes business logic (e.g., creating a user, hashing password, checking permissions). It uses SQLAlchemy ORM models to interact with the PostgreSQL database. Caching operations via Redis (`app.core.cache`) might also occur here.
+8.  **Database Transaction:** Database operations are typically wrapped in an `async with session:` block, ensuring atomicity (commit on success, rollback on error).
+9.  **Response:** The service returns data to the API layer, which then serializes it using Pydantic response schemas and sends an HTTP response back to the client.
 
-## 4. Scalability and Performance Considerations
+## 4. Key Architectural Decisions & Technologies
 
-*   **Stateless Backend:** JWT-based authentication means no session state on the server, allowing for easy horizontal scaling of backend instances.
-*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding for very large datasets).
-*   **Caching:** In-memory caching with Caffeine (configured via Spring Cache) reduces database load for frequently accessed read operations (e.g., fetching dashboards, user profiles, chart data). Can be extended to distributed caches (Redis, Memcached) for multi-instance deployments.
-*   **Rate Limiting:** Protects the API from being overwhelmed by too many requests from a single client.
-*   **Efficient Data Access:** Spring Data JPA provides efficient repository methods and supports pagination, reducing data transfer over the network.
-*   **Asynchronous Processing:** For long-running data source processing or report generation, asynchronous tasks (e.g., Spring @Async, message queues like Kafka/RabbitMQ) could be introduced to avoid blocking API requests.
+*   **FastAPI:** Chosen for its high performance (Starlette), automatic OpenAPI documentation (Swagger UI/Redoc), Pydantic for data validation, and native async/await support.
+*   **SQLAlchemy 2.0 (Async):** A powerful and flexible ORM for PostgreSQL. The async version aligns with FastAPI's asynchronous nature, allowing for non-blocking I/O with the database.
+*   **PostgreSQL:** A robust, open-source relational database, known for its reliability, feature set, and scalability.
+*   **Alembic:** Standard tool for managing database schema migrations with SQLAlchemy, enabling version control for the database.
+*   **JWT Authentication:** A stateless and scalable method for user authentication, commonly used in mobile and web APIs.
+*   **Redis:** Employed for two main purposes:
+    *   **Caching:** To store results of expensive queries or computations, reducing database load and improving response times.
+    *   **Rate Limiting:** To protect API endpoints from abuse and ensure fair usage, preventing denial-of-service attacks.
+*   **Docker & Docker Compose:** Provide isolated, reproducible development and deployment environments, simplifying setup and dependency management.
+*   **Structured Logging:** Using Python's `logging` module with custom request IDs to enhance traceability and debugging in a distributed system.
+*   **Dependency Injection:** FastAPI's robust dependency injection system is used to manage database sessions, authentication, and other shared resources, improving testability and modularity.
+*   **Error Handling:** Centralized custom exception classes (`app.core.exceptions`) and global exception handlers in `app.main.py` ensure consistent and informative error responses.
+*   **Pydantic for Schemas:** Enforces strict data types and validation for both incoming requests and outgoing responses, reducing errors and improving API reliability.
 
-## 5. Security Considerations
+## 5. Scalability Considerations
 
-*   **Authentication:** JWT ensures secure, stateless authentication. Tokens are short-lived and refreshed.
-*   **Authorization:**
-    *   **Role-Based:** `ADMIN` vs `USER` roles enforce broad access policies.
-    *   **Resource-Based:** `@PreAuthorize` with custom security evaluators (`UserSecurity`, `DashboardSecurity`, etc.) ensures users can only access/modify resources they own (or if they are an `ADMIN`).
-*   **Password Hashing:** `BCryptPasswordEncoder` is used to securely store passwords.
-*   **Input Validation:** JSR 380 ensures malformed inputs are rejected early.
-*   **CORS Configuration:** Explicitly configured to allow requests only from trusted frontend origins.
-*   **Secure Defaults:** Spring Security provides many out-of-the-box protections (CSRF disabled for stateless API, secure headers).
-*   **Dependency Security:** Regular updates of dependencies (via Maven) and use of tools like Dependabot to catch vulnerabilities.
+*   **Stateless API:** The use of JWT for authentication makes the API stateless, allowing horizontal scaling by adding more FastAPI instances behind a load balancer.
+*   **Asynchronous I/O:** FastAPI and SQLAlchemy's async capabilities minimize blocking operations, allowing the application to handle more concurrent requests efficiently.
+*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding, though the latter is more complex). Cloud providers offer managed database services that handle much of this.
+*   **Caching:** Redis offloads read requests from the database, reducing latency and load.
+*   **Rate Limiting:** Protects resources and ensures fair access, preventing a single client from overwhelming the service.
+*   **Docker/Containerization:** Facilitates deployment to container orchestration platforms like Kubernetes, enabling automated scaling, self-healing, and resource management.
 
----
+## 6. Security Considerations
+
+*   **Password Hashing:** Passwords are never stored in plain text, always hashed using bcrypt via `passlib`.
+*   **JWT Security:** Tokens are signed with a strong `SECRET_KEY`. Proper expiration times are set.
+*   **Input Validation:** Pydantic schemas prevent common vulnerabilities like SQL injection and cross-site scripting (XSS) by strictly validating and sanitizing inputs.
+*   **Role-Based Access Control (RBAC):** Endpoints are protected with permission checks based on user roles (e.g., admin vs. regular user).
+*   **HTTPS:** In production, all traffic should be encrypted using HTTPS. This is handled by a reverse proxy/load balancer in front of the FastAPI app.
+*   **Environment Variables:** Sensitive information (database credentials, JWT secret key) is loaded from environment variables, not hardcoded in the codebase.
+*   **Rate Limiting:** Mitigates brute-force attacks and resource exhaustion.
+*   **Error Handling:** Prevents leaking sensitive internal server details in error messages.
+
+This architectural overview provides a solid foundation for further development, maintenance, and understanding of the Mobile App Backend System.
 ```

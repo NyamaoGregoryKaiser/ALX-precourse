@@ -1,34 +1,34 @@
 ```dockerfile
-# Use a lighter base image for Spring Boot applications
-FROM openjdk:17-jdk-slim
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim-buster
 
-# Set the working directory inside the container
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the Maven wrapper files to enable building inside the container
-COPY .mvn .mvn
-COPY mvnw pom.xml ./
+# Install system dependencies required for psycopg2 (asyncpg)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build the application - this step can be optimized with multi-stage builds
-# to avoid including build tools in the final image.
-# For simplicity, we keep it in one stage for this example.
-RUN apt-get update && apt-get install -y maven \
-    && ./mvnw dependency:go-offline -B \
-    && rm -rf /root/.m2/repository
+# Copy the requirements file into the working directory
+COPY requirements.txt .
 
-# Copy the source code
-COPY src src
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Package the application into a JAR file
-RUN ./mvnw clean install -DskipTests
+# Copy the rest of the application code into the working directory
+COPY . .
 
-# Define the argument for the JAR file path
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
+# Expose the port the app runs on
+EXPOSE 8000
 
-# Expose the port the Spring Boot application runs on
-EXPOSE 8080
+# Run alembic migrations on startup
+# This command ensures migrations are applied before the app starts.
+# In production, you might want to run this as a separate step/container.
+CMD ["/bin/bash", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
 
-# Run the JAR file
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Alternative CMD for development (with auto-reload)
+# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```

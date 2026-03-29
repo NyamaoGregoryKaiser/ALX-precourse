@@ -1,140 +1,198 @@
+```python
 import pytest
-import os
-from dotenv import load_dotenv
+import asyncio
+from typing import AsyncGenerator
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-# Load environment variables for tests
-load_dotenv(override=True)
+from app.main import app
+from app.db.base import Base
+from app.db.session import get_db # Import the app's get_db
+from app.core.config import settings
+from app.core.security import get_password_hash
+from app.db.models.user import User
+from app.db.models.item import Item
+from app.db.models.order import Order, OrderItem, OrderStatus
+from app.core.cache import get_redis_client, close_redis_client
 
-# Ensure FLASK_ENV is set for testing
-os.environ['FLASK_ENV'] = 'testing'
-os.environ['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # Use in-memory SQLite for tests
-os.environ['SECRET_KEY'] = 'test_secret_key'
-os.environ['JWT_SECRET_KEY'] = 'test_jwt_secret_key'
-os.environ['JWT_ACCESS_TOKEN_EXPIRES_MINUTES'] = '1' # Shorter expiry for testing
-os.environ['REDIS_URL'] = 'redis://localhost:6379/1' # Use a different Redis DB for testing if possible
-os.environ['CACHE_TYPE'] = 'simple' # Use simple cache for tests to avoid external dependency
+# Override DATABASE_URL for testing
+TEST_DATABASE_URL = settings.DATABASE_URL.replace(settings.POSTGRES_DB, f"{settings.POSTGRES_DB}_test")
+settings.DATABASE_URL = TEST_DATABASE_URL # Update for all tests to use test DB
 
-from app import create_app, db, jwt, cache
-from app.models import User, Task, Role, REVOKED_TOKENS
-from app.services.auth_service import AuthService
+# Setup a dedicated test engine and session
+test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, future=True)
+TestingSessionLocal = async_sessionmaker(
+    autocommit=False, autoflush=False, bind=test_engine, class_=AsyncSession
+)
 
-@pytest.fixture(scope='session')
-def app():
-    """Fixture for the Flask application, configured for testing."""
-    app = create_app('development') # Use development config for testing setup
-    app.config.update({
-        'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
-        'JWT_SECRET_KEY': 'test_jwt_secret_key',
-        'SECRET_KEY': 'test_secret_key',
-        'CACHE_TYPE': 'simple', # Use simple cache for tests
-        'RATELIMIT_ENABLED': False # Disable rate limiting for tests for predictability
-    })
+async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Overrides the get_db dependency to use the test database.
+    Each test gets a fresh session, and it's rolled back afterwards.
+    """
+    async with TestingSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.rollback() # Rollback all changes after each test
+            await session.close()
 
-    with app.app_context():
-        db.create_all()
-        yield app
-        db.session.remove()
-        db.drop_all()
+app.dependency_overrides[get_db] = override_get_db
 
-@pytest.fixture(scope='function')
-def client(app):
-    """Fixture for a test client."""
-    return app.test_client()
 
-@pytest.fixture(scope='function')
-def init_database(app):
-    """Fixture to clear and re-create database for each test function."""
-    with app.app_context():
-        db.drop_all()
-        db.create_all()
-        # Clear revoked tokens for each test
-        REVOKED_TOKENS.clear()
-        yield db
-        db.session.remove()
-        db.drop_all()
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create a session-scoped event loop for async tests."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
-@pytest.fixture(scope='function')
-def seed_users(init_database):
-    """Fixture to seed initial users."""
-    db_instance = init_database # Ensure database is initialized
-    admin = User(username='admin_test', email='admin_test@example.com', role=Role.ADMIN)
-    admin.set_password('password')
-    user1 = User(username='user1_test', email='user1_test@example.com', role=Role.USER)
-    user1.set_password('password')
-    user2 = User(username='user2_test', email='user2_test@example.com', role=Role.USER)
-    user2.set_password('password')
+@pytest.fixture(scope="session", autouse=True)
+async def setup_test_db():
+    """
+    Sets up and tears down the test database once per test session.
+    Creates all tables before tests, drops them after tests.
+    """
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all) # Ensure a clean slate
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
-    db_instance.session.add_all([admin, user1, user2])
-    db_instance.session.commit()
 
-    return {
-        'admin': admin,
-        'user1': user1,
-        'user2': user2
-    }
+@pytest.fixture(scope="function", autouse=True)
+async def clear_data_and_reset_db():
+    """
+    Clears all data and resets the database between each test function.
+    This ensures tests are isolated.
+    """
+    async with test_engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables): # Drop in reverse order to handle foreign keys
+            await conn.execute(table.delete())
+        # Re-create tables if they were dropped by previous test (unlikely with rollback)
+        # Or, just ensure empty state without dropping/creating schemas, if setup_test_db handles schema.
+        # If setup_test_db creates/drops all, this fixture ensures data is clear for each test.
+    yield
+    # Rollback is handled by override_get_db().
+    # If using transaction for entire test function and then rollback, this might not be needed.
+    # However, explicitly clearing data ensures consistency even if a test doesn't use the db fixture.
 
-@pytest.fixture(scope='function')
-def auth_tokens(client, seed_users):
-    """Fixture to get JWT tokens for seeded users."""
-    tokens = {}
-    users = seed_users
-    
-    # Login admin
-    admin_login_res = client.post('/api/auth/login', json={'username': users['admin'].username, 'password': 'password'})
-    tokens['admin'] = admin_login_res.json
 
-    # Login user1
-    user1_login_res = client.post('/api/auth/login', json={'username': users['user1'].username, 'password': 'password'})
-    tokens['user1'] = user1_login_res.json
+@pytest.fixture(scope="session", autouse=True)
+async def setup_and_teardown_redis():
+    """
+    Initializes and closes the Redis client for the test session.
+    """
+    await get_redis_client()
+    yield
+    await close_redis_client()
 
-    # Login user2
-    user2_login_res = client.post('/api/auth/login', json={'username': users['user2'].username, 'password': 'password'})
-    tokens['user2'] = user2_login_res.json
-    
-    return tokens
 
-@pytest.fixture(scope='function')
-def admin_auth_header(auth_tokens):
-    """Fixture for admin authorization header."""
-    return {'Authorization': f"Bearer {auth_tokens['admin']['access_token']}"}
+@pytest.fixture(scope="function")
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """
+    Provides an asynchronous test client for the FastAPI application.
+    """
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        yield ac
 
-@pytest.fixture(scope='function')
-def user1_auth_header(auth_tokens):
-    """Fixture for user1 authorization header."""
-    return {'Authorization': f"Bearer {auth_tokens['user1']['access_token']}"}
+@pytest.fixture
+async def test_user(client: AsyncClient) -> User:
+    """Fixture to create and return a test user."""
+    async with TestingSessionLocal() as session:
+        user_data = {
+            "email": "test@example.com",
+            "hashed_password": get_password_hash("testpassword"),
+            "full_name": "Test User",
+            "is_active": True,
+            "is_admin": False,
+        }
+        user = User(**user_data)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user
 
-@pytest.fixture(scope='function')
-def user2_auth_header(auth_tokens):
-    """Fixture for user2 authorization header."""
-    return {'Authorization': f"Bearer {auth_tokens['user2']['access_token']}"}
+@pytest.fixture
+async def admin_user(client: AsyncClient) -> User:
+    """Fixture to create and return a test admin user."""
+    async with TestingSessionLocal() as session:
+        user_data = {
+            "email": "admin@example.com",
+            "hashed_password": get_password_hash("adminpassword"),
+            "full_name": "Admin User",
+            "is_active": True,
+            "is_admin": True,
+        }
+        admin = User(**user_data)
+        session.add(admin)
+        await session.commit()
+        await session.refresh(admin)
+        return admin
 
-@pytest.fixture(scope='function')
-def seed_tasks(init_database, seed_users):
-    """Fixture to seed tasks."""
-    db_instance = init_database
-    users = seed_users
+@pytest.fixture
+async def test_user_token(client: AsyncClient, test_user: User) -> str:
+    """Fixture to get an access token for the test user."""
+    response = await client.post(
+        f"{settings.API_V1_STR}/users/login",
+        data={"username": test_user.email, "password": "testpassword"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"} # For OAuth2PasswordRequestForm
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
-    admin = users['admin']
-    user1 = users['user1']
-    user2 = users['user2']
+@pytest.fixture
+async def admin_user_token(client: AsyncClient, admin_user: User) -> str:
+    """Fixture to get an access token for the admin user."""
+    response = await client.post(
+        f"{settings.API_V1_STR}/users/login",
+        data={"username": admin_user.email, "password": "adminpassword"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
-    task1 = Task(title='Admin Task 1', description='Task by admin for admin', created_by_id=admin.id, assigned_to_id=admin.id, status=TaskStatus.PENDING)
-    task2 = Task(title='Admin Task 2', description='Task by admin for user1', created_by_id=admin.id, assigned_to_id=user1.id, status=TaskStatus.IN_PROGRESS)
-    task3 = Task(title='User1 Task 1', description='Task by user1 for user1', created_by_id=user1.id, assigned_to_id=user1.id, status=TaskStatus.COMPLETED)
-    task4 = Task(title='User1 Task 2', description='Task by user1 for user2', created_by_id=user1.id, assigned_to_id=user2.id, status=TaskStatus.PENDING)
-    task5 = Task(title='User2 Task 1', description='Task by user2 for user1', created_by_id=user2.id, assigned_to_id=user1.id, status=TaskStatus.PENDING)
-    task6 = Task(title='User2 Task 2', description='Task by user2 for user2', created_by_id=user2.id, assigned_to_id=user2.id, status=TaskStatus.IN_PROGRESS)
+@pytest.fixture
+async def test_item(client: AsyncClient, test_user: User) -> Item:
+    """Fixture to create and return a test item belonging to test_user."""
+    async with TestingSessionLocal() as session:
+        item_data = {
+            "name": "Test Item",
+            "description": "A wonderful test item.",
+            "price": 19.99,
+            "owner_id": test_user.id
+        }
+        item = Item(**item_data)
+        session.add(item)
+        await session.commit()
+        await session.refresh(item)
+        return item
 
-    db_instance.session.add_all([task1, task2, task3, task4, task5, task6])
-    db_instance.session.commit()
+@pytest.fixture
+async def test_order(client: AsyncClient, test_user: User, test_item: Item) -> Order:
+    """Fixture to create a test order for test_user with test_item."""
+    async with TestingSessionLocal() as session:
+        order_data = {
+            "customer_id": test_user.id,
+            "shipping_address": "123 Test St, Test City",
+            "status": OrderStatus.PENDING,
+            "total_amount": test_item.price * 2 # Example total
+        }
+        order = Order(**order_data)
+        session.add(order)
+        await session.flush() # Flush to get order.id
 
-    return {
-        'task1': task1,
-        'task2': task2,
-        'task3': task3,
-        'task4': task4,
-        'task5': task5,
-        'task6': task6
-    }
+        order_item = OrderItem(
+            order_id=order.id,
+            item_id=test_item.id,
+            quantity=2,
+            price_at_purchase=test_item.price
+        )
+        session.add(order_item)
+        await session.commit()
+        await session.refresh(order)
+        await session.refresh(order_item) # Refresh order_item to ensure relationships are loaded
+        return order
 ```

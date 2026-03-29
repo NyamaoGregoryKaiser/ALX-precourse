@@ -1,0 +1,144 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: app_db_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install alembic # ensure alembic is installed for migrations
+
+    - name: Set up .env for tests
+      run: |
+        echo "POSTGRES_USER=test_user" >> .env
+        echo "POSTGRES_PASSWORD=test_password" >> .env
+        echo "POSTGRES_DB=app_db_test" >> .env
+        echo "POSTGRES_HOST=db" >> .env
+        echo "POSTGRES_PORT=5432" >> .env
+        echo "REDIS_HOST=redis" >> .env
+        echo "REDIS_PORT=6379" >> .env
+        echo "SECRET_KEY=test-secret-key" >> .env # Use a fixed secret for CI tests
+        echo "DEBUG=True" >> .env
+
+    - name: Wait for PostgreSQL and Redis to be ready
+      run: |
+        dockerize -wait tcp://localhost:5432 -timeout 1m
+        dockerize -wait tcp://localhost:6379 -timeout 1m
+      env:
+        # Install dockerize in the runner for waiting for services
+        DOCKERIZE_VERSION: v0.6.1
+      uses: jakejarvis/install-dockerize-action@master
+
+
+    - name: Run Alembic Migrations
+      run: |
+        alembic upgrade head
+      env:
+        DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/app_db_test # Explicitly set for alembic
+        PYTHONPATH: "${PYTHONPATH}:./app" # Ensure app modules are discoverable
+
+    - name: Run Pytest
+      run: |
+        pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
+      env:
+        PYTHONPATH: "${PYTHONPATH}:./app" # Ensure app modules are discoverable
+
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true # Keep PRs from merging if coverage decreases below threshold set in Codecov.io
+
+  deploy:
+    name: Deploy to Production
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' # Deploy only on push to main branch
+    runs-on: ubuntu-latest
+    environment: production # Use GitHub Environments for secrets management
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials (Example for AWS ECR/ECS/EKS)
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1 # Replace with your AWS region
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: mobile-app-backend
+        IMAGE_TAG: ${{ github.sha }} # Use git SHA as image tag
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Deploy to AWS ECS (Example)
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: .aws/task-definition.json # Your ECS task definition file
+        service: your-ecs-service-name
+        cluster: your-ecs-cluster-name
+        wait-for-service-stability: true
+        image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+    # Or Deploy to Kubernetes (Example)
+    # - name: Setup Kubeconfig (e.g., EKS)
+    #   run: |
+    #     aws eks update-kubeconfig --name your-eks-cluster-name --region us-east-1
+    # - name: Deploy to Kubernetes
+    #   run: |
+    #     kubectl set image deployment/your-app-deployment your-app-container=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+    #     kubectl rollout status deployment/your-app-deployment
+```

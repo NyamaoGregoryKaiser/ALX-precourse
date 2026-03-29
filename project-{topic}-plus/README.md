@@ -1,330 +1,228 @@
 ```markdown
-# ALX Data Visualization Tool
+# Mobile App Backend System
 
-## Comprehensive, Production-Ready Data Visualization System
-
-This project is a full-scale, enterprise-grade data visualization tool designed to allow users to connect to various data sources, create interactive dashboards, and generate insightful charts. Built with a robust Java Spring Boot backend, PostgreSQL database, and a conceptual React frontend, it emphasizes programming logic, algorithm design, and technical problem-solving as per ALX Software Engineering precourse materials.
-
----
+This is a comprehensive, production-ready backend system for mobile applications, built with FastAPI, PostgreSQL, and Docker. It encompasses a wide range of features including user management, item/product listings, order processing, authentication, caching, rate limiting, and robust testing.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Technology Stack](#technology-stack)
-4.  [Setup Instructions](#setup-instructions)
+2.  [Project Structure](#project-structure)
+3.  [Getting Started](#getting-started)
     *   [Prerequisites](#prerequisites)
-    *   [Backend Setup](#backend-setup)
-    *   [Database Setup](#database-setup)
-    *   [Running with Docker Compose](#running-with-docker-compose)
-    *   [Frontend Setup (Conceptual)](#frontend-setup-conceptual)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-7.  [CI/CD](#ci-cd)
-8.  [Deployment](#deployment)
-9.  [Contribution](#contribution)
-10. [License](#license)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Database Migrations](#database-migrations)
+    *   [Seed Data](#seed-data)
+    *   [Running the Application](#running-the-application)
+4.  [API Documentation](#api-documentation)
+5.  [Testing](#testing)
+    *   [Running Tests](#running-tests)
+    *   [Performance Testing](#performance-testing)
+6.  [Architecture](#architecture)
+7.  [Deployment](#deployment)
+8.  [Contributing](#contributing)
+9.  [License](#license)
 
----
+## Features
 
-## 1. Features
+*   **User Management:** Register, Login, User Profiles (CRUD for current user), Admin access for managing other users.
+*   **Item Management:** CRUD operations for products/items, with ownership.
+*   **Order Management:** Create orders with multiple items, manage order status, view customer's orders.
+*   **Authentication & Authorization:** JWT-based authentication, Role-Based Access Control (RBAC) for admin and regular users.
+*   **Database Layer:** PostgreSQL with SQLAlchemy 2.0 (async), Alembic for migrations.
+*   **Configuration:** Environment-based settings (`.env`), Pydantic for settings validation.
+*   **Dockerization:** Docker Compose setup for easy local development with multiple services (FastAPI app, PostgreSQL, Redis).
+*   **Logging & Monitoring:** Structured logging middleware, custom request IDs for tracing.
+*   **Error Handling:** Centralized custom exception handling with consistent API responses.
+*   **Caching Layer:** Redis integration for improved performance (e.g., for frequently accessed data).
+*   **Rate Limiting:** Protects API endpoints from abuse using FastAPI-Limiter and Redis.
+*   **Testing:** Comprehensive suite including Unit, Integration, and API tests with `pytest`. Achieves high test coverage.
+*   **Documentation:** Auto-generated OpenAPI/Swagger UI, comprehensive project README, Architecture, and Deployment guides.
+*   **CI/CD:** Example GitHub Actions workflow for automated testing and deployment.
 
-### Core Application
-*   **User Management:** Register, login, manage user profiles.
-*   **Authentication & Authorization:** JWT-based security, role-based access control (User, Admin) and resource ownership checks (`@PreAuthorize`).
-*   **Data Source Management (CRUD):**
-    *   Connect to different data source types (CSV, Database, API - simulated).
-    *   Store connection details and schema definitions.
-    *   Fetch and process raw data from configured sources.
-*   **Dashboard Management (CRUD):**
-    *   Create, view, update, and delete dashboards.
-    *   Dashboards act as containers for charts.
-*   **Chart Management (CRUD):**
-    *   Create various chart types (Bar, Line, Pie, Scatter, Table - simulated).
-    *   Associate charts with data sources and dashboards.
-    *   Define chart-specific configurations (e.g., axis, aggregations) via JSON.
-    *   Retrieve aggregated/filtered data specifically for chart rendering.
+## Project Structure
 
-### Additional Enterprise Features
-*   **Logging & Monitoring:** Structured logging with Logback, Actuator endpoints for health, metrics, and Prometheus integration.
-*   **Error Handling:** Global exception handling for consistent API error responses.
-*   **Caching Layer:** Spring Cache with Caffeine for frequently accessed data (users, dashboards, chart data) to improve performance.
-*   **Rate Limiting:** Custom Servlet Filter using Bucket4j to protect API endpoints from abuse.
-*   **Data Validation:** JSR 380 (Bean Validation) applied to DTOs for robust input validation.
-*   **API Documentation:** Integrated Swagger UI/OpenAPI for easy API exploration.
+The project is structured for scalability and maintainability, adhering to a modular design.
 
----
-
-## 2. Architecture
-
-The system follows a microservice-oriented architecture pattern, though implemented as a monolithic Spring Boot application for this project's scope to demonstrate comprehensive feature integration.
-
-### High-Level Overview
 ```
-+----------------+       +-------------------+       +--------------------+
-|                |       |  Frontend App     |       |   Monitoring       |
-|  User/Admin    | <---> |  (React - UI)     | <---> |   (Prometheus,     |
-|                |       |                   |       |    Grafana)        |
-+----------------+       +-------------------+       +--------------------+
-                                  | HTTP/REST API
-                                  |
-+---------------------------------+--------------------------------+
-|                                 Backend Application              |
-|                     (Spring Boot - Java 17)                      |
-|                                                                  |
-|  +-----------------+  +-----------------+  +-----------------+  |
-|  |   Controllers   |<->|    Services     |<->|   Repositories  |  |
-|  |  (API Endpoints)|  | (Business Logic)|  | (Data Access)   |  |
-|  +-----------------+  +-----------------+  +-----------------+  |
-|         ^       ^             ^                  |               |
-|         |       |             |                  |               |
-|  +------+-------+-----------+ |                  |               |
-|  |  Security (JWT, AuthZ)  | |                  |               |
-|  |  Caching (Caffeine)     | |                  |               |
-|  |  Rate Limiting          | |                  |               |
-|  |  Error Handling         | |                  |               |
-|  |  Logging/Metrics        | |                  |               |
-|  +-------------------------+ |                  |               |
-|                               +------------------+               |
-|                                       JDBC / JPA                   |
-+------------------------------------------------------------------+
-                                        |
-                                        |
-                             +----------V----------+
-                             |    Database Layer   |
-                             |    (PostgreSQL)     |
-                             |                     |
-                             |   Flyway Migrations |
-                             +---------------------+
+.
+├── app/                      # Main application source code
+│   ├── api/                  # API routes/endpoints definitions
+│   │   └── v1/               # Version 1 of the API
+│   │       └── endpoints/    # Specific API endpoints (users, items, orders)
+│   ├── core/                 # Core application components (config, security, exceptions, middleware, cache)
+│   ├── db/                   # Database-related files (session, models, migrations)
+│   │   ├── models/           # SQLAlchemy ORM models (User, Item, Order, OrderItem)
+│   │   └── migrations/       # Alembic migration scripts
+│   ├── schemas/              # Pydantic models for request/response validation
+│   ├── services/             # Business logic and data processing
+│   └── main.py               # FastAPI application entry point
+├── tests/                    # Unit, Integration, and API tests
+│   ├── unit/
+│   ├── integration/
+│   ├── api/
+│   └── conftest.py           # Pytest fixtures
+├── scripts/                  # Utility scripts (seed data, performance tests)
+├── .env.example              # Example environment variables
+├── Dockerfile                # Docker build instructions
+├── docker-compose.yml        # Docker Compose setup for local development
+├── requirements.txt          # Python dependency list
+├── alembic.ini               # Alembic configuration for database migrations
+├── .gitignore
+├── README.md                 # This file
+├── ARCHITECTURE.md           # Detailed architecture overview
+├── DEPLOYMENT.md             # Guide for deploying the application
+└── .github/                  # GitHub Actions CI/CD workflows
+    └── workflows/
+        └── ci_cd.yml
 ```
 
-### Backend Modules
-*   **`model`**: JPA Entities for `User`, `DataSource`, `Dashboard`, `Chart`.
-*   **`dto`**: Data Transfer Objects for API requests and responses.
-*   **`repository`**: Spring Data JPA interfaces for database access.
-*   **`service`**: Contains the core business logic, data processing, and orchestrates repository calls. Includes `JwtService`, `UserService`, `DataSourceService`, `DashboardService`, `ChartService`.
-*   **`controller`**: REST API endpoints, handling HTTP requests and responses.
-*   **`config`**: Spring configuration classes (Security, Caching, OpenAPI, App-wide beans).
-*   **`security`**: Custom UserDetails service and security predicates for `@PreAuthorize`.
-*   **`exception`**: Custom exception classes and global exception handler.
-*   **`util`**: Utility classes like `DataProcessor` (for simulating data retrieval) and `RateLimitingFilter`.
+## Getting Started
 
----
-
-## 3. Technology Stack
-
-### Backend
-*   **Language:** Java 17
-*   **Framework:** Spring Boot 3.x
-*   **Build Tool:** Maven
-*   **Web:** Spring Web
-*   **Database ORM:** Spring Data JPA, Hibernate
-*   **Database:** PostgreSQL
-*   **Database Migration:** Flyway
-*   **Security:** Spring Security, JSON Web Tokens (JWT - jjwt library)
-*   **Caching:** Spring Cache, Caffeine
-*   **Validation:** Spring Validation (Jakarta Bean Validation)
-*   **API Documentation:** Springdoc OpenAPI (Swagger UI)
-*   **Mapping:** ModelMapper
-*   **Rate Limiting:** Bucket4j
-*   **Logging:** SLF4J with Logback
-*   **Monitoring:** Spring Boot Actuator, Micrometer (for Prometheus)
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo (for code coverage)
-
-### Frontend (Conceptual - not fully implemented in this response)
-*   **Framework:** React.js
-*   **Language:** JavaScript/TypeScript
-*   **Visualization Libraries:** Recharts / Nivo / D3.js (examples of options)
-*   **State Management:** React Context API / Redux Toolkit
-*   **Styling:** Tailwind CSS / Styled Components
-*   **HTTP Client:** Axios
-
-### Infrastructure
-*   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** Jenkins (configuration provided)
-*   **Version Control:** Git
-
----
-
-## 4. Setup Instructions
+Follow these steps to set up and run the project locally.
 
 ### Prerequisites
 
-*   **Java 17 JDK:** Ensure you have Java 17 installed and configured.
-*   **Maven 3.8+:** For building the Java application.
-*   **Docker & Docker Compose:** For running the application and database in containers.
-*   **Git:** For cloning the repository.
-*   (Optional) **PostgreSQL Client:** (e.g., `psql`, pgAdmin) for direct database interaction.
+*   Docker and Docker Compose
+*   Python 3.11+
+*   `pip` (Python package installer)
 
-### Backend Setup (Manual)
+### Local Development Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-repo/alx-dataviz-tool.git
-    cd alx-dataviz-tool
+    git clone https://github.com/your-username/mobile-app-backend.git
+    cd mobile-app-backend
     ```
 
-2.  **Database:**
-    *   Install PostgreSQL locally or use a cloud service.
-    *   Create a database named `datavizdb`.
-    *   Create a user `datavizuser` with password `datavizpass` and grant it privileges to `datavizdb`.
-        ```sql
-        CREATE USER datavizuser WITH PASSWORD 'datavizpass';
-        CREATE DATABASE datavizdb OWNER datavizuser;
-        GRANT ALL PRIVILEGES ON DATABASE datavizdb TO datavizuser;
-        ```
-    *   Ensure your `src/main/resources/application.yml` matches these credentials or update it.
-
-3.  **Run Flyway Migrations:**
-    Navigate to the project root and run:
+2.  **Create `.env` file:**
+    Copy the `.env.example` file and rename it to `.env`. Adjust the values as needed.
     ```bash
-    ./mvnw flyway:migrate
+    cp .env.example .env
     ```
-    This will create the necessary tables and insert seed data.
+    Ensure `DEBUG=True` for development.
 
-4.  **Build the application:**
-    ```bash
-    ./mvnw clean install -DskipTests
-    ```
-
-5.  **Run the application:**
-    ```bash
-    java -jar target/data-viz-tool-0.0.1-SNAPSHOT.jar
-    ```
-    The application will start on `http://localhost:8080`.
-
-### Running with Docker Compose (Recommended)
-
-This is the easiest way to get both the backend and database running.
-
-1.  **Ensure Docker and Docker Compose are installed and running.**
-2.  **Navigate to the project root directory.**
-3.  **Build and start the services:**
+3.  **Build and run Docker containers:**
+    This will build the `app` image, set up PostgreSQL (`db`) and Redis (`redis`) containers, and start all services.
     ```bash
     docker-compose up --build -d
     ```
-    *   `--build`: Builds the Docker image for the backend.
-    *   `-d`: Runs the containers in detached mode.
+    The `-d` flag runs containers in detached mode. To see logs, use `docker-compose logs -f`.
 
-4.  **Verify services are running:**
+    *Expected services:*
+    *   FastAPI App: `http://localhost:8000`
+    *   PostgreSQL: `localhost:5432`
+    *   Redis: `localhost:6379`
+
+4.  **Install Python dependencies (for running scripts/tests directly on host, or for IDE integration):**
     ```bash
-    docker-compose ps
-    ```
-    You should see `dataviz_db` and `dataviz_app` running.
-
-5.  **Access the application:**
-    The backend will be available at `http://localhost:8080`.
-    The Swagger UI will be at `http://localhost:8080/swagger-ui.html`.
-
-6.  **Stop services:**
-    ```bash
-    docker-compose down
+    pip install -r requirements.txt
     ```
 
-### Frontend Setup (Conceptual)
+### Database Migrations
 
-The frontend is described conceptually in this blueprint; full React implementation is beyond the scope of a single large text response.
+The `docker-compose.yml` file is configured to run `alembic upgrade head` automatically when the `app` container starts. However, if you need to generate new migrations or run them manually:
 
-1.  **Navigate to the `frontend` directory:**
+1.  **Access the `app` container shell:**
     ```bash
-    cd frontend
+    docker-compose exec app bash
     ```
-2.  **Install dependencies:**
+
+2.  **Generate a new migration (if you've changed models):**
     ```bash
-    npm install  # or yarn install
+    alembic revision --autogenerate -m "Add new feature table"
     ```
-3.  **Start the React development server:**
+    Review the generated script in `alembic/versions/` and adjust if necessary.
+
+3.  **Apply migrations (if not auto-run by `docker-compose` or for manual apply):**
     ```bash
-    npm start  # or yarn start
+    alembic upgrade head
     ```
-    The frontend would typically run on `http://localhost:3000` and communicate with the backend on `http://localhost:8080`.
 
----
+### Seed Data
 
-## 5. API Documentation
+You can populate your database with initial data using the seed script.
 
-The API is documented using Springdoc OpenAPI, accessible via Swagger UI.
+1.  **Access the `app` container shell:**
+    ```bash
+    docker-compose exec app bash
+    ```
 
-*   **Swagger UI URL:** `http://localhost:8080/swagger-ui.html`
-*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
+2.  **Run the seed script:**
+    ```bash
+    python scripts/seed.py
+    ```
+    This will create an admin user, a regular user, some items, and sample orders.
 
-A detailed API specification can be found in `API_DOCS.md`.
+### Running the Application
 
----
+The application should be running at `http://localhost:8000` after `docker-compose up -d`.
 
-## 6. Testing
+*   **API Documentation (Swagger UI):** `http://localhost:8000/docs`
+*   **Alternative API Documentation (Redoc):** `http://localhost:8000/redoc`
 
-The project emphasizes quality through various testing types:
+## API Documentation
 
-*   **Unit Tests:** (e.g., `UserServiceTest.java`)
-    *   Focus: Individual components (services, utilities) in isolation.
-    *   Tools: JUnit 5, Mockito.
-    *   Goal: Test business logic, achieve high code coverage (target 80%+).
-    *   Run: `./mvnw test`
-    *   Coverage Report: `target/site/jacoco/index.html` after `./mvnw jacoco:report`
+The FastAPI application automatically generates OpenAPI (Swagger UI) and Redoc documentation based on your endpoint definitions and Pydantic schemas.
 
-*   **Integration Tests:** (e.g., `UserRepositoryTest.java`)
-    *   Focus: Interaction between components (e.g., service with repository, repository with actual DB).
-    *   Tools: Spring Boot Test, JUnit 5, Testcontainers (for spinning up a real PostgreSQL DB for tests).
-    *   Run: Included in `./mvnw test`
+*   **Swagger UI:** Access at `/docs` (e.g., `http://localhost:8000/docs`)
+*   **Redoc:** Access at `/redoc` (e.g., `http://localhost:8000/redoc`)
 
-*   **API Tests (Controller Integration Tests):** (e.g., `AuthControllerTest.java`, `DashboardControllerTest.java`)
-    *   Focus: Testing REST API endpoints, including security, validation, and serialization.
-    *   Tools: Spring Boot Test, MockMvc.
-    *   Run: Included in `./mvnw test`
+These interfaces allow you to explore all available endpoints, their expected request bodies, response formats, and even test them directly from your browser.
 
-*   **Performance Tests:** (Conceptual - `JmeterTestPlan.jmx` outlined)
-    *   Focus: System behavior under load (response times, throughput, error rates).
-    *   Tools: Apache JMeter or Gatling.
-    *   Methodology: Simulate concurrent users interacting with the API.
+## Testing
 
----
+The project includes a comprehensive test suite covering unit, integration, and API tests.
 
-## 7. CI/CD
+### Running Tests
 
-A `Jenkinsfile` is provided as a blueprint for a continuous integration and continuous deployment pipeline.
+1.  **Ensure Docker containers are running:** `docker-compose up -d`
+2.  **Access the `app` container shell:** `docker-compose exec app bash`
+3.  **Run pytest:**
+    ```bash
+    pytest --cov=app --cov-report=term-missing --cov-report=xml tests/
+    ```
+    *   `--cov=app`: Measures code coverage for the `app` directory.
+    *   `--cov-report=term-missing`: Shows missing lines directly in the terminal report.
+    *   `--cov-report=xml`: Generates an XML report (`coverage.xml`) which can be used by CI tools.
 
-**Pipeline Stages:**
+### Performance Testing
 
-1.  **Checkout Source:** Fetches code from the repository.
-2.  **Build Backend:** Compiles the Java application.
-3.  **Unit and Integration Tests:** Runs all tests, generates JaCoCo code coverage reports, and checks against predefined thresholds.
-4.  **Static Code Analysis:** (Placeholder for SonarQube/SpotBugs integration).
-5.  **Build Docker Image:** Creates a Docker image of the backend application and pushes it to a registry.
-6.  **Deploy to Dev:** Deploys the application to a development environment (e.g., via Docker Compose or Kubernetes).
-7.  **API Tests (Post-Deployment):** Runs end-to-end API tests against the deployed development environment.
-8.  **Performance Tests (Post-Deployment):** Executes load tests.
-9.  **Approve for Production:** Manual approval step.
-10. **Deploy to Production:** Deploys to the production environment.
+The `scripts/perf_test.py` file contains a basic performance test using [Locust](https://locust.io/).
 
----
+1.  **Ensure Docker containers are running.**
+2.  **Access the `app` container shell:** `docker-compose exec app bash`
+3.  **Run Locust (inside the container):**
+    ```bash
+    locust -f scripts/perf_test.py --host http://app:8000 # Use service name 'app' for internal network
+    ```
+    Alternatively, if running Locust from your host (after `pip install locust`):
+    ```bash
+    locust -f scripts/perf_test.py --host http://localhost:8000
+    ```
+4.  Open your browser to `http://localhost:8089` (Locust web UI).
+5.  Enter the number of users and spawn rate, then start the swarm.
 
-## 8. Deployment
+## Architecture
 
-The application is containerized with Docker, facilitating easy deployment to various environments:
+For a detailed understanding of the system's architecture, including its components, data flow, and design patterns, please refer to the [ARCHITECTURE.md](ARCHITECTURE.md) file.
 
-*   **Local Development:** Use `docker-compose up --build -d` for a quick local setup.
-*   **Cloud Platforms:** The Docker image can be deployed to container orchestration services like Kubernetes (GKE, EKS, AKS), AWS ECS, Azure Container Instances, or Google Cloud Run.
-*   **On-Premise:** Deploy the Docker container on any machine with Docker installed.
+## Deployment
 
-The `Jenkinsfile` provides a template for automating these deployment steps.
+For instructions on how to deploy this application to a production environment, including considerations for cloud providers and advanced configurations, please refer to the [DEPLOYMENT.md](DEPLOYMENT.md) file.
 
----
-
-## 9. Contribution
+## Contributing
 
 Contributions are welcome! Please follow these steps:
 
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes and ensure tests pass.
-4.  Commit your changes (`git commit -am 'Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature`).
-6.  Create a new Pull Request.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes and write tests.
+4.  Ensure all tests pass and code coverage remains high.
+5.  Commit your changes (`git commit -am 'feat: Add new feature'`).
+6.  Push to the branch (`git push origin feature/your-feature-name`).
+7.  Create a new Pull Request.
 
----
+## License
 
-## 10. License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the `LICENSE` file for details.
 ```
