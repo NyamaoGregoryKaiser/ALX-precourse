@@ -1,148 +1,233 @@
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(MobileBackend CXX)
+project(ALXProjectManagementAPI LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Required for shared libraries and often for executables
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# --- Dependencies ---
+# --- External Dependencies ---
 
-# Find SQLite3 (system-wide or bundled)
+# Crow
+# You might need to clone Crow into your project or install it globally.
+# For simplicity, we assume Crow is available via FetchContent or installed.
+# Using FetchContent for nlohmann/json and jwt-cpp for easier setup.
+
+# nlohmann/json
+include(FetchContent)
+FetchContent_Declare(
+  json_external
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.2
+)
+FetchContent_MakeAvailable(json_external)
+
+# jwt-cpp
+FetchContent_Declare(
+  jwt_cpp_external
+  GIT_REPOSITORY https://github.com/Thalhammer/jwt-cpp.git
+  GIT_TAG v0.6.0
+)
+FetchContent_MakeAvailable(jwt_cpp_external)
+
+# SQLite3 (system library, ensure it's installed or link statically)
 find_package(SQLite3 REQUIRED)
 
-# Crow (header-only, included as submodule or manually copied)
-# For simplicity in this example, we assume Crow is available directly or through a path.
-# In a real project, you might add it as a Git submodule and use add_subdirectory.
-# For this example, let's simulate by assuming include path is set or Crow is globally available.
-# If Crow is in a specific directory, e.g., 'deps/crow', you would do:
-# add_subdirectory(deps/crow)
-# Or, if you download it:
-# set(CROW_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/Crow")
-# include_directories(${CROW_INCLUDE_DIR})
-# For this example, we assume it's findable via -I or installed.
-# We'll explicitly add an include path assuming it's alongside.
-# Or, often, you just include it via `target_include_directories` and ensure the path is correct.
-
-# Add an include directory for Crow if it's not system-wide.
-# For demonstration, let's assume it's in a 'libs' folder or similar
-# Set to an empty string if Crow is globally installed/accessible via system path
-# Or specify like set(CROW_PATH "${CMAKE_SOURCE_DIR}/path/to/crow/headers")
-# For simplicity, we'll often just rely on default include paths or add a generic one
-# such as "${CMAKE_SOURCE_DIR}/libs" if Crow is manually placed there.
-# Let's assume it's in `libs/crow_all.h`
-set(CROW_HEADERS_PATH "${CMAKE_SOURCE_DIR}/libs")
-
-# spdlog
-find_package(spdlog CONFIG REQUIRED)
-
-# nlohmann/json (often included via Crow, but good to be explicit if used standalone)
-# For Crow, it's typically bundled. If using outside Crow, you'd find/include it.
-# We'll assume Crow's internal version is sufficient or it's header-only and found.
-
-# jwt-cpp (header-only)
-# Assuming jwt-cpp is in a 'libs' folder
-set(JWT_CPP_PATH "${CMAKE_SOURCE_DIR}/libs/jwt-cpp")
-if(EXISTS "${JWT_CPP_PATH}")
-    include_directories(${JWT_CPP_PATH})
-else()
-    message(WARNING "jwt-cpp not found at ${JWT_CPP_PATH}. Please ensure it's available or adjust path.")
-endif()
-
-
-# Google Test
-enable_testing()
-find_package(GTest REQUIRED)
-include_directories(${GTest_INCLUDE_DIRS})
+# Google Test (for testing)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG release-1.12.1
+)
+FetchContent_MakeAvailable(googletest)
 
 # --- Source Files ---
-set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
-
-set(APP_SOURCES
-    ${SOURCE_DIR}/main.cpp
-    ${SOURCE_DIR}/utils/database.cpp
-    ${SOURCE_DIR}/utils/jwt_manager.cpp
-    ${SOURCE_DIR}/utils/logger.cpp
-    ${SOURCE_DIR}/services/auth_service.cpp
-    ${SOURCE_DIR}/services/user_service.cpp
-    ${SOURCE_DIR}/services/task_service.cpp
+# Configuration
+set(CONFIG_SRCS
+    src/config/AppConfig.cpp
+)
+set(CONFIG_HDRS
+    src/config/AppConfig.hpp
 )
 
-set(APP_HEADERS
-    ${SOURCE_DIR}/controllers/auth_controller.h
-    ${SOURCE_DIR}/controllers/task_controller.h
-    ${SOURCE_DIR}/controllers/user_controller.h
-    ${SOURCE_DIR}/models/task.h
-    ${SOURCE_DIR}/models/user.h
-    ${SOURCE_DIR}/services/auth_service.h
-    ${SOURCE_DIR}/services/task_service.h
-    ${SOURCE_DIR}/services/user_service.h
-    ${SOURCE_DIR}/utils/auth_middleware.h
-    ${SOURCE_DIR}/utils/cache.h
-    ${SOURCE_DIR}/utils/database.h
-    ${SOURCE_DIR}/utils/error_middleware.h
-    ${SOURCE_DIR}/utils/jwt_manager.h
-    ${SOURCE_DIR}/utils/logger.h
-    ${SOURCE_DIR}/utils/rate_limiter.h
+# Models
+set(MODELS_SRCS)
+set(MODELS_HDRS
+    src/models/User.hpp
+    src/models/Project.hpp
+    src/models/Task.hpp
+    src/models/DTOs.hpp
 )
 
-# --- Executable ---
-add_executable(mobile_backend ${APP_SOURCES} ${APP_HEADERS})
-
-target_link_libraries(mobile_backend
-    PRIVATE
-        SQLite3::SQLite3
-        spdlog::spdlog
-        # No explicit link for Crow or jwt-cpp as they are header-only,
-        # but ensure their include paths are set.
+# Database
+set(DATABASE_SRCS
+    src/database/SQLiteDatabaseManager.cpp
+)
+set(DATABASE_HDRS
+    src/database/DatabaseManager.hpp
+    src/database/SQLiteDatabaseManager.hpp
 )
 
-target_include_directories(mobile_backend
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/src # For accessing headers within src/
-        ${CROW_HEADERS_PATH}    # For Crow headers (e.g., if you place crow_all.h there)
-        ${JWT_CPP_PATH}         # For jwt-cpp headers
+# Services
+set(SERVICES_SRCS
+    src/services/AuthService.cpp
+    src/services/UserService.cpp
+    src/services/ProjectService.cpp
+    src/services/TaskService.cpp
+)
+set(SERVICES_HDRS
+    src/services/AuthService.hpp
+    src/services/UserService.hpp
+    src/services/ProjectService.hpp
+    src/services/TaskService.hpp
 )
 
-# --- Tests ---
-set(TEST_SOURCES
-    ${CMAKE_SOURCE_DIR}/tests/test_auth_service.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_cache.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_database.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_jwt_manager.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_rate_limiter.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_task_service.cpp
-    ${CMAKE_SOURCE_DIR}/tests/test_user_service.cpp
+# Utilities
+set(UTILS_SRCS
+    src/utils/Logger.cpp
+    src/utils/JWTManager.cpp
+    src/utils/CachingManager.cpp
+    src/utils/RateLimiter.cpp
+    src/utils/ErrorHandler.cpp
+    src/utils/JSONConverter.cpp
+)
+set(UTILS_HDRS
+    src/utils/Logger.hpp
+    src/utils/JWTManager.hpp
+    src/utils/CachingManager.hpp
+    src/utils/RateLimiter.hpp
+    src/utils/ErrorHandler.hpp
+    src/utils/JSONConverter.hpp
 )
 
-add_executable(mobile_backend_tests ${TEST_SOURCES} ${APP_HEADERS} ${APP_SOURCES}) # Include app sources for integration-like tests
-
-target_link_libraries(mobile_backend_tests
-    PRIVATE
-        gtest_main
-        gtest
-        SQLite3::SQLite3
-        spdlog::spdlog
-        # Same as above for Crow and jwt-cpp, relying on includes
+# Middleware
+set(MIDDLEWARE_SRCS
+    src/middleware/AuthMiddleware.cpp
+    src/middleware/RateLimitMiddleware.cpp
+)
+set(MIDDLEWARE_HDRS
+    src/middleware/AuthMiddleware.hpp
+    src/middleware/RateLimitMiddleware.hpp
 )
 
-target_include_directories(mobile_backend_tests
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/src # For accessing headers within src/
-        ${CROW_HEADERS_PATH}    # For Crow headers
-        ${JWT_CPP_PATH}         # For jwt-cpp headers
+# Controllers
+set(CONTROLLERS_SRCS
+    src/controllers/AuthController.cpp
+    src/controllers/UserController.cpp
+    src/controllers/ProjectController.cpp
+    src/controllers/TaskController.cpp
+    src/controllers/APIController.cpp
+)
+set(CONTROLLERS_HDRS
+    src/controllers/AuthController.hpp
+    src/controllers/UserController.hpp
+    src/controllers/ProjectController.hpp
+    src/controllers/TaskController.hpp
+    src/controllers/APIController.hpp
 )
 
-add_test(NAME run_tests COMMAND mobile_backend_tests)
+# Exceptions
+set(EXCEPTIONS_SRCS)
+set(EXCEPTIONS_HDRS
+    src/exceptions/CustomExceptions.hpp
+)
 
-# --- Install (Optional) ---
-install(TARGETS mobile_backend DESTINATION bin)
-install(FILES ${APP_HEADERS} DESTINATION include/mobile_backend)
+# Main application
+set(APP_SRCS
+    src/main.cpp
+    ${CONFIG_SRCS}
+    ${MODELS_SRCS}
+    ${DATABASE_SRCS}
+    ${SERVICES_SRCS}
+    ${UTILS_SRCS}
+    ${MIDDLEWARE_SRCS}
+    ${CONTROLLERS_SRCS}
+    ${EXCEPTIONS_SRCS}
+)
+set(APP_HDRS
+    ${CONFIG_HDRS}
+    ${MODELS_HDRS}
+    ${DATABASE_HDRS}
+    ${SERVICES_HDRS}
+    ${UTILS_HDRS}
+    ${MIDDLEWARE_HDRS}
+    ${CONTROLLERS_HDRS}
+    ${EXCEPTIONS_HDRS}
+)
 
-# --- How to get dependencies (Manual Steps for this example) ---
-# For Crow: Download crow_all.h and place it in `libs/crow_all.h`
-# For jwt-cpp: git clone https://github.com/Thalhammer/jwt-cpp.git libs/jwt-cpp
-# For spdlog: `sudo apt install libspdlog-dev` on Debian/Ubuntu, or vcpkg/conan
-# For sqlite3: `sudo apt install libsqlite3-dev` on Debian/Ubuntu
-# For GTest: `sudo apt install libgtest-dev` then `cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/` (or use vcpkg/conan)
+# --- Include Directories ---
+include_directories(
+    src/
+    src/config/
+    src/models/
+    src/database/
+    src/services/
+    src/utils/
+    src/middleware/
+    src/controllers/
+    src/exceptions/
+)
+
+# --- Add Executable ---
+add_executable(${PROJECT_NAME} ${APP_SRCS} ${APP_HDRS})
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    Crow
+    json_external
+    jwt_cpp_external
+    SQLite3::SQLite3
+)
+
+# --- Build for testing ---
+enable_testing()
+
+set(TEST_SRCS
+    tests/unit/TestAuthService.cpp
+    tests/unit/TestJWTManager.cpp
+    tests/unit/TestSQLiteDatabaseManager.cpp
+    tests/unit/TestCachingManager.cpp
+    tests/integration/TestUserProjectIntegration.cpp
+)
+
+add_executable(run_tests ${TEST_SRCS} ${APP_SRCS} ${APP_HDRS}) # Compile test runner with app code
+
+target_link_libraries(run_tests PRIVATE
+    gtest_main
+    gtest
+    Crow
+    json_external
+    jwt_cpp_external
+    SQLite3::SQLite3
+)
+
+# Configure the test executable to be run by CTest
+# This allows running specific tests, but for a general "make test"
+# it's usually sufficient to just have the executable.
+# Add tests will register individual test cases if structured that way.
+# For simplicity, we'll just have one test executable 'run_tests'.
+# For more granular tests, each test file would be its own add_test block.
+
+# --- Database Init/Migration Tool ---
+add_executable(init_db scripts/init_db.cpp ${DATABASE_SRCS} ${DATABASE_HDRS} ${UTILS_SRCS} ${UTILS_HDRS})
+target_link_libraries(init_db PRIVATE
+    SQLite3::SQLite3
+    json_external
+)
+
+# --- Crow specific build options ---
+# Crow uses some C++20 features, for C++17 compatibility,
+# ensure you're using a recent GCC/Clang and it might require some flags.
+# For example, Crow might require -DCROW_HAVE_CPP17_OPTIONAL,
+# or for older compilers, some features need to be disabled.
+# This CMakeLists assumes a modern compiler where Crow can build with C++17 default.
+
+# Example: if Crow uses Boost and you want to use it
+# find_package(Boost 1.70 COMPONENTS system thread filesystem REQUIRED)
+# target_link_libraries(${PROJECT_NAME} PRIVATE Boost::system Boost::thread Boost::filesystem)
+
+# For Docker, ensure Crow is cloned into /usr/local/include/crow or similar.
+# In this setup, we assume Crow is installed or path is set for the build environment.
+# For a robust Docker setup, we'd add Crow as a git submodule or install it via package manager.
+# For the Dockerfile, I will assume Crow is installed via `vcpkg` or built manually from source.
 ```

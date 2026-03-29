@@ -1,4 +1,5 @@
-name: CI/CD Pipeline
+```yaml
+name: CI/CD Pipeline for ALX Project Management API
 
 on:
   push:
@@ -11,216 +12,118 @@ on:
       - develop
 
 jobs:
-  build-and-test-backend:
-    name: Build & Test Backend
+  build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-    env:
-      DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/ecommerce_test_db?schema=public
-      JWT_SECRET: testsecret
-      ADMIN_EMAIL: testadmin@example.com
-      ADMIN_PASSWORD: testpassword
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: ecommerce_test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsqlite3-dev cmake git build-essential
 
-      - name: Install dependencies
-        run: npm install
+    - name: Clone Crow framework (if not using vcpkg/submodule)
+      run: git clone https://github.com/ipkn/crow.git /usr/local/include/crow
 
-      - name: Wait for PostgreSQL
-        run: |
-          for i in $(seq 1 10); do
-            nc -z localhost 5432 && break
-            echo "Waiting for PostgreSQL to be ready..."
-            sleep 5
-          done
+    - name: Configure CMake
+      run: cmake -B build -DCROW_INCLUDE_DIR=/usr/local/include/crow -DJSON_EXTERNAL_BUILD=ON -DJWT_CPP_EXTERNAL_BUILD=ON -DBUILD_TESTING=ON
 
-      - name: Run Prisma migrations
-        run: npx prisma migrate deploy --preview-feature
+    - name: Build application
+      run: cmake --build build
 
-      - name: Build TypeScript
-        run: npm run build
+    - name: Run Unit and Integration Tests
+      working-directory: ./build
+      run: |
+        # Set up a temporary test database
+        mkdir -p test_db
+        cp ../.env.example ./.env
+        sed -i 's|DATABASE_PATH=db/alx_project_management.db|DATABASE_PATH=test_db/test.db|g' ./.env
+        
+        # Run DB initialization for tests
+        ./init_db
 
-      - name: Run backend tests
-        run: npm test
+        # Run tests (assuming `run_tests` is the executable created by CMake)
+        ./run_tests --gtest_output="xml:test_results.xml"
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage
-          path: ./backend/coverage/lcov.info
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results
+        path: build/test_results.xml
 
-  build-frontend:
-    name: Build Frontend
+  build-docker-image:
+    needs: build-and-test # Only build image if tests pass
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Install dependencies
-        run: npm install
+    - name: Build Docker image
+      id: docker_build
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        push: false # Don't push yet, just build
+        tags: alx-project-management-api:latest
+        platforms: linux/amd64
 
-      - name: Build frontend
-        run: npm run build
-        env:
-          NEXT_PUBLIC_API_BASE_URL: http://localhost:5000/api/v1 # Placeholder for build, actual runtime env will differ
-
-      # - name: Run frontend tests (e.g., Playwright or Jest for React components)
-      #   run: npm test # Assuming you have frontend tests
-      # - name: Upload frontend build artifacts
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: frontend-build
-      #     path: ./frontend/.next
+    - name: Verify image build
+      run: docker images alx-project-management-api:latest
 
   deploy:
-    name: Deploy to Production
-    needs: [build-and-test-backend, build-frontend] # Ensure tests pass before deployment
-    if: github.ref == 'refs/heads/main' # Only deploy 'main' branch to production
-    runs-on: ubuntu-latest # Or a self-hosted runner for private networks
-    environment: production # GitHub Environments for secure secrets management
+    needs: build-docker-image # Only deploy if image builds successfully
+    if: github.ref == 'refs/heads/main' # Deploy only from main branch
+    runs-on: ubuntu-latest # Or your specific deployment runner/server
+
+    environment:
+      name: Production
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Log in to Docker Hub for push
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Configure Docker and login to registry
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Build and Push Docker image
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        push: true # Push the image to Docker Hub
+        tags: ${{ secrets.DOCKER_USERNAME }}/alx-project-management-api:latest
+        platforms: linux/amd64
 
-      # Build & push backend image
-      - name: Build and push backend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/ecommerce-backend:${{ github.sha }} -f ./backend/Dockerfile ./backend
-          docker push ${{ secrets.DOCKER_USERNAME }}/ecommerce-backend:${{ github.sha }}
-
-      # Build & push frontend image
-      - name: Build and push frontend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:${{ github.sha }} -f ./frontend/Dockerfile ./frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:${{ github.sha }}
-
-      # Deploy to server (e.g., using SSH and updating docker-compose)
-      - name: Deploy to Production Server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /path/to/your/app # Replace with actual path on server
-            # Pull latest images
-            docker pull ${{ secrets.DOCKER_USERNAME }}/ecommerce-backend:${{ github.sha }}
-            docker pull ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:${{ github.sha }}
-
-            # Update docker-compose.yml to use the new image tag (if not using latest tag)
-            # Alternatively, if using 'latest', just `docker-compose pull`
-            # For this example, we'll assume `docker-compose.yml` uses `latest`
-            # Then rebuild services to use new images
-            docker-compose down # Stop existing services
-            docker-compose pull # Pull the latest images referenced in docker-compose.yml (if using :latest)
-            # OR, if using specific SHA tags in compose file, update the compose file dynamically
-            # Example: sed -i "s/backend:.*$/backend:${{ github.sha }}/g" docker-compose.yml
-            # For simplicity, if using 'latest', ensure `docker-compose.yml` references that.
-            docker-compose up -d --build # Rebuild & start services with new images
-            docker-compose exec backend npx prisma migrate deploy # Ensure migrations are up to date
-            docker system prune -f # Clean up old images
-
-      - name: Send Slack Notification (Optional)
-        if: always()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_COLOR: ${{ job.status }}
-          SLACK_MESSAGE: "Deployment to production ${{ job.status }} for ${{ github.event.pull_request.title || github.ref_name }}"
-```
-
-## 8. Advanced Deployment Considerations
-
-### Load Balancing & Reverse Proxy (Nginx)
-
-*   **Nginx/Caddy:** Deploy Nginx (or Caddy) as a reverse proxy in front of your frontend and backend services. It handles traffic routing, SSL termination, caching for static assets, and basic security.
-*   **Cloud Load Balancers:** For high availability and automatic scaling, use cloud-managed load balancers (e.g., AWS ALB, GCP Load Balancing).
-
-### Managed Database Services
-
-*   **Benefits:** High availability, automated backups, patching, scaling, security groups/VPCs.
-*   **Providers:** AWS RDS (PostgreSQL), GCP Cloud SQL (PostgreSQL), Azure Database for PostgreSQL, DigitalOcean Managed Databases.
-
-### Managed Redis Services
-
-*   **Benefits:** Same as managed databases - high availability, scaling, operational ease.
-*   **Providers:** AWS ElastiCache (Redis), GCP Memorystore (Redis), Azure Cache for Redis, DigitalOcean Managed Redis.
-
-### Container Orchestration (Kubernetes/Docker Swarm)
-
-For highly available, scalable, and resilient production environments:
-*   **Kubernetes (K8s):** The industry standard for container orchestration. Provides features like self-healing, horizontal scaling, service discovery, rolling updates, and secret management.
-    *   Cloud Providers: EKS (AWS), GKE (GCP), AKS (Azure).
-*   **Docker Swarm:** Simpler to set up than Kubernetes, suitable for smaller to medium-sized deployments.
-
-### Monitoring & Logging
-
-*   **Centralized Logging:** Aggregate logs from all services into a central system (e.g., ELK Stack - Elasticsearch, Logstash, Kibana; Grafana Loki; Datadog; Splunk). Winston's transports can be configured to send logs to these systems.
-*   **Application Performance Monitoring (APM):** Tools like New Relic, Datadog, or Sentry to monitor application health, performance, and errors.
-*   **Infrastructure Monitoring:** Monitor server resources (CPU, Memory, Disk I/O, Network) using cloud-native tools or Prometheus/Grafana.
-
-### Security Best Practices
-
-*   **Network Segmentation:** Use VPCs, subnets, and security groups/firewalls to isolate your services.
-*   **Least Privilege:** Grant only necessary permissions to users and services.
-*   **Secrets Management:** Use cloud secrets managers (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager) instead of environment variables directly on the server.
-*   **Regular Updates:** Keep Node.js, npm packages, Docker images, and server OS updated.
-*   **Vulnerability Scanning:** Use tools to scan Docker images and code for known vulnerabilities.
-*   **Web Application Firewall (WAF):** Protect against common web exploits (e.g., SQL injection, XSS).
-
-## 9. Post-Deployment Checks
-
-After deployment, perform these checks:
-1.  **Access Frontend:** Verify the frontend application loads correctly.
-2.  **Test Core Functionality:** Register, login, browse products, add to cart, attempt checkout.
-3.  **API Health Check:** Access `https://api.yourdomain.com/api/v1/health` to ensure the backend is responsive.
-4.  **API Docs:** Verify Swagger UI loads at `https://api.yourdomain.com/api/v1/docs`.
-5.  **Logs:** Check application logs for errors or warnings.
-6.  **Monitoring:** Ensure monitoring dashboards are receiving data.
-7.  **Performance:** Run quick checks to ensure acceptable response times.
-8.  **Security:** Verify HTTPS is active and no mixed content warnings.
-
-By following this guide, you can confidently deploy your E-commerce Solutions System to a production environment.
+    - name: Deploy to Server (Example: SSH to update service)
+      # This is a placeholder. A real deployment would use Ansible, Kubernetes, AWS ECS, etc.
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          echo "Deploying ALX Project Management API..."
+          docker pull ${{ secrets.DOCKER_USERNAME }}/alx-project-management-api:latest
+          docker stop alx-project-api || true
+          docker rm alx-project-api || true
+          docker run -d \
+            --name alx-project-api \
+            -p 18080:18080 \
+            -e JWT_SECRET=${{ secrets.PROD_JWT_SECRET }} \
+            -e LOG_LEVEL=1 \
+            -v /path/to/data/db:/app/db \
+            -v /path/to/data/logs:/app/logs \
+            ${{ secrets.DOCKER_USERNAME }}/alx-project-management-api:latest
+          echo "Deployment complete."
 ```

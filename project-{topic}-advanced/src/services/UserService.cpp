@@ -1,218 +1,113 @@
-#include "UserService.h"
-#include "../models/User.h"
-#include "../models/Role.h"
-#include "../utils/StringUtil.h"
-#include <drogon/orm/Exception.h>
-#include <drogon/drogon.h> // For LOG_INFO, LOG_ERROR
+```cpp
+#include "UserService.hpp"
+#include "../utils/PasswordUtils.hpp" // For PWDUtils::hashPassword
 
-using namespace drogon_model::auth_system;
+UserService::UserService(std::shared_ptr<DatabaseManager> db_manager)
+    : db_manager_(db_manager) {}
 
-UserService::UserService(drogon::orm::DbClientPtr dbClient)
-    : dbClient_(dbClient) {}
+std::optional<User> UserService::getUserById(int id) {
+    Logger::log(LogLevel::DEBUG, "Attempting to retrieve user with ID: " + std::to_string(id));
+    auto user = db_manager_->getUserById(id);
+    if (!user.has_value()) {
+        throw NotFoundException("User with ID " + std::to_string(id) + " not found.");
+    }
+    return user;
+}
 
-drogon::AsyncTask<std::optional<Json::Value>> UserService::getUserById(int64_t userId) {
-    try {
-        UserMapper userMapper(dbClient_);
-        auto user = co_await userMapper.findByPrimaryKey(userId);
-        if (user.has_value()) {
-            LOG_DEBUG << "User found with ID: " << userId;
-            co_return user->toJson();
+std::vector<User> UserService::getAllUsers() {
+    Logger::log(LogLevel::DEBUG, "Attempting to retrieve all users.");
+    return db_manager_->getAllUsers();
+}
+
+User UserService::updateUser(int id, const UserUpdateDTO& user_dto) {
+    Logger::log(LogLevel::INFO, "Attempting to update user with ID: " + std::to_string(id));
+
+    std::optional<User> existing_user_opt = db_manager_->getUserById(id);
+    if (!existing_user_opt.has_value()) {
+        throw NotFoundException("User with ID " + std::to_string(id) + " not found.");
+    }
+
+    User updated_user = existing_user_opt.value();
+
+    if (user_dto.username.has_value()) {
+        if (db_manager_->getUserByUsername(user_dto.username.value()).has_value() &&
+            db_manager_->getUserByUsername(user_dto.username.value())->id.value() != id) {
+            throw ConflictException("Username '" + user_dto.username.value() + "' already taken.");
+        }
+        updated_user.username = user_dto.username.value();
+    }
+    if (user_dto.email.has_value()) {
+        if (db_manager_->getUserByEmail(user_dto.email.value()).has_value() &&
+            db_manager_->getUserByEmail(user_dto.email.value())->id.value() != id) {
+            throw ConflictException("Email '" + user_dto.email.value() + "' already taken.");
+        }
+        updated_user.email = user_dto.email.value();
+    }
+    if (user_dto.password.has_value()) {
+        updated_user.password_hash = PWDUtils::hashPassword(user_dto.password.value());
+    }
+    if (user_dto.role.has_value()) {
+        std::string role_str = user_dto.role.value();
+        std::transform(role_str.begin(), role_str.end(), role_str.begin(), ::toupper);
+        if (role_str == "ADMIN") {
+            updated_user.role = UserRole::ADMIN;
+        } else if (role_str == "USER") {
+            updated_user.role = UserRole::USER;
         } else {
-            LOG_DEBUG << "User not found with ID: " << userId;
-            co_return std::nullopt;
+            throw BadRequestException("Invalid role specified: " + user_dto.role.value());
         }
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error retrieving user by ID " << userId << ": " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error retrieving user by ID " << userId << ": " << e.what();
     }
-    co_return std::nullopt;
+
+    try {
+        db_manager_->updateUser(updated_user);
+        Logger::log(LogLevel::INFO, "User with ID " + std::to_string(id) + " updated successfully.");
+        return updated_user;
+    } catch (const DatabaseException& e) {
+        Logger::log(LogLevel::ERROR, "Database error updating user " + std::to_string(id) + ": " + std::string(e.what()));
+        throw ServiceException("Failed to update user due to database error.");
+    }
 }
 
-drogon::AsyncTask<std::vector<Json::Value>> UserService::getAllUsers() {
-    std::vector<Json::Value> usersJson;
-    try {
-        UserMapper userMapper(dbClient_);
-        auto users = co_await userMapper.findAll();
-        for (const auto& user : users) {
-            usersJson.push_back(user.toJson());
-        }
-        LOG_DEBUG << "Retrieved " << usersJson.size() << " users.";
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error retrieving all users: " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error retrieving all users: " << e.what();
+bool UserService::deleteUser(int id) {
+    Logger::log(LogLevel::INFO, "Attempting to delete user with ID: " + std::to_string(id));
+
+    // Check if user exists before attempting to delete
+    if (!db_manager_->getUserById(id).has_value()) {
+        throw NotFoundException("User with ID " + std::to_string(id) + " not found.");
     }
-    co_return usersJson;
+
+    try {
+        db_manager_->deleteUser(id);
+        Logger::log(LogLevel::INFO, "User with ID " + std::to_string(id) + " deleted successfully.");
+        return true;
+    } catch (const DatabaseException& e) {
+        Logger::log(LogLevel::ERROR, "Database error deleting user " + std::to_string(id) + ": " + std::string(e.what()));
+        throw ServiceException("Failed to delete user due to database error.");
+    }
 }
 
-drogon::AsyncTask<std::optional<Json::Value>> UserService::updateUser(int64_t userId, const Json::Value& userData) {
-    try {
-        UserMapper userMapper(dbClient_);
-        auto userOpt = co_await userMapper.findByPrimaryKey(userId);
+User UserService::createUser(const UserRegisterDTO& register_dto, UserRole role) {
+    Logger::log(LogLevel::INFO, "Attempting to create user: " + register_dto.username + " with role: " + userRoleToString(role));
 
-        if (!userOpt.has_value()) {
-            LOG_WARN << "Update failed: User with ID " << userId << " not found.";
-            co_return std::nullopt;
-        }
-
-        User user = userOpt.value();
-        bool changed = false;
-
-        if (userData.isMember("username") && userData["username"].isString()) {
-            std::string newUsername = StringUtil::trim(userData["username"].asString());
-            if (newUsername != user.username()) {
-                // Check for duplicate username
-                auto existingUser = co_await userMapper.findOne(drogon::orm::Criteria("username", drogon::orm::CompareOperator::EQ, newUsername));
-                if (existingUser.has_value() && existingUser->id() != user.id()) {
-                    LOG_WARN << "Update failed: Username '" << newUsername << "' already taken.";
-                    co_return std::nullopt; // Username already taken by another user
-                }
-                user.setUsername(newUsername);
-                changed = true;
-            }
-        }
-        if (userData.isMember("email") && userData["email"].isString()) {
-            std::string newEmail = StringUtil::trim(userData["email"].asString());
-            if (newEmail != user.email()) {
-                // Check for duplicate email
-                auto existingUser = co_await userMapper.findOne(drogon::orm::Criteria("email", drogon::orm::CompareOperator::EQ, newEmail));
-                if (existingUser.has_value() && existingUser->id() != user.id()) {
-                    LOG_WARN << "Update failed: Email '" << newEmail << "' already taken.";
-                    co_return std::nullopt; // Email already taken by another user
-                }
-                user.setEmail(newEmail);
-                changed = true;
-            }
-        }
-        if (userData.isMember("enabled") && userData["enabled"].isBool()) {
-            if (userData["enabled"].asBool() != user.enabled()) {
-                user.setEnabled(userData["enabled"].asBool());
-                changed = true;
-            }
-        }
-
-        if (changed) {
-            user.setUpdatedAt(trantor::Date::now());
-            User updatedUser = co_await userMapper.update(user);
-            LOG_INFO << "User with ID " << userId << " updated successfully.";
-            co_return updatedUser.toJson();
-        } else {
-            LOG_INFO << "No changes detected for user with ID " << userId << ".";
-            co_return user.toJson(); // Return current state if no changes
-        }
-
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error updating user " << userId << ": " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error updating user " << userId << ": " << e.what();
+    // Check if username or email already exists
+    if (db_manager_->getUserByUsername(register_dto.username).has_value()) {
+        throw ConflictException("Username '" + register_dto.username + "' already exists.");
     }
-    co_return std::nullopt;
-}
-
-drogon::AsyncTask<bool> UserService::deleteUser(int64_t userId) {
-    try {
-        UserMapper userMapper(dbClient_);
-        // First, check if the user exists
-        auto userOpt = co_await userMapper.findByPrimaryKey(userId);
-        if (!userOpt.has_value()) {
-            LOG_WARN << "Delete failed: User with ID " << userId << " not found.";
-            co_return false;
-        }
-
-        // Delete associated user_roles entries first
-        co_await dbClient_->execSqlCoro("DELETE FROM user_roles WHERE user_id = $1", userId);
-        LOG_DEBUG << "Deleted user_roles for user ID: " << userId;
-
-        // Delete associated sessions
-        co_await dbClient_->execSqlCoro("DELETE FROM sessions WHERE user_id = $1", userId);
-        LOG_DEBUG << "Deleted sessions for user ID: " << userId;
-
-        // Then delete the user
-        size_t deletedRows = co_await userMapper.deleteByPrimaryKey(userId);
-        if (deletedRows > 0) {
-            LOG_INFO << "User with ID " << userId << " deleted successfully.";
-            co_return true;
-        }
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error deleting user " << userId << ": " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error deleting user " << userId << ": " << e.what();
+    if (db_manager_->getUserByEmail(register_dto.email).has_value()) {
+        throw ConflictException("Email '" + register_dto.email + "' already exists.");
     }
-    co_return false;
-}
 
-drogon::AsyncTask<bool> UserService::assignRolesToUser(int64_t userId, const std::vector<std::string>& roleNames) {
+    std::string hashed_password = PWDUtils::hashPassword(register_dto.password);
+    User new_user(register_dto.username, register_dto.email, hashed_password, role);
+
     try {
-        // Verify user exists
-        UserMapper userMapper(dbClient_);
-        auto userOpt = co_await userMapper.findByPrimaryKey(userId);
-        if (!userOpt.has_value()) {
-            LOG_WARN << "Assign roles failed: User with ID " << userId << " not found.";
-            co_return false;
-        }
-
-        RoleMapper roleMapper(dbClient_);
-        // Fetch all role IDs for the given names
-        std::vector<int> roleIdsToAssign;
-        for (const auto& roleName : roleNames) {
-            auto roles = co_await roleMapper.findBy(drogon::orm::Criteria("name", drogon::orm::CompareOperator::EQ, roleName));
-            if (!roles.empty()) {
-                roleIdsToAssign.push_back(roles[0].id());
-            } else {
-                LOG_WARN << "Role '" << roleName << "' not found, skipping assignment.";
-            }
-        }
-
-        if (roleIdsToAssign.empty() && !roleNames.empty()) {
-            LOG_WARN << "No valid roles found to assign for user ID: " << userId;
-            co_return false; // No valid roles to assign
-        }
-
-        // Use a transaction for atomicity
-        auto transaction = co_await dbClient_->newTransactionCoro();
-
-        // Clear existing roles for the user (or implement additive/subtractive logic)
-        co_await transaction->execSqlCoro("DELETE FROM user_roles WHERE user_id = $1", userId);
-
-        // Insert new roles
-        for (int roleId : roleIdsToAssign) {
-            co_await transaction->execSqlCoro("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
-                                            userId, roleId);
-        }
-        co_await transaction->commitCoro();
-
-        LOG_INFO << "Roles assigned to user " << userId << " successfully.";
-        co_return true;
-
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error assigning roles to user " << userId << ": " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error assigning roles to user " << userId << ": " << e.what();
+        int new_user_id = db_manager_->createUser(new_user);
+        new_user.id = new_user_id;
+        Logger::log(LogLevel::INFO, "User " + new_user.username + " created successfully with ID " + std::to_string(new_user_id));
+        return new_user;
+    } catch (const DatabaseException& e) {
+        Logger::log(LogLevel::ERROR, "Database error during user creation: " + std::string(e.what()));
+        throw ServiceException("Failed to create user due to database error.");
     }
-    co_return false;
-}
-
-drogon::AsyncTask<std::vector<std::string>> UserService::getUserRoles(int64_t userId) {
-    std::vector<std::string> roleNames;
-    try {
-        UserMapper userMapper(dbClient_);
-        auto userOpt = co_await userMapper.findByPrimaryKey(userId);
-        if (!userOpt.has_value()) {
-            LOG_WARN << "User " << userId << " not found, cannot get roles.";
-            co_return roleNames;
-        }
-        User user = userOpt.value();
-        std::vector<drogon_model::auth_system::Role> roles = user.getRoles(dbClient_);
-        for (const auto& role : roles) {
-            roleNames.push_back(role.name());
-        }
-        LOG_DEBUG << "Retrieved roles for user " << userId << ": " << roleNames.size();
-    } catch (const drogon::orm::DrogonDbException &e) {
-        LOG_ERROR << "Database error getting roles for user " << userId << ": " << e.what();
-    } catch (const std::exception &e) {
-        LOG_ERROR << "General error getting roles for user " << userId << ": " << e.what();
-    }
-    co_return roleNames;
 }
 ```
