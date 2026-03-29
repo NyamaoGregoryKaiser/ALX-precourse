@@ -1,269 +1,202 @@
 ```markdown
-# Real-time Chat Application
+# DataVizSystem: A Comprehensive Data Visualization Platform
 
-A comprehensive, production-ready real-time chat application built with a full-stack TypeScript environment, including Node.js (Express, Socket.IO) backend, React frontend, PostgreSQL database (with Prisma ORM), and Redis caching.
+## Overview
 
-## Table of Contents
+DataVizSystem is an enterprise-grade data visualization platform built with a high-performance C++ backend, a robust PostgreSQL database, and an interactive React frontend. This system is designed to allow users to upload datasets (e.g., CSV), manage their data, define visualization configurations, and generate dynamic charts and graphs.
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Technologies Used](#technologies-used)
-- [Setup & Installation](#setup--installation)
-  - [Prerequisites](#prerequisites)
-  - [Local Setup with Docker Compose](#local-setup-with-docker-compose)
-  - [Manual Local Setup (Optional)](#manual-local-setup-optional)
-- [Running the Application](#running-the-application)
-- [Database Management](#database-management)
-- [Testing](#testing)
-- [API Documentation](#api-documentation)
-- [Architecture Documentation](#architecture-documentation)
-- [Deployment Guide](#deployment-guide)
-- [Additional Features](#additional-features)
-- [License](#license)
+The C++ backend handles data ingestion, complex data processing (filtering, aggregation, sorting), API management with full CRUD operations, authentication, and authorization. It leverages modern C++ standards and libraries for efficiency and reliability.
 
-## Features
+### Core Features
 
-*   **User Management:** Registration, Login, User Profiles (view/update).
-*   **Real-time Chat:** Instant messaging using WebSockets (Socket.IO).
-*   **Chat Room Management:** Create new rooms, join existing rooms.
-*   **Message History:** Persisted messages with pagination.
-*   **Typing Indicators:** Real-time feedback when other users are typing.
-*   **Authentication & Authorization:** JWT-based secure access to API and WebSocket.
-*   **Robust Error Handling:** Centralized middleware with custom error classes.
-*   **Logging & Monitoring:** Winston logger for structured logging.
-*   **Caching:** Redis for session tokens and frequently accessed user data.
-*   **Rate Limiting:** Protects API endpoints against abuse.
-*   **Scalable Architecture:** Designed for horizontal scaling using Docker.
-*   **Comprehensive Testing:** Unit, Integration, API, and Performance tests.
-*   **CI/CD:** GitHub Actions workflow for automated builds and tests.
+*   **User Management**: Registration, Login, Role-based Access Control (User, Admin).
+*   **Dataset Management**: Upload, store, retrieve, update, and delete datasets (CSV support, extensible).
+*   **Data Processing**: Server-side filtering, grouping, aggregation (sum, avg, count, min, max), and sorting of raw data.
+*   **Visualization Management**: Create, store, update, and delete visualization configurations (e.g., bar charts, line charts) linked to datasets.
+*   **Interactive Frontend**: A React application for uploading files, browsing datasets, configuring visualizations, and displaying charts.
+*   **Authentication & Authorization**: JWT-based authentication for secure API access and role-based access control.
+*   **Comprehensive Testing**: Unit, integration, and API tests to ensure quality and reliability.
+*   **Containerization**: Docker and Docker Compose for easy deployment and environment consistency.
+*   **CI/CD**: GitHub Actions pipeline for automated testing and deployment.
+*   **Logging & Monitoring**: Structured logging with `spdlog`.
+*   **Error Handling**: Centralized error handling middleware.
+*   **Caching (Conceptual)**: Redis integration for potential future data caching.
+*   **Rate Limiting (Conceptual)**: Can be integrated with Nginx or a C++ middleware.
 
 ## Architecture
 
-Please refer to the [Architecture Documentation](docs/architecture.md) for a detailed overview of the system design.
-
-## Technologies Used
-
-**Backend (Node.js/TypeScript)**
-*   **Framework:** Express.js
-*   **Real-time:** Socket.IO
-*   **Database ORM:** Prisma
-*   **Authentication:** JSON Web Tokens (JWT), bcrypt.js
-*   **Caching:** ioredis
-*   **Validation:** Zod
-*   **Logging:** Winston
-*   **Security:** Helmet, CORS, express-rate-limit
-*   **Testing:** Jest, Supertest
-
-**Frontend (React/TypeScript)**
-*   **Framework:** React.js
-*   **State Management:** React Context API
-*   **Styling:** Styled Components
-*   **API Client:** Axios
-*   **Real-time Client:** Socket.IO Client
-*   **Routing:** React Router DOM
-*   **Testing:** React Testing Library
-
-**Database & Infrastructure**
-*   **Database:** PostgreSQL
-*   **Cache/Message Broker:** Redis
-*   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** GitHub Actions
-
-## Setup & Installation
-
-### Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-*   [Node.js](https://nodejs.org/en/download/) (v18 or higher)
-*   [npm](https://www.npmjs.com/get-npm) (usually comes with Node.js)
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop) (for Docker Compose setup)
-*   [Git](https://git-scm.com/downloads)
-
-### Local Setup with Docker Compose (Recommended)
-
-This is the easiest way to get the entire application running with all services.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/chat-app.git
-    cd chat-app
-    ```
-
-2.  **Create `.env` files:**
-    Copy the example environment files for both backend and frontend:
-    ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
-    ```
-    You can customize the variables in these `.env` files (e.g., `JWT_SECRET`, `CORS_ORIGIN`). The default values in `.env.example` should work for local development.
-
-3.  **Run Docker Compose:**
-    Build and start all services (Postgres, Redis, Backend, Frontend):
-    ```bash
-    docker-compose up --build -d
-    ```
-    The `-d` flag runs the containers in detached mode. To see logs, use `docker-compose logs -f`.
-
-4.  **Initialize Database (Migrations & Seed Data):**
-    Once the backend service is up and connected to PostgreSQL, run Prisma migrations and seed the database.
-    You might need to wait a few seconds for the `postgres` service to be fully healthy before the `backend` service starts its `npx prisma migrate deploy` command.
-    If the backend service fails to start due to DB connection issues (e.g., `FATAL: database "chat_app" does not exist`), try restarting just the backend:
-    ```bash
-    docker-compose restart backend
-    ```
-    The `docker-compose.yml` is configured to run `prisma migrate deploy` as part of the backend `CMD`.
-    To seed the database with initial users and chat rooms:
-    ```bash
-    docker-compose exec backend npm run prisma:seed
-    ```
-
-5.  **Access the Application:**
-    *   **Frontend:** Open your browser to `http://localhost:3000`
-    *   **Backend API:** The backend API will be available at `http://localhost:5000/api`
-    *   **PostgreSQL:** Accessible on `localhost:5432`
-    *   **Redis:** Accessible on `localhost:6379`
-
-### Manual Local Setup (Optional)
-
-If you prefer to run services individually without Docker Compose:
-
-#### 1. Backend Setup
-
-1.  Navigate to the `backend` directory:
-    ```bash
-    cd backend
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Create `.env` file (if you haven't already with Docker Compose setup):
-    ```bash
-    cp .env.example .env
-    ```
-    Ensure `DATABASE_URL` points to a running PostgreSQL instance (e.g., `postgresql://user:password@localhost:5432/chat_app?schema=public`) and `REDIS_URL` to a running Redis instance (e.g., `redis://localhost:6379`). You'll need to manually run these services or use Docker for them.
-4.  Generate Prisma client and run migrations:
-    ```bash
-    npx prisma generate
-    npx prisma migrate dev --name init # Follow prompts, this creates a new DB schema
-    ```
-5.  Seed the database (optional):
-    ```bash
-    npm run prisma:seed
-    ```
-6.  Build and start the backend:
-    ```bash
-    npm run build
-    npm start
-    # For development with live reload:
-    # npm run dev
-    ```
-    The backend will run on `http://localhost:5000`.
-
-#### 2. Frontend Setup
-
-1.  Navigate to the `frontend` directory:
-    ```bash
-    cd frontend
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Create `.env` file:
-    ```bash
-    cp .env.example .env
-    ```
-    Ensure `REACT_APP_API_BASE_URL` and `REACT_APP_WS_URL` point to your backend (e.g., `http://localhost:5000/api` and `http://localhost:5000`).
-4.  Start the frontend development server:
-    ```bash
-    npm start
-    ```
-    The frontend will run on `http://localhost:3000`.
-
-## Running the Application
-
-After following the Docker Compose setup:
-1.  **Frontend:** `http://localhost:3000`
-2.  **Backend API:** `http://localhost:5000/api`
-
-You can register new users or use the seeded users:
-*   **Alice:** `alice@example.com` / `password123`
-*   **Bob:** `bob@example.com` / `password456`
-
-## Database Management
-
-*   **Prisma Studio:** To inspect your database visually:
-    ```bash
-    docker-compose exec backend npx prisma studio
-    ```
-    Then open `http://localhost:5555` in your browser.
-*   **Migrations:** When you change `backend/prisma/schema.prisma`:
-    ```bash
-    docker-compose exec backend npx prisma migrate dev --name your_migration_name
-    ```
-*   **Seed Data:** To re-run the seed script:
-    ```bash
-    docker-compose exec backend npm run prisma:seed
-    ```
-
-## Testing
-
-The project includes various types of tests to ensure quality and reliability.
-
-### Running Tests
-
-*   **Backend Tests:**
-    ```bash
-    cd backend
-    npm test # Runs Jest for unit/integration/API tests
-    ```
-    To run with coverage:
-    ```bash
-    npm test -- --coverage
-    ```
-    *(Note: Ensure `DATABASE_TEST_URL` is configured in `backend/.env` for integration tests to use a separate database.)*
-
-*   **Frontend Tests:**
-    ```bash
-    cd frontend
-    npm test # Runs React Testing Library tests
-    ```
-
-*   **Performance Tests (Artillery):**
-    1.  Install Artillery globally or locally: `npm install -g artillery` (or `npm install --save-dev artillery` in backend)
-    2.  Ensure your backend is running.
-    3.  From the project root:
-        ```bash
-        npx artillery run artillery-performance-test.yml
-        ```
-        This will simulate high load on registration, login, chat room creation, and message sending.
+For a detailed architectural overview, refer to [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## API Documentation
 
-Detailed API endpoints, request/response formats, and authentication requirements can be found in:
-[docs/api.md](docs/api.md)
-
-## Architecture Documentation
-
-An in-depth explanation of the system's architecture, component interactions, and design decisions is available in:
-[docs/architecture.md](docs/architecture.md)
+For a detailed API reference, refer to [API.md](API.md).
 
 ## Deployment Guide
 
-A guide on deploying the application to a production environment (e.g., cloud platforms) is provided in:
-[docs/deployment.md](docs/deployment.md)
+For instructions on deploying the system, refer to [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## Additional Features
+## Setup and Installation
 
-*   **Authentication/Authorization:** JWTs for secure access.
-*   **Logging & Monitoring:** Winston for structured logging, integrated with Morgan for HTTP access logs.
-*   **Error Handling:** Centralized middleware for consistent error responses and graceful degradation.
-*   **Caching Layer:** Redis used for JWT session management and potential future data caching.
-*   **Rate Limiting:** `express-rate-limit` middleware protects API from excessive requests.
+This guide will help you set up and run the DataVizSystem using Docker Compose.
 
-## License
+### Prerequisites
 
-This project is licensed under the ISC License. See the [LICENSE](LICENSE) file for details.
+*   Docker (v20.10.0 or later)
+*   Docker Compose (v2.0.0 or later)
+*   Git
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/DataVizSystem.git
+cd DataVizSystem
+```
+
+### 2. Configure Environment Variables
+
+Create `.env` files for both the backend and frontend services.
+Copy the example files and populate them with your desired values.
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+**`backend/.env`**:
+```ini
+# Backend Configuration
+DATA_VIZ_APP_PORT=18080
+DATA_VIZ_LOG_LEVEL=info # debug, info, warn, error, critical
+
+# Database Configuration
+DATA_VIZ_DB_HOST=database # This refers to the service name in docker-compose
+DATA_VIZ_DB_PORT=5432
+DATA_VIZ_DB_USER=dataviz_user
+DATA_VIZ_DB_PASSWORD=dataviz_password
+DATA_VIZ_DB_NAME=dataviz_db
+
+# JWT Secret (MUST be strong and kept secret in production)
+DATA_VIZ_JWT_SECRET="your_super_secret_jwt_key_please_change_in_production_1234567890"
+
+# Data storage path (relative to executable or absolute path in container)
+DATA_VIZ_STORAGE_PATH=/app/assets/datasets
+```
+
+**`frontend/.env`**:
+```ini
+# Frontend Configuration
+# In development, points directly to the backend service on localhost
+REACT_APP_API_BASE_URL=http://localhost:18080/api
+
+# In production (via Docker Compose), Nginx handles proxying to the backend service.
+# This variable might be ignored or dynamically configured by Nginx in the Docker setup.
+```
+
+### 3. Prepare Sample Data (for testing/initial use)
+
+Create the directory for dataset storage and place a sample CSV file there.
+This directory (`backend/assets/datasets`) will be mounted as a Docker volume.
+
+```bash
+mkdir -p backend/assets/datasets
+# Create a sample_sales.csv file inside backend/assets/datasets/
+# Example content for backend/assets/datasets/sample_sales.csv:
+cat <<EOF > backend/assets/datasets/sample_sales.csv
+Product,Sales,Region,Date
+Laptop,1200,North,2023-01-15
+Mouse,25,North,2023-01-16
+Keyboard,75,South,2023-01-17
+Laptop,1500,South,2023-02-01
+Monitor,300,East,2023-02-02
+Mouse,30,East,2023-02-03
+EOF
+```
+This `sample_sales.csv` corresponds to the `seed_data.sql` entry for `Sample Sales Data`.
+
+### 4. Build and Run with Docker Compose
+
+```bash
+docker-compose up --build -d
+```
+
+This command will:
+1.  Build the `backend` C++ application image.
+2.  Build the `frontend` React application image.
+3.  Start the `database` (PostgreSQL), `redis` (caching), `backend` API, and `frontend` (Nginx serving React) services.
+4.  Apply database schema (`V1__create_tables.sql`) and seed data (`seed_data.sql`) to PostgreSQL.
+5.  Create Docker volumes for persistent data (database, Redis, and uploaded datasets).
+
+Wait a few moments for all services to start and for the database to initialize. You can check the logs:
+```bash
+docker-compose logs -f
+```
+
+### 5. Access the Application
+
+*   **Frontend**: Open your web browser and navigate to `http://localhost:3000`
+*   **Backend API**: The API will be accessible via `http://localhost:18080/api` (or the port you configured).
+    *   **Health Check**: `http://localhost:18080/health`
+    *   **Swagger/OpenAPI**: (Not auto-generated for C++ Crow, but detailed in `API.md`)
+
+### Initial Credentials (from `database/seed_data.sql`)
+
+*   **Admin User**:
+    *   Email: `admin@example.com`
+    *   Password: `adminpass`
+*   **Regular User**:
+    *   Email: `user@example.com`
+    *   Password: `userpass`
+
+Please log in with these credentials in the frontend.
+
+### Stopping the Application
+
+```bash
+docker-compose down
+```
+This will stop and remove the containers and networks. If you also want to remove volumes (which deletes all data including your database data and uploaded datasets):
+```bash
+docker-compose down --volumes
+```
+
+## Testing
+
+### Running C++ Backend Tests
+
+The C++ backend tests are integrated into the `build-and-test-backend` job in the CI/CD pipeline.
+To run locally:
+
+```bash
+# Ensure you have C++ build tools, cmake, gtest, and other libs installed
+# on your host system if you're not using a Docker dev container.
+# Recommended approach for local dev:
+docker-compose run --rm builder /bin/bash # Access the builder stage container
+# Inside container:
+cd /app
+cmake -B build -S .
+cmake --build build
+./build/run_tests
+exit # To exit the container
+```
+
+### Running Frontend Tests
+
+```bash
+cd frontend
+npm test
+```
+
+## Contributing
+
+Contributions are welcome! Please follow the standard GitHub flow:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write tests for your changes.
+5.  Ensure all tests pass.
+6.  Commit your changes (`git commit -m 'Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
+
+---
 ```

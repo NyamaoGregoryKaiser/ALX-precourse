@@ -2,25 +2,30 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
+  database:
+    image: postgres:13
+    container_name: dataviz_db
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: chat_app
+      POSTGRES_USER: ${DATA_VIZ_DB_USER:-dataviz_user}
+      POSTGRES_PASSWORD: ${DATA_VIZ_DB_PASSWORD:-dataviz_password}
+      POSTGRES_DB: ${DATA_VIZ_DB_NAME:-dataviz_db}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations # Flyway/Liquibase is better, but this demonstrates basic
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/seed_data.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d chat_app"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATA_VIZ_DB_USER:-dataviz_user} -d ${DATA_VIZ_DB_NAME:-dataviz_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:6-alpine
+    container_name: dataviz_redis
     restart: always
     ports:
       - "6379:6379"
@@ -29,58 +34,54 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: dataviz_backend
     restart: always
-    env_file:
-      - ./backend/.env
-    environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/chat_app?schema=public
-      REDIS_URL: redis://redis:6379
-      # Other variables like JWT_SECRET, CORS_ORIGIN should be in .env
     ports:
-      - "5000:5000"
+      - "18080:18080"
+    environment:
+      DATA_VIZ_APP_PORT: ${DATA_VIZ_APP_PORT:-18080}
+      DATA_VIZ_LOG_LEVEL: ${DATA_VIZ_LOG_LEVEL:-info}
+      DATA_VIZ_DB_HOST: database # Service name in docker-compose network
+      DATA_VIZ_DB_PORT: ${DATA_VIZ_DB_PORT:-5432}
+      DATA_VIZ_DB_USER: ${DATA_VIZ_DB_USER:-dataviz_user}
+      DATA_VIZ_DB_PASSWORD: ${DATA_VIZ_DB_PASSWORD:-dataviz_password}
+      DATA_VIZ_DB_NAME: ${DATA_VIZ_DB_NAME:-dataviz_db}
+      DATA_VIZ_JWT_SECRET: ${DATA_VIZ_JWT_SECRET:-your_super_secret_jwt_key_please_change_in_production_1234567890}
+      DATA_VIZ_STORAGE_PATH: /app/assets/datasets # Path inside the container
+    volumes:
+      - backend_assets:/app/assets/datasets # Mount a named volume for persistent data storage
     depends_on:
-      postgres:
+      database:
         condition: service_healthy
       redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app # Mount for live reload in development if needed
-      - /app/node_modules # Exclude node_modules from host mount
-    # Command to run migrations and then start the app.
-    # In a production setup, migrations might be a separate job.
-    command: sh -c "npx prisma migrate deploy && npm run start"
+        condition: service_healthy # Assuming backend uses Redis for caching
+    command: ["./DataVizSystem"]
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: dataviz_frontend
     restart: always
-    env_file:
-      - ./frontend/.env
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api
-      REACT_APP_WS_URL: http://localhost:5000
-      # Ensure these match the host-exposed ports if accessing from host browser directly.
-      # If using an Nginx reverse proxy, these might point to internal service names.
     ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
+      - "3000:80" # Map host port 3000 to container's Nginx port 80
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:18080/api # This will be used in development
+      # In production, Nginx will proxy to the backend service.
+      # This env var might be replaced by Nginx config templating.
     depends_on:
       backend:
-        condition: service_started
-    volumes:
-      - ./frontend:/app # Mount for live reload in development if needed
-      - /app/node_modules # Exclude node_modules from host mount
-      - /app/build # Exclude build output from host mount
-
+        condition: service_started # Only needs backend to be up to serve data
 
 volumes:
-  postgres_data:
+  db_data:
   redis_data:
+  backend_assets: # For persistent storage of uploaded datasets
 ```

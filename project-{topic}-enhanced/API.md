@@ -1,325 +1,549 @@
-# Data Visualization Tools System API Documentation
+```markdown
+# DataVizSystem API Documentation
 
-This document outlines the RESTful API endpoints provided by the C++ backend for the Data Visualization Tools System.
+This document provides a comprehensive overview of the DataVizSystem RESTful API endpoints.
+The backend is implemented in C++ using the Crow web framework.
 
-**Base URL**: `/api/v1`
-**Content-Type**: `application/json` for all request bodies and responses (unless specified otherwise, e.g., for file uploads).
-
----
+**Base URL**: `http://localhost:18080/api` (or your configured backend address)
 
 ## Authentication
 
-All protected endpoints require a valid JSON Web Token (JWT) provided in the `Authorization` header as `Bearer <token>`.
+All protected routes require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
+`Authorization: Bearer <your_jwt_token>`
 
 ### 1. Register User
-Registers a new user account.
 
-*   **URL**: `/api/v1/auth/register`
-*   **Method**: `POST`
-*   **Request Body**:
-    ```json
-    {
-        "username": "string",
-        "email": "string",
-        "password": "string"
-    }
-    ```
-*   **Success Response**: `201 Created`
-    ```json
-    {
-        "message": "User registered successfully",
-        "user_id": "uuid"
-    }
-    ```
-*   **Error Responses**:
-    *   `400 Bad Request`: Invalid JSON, missing fields.
-    *   `409 Conflict`: User with this email already exists.
-    *   `500 Internal Server Error`: Server-side error.
+`POST /api/auth/register`
+
+**Description**: Registers a new user with the system.
+**Authentication**: Public (no token required)
+
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "password": "strong_password_123"
+}
+```
+
+**Response (201 Created)**:
+```json
+{
+  "status": "success",
+  "message": "User registered successfully.",
+  "data": {
+    "id": 1,
+    "email": "user@example.com",
+    "role": "user",
+    "createdAt": "2023-10-27T10:00:00Z",
+    "updatedAt": "2023-10-27T10:00:00Z"
+  }
+}
+```
+
+**Error Responses**:
+*   `400 Bad Request`: Missing `email` or `password`, invalid format.
+*   `409 Conflict`: User with this email already exists.
+*   `500 Internal Server Error`: Failed to register user.
 
 ### 2. Login User
-Authenticates a user and issues a JWT.
 
-*   **URL**: `/api/v1/auth/login`
-*   **Method**: `POST`
-*   **Request Body**:
-    ```json
+`POST /api/auth/login`
+
+**Description**: Authenticates a user and returns a JWT token.
+**Authentication**: Public
+
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "password": "strong_password_123"
+}
+```
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Login successful.",
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "role": "user",
+      "createdAt": "2023-10-27T10:00:00Z",
+      "updatedAt": "2023-10-27T10:00:00Z"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoidXNlciIsImlzc3VlZERhdCI6IjIwMjMtMTAtMjdUMTA6MDA6MDBaIiwiZXhwaXJhdGlvbkRhdGUiOiIyMDIzLTExLTAzVDEwOjAwOjAwWiJ9.signature"
+  }
+}
+```
+
+**Error Responses**:
+*   `400 Bad Request`: Missing `email` or `password`.
+*   `401 Unauthorized`: Invalid credentials.
+
+## Dataset Endpoints
+
+These endpoints manage datasets uploaded to the system.
+
+### 1. Get All Datasets
+
+`GET /api/datasets`
+
+**Description**: Retrieves a list of all datasets. Admins see all datasets; regular users see only their own.
+**Authentication**: Required (JWT)
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Datasets retrieved successfully.",
+  "data": [
     {
-        "email": "string",
-        "password": "string"
+      "id": 1,
+      "userId": 1,
+      "name": "Sample Sales Data",
+      "description": "A sample dataset of sales figures.",
+      "filePath": "./assets/datasets/sample_sales.csv",
+      "fileType": "csv",
+      "columns": [
+        {"name": "Product", "type": "string", "isDimension": true, "isMeasure": false},
+        {"name": "Sales", "type": "number", "isDimension": false, "isMeasure": true}
+      ],
+      "createdAt": "2023-10-27T10:00:00Z",
+      "updatedAt": "2023-10-27T10:00:00Z"
     }
-    ```
-*   **Success Response**: `200 OK`
-    ```json
-    {
-        "message": "Login successful",
-        "token": "jwt_token_string",
-        "user_id": "uuid"
-    }
-    ```
-*   **Error Responses**:
-    *   `400 Bad Request`: Invalid JSON, missing fields.
-    *   `401 Unauthorized`: Invalid credentials.
-    *   `500 Internal Server Error`: Server-side error.
+  ]
+}
+```
 
----
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
 
-## Data Sources (Protected)
+### 2. Get Dataset by ID
 
-Requires `Authorization: Bearer <token>` header.
+`GET /api/datasets/{id}`
 
-### 1. Create Data Source
-Registers a new data source. For CSVs, the `data_base64` field can contain the file content.
+**Description**: Retrieves a single dataset by its ID.
+**Authentication**: Required (JWT). User must own the dataset or be an admin.
 
-*   **URL**: `/api/v1/data-sources`
-*   **Method**: `POST`
-*   **Request Body**:
-    ```json
-    {
-        "name": "string",
-        "type": "string",                 // e.g., "CSV", "PostgreSQL", "API"
-        "connection_string": "string",    // Optional: connection details for DB/API
-        "schema_definition": {},          // Optional: JSON object for data schema
-        "data_base64": "string"           // Optional: Base64 encoded file content for file types (e.g., CSV)
-    }
-    ```
-*   **Success Response**: `201 Created`
-    ```json
-    {
-        "message": "Data source created successfully",
-        "id": "uuid",
-        "name": "string"
-    }
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `500`.
+**Path Parameters**:
+*   `id` (integer): The ID of the dataset.
 
-### 2. Get All Data Sources for User
-Retrieves a list of all data sources owned by the authenticated user.
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Dataset retrieved successfully.",
+  "data": {
+    "id": 1,
+    "userId": 1,
+    "name": "Sample Sales Data",
+    "description": "A sample dataset of sales figures.",
+    "filePath": "./assets/datasets/sample_sales.csv",
+    "fileType": "csv",
+    "columns": [
+        {"name": "Product", "type": "string", "isDimension": true, "isMeasure": false},
+        {"name": "Sales", "type": "number", "isDimension": false, "isMeasure": true}
+    ],
+    "createdAt": "2023-10-27T10:00:00Z",
+    "updatedAt": "2023-10-27T10:00:00Z"
+  }
+}
+```
 
-*   **URL**: `/api/v1/data-sources`
-*   **Method**: `GET`
-*   **Success Response**: `200 OK`
-    ```json
-    [
-        {
-            "id": "uuid",
-            "user_id": "uuid",
-            "name": "string",
-            "type": "string",
-            "connection_string": "string",
-            "schema_definition": {},
-            "file_path": "string",
-            "created_at": "datetime_iso8601",
-            "updated_at": "datetime_iso8601"
-        }
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the dataset.
+*   `404 Not Found`: Dataset with the given ID does not exist.
+
+### 3. Upload New Dataset
+
+`POST /api/datasets`
+
+**Description**: Uploads a new dataset file (e.g., CSV) and creates its metadata in the database.
+**Authentication**: Required (JWT)
+
+**Request Body**:
+```json
+{
+  "name": "Monthly Financial Report",
+  "description": "Financial data for Q3 2023.",
+  "fileName": "financial_report_q3.csv",
+  "fileType": "csv",
+  "fileContent": "Date,Revenue,Expenses\n2023-07-01,100000,50000\n2023-08-01,120000,60000"
+}
+```
+*Note: `fileContent` should be the raw content of the file, not base64 encoded for this API version. For robust file uploads, consider `multipart/form-data`.*
+
+**Response (201 Created)**:
+```json
+{
+  "status": "success",
+  "message": "Dataset uploaded and metadata created.",
+  "data": {
+    "id": 2,
+    "userId": 1,
+    "name": "Monthly Financial Report",
+    "description": "Financial data for Q3 2023.",
+    "filePath": "./assets/datasets/financial_report_q3.csv",
+    "fileType": "csv",
+    "columns": [
+        {"name": "Date", "type": "date", "isDimension": true, "isMeasure": false},
+        {"name": "Revenue", "type": "number", "isDimension": false, "isMeasure": true},
+        {"name": "Expenses", "type": "number", "isDimension": false, "isMeasure": true}
+    ],
+    "createdAt": "2023-10-27T10:30:00Z",
+    "updatedAt": "2023-10-27T10:30:00Z"
+  }
+}
+```
+
+**Error Responses**:
+*   `400 Bad Request`: Missing required fields, unsupported `fileType`, invalid CSV content.
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `500 Internal Server Error`: Failed to save file or create dataset metadata.
+
+### 4. Update Dataset
+
+`PUT /api/datasets/{id}`
+
+**Description**: Updates the metadata of an existing dataset.
+**Authentication**: Required (JWT). User must own the dataset or be an admin.
+
+**Path Parameters**:
+*   `id` (integer): The ID of the dataset to update.
+
+**Request Body**:
+```json
+{
+  "name": "Updated Sales Data",
+  "description": "Revised description for sales figures."
+}
+```
+*Note: `filePath`, `fileType`, and `fileContent` are typically not updated via this endpoint. For file changes, re-upload or use a dedicated file update endpoint.*
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Dataset updated successfully.",
+  "data": {
+    "id": 1,
+    "userId": 1,
+    "name": "Updated Sales Data",
+    "description": "Revised description for sales figures.",
+    "filePath": "./assets/datasets/sample_sales.csv",
+    "fileType": "csv",
+    "columns": [...],
+    "createdAt": "2023-10-27T10:00:00Z",
+    "updatedAt": "2023-10-27T10:45:00Z"
+  }
+}
+```
+
+**Error Responses**:
+*   `400 Bad Request`: Invalid request body.
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the dataset.
+*   `404 Not Found`: Dataset with the given ID does not exist.
+*   `500 Internal Server Error`: Failed to update dataset.
+
+### 5. Delete Dataset
+
+`DELETE /api/datasets/{id}`
+
+**Description**: Deletes a dataset and its associated file from storage.
+**Authentication**: Required (JWT). User must own the dataset or be an admin.
+
+**Path Parameters**:
+*   `id` (integer): The ID of the dataset to delete.
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Dataset deleted successfully."
+}
+```
+
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the dataset.
+*   `404 Not Found`: Dataset with the given ID does not exist.
+*   `500 Internal Server Error`: Failed to delete dataset file or metadata.
+
+### 6. Get Processed Data for Dataset
+
+`POST /api/datasets/{id}/data`
+
+**Description**: Processes the raw data of a dataset based on filtering, grouping, aggregation, and sorting parameters, returning the ready-to-visualize data.
+**Authentication**: Required (JWT). User must own the dataset or be an admin.
+
+**Path Parameters**:
+*   `id` (integer): The ID of the dataset to process.
+
+**Request Body**:
+```json
+{
+  "filters": [
+    {"column": "Region", "operator": "=", "value": "East"},
+    {"column": "Sales", "operator": ">", "value": "50"}
+  ],
+  "groupBy": [
+    {"column": "Product", "alias": "ProductName"}
+  ],
+  "aggregations": [
+    {"column": "Sales", "function": "sum", "alias": "TotalSales"},
+    {"column": "Units", "function": "avg", "alias": "AverageUnits"}
+  ],
+  "sortBy": [
+    {"column": "TotalSales", "direction": "desc"}
+  ],
+  "limit": 100
+}
+```
+**Filter Operators**:
+*   **Numeric**: `=`, `>`, `<`, `>=`, `<=`, `!=`
+*   **String**: `=`, `contains`, `in` (with `values` array)
+*   **Date**: (currently handled as string comparison, future improvement: date-specific operators)
+
+**Aggregation Functions**:
+*   `count`
+*   `sum`
+*   `avg`
+*   `min`
+*   `max`
+
+**Sort Directions**:
+*   `asc`
+*   `desc`
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Data processed successfully.",
+  "data": {
+    "rows": [
+      {"ProductName": "Laptop", "TotalSales": 3000.0, "AverageUnits": 15.0},
+      {"ProductName": "Monitor", "TotalSales": 300.0, "AverageUnits": 30.0}
+    ],
+    "columns": [
+        {"name": "ProductName", "type": "string", "isDimension": true, "isMeasure": false},
+        {"name": "TotalSales", "type": "number", "isDimension": false, "isMeasure": true},
+        {"name": "AverageUnits", "type": "number", "isDimension": false, "isMeasure": true}
     ]
-    ```
-*   **Error Responses**: `401`, `403`, `500`.
+  }
+}
+```
 
-### 3. Get Data Source by ID
-Retrieves a specific data source by its ID.
+**Error Responses**:
+*   `400 Bad Request`: Invalid data processing request format.
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the dataset.
+*   `404 Not Found`: Dataset with the given ID does not exist.
+*   `500 Internal Server Error`: Failed to load or process data.
 
-*   **URL**: `/api/v1/data-sources/{id}`
-*   **Method**: `GET`
-*   **Success Response**: `200 OK` (See structure above)
-*   **Error Responses**:
-    *   `404 Not Found`: Data source not found or unauthorized.
-    *   `401`, `403`, `500`.
+## Visualization Endpoints
 
-### 4. Update Data Source
-Updates an existing data source.
+These endpoints manage saved visualization configurations.
 
-*   **URL**: `/api/v1/data-sources/{id}`
-*   **Method**: `PUT`
-*   **Request Body**: (Partial updates are allowed)
-    ```json
+### 1. Get All Visualizations
+
+`GET /api/visualizations`
+
+**Description**: Retrieves a list of all visualization configurations. Admins see all; regular users see only their own.
+**Authentication**: Required (JWT)
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Visualizations retrieved successfully.",
+  "data": [
     {
-        "name": "string",
-        "type": "string",
-        "connection_string": "string",
-        "schema_definition": {}
+      "id": 101,
+      "userId": 1,
+      "datasetId": 1,
+      "name": "Sales by Product Bar Chart",
+      "description": "Bar chart showing total sales for each product.",
+      "chartType": "bar",
+      "config": {
+        "xAxis": {"column": "Product", "label": "Product Name"},
+        "yAxis": {"column": "Sales", "label": "Total Sales", "aggregation": "sum"},
+        "colors": ["#4285F4", "#DB4437"],
+        "title": "Total Sales by Product"
+      },
+      "createdAt": "2023-10-27T11:00:00Z",
+      "updatedAt": "2023-10-27T11:00:00Z"
     }
-    ```
-*   **Success Response**: `200 OK`
-    ```json
-    {
-        "message": "Data source updated successfully"
-    }
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `404`, `500`.
+  ]
+}
+```
 
-### 5. Delete Data Source
-Deletes a data source and its associated files/configurations.
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
 
-*   **URL**: `/api/v1/data-sources/{id}`
-*   **Method**: `DELETE`
-*   **Success Response**: `204 No Content`
-*   **Error Responses**: `401`, `403`, `404`, `500`.
+### 2. Get Visualization by ID
 
-### 6. Process Data Source
-Triggers processing (e.g., parsing CSV, querying DB) for a data source and returns its raw/processed data.
+`GET /api/visualizations/{id}`
 
-*   **URL**: `/api/v1/data-sources/{id}/process`
-*   **Method**: `POST` (or GET if only fetching, POST if transformations/filters are in body)
-*   **Request Body (Optional for POST)**:
-    ```json
-    {
-        "filters": [...],
-        "aggregations": [...]
-    }
-    ```
-*   **Success Response**: `200 OK`
-    ```json
-    [
-        {"column1": "value1", "column2": 123},
-        {"column1": "valueX", "column2": 456}
-    ]
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `404`, `500`.
+**Description**: Retrieves a single visualization configuration by its ID.
+**Authentication**: Required (JWT). User must own the visualization or be an admin.
 
----
+**Path Parameters**:
+*   `id` (integer): The ID of the visualization.
 
-## Visualizations (Protected)
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Visualization retrieved successfully.",
+  "data": {
+    "id": 101,
+    "userId": 1,
+    "datasetId": 1,
+    "name": "Sales by Product Bar Chart",
+    "description": "Bar chart showing total sales for each product.",
+    "chartType": "bar",
+    "config": {
+      "xAxis": {"column": "Product", "label": "Product Name"},
+      "yAxis": {"column": "Sales", "label": "Total Sales", "aggregation": "sum"},
+      "colors": ["#4285F4", "#DB4437"],
+      "title": "Total Sales by Product"
+    },
+    "createdAt": "2023-10-27T11:00:00Z",
+    "updatedAt": "2023-10-27T11:00:00Z"
+  }
+}
+```
 
-Requires `Authorization: Bearer <token>` header.
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the visualization.
+*   `404 Not Found`: Visualization with the given ID does not exist.
 
-### 1. Create Visualization
-Creates a new visualization linked to a data source.
+### 3. Create New Visualization
 
-*   **URL**: `/api/v1/visualizations`
-*   **Method**: `POST`
-*   **Request Body**:
-    ```json
-    {
-        "name": "string",
-        "description": "string",          // Optional
-        "data_source_id": "uuid",
-        "type": "string",                 // e.g., "bar_chart", "line_chart"
-        "configuration": {}               // JSON object for chart specific settings
-    }
-    ```
-*   **Success Response**: `201 Created`
-    ```json
-    {
-        "message": "Visualization created successfully",
-        "id": "uuid",
-        "name": "string"
-    }
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `500`.
+`POST /api/visualizations`
 
-### 2. Get All Visualizations for User
-Retrieves a list of all visualizations owned by the authenticated user.
+**Description**: Creates a new visualization configuration linked to a dataset.
+**Authentication**: Required (JWT). User must own the referenced dataset or be an admin.
 
-*   **URL**: `/api/v1/visualizations`
-*   **Method**: `GET`
-*   **Success Response**: `200 OK`
-    ```json
-    [
-        {
-            "id": "uuid",
-            "user_id": "uuid",
-            "name": "string",
-            "description": "string",
-            "data_source_id": "uuid",
-            "type": "string",
-            "configuration": {},
-            "created_at": "datetime_iso8601",
-            "updated_at": "datetime_iso8601"
-        }
-    ]
-    ```
-*   **Error Responses**: `401`, `403`, `500`.
+**Request Body**:
+```json
+{
+  "datasetId": 1,
+  "name": "New Monthly Sales Line Chart",
+  "description": "Line chart showing monthly sales trends.",
+  "chartType": "line",
+  "config": {
+    "xAxis": {"column": "Date", "label": "Month"},
+    "yAxis": {"column": "Sales", "label": "Monthly Sales", "aggregation": "sum"},
+    "lineColor": "#0F9D58",
+    "title": "Monthly Sales Trend"
+  }
+}
+```
 
-### 3. Get Visualization by ID
-Retrieves a specific visualization by its ID.
+**Response (201 Created)**:
+```json
+{
+  "status": "success",
+  "message": "Visualization created successfully.",
+  "data": {
+    "id": 102,
+    "userId": 1,
+    "datasetId": 1,
+    "name": "New Monthly Sales Line Chart",
+    "description": "Line chart showing monthly sales trends.",
+    "chartType": "line",
+    "config": { ... },
+    "createdAt": "2023-10-27T11:15:00Z",
+    "updatedAt": "2023-10-27T11:15:00Z"
+  }
+}
+```
 
-*   **URL**: `/api/v1/visualizations/{id}`
-*   **Method**: `GET`
-*   **Success Response**: `200 OK` (See structure above)
-*   **Error Responses**: `404`, `401`, `403`, `500`.
+**Error Responses**:
+*   `400 Bad Request`: Missing required fields, invalid `datasetId`.
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the referenced dataset.
+*   `404 Not Found`: Referenced dataset does not exist.
+*   `500 Internal Server Error`: Failed to create visualization.
 
 ### 4. Update Visualization
-Updates an existing visualization.
 
-*   **URL**: `/api/v1/visualizations/{id}`
-*   **Method**: `PUT`
-*   **Request Body**: (Partial updates allowed)
-    ```json
-    {
-        "name": "string",
-        "description": "string",
-        "data_source_id": "uuid",
-        "type": "string",
-        "configuration": {}
-    }
-    ```
-*   **Success Response**: `200 OK`
-    ```json
-    {
-        "message": "Visualization updated successfully"
-    }
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `404`, `500`.
+`PUT /api/visualizations/{id}`
+
+**Description**: Updates an existing visualization configuration.
+**Authentication**: Required (JWT). User must own the visualization or be an admin.
+
+**Path Parameters**:
+*   `id` (integer): The ID of the visualization to update.
+
+**Request Body**:
+```json
+{
+  "name": "Revised Monthly Sales Line Chart",
+  "config": {
+    "xAxis": {"column": "Date", "label": "Month"},
+    "yAxis": {"column": "Sales", "label": "Monthly Sales (USD)", "aggregation": "sum"},
+    "lineColor": "#4285F4",
+    "title": "Revised Monthly Sales Trend"
+  }
+}
+```
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Visualization updated successfully.",
+  "data": {
+    "id": 102,
+    "userId": 1,
+    "datasetId": 1,
+    "name": "Revised Monthly Sales Line Chart",
+    "description": "Line chart showing monthly sales trends.",
+    "chartType": "line",
+    "config": { ... },
+    "createdAt": "2023-10-27T11:15:00Z",
+    "updatedAt": "2023-10-27T11:30:00Z"
+  }
+}
+```
+
+**Error Responses**:
+*   `400 Bad Request`: Invalid request body, new `datasetId` invalid or unauthorized.
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the visualization (or new referenced dataset).
+*   `404 Not Found`: Visualization with the given ID does not exist.
+*   `500 Internal Server Error`: Failed to update visualization.
 
 ### 5. Delete Visualization
-Deletes a visualization.
 
-*   **URL**: `/api/v1/visualizations/{id}`
-*   **Method**: `DELETE`
-*   **Success Response**: `204 No Content`
-*   **Error Responses**: `401`, `403`, `404`, `500`.
+`DELETE /api/visualizations/{id}`
 
-### 6. Get Visualization Data
-Retrieves the processed data required to render a specific visualization. The backend applies transformations defined in the visualization's configuration to its associated data source.
+**Description**: Deletes a visualization configuration.
+**Authentication**: Required (JWT). User must own the visualization or be an admin.
 
-*   **URL**: `/api/v1/visualizations/{id}/data`
-*   **Method**: `GET`
-*   **Query Parameters (Optional)**:
-    *   `filters`: JSON array string of additional filters (e.g., `?filters=[{"field":"age","op":">","value":30}]`)
-    *   `limit`, `offset`, `sort_by`, `sort_order` for pagination/dynamic sorting.
-*   **Success Response**: `200 OK`
-    ```json
-    [
-        {"category": "A", "value": 100},
-        {"category": "B", "value": 150}
-    ]
-    ```
-*   **Error Responses**: `400`, `401`, `403`, `404`, `500`.
+**Path Parameters**:
+*   `id` (integer): The ID of the visualization to delete.
 
----
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "message": "Visualization deleted successfully."
+}
+```
 
-## Dashboards (Protected)
-
-Requires `Authorization: Bearer <token>` header.
-
-*(Endpoints for Dashboards are similar to Visualizations and Data Sources - CRUD operations with a `layout_config` JSON field. Omitted for brevity but would follow the same pattern.)*
-
----
-
-## Common Error Responses
-
-*   `400 Bad Request`: Client-side error, e.g., invalid JSON, missing required fields, invalid parameters.
-    ```json
-    {"error": "Invalid JSON format"}
-    ```
-*   `401 Unauthorized`: Authentication required or invalid token provided.
-    ```json
-    {"error": "Unauthorized"}
-    ```
-*   `403 Forbidden`: Authenticated user does not have permission to access the resource.
-    ```json
-    {"error": "Forbidden", "details": "Invalid JWT signature"}
-    ```
-*   `404 Not Found`: The requested resource could not be found.
-    ```json
-    {"error": "Not Found"}
-    ```
-*   `429 Too Many Requests`: Rate limit exceeded.
-    ```json
-    {"error": "Too Many Requests", "retry_after": 60}
-    ```
-*   `500 Internal Server Error`: An unexpected error occurred on the server.
-    ```json
-    {"error": "Internal Server Error", "details": "Specific error message"}
-    ```
----
+**Error Responses**:
+*   `401 Unauthorized`: Authentication token missing or invalid.
+*   `403 Forbidden`: User does not own the visualization.
+*   `404 Not Found`: Visualization with the given ID does not exist.
+*   `500 Internal Server Error`: Failed to delete visualization.
+```

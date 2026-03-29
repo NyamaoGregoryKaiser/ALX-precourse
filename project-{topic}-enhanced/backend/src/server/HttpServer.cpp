@@ -1,126 +1,74 @@
+```cpp
 #include "HttpServer.h"
-#include "utils/Logger.h"
-#include "nlohmann/json.hpp" // For JSON parsing
+#include "utils/JsonUtils.h"
+#include "../utils/Crypto.h" // For Crypto functions if needed directly by server setup
 
-#include <iostream>
-#include <regex>
-
-// --- Session Implementation ---
-
-Session::Session(net::ip::tcp::socket socket, Router& router)
-    : socket_(std::move(socket)), router_(router) {}
-
-void Session::run() {
-    do_read();
-}
-
-void Session::do_read() {
-    // Make the request empty before reading,
-    // otherwise the operation behavior is undefined.
-    raw_req_ = {};
-
-    // Set a timeout for reading
-    beast::get_lowest_layer(socket_).expires_after(std::chrono::seconds(30));
-
-    // Read a request
-    http::async_read(socket_, buffer_, raw_req_,
-        beast::bind_front_handler(&Session::on_read, shared_from_this()));
-}
-
-void Session::on_read(beast::error_code ec, std::size_t bytes_transferred) {
-    boost::ignore_unused(bytes_transferred);
-
-    // This means they closed the connection
-    if (ec == http::error::end_of_stream)
-        return;
-
-    if (ec) {
-        Logger::error("HTTP Read Error: " + ec.message());
-        return;
+HttpServer::HttpServer() {
+    // Initialize database connection
+    db = std::make_shared<Database>();
+    try {
+        db->connect();
+        Logger::info("Successfully connected to the database.");
+    } catch (const pqxx::broken_connection& e) {
+        Logger::critical("Failed to connect to database: {}", e.what());
+        // Exit or throw an exception that propagates to main, causing app termination
+        throw std::runtime_error("Database connection failed: " + std::string(e.what()));
     }
 
-    // Process the request
-    HttpRequest req;
-    req.raw_req = std::move(raw_req_);
-    req.body = req.raw_req.body();
-    for (const auto& header : req.raw_req.base()) {
-        req.headers[header.name_string().to_string()] = header.value().to_string();
-    }
+    // Initialize repositories
+    user_repo = std::make_shared<UserRepository>(db);
+    dataset_repo = std::make_shared<DatasetRepository>(db);
+    visualization_repo = std::make_shared<VisualizationRepository>(db);
+
+    // Initialize managers and processors
+    dataset_manager = std::make_shared<DatasetManager>(Config::getDataStoragePath());
+    data_processor = std::make_shared<DataProcessor>();
+
+    // Initialize middleware with dependencies
+    // AuthMiddleware needs user_repo to validate users and JWT secret
+    auth_middleware = std::make_shared<AuthMiddleware>(user_repo, Config::getJwtSecret());
     
-    // Parse query parameters
-    std::string target = req.raw_req.target().to_string();
-    size_t query_pos = target.find('?');
-    if (query_pos != std::string::npos) {
-        std::string query_string = target.substr(query_pos + 1);
-        std::regex query_regex("([^&]+)=([^&]*)");
-        std::sregex_iterator it(query_string.begin(), query_string.end(), query_regex);
-        std::sregex_iterator end;
-        for (; it != end; ++it) {
-            req.query_params[(*it)[1].str()] = (*it)[2].str();
-        }
-    }
+    // Assign dependencies to middleware (Crow specific)
+    app.get_middleware<AuthMiddleware>().set_user_repository(user_repo);
+    app.get_middleware<AuthMiddleware>().set_jwt_secret(Config::getJwtSecret());
 
-
-    HttpResponse res = router_.handleRequest(req);
-    send_response(res);
+    Logger::info("HTTP server initialized. Port: {}", Config::getAppPort());
+    setupRoutes();
 }
 
-void Session::send_response(HttpResponse& response) {
-    http::response<http::string_body> res_body;
-    res_body.version(11); // HTTP/1.1
-    res_body.result(response.status);
-    res_body.set(http::field::server, "DataVizTool-C++");
-    res_body.body() = response.body;
-    for (const auto& header : response.headers) {
-        res_body.set(header.first, header.second);
-    }
-    res_body.prepare_payload();
+void HttpServer::setupRoutes() {
+    // --- Public Routes ---
+    AuthRoutes::setupPublicRoutes(app, user_repo);
 
-    // Set a timeout for writing
-    beast::get_lowest_layer(socket_).expires_after(std::chrono::seconds(30));
+    // --- Authenticated Routes ---
+    // Dataset Routes
+    DatasetRoutes::setupRoutes(app, dataset_repo, dataset_manager, data_processor);
 
-    // Write the response
-    http::async_write(socket_, res_body,
-        beast::bind_front_handler(
-            [](std::shared_ptr<Session> self, beast::error_code ec, std::size_t bytes_transferred) {
-                boost::ignore_unused(bytes_transferred);
-                if (ec) {
-                    Logger::error("HTTP Write Error: " + ec.message());
-                    return;
-                }
-                // Close the connection
-                beast::error_code shutdown_ec;
-                self->socket_.shutdown(net::ip::tcp::socket::shutdown_send, shutdown_ec);
-            },
-            shared_from_this()));
+    // Visualization Routes
+    VisualizationRoutes::setupRoutes(app, visualization_repo, dataset_repo, data_processor);
+
+    // Health check endpoint
+    CROW_ROUTE(app, "/health")
+        .methods("GET"_method)
+        ([](const crow::request& req) {
+            return crow::response(200, JsonUtils::createSuccessResponse("Server is healthy").dump());
+        });
+
+    // Root endpoint
+    CROW_ROUTE(app, "/")
+        .methods("GET"_method)
+        ([](const crow::request& req) {
+            return crow::response(200, JsonUtils::createSuccessResponse("Welcome to DataVizSystem API!").dump());
+        });
+
+    Logger::info("All routes registered.");
 }
-
-// --- HttpServer Implementation ---
-
-HttpServer::HttpServer(const std::string& address, unsigned short port, Router& router)
-    : ioc_(1),
-      acceptor_(ioc_, {net::ip::make_address(address), port}),
-      router_(router) {}
 
 void HttpServer::run() {
-    do_accept();
-    ioc_.run(); // This will block until the server is stopped
+    Logger::info("HTTP server listening on port {}", Config::getAppPort());
+    // Start the Crow server
+    // Crow uses `concurrency::spsc_queue` for message passing, making it thread-safe for requests.
+    // It's recommended to run Crow with multiple threads for better performance.
+    app.port(Config::getAppPort()).multithreaded().run();
 }
-
-void HttpServer::do_accept() {
-    acceptor_.async_accept(
-        net::make_strand(ioc_),
-        beast::bind_front_handler(&HttpServer::on_accept, shared_from_this()));
-}
-
-void HttpServer::on_accept(beast::error_code ec, net::ip::tcp::socket socket) {
-    if (ec) {
-        Logger::error("HTTP Accept Error: " + ec.message());
-    } else {
-        // Create the session and run it
-        std::make_shared<Session>(std::move(socket), router_)->run();
-    }
-
-    // Accept another connection
-    do_accept();
-}
+```
