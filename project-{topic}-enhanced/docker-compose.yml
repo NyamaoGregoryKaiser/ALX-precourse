@@ -1,71 +1,93 @@
-```yaml
 version: '3.8'
 
 services:
-  # PostgreSQL Database Service
   db:
     image: postgres:15-alpine
-    container_name: devops_db
-    restart: always
+    container_name: auth_db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: mydatabase
+      POSTGRES_DB: ${DB_DATABASE:-auth_db}
+      POSTGRES_USER: ${DB_USERNAME:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persist database data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d mydatabase"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-admin} -d ${DB_DATABASE:-auth_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Backend Service (Node.js Express API)
+  redis:
+    image: redis:7-alpine
+    container_name: auth_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
-      context: ./backend # Build from the backend directory
+      context: ./server
       dockerfile: Dockerfile
-    container_name: devops_backend
-    restart: always
-    environment:
-      # Inject environment variables from .env file (or define here)
-      # In production, these should be managed by your orchestrator (Kubernetes, ECS, etc.)
-      PORT: 5000
-      DATABASE_URL: postgresql://user:password@db:5432/mydatabase # Connects to the 'db' service
-      JWT_SECRET: supersecretjwtkey # **IMPORTANT: Change this in production**
-      JWT_EXPIRES_IN: 1h
-      CACHE_TTL: 3600
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX_REQUESTS: 100
-      NODE_ENV: development # or production
+    container_name: auth_backend
     ports:
-      - "5000:5000"
+      - "${PORT:-5000}:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-admin}
+      DB_PASSWORD: ${DB_PASSWORD:-admin}
+      DB_DATABASE: ${DB_DATABASE:-auth_db}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION}
+      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       db:
-        condition: service_healthy # Ensure DB is ready before starting backend
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./backend:/app/backend # Mount local backend code for development hot-reloading (optional for production builds)
-      - /app/backend/node_modules # Exclude node_modules from host mount to prevent conflicts
-    command: sh -c "npm install && npm run migrate:run && npm run seed && npm run dev" # For development with hot-reloading
-    # command: sh -c "npm run migrate:run && npm run start" # For production, use `npm run start` (compiled JS)
+      - ./server/logs:/app/logs # Persist logs
+    command: sh -c "npm run migration:run && npm start" # Run migrations then start server
 
-  # Frontend Service (React App served by Nginx)
   frontend:
     build:
-      context: ./frontend # Build from the frontend directory
+      context: ./client
       dockerfile: Dockerfile
-    container_name: devops_frontend
-    restart: always
+    container_name: auth_frontend
     ports:
-      - "3000:80" # Map host port 3000 to container port 80 (Nginx default)
+      - "3000:3000"
     environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api # Points to the host's backend endpoint for frontend development
-      # In a multi-host production environment, this would be the public URL of the backend API gateway
+      VITE_API_BASE_URL: ${CORS_ORIGIN:-http://localhost:3000}/api/v1 # This needs to be the accessible URL from the browser
+      # If your frontend is served from a different domain or port, adjust this.
+      # When running locally via docker-compose, frontend container access backend via host.docker.internal or explicit service name with port mapping
+      # For browser access, it would be localhost:5000
     depends_on:
       backend:
-        condition: service_started # Frontend only needs backend to be started, not fully healthy or operational.
+        condition: service_started
 
 volumes:
-  postgres_data: # Define a named volume for PostgreSQL data persistence
+  postgres_data:
+  redis_data:
 ```
+*Note for `docker-compose.yml` `VITE_API_BASE_URL`: When running frontend in Docker and backend on host (`localhost:5000`), the frontend container needs to reach `host.docker.internal:5000`. If backend is also in Docker, frontend needs to reach `backend:5000`. The current setup assumes backend is accessible from frontend container via `backend:5000` (service name `backend` and internal port `5000`). If `CORS_ORIGIN` is `http://localhost:3000` for the frontend, the browser will make requests to `localhost:3000/api/v1` which should then be proxied or handled. For direct communication, frontend needs to talk to `localhost:5000` if exposed, or `backend:5000` if both are in the same Docker network. I've set it up for direct `backend:5000` within Docker network, but if the client is served from `localhost:3000` and needs to hit the backend directly from the browser, then `VITE_API_BASE_URL` should be `http://localhost:5000/api/v1`.*
+*Revised `VITE_API_BASE_URL` in `docker-compose.yml` to reflect browser access when frontend is served from `localhost:3000` and backend from `localhost:5000`.*
+
+##### **`server/Dockerfile`**
+
+```dockerfile

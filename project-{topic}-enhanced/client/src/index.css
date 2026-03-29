@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-100 text-gray-900;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom styles for React Toastify */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+.Toastify__toast--success {
+  @apply bg-green-500 text-white;
+}
+.Toastify__toast--error {
+  @apply bg-red-500 text-white;
+}
+.Toastify__toast--info {
+  @apply bg-blue-500 text-white;
+}
+.Toastify__toast--warning {
+  @apply bg-yellow-500 text-white;
+}
+```
