@@ -1,211 +1,131 @@
 ```markdown
-# 🚀 Deployment Guide
+# Deployment Guide
 
-This document provides instructions on how to deploy the Web Scraping Tools System to a production environment. The recommended approach involves using Docker and a cloud provider.
+This document outlines the steps and considerations for deploying the "My DevOps Project" application to a production environment. The deployment strategy focuses on leveraging Docker containers and cloud infrastructure with a CI/CD pipeline.
 
-## 1. Prerequisites
+## Table of Contents
 
-Before deploying, ensure you have:
+1.  [Deployment Strategy Overview](#1-deployment-strategy-overview)
+2.  [Prerequisites](#2-prerequisites)
+3.  [Cloud Infrastructure Setup (Example: AWS)](#3-cloud-infrastructure-setup-example-aws)
+    *   [VPC and Networking](#vpc-and-networking)
+    *   [Database Provisioning](#database-provisioning)
+    *   [Container Orchestration](#container-orchestration)
+    *   [Load Balancers](#load-balancers)
+    *   [DNS and SSL/TLS](#dns-and-ssltls)
+    *   [Secrets Management](#secrets-management)
+4.  [CI/CD for Deployment (Continuous Deployment)](#4-cicd-for-deployment-continuous-deployment)
+    *   [Backend Deployment](#backend-deployment)
+    *   [Frontend Deployment](#frontend-deployment)
+5.  [Database Migrations in Production](#5-database-migrations-in-production)
+6.  [Monitoring, Logging, and Alerting](#6-monitoring-logging-and-alerting)
+7.  [Rollback Strategy](#7-rollback-strategy)
+8.  [Scaling Considerations](#8-scaling-considerations)
+9.  [Security Checklist](#9-security-checklist)
 
-*   **Cloud Provider Account**: (e.g., AWS, Google Cloud, Azure, Heroku, DigitalOcean).
-*   **Domain Name**: (Optional but recommended for production).
-*   **Git Repository**: Your code pushed to a version control system (e.g., GitHub, GitLab).
-*   **Docker & Docker Compose**: Installed locally for testing build process.
-*   **CI/CD Pipeline Configuration**: (Optional, but highly recommended for automation).
-*   **Environment Variables**: Prepared for your production environment (e.g., database credentials, JWT secret, etc.). **Do NOT commit your `.env` file to version control.**
+---
 
-## 2. Prepare for Production
+## 1. Deployment Strategy Overview
 
-### 2.1. Environment Variables
+The recommended deployment strategy is **container-based** using **Docker images** managed by a **Container Orchestration Platform** (e.g., Kubernetes, AWS ECS, Google Cloud Run).
 
-Create a separate set of environment variables for your production environment. These should be managed by your deployment platform (e.g., AWS Parameter Store, Kubernetes Secrets, Docker Secrets, Heroku Config Vars).
+1.  **Code Commit**: Developers push code to GitHub.
+2.  **CI (GitHub Actions)**:
+    *   Backend and Frontend CI pipelines run tests, linting, and build Docker images.
+    *   Built images are pushed to a **Container Registry** (e.g., Docker Hub, AWS ECR).
+3.  **CD (Continuous Deployment)**:
+    *   A CD pipeline (e.g., using a tool like ArgoCD, FluxCD, or custom script) monitors the container registry for new images.
+    *   Upon detecting new images, it triggers an update to the application deployments on the orchestration platform.
+    *   The orchestration platform pulls the new images, performs a rolling update, and manages the application's lifecycle.
+4.  **Infrastructure**: Managed cloud services are used for the database, load balancing, and potentially networking.
 
-**Crucially**:
-*   **`NODE_ENV=production`**: This enables production-specific optimizations and logging.
-*   **`JWT_SECRET`**: Generate a *strong*, unique, and random secret for production.
-*   **`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`**: Use credentials for your production PostgreSQL instance.
-*   **`DB_SSL=true`**: Most cloud-hosted databases require SSL. Configure this correctly for your provider.
-*   **Other sensitive keys**: Ensure they are securely managed.
+## 2. Prerequisites
 
-### 2.2. Build the Docker Image
+*   **Cloud Provider Account**: AWS, Azure, Google Cloud, DigitalOcean, etc.
+*   **Domain Name**: For public access to your application.
+*   **GitHub Repository**: With configured [GitHub Actions CI pipelines](#7-cicd-with-github-actions).
+*   **Container Registry Credentials**: Configured as GitHub Secrets (`DOCKER_USERNAME`, `DOCKER_PASSWORD`) or similar for your chosen registry.
+*   **Deployment Automation Tool**: Kubernetes CLI (`kubectl`), AWS CLI, Terraform, Ansible, or a GitOps tool (ArgoCD, FluxCD).
 
-Build the Docker image locally to verify it works:
+## 3. Cloud Infrastructure Setup (Example: AWS)
 
-```bash
-docker build -t web-scraping-system:latest .
-```
+This section provides a high-level guide for setting up infrastructure on AWS. Similar concepts apply to other cloud providers.
 
-This will run the multi-stage build defined in `Dockerfile`, creating a lean production image.
+### VPC and Networking
 
-### 2.3. Database Provisioning
+*   **Virtual Private Cloud (VPC)**: Create a dedicated VPC for your application, separated from other resources.
+*   **Subnets**: Define public and private subnets. Databases and application instances typically reside in private subnets, while load balancers and NAT Gateways are in public subnets.
+*   **Security Groups**: Configure strict security groups for each component:
+    *   **Database**: Allow inbound connections only from application instances (e.g., on port 5432).
+    *   **Backend**: Allow inbound connections only from the Load Balancer.
+    *   **Frontend (Nginx)**: Allow inbound connections only from the Load Balancer.
+*   **Route Tables**: Ensure proper routing between subnets and to the internet (via Internet Gateway for public, NAT Gateway for private outbound).
 
-Provision a managed PostgreSQL database service from your chosen cloud provider (e.g., AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL).
-*   Ensure it's in the same region/network as your application for low latency.
-*   Configure network access (security groups/firewall rules) to allow connections from your application.
-*   Note down the connection details (host, port, user, password, database name) for your production `.env` variables.
+### Database Provisioning
 
-## 3. Deployment Steps (General Approach)
+*   **Managed PostgreSQL Service**: Provision an **Amazon RDS for PostgreSQL** instance.
+    *   Choose an appropriate instance size and storage based on your needs.
+    *   Configure Multi-AZ deployment for high availability.
+    *   Ensure it's placed in a private subnet.
+    *   Set up backups and recovery.
+*   **Database Credentials**: Store these securely in AWS Secrets Manager.
 
-The specific steps will vary based on your cloud provider, but here's a general workflow:
+### Container Orchestration
 
-### 3.1. Container Orchestration (e.g., Docker Swarm, Kubernetes, AWS ECS, GCP Cloud Run)
+*   **Amazon Elastic Container Service (ECS)** or **Amazon Elastic Kubernetes Service (EKS)**:
+    *   **ECS**: Define Task Definitions for your backend and frontend. Create an ECS Service to run desired tasks, integrate with ALB.
+    *   **EKS**: Set up an EKS cluster. Deployments and Services/Ingresses will be defined in YAML files.
+    *   **Scaling**: Configure auto-scaling policies based on CPU utilization, memory, or custom metrics.
 
-1.  **Push Docker Image**: Tag your Docker image and push it to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
-    ```bash
-    docker tag web-scraping-system:latest your-registry/web-scraping-system:v1.0.0
-    docker push your-registry/web-scraping-system:v1.0.0
-    ```
-2.  **Deploy Application Service**:
-    *   Create a new service/deployment using your container orchestration platform.
-    *   Point to the Docker image in your registry.
-    *   **Configure Environment Variables**: Inject your production environment variables (e.g., `JWT_SECRET`, `DB_HOST`, etc.) into the container runtime. This is critical for security and configuration.
-    *   **Port Mapping**: Map the container's exposed port (e.g., `3000`) to a public port.
-    *   **Scaling**: Configure desired instance count for high availability and load balancing.
-    *   **Health Checks**: Set up health checks (e.g., `GET /health` endpoint) to ensure the service is running correctly.
-3.  **Network Configuration**:
-    *   Set up a load balancer in front of your application instances.
-    *   Configure DNS records to point your domain (e.g., `api.yourdomain.com`) to the load balancer.
-    *   Enable HTTPS/SSL termination at the load balancer.
+### Load Balancers
 
-### 3.2. Initial Database Setup on Production DB
+*   **Application Load Balancer (ALB)**:
+    *   Front-end (HTTP/HTTPS) entry point for your application.
+    *   Route traffic to your Frontend (Nginx) service.
+    *   Terminate SSL/TLS at the ALB using certificates from AWS Certificate Manager (ACM).
+    *   Define target groups for your Frontend and Backend services.
 
-After provisioning your production PostgreSQL instance:
+### DNS and SSL/TLS
 
-1.  **Connect to DB**: Use a database client (e.g., `psql`, DBeaver, DataGrip) or your cloud provider's console to connect to your production database.
-2.  **Run Migrations**: Execute the database migrations to create the necessary tables. You can do this by temporarily `docker exec` into a running backend container (if in a shell), or typically via a CI/CD step:
-    ```bash
-    # Example command to run from your deployment environment
-    # Ensure you replace 'backend-container-name' with your actual container name/ID
-    docker exec <backend-container-name> npm run migration:run
-    ```
-3.  **Seed Data (Optional)**: If you have essential lookup data or an initial admin user that must exist in production, run the seeding script:
-    ```bash
-    # Example command
-    docker exec <backend-container-name> npm run seed:run
-    ```
-    **Caution**: Be careful with seeding scripts in production to avoid overwriting live data. Only seed data that is idempotent or only for initial setup.
+*   **Amazon Route 53**: Manage your domain's DNS records.
+    *   Create an A record pointing to your ALB.
+*   **AWS Certificate Manager (ACM)**: Provision and manage SSL/TLS certificates for your domain.
+    *   Integrate ACM certificates with your ALB to enable HTTPS.
 
-## 4. CI/CD Pipeline (Example with GitHub Actions)
+### Secrets Management
 
-A CI/CD pipeline automates the process of building, testing, and deploying your application. Here's a conceptual `main.yml` for GitHub Actions:
+*   **AWS Secrets Manager** or **AWS Parameter Store**: Store sensitive environment variables (e.g., `DATABASE_URL`, `JWT_SECRET`, API keys) for your backend.
+*   Integrate these services with your ECS Task Definitions or Kubernetes Deployments to inject secrets securely into containers at runtime.
 
-```yaml
-# .github/workflows/main.yml
-name: CI/CD Pipeline
+## 4. CI/CD for Deployment (Continuous Deployment)
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+While the CI pipelines (build, test, push Docker images) are defined in `.github/workflows/`, a Continuous Deployment step is needed to deploy the new images.
 
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+### Backend Deployment
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+1.  **Image Tagging**: Instead of always pushing `latest`, consider tagging images with Git commit SHAs or semantic versions (e.g., `my-devops-backend:a1b2c3d`). This enables precise rollbacks.
+2.  **Deployment Trigger**:
+    *   **GitOps (Recommended)**: Use tools like ArgoCD or FluxCD. Your Kubernetes manifest files (or ECS Task Definitions) are stored in a Git repository. When a new image is pushed to Docker Hub, your GitOps tool detects the new image tag in the manifest (e.g., via Image Updater) and automatically applies the change to your cluster.
+    *   **Scripted Deployment**: A separate GitHub Actions workflow (e.g., `deploy-backend.yml`) could be triggered after `backend-ci.yml` successfully pushes an image. This workflow would use `kubectl` (for EKS) or AWS CLI (for ECS) to update the running deployment with the new image tag.
+3.  **Rolling Updates**: Configure your deployment (Kubernetes Deployment, ECS Service) to perform rolling updates. This gradually replaces old application instances with new ones, minimizing downtime.
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
+### Frontend Deployment
 
-      - name: Install dependencies
-        run: npm install
+Similar to the backend deployment:
+1.  **Image Tagging**: Tag frontend images appropriately.
+2.  **Deployment Trigger**: Use GitOps or a scripted approach to update the frontend deployment (e.g., Nginx serving React app).
+3.  **CDN Integration**: For higher performance, integrate an AWS CloudFront (CDN) distribution in front of your Nginx Frontend service. This caches static assets closer to users, reducing latency.
 
-      - name: Lint code
-        run: npm run lint
+## 5. Database Migrations in Production
 
-      - name: Build TypeScript
-        run: npm run build
+Running database migrations is a critical step during deployment.
 
-      - name: Start PostgreSQL (for integration/API tests)
-        run: docker-compose -f docker-compose.test.yml up -d db # You might need a separate docker-compose for tests
+*   **Recommended Approach (Kubernetes Init Container)**:
+    *   In a Kubernetes `Deployment` for your backend, use an `initContainer`.
+    *   This `initContainer` uses the same backend Docker image and runs only the migration command (`npm run migrate:run`).
+    *   The main application containers will **only start after** the migration `initContainer` successfully completes. This ensures the application always starts with the correct database schema.
+    *   Ensure the `initContainer` has access to the `DATABASE_URL` secret.
 
-      - name: Wait for DB to be ready
-        run: sleep 15 # Adjust as needed for your DB to start
-
-      - name: Run migrations
-        run: docker exec <test-db-container-name> npm run migration:run # Adjust for your test DB
-
-      - name: Run tests
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: password
-          DB_NAME: test_db # Use a dedicated test database
-          JWT_SECRET: test_secret
-          # ... other test environment variables
-        run: npm test
-
-      - name: Stop PostgreSQL
-        if: always() # Ensure this runs even if tests fail
-        run: docker-compose -f docker-compose.test.yml down
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-and-test # Only deploy if build and tests pass
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Build and push Docker image to Registry
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      - run: |
-          docker build -t your-registry/web-scraping-system:${{ github.sha }} .
-          docker push your-registry/web-scraping-system:${{ github.sha }}
-
-      - name: Deploy to Cloud Provider
-        # This step is highly specific to your cloud provider (e.g., AWS ECS, GCP Cloud Run)
-        # Example for AWS ECS:
-        # uses: aws-actions/amazon-ecs-deploy@v1
-        # with:
-        #   task-definition: your-task-definition.json
-        #   service: your-ecs-service
-        #   cluster: your-ecs-cluster
-        #   image: your-registry/web-scraping-system:${{ github.sha }}
-        #
-        # Example for Google Cloud Run:
-        # uses: google-github-actions/deploy-cloudrun@v1
-        # with:
-        #   service: web-scraping-service
-        #   image: your-registry/web-scraping-system:${{ github.sha }}
-        #   env_vars: |
-        #     DB_HOST=${{ secrets.PROD_DB_HOST }}
-        #     DB_USER=${{ secrets.PROD_DB_USER }}
-        #     JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
-        #     # ... and all other production env vars
-        run: |
-          echo "Simulating deployment to production..."
-          echo "Image: your-registry/web-scraping-system:${{ github.sha }}"
-          # Replace with actual deployment commands for your cloud provider
-```
-
-## 5. Post-Deployment Checks
-
-*   **Verify Logs**: Check application logs (`docker-compose logs backend` locally, or your cloud provider's logging service) for any errors.
-*   **Health Check**: Access the `/health` endpoint (e.g., `https://api.yourdomain.com/health`) to ensure the service is running.
-*   **API Tests**: Run a few basic API calls (e.g., login, create project) to confirm functionality.
-*   **Monitoring**: Ensure your monitoring tools are collecting metrics and logs.
-
-## 6. Scaling Considerations
-
-*   **Backend Service**: Since the backend is stateless (JWT for sessions), you can easily scale it horizontally by running multiple instances behind a load balancer.
-*   **Database**: For high traffic, consider read replicas for your PostgreSQL database.
-*   **Scraping Workers**: For very heavy scraping loads, consider refactoring the `ScraperService` to run as separate worker processes, decoupled from the main API via a message queue (e.g., Redis Queue, RabbitMQ, AWS SQS/Lambda). This allows independent scaling of scraping tasks.
-*   **Puppeteer Resources**: Running many Puppeteer instances can be resource-intensive. Optimize Puppeteer settings (e.g., headless mode, request blocking) and scale resources (CPU/RAM) for your scraping workers.
-
-By following these guidelines, you can achieve a robust and scalable deployment of your web scraping tools system.
-```
+*   **Alternative (Separate Job/Manual)**:
+    *   Run migrations as a separate, one-off job on your orchestration platform.
+    *   Alternatively, execute migrations manually from a secure bastion host or CI/CD environment before deploying the new application version. This

@@ -1,72 +1,49 @@
 ```dockerfile
-# Stage 1: Build the C++ application
-FROM gcc:11.3 AS builder
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS build
 
-WORKDIR /app
+WORKDIR /app/backend
 
-# Install dependencies (Crow, nlohmann/json, spdlog, pqxx, jwt-cpp, openssl, argon2)
-# These are common package names, actual names might vary slightly by distribution.
-# We're using a base image that already has g++ and build tools.
-RUN apt-get update && apt-get install -y \
-    cmake \
-    libboost-all-dev \
-    libpq-dev \
-    libpqxx-dev \
-    libssl-dev \
-    libargon2-dev \
-    pkg-config \
-    # Assuming crow, nlohmann-json, spdlog, jwt-cpp are installed manually or via vcpkg/conan
-    # For a production setup, consider vcpkg or Conan for C++ dependency management
-    # For this example, we'll mock their installation by ensuring required headers/libs are present
-    # Manual install for demonstration purposes:
-    # Example for nlohmann/json (usually header-only)
-    # mkdir -p /usr/local/include/nlohmann && \
-    # wget -O /usr/local/include/nlohmann/json.hpp https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
-    # For Crow, spdlog, jwt-cpp, you'd typically clone and build or use system packages
-    # For this Dockerfile, we'll assume they are available or discoverable by CMake's find_package
-    # For a real project, use a dependency manager or carefully manage system libs.
-    # We will ensure `libpq-dev`, `libpqxx-dev`, `libssl-dev` (for OpenSSL) and `libargon2-dev` are present
-    && rm -rf /var/lib/apt/lists/*
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package.json yarn.lock ./
+# If using npm: COPY package.json package-lock.json ./
 
-# Copy source code and CMakeLists.txt
-COPY backend/CMakeLists.txt ./CMakeLists.txt
-COPY backend/src src/
-COPY backend/tests tests/
+# Install dependencies
+RUN npm install --frozen-lockfile
 
-# Configure and build
-RUN cmake -DCMAKE_BUILD_TYPE=Release .
-RUN cmake --build . -j$(nproc)
+# Copy the rest of the application code
+COPY . .
 
-# Stage 2: Create a minimal runtime image
-FROM debian:bullseye-slim
+# Build the TypeScript code
+RUN npm run build
 
-WORKDIR /app
+# Stage 2: Run the application
+FROM node:18-alpine
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    libssl-dev \
-    libargon2-1 \
-    # Add any other runtime dependencies for Crow, spdlog if they have shared libs not in debian-slim
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/backend
 
-# Copy the built executable from the builder stage
-COPY --from=builder /app/DataVizSystem ./DataVizSystem
-COPY --from=builder /app/assets ./assets # If assets are needed at runtime
+# Copy package.json and package-lock.json again for production dependencies
+COPY package.json yarn.lock ./
+# If using npm: COPY package.json package-lock.json ./
 
-# Expose the port the server listens on (e.g., 18080 for Crow)
-EXPOSE 18080
+# Install only production dependencies
+RUN npm install --only=production --frozen-lockfile
 
-# Environment variables (DB_HOST, DB_PORT, etc. will be passed via docker-compose or Kubernetes)
-ENV DATA_VIZ_DB_HOST=localhost
-ENV DATA_VIZ_DB_PORT=5432
-ENV DATA_VIZ_DB_USER=dataviz_user
-ENV DATA_VIZ_DB_PASSWORD=dataviz_password
-ENV DATA_VIZ_DB_NAME=dataviz_db
-ENV DATA_VIZ_JWT_SECRET="your_super_secret_jwt_key_please_change"
-ENV DATA_VIZ_APP_PORT=18080
-ENV DATA_VIZ_LOG_LEVEL=info
+# Copy built application from the build stage
+COPY --from=build /app/backend/dist ./dist
+COPY --from=build /app/backend/ormconfig.json ./ormconfig.json
+# If you have other static assets or config files needed at runtime, copy them here
+# e.g., COPY --from=build /app/backend/.env.production ./.env
 
-# Run the application
-CMD ["./DataVizSystem"]
+# Expose the port the app runs on
+EXPOSE 5000
+
+# Set environment variables for production
+ENV NODE_ENV production
+ENV PORT 5000
+
+# Command to run the application
+# Before starting, run migrations and potentially seed data
+# This is a simple approach for Docker Compose. In Kubernetes, migrations might be a separate initContainer.
+CMD ["sh", "-c", "npm run migrate:run && node dist/server.js"]
 ```
