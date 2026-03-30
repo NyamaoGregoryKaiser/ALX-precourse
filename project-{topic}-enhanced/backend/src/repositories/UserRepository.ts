@@ -1,18 +1,16 @@
-```typescript
-import { Repository } from 'typeorm';
+import { AppDataSource } from '../config/data-source';
 import { User } from '../entities/User';
-import { AppDataSource } from '../config/database';
 
-/**
- * Custom repository for User entity.
- * Provides additional methods beyond basic CRUD if needed, specific to User operations.
- * This pattern helps centralize database interactions for a specific entity.
- */
 export const UserRepository = AppDataSource.getRepository(User).extend({
   async findByEmail(email: string): Promise<User | null> {
-    return this.findOneBy({ email });
+    return this.findOne({ where: { email } });
   },
 
-  // Add more custom methods here, e.g., findUsersWithProducts, findActiveUsers, etc.
+  async findById(id: string): Promise<User | null> {
+    return this.findOne({ where: { id } });
+  },
 });
 ```
+
+#### `backend/src/repositories/ProjectRepository.ts`
+```typescript

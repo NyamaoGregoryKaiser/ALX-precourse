@@ -1,131 +1,193 @@
-```markdown
-# Deployment Guide
+# Task Management System: Deployment Guide
 
-This document outlines the steps and considerations for deploying the "My DevOps Project" application to a production environment. The deployment strategy focuses on leveraging Docker containers and cloud infrastructure with a CI/CD pipeline.
+This guide outlines the steps to deploy the Task Management System to a production environment using Docker and a reverse proxy (e.g., Nginx). This setup assumes you have a Linux server with Docker and Docker Compose installed.
 
-## Table of Contents
+## Prerequisites
 
-1.  [Deployment Strategy Overview](#1-deployment-strategy-overview)
-2.  [Prerequisites](#2-prerequisites)
-3.  [Cloud Infrastructure Setup (Example: AWS)](#3-cloud-infrastructure-setup-example-aws)
-    *   [VPC and Networking](#vpc-and-networking)
-    *   [Database Provisioning](#database-provisioning)
-    *   [Container Orchestration](#container-orchestration)
-    *   [Load Balancers](#load-balancers)
-    *   [DNS and SSL/TLS](#dns-and-ssltls)
-    *   [Secrets Management](#secrets-management)
-4.  [CI/CD for Deployment (Continuous Deployment)](#4-cicd-for-deployment-continuous-deployment)
-    *   [Backend Deployment](#backend-deployment)
-    *   [Frontend Deployment](#frontend-deployment)
-5.  [Database Migrations in Production](#5-database-migrations-in-production)
-6.  [Monitoring, Logging, and Alerting](#6-monitoring-logging-and-alerting)
-7.  [Rollback Strategy](#7-rollback-strategy)
-8.  [Scaling Considerations](#8-scaling-considerations)
-9.  [Security Checklist](#9-security-checklist)
+*   A Linux server (e.g., Ubuntu, CentOS)
+*   Docker and Docker Compose installed on the server.
+    *   [Install Docker Engine](https://docs.docker.com/engine/install/)
+    *   [Install Docker Compose](https://docs.docker.com/compose/install/)
+*   Git installed on the server.
+*   A domain name (e.g., `yourtaskapp.com`) pointing to your server's IP address.
+*   SSH access to your server.
+*   (Optional but Recommended) Certbot for SSL/TLS certificates (Let's Encrypt).
 
----
+## 1. Prepare Your Server
 
-## 1. Deployment Strategy Overview
+1.  **SSH into your server:**
+    ```bash
+    ssh user@your_server_ip
+    ```
+2.  **Update your package list:**
+    ```bash
+    sudo apt update && sudo apt upgrade -y
+    ```
+3.  **Install Git (if not already installed):**
+    ```bash
+    sudo apt install git -y
+    ```
+4.  **Create a directory for your project:**
+    ```bash
+    mkdir ~/task-management-system
+    cd ~/task-management-system
+    ```
 
-The recommended deployment strategy is **container-based** using **Docker images** managed by a **Container Orchestration Platform** (e.g., Kubernetes, AWS ECS, Google Cloud Run).
+## 2. Clone the Repository
 
-1.  **Code Commit**: Developers push code to GitHub.
-2.  **CI (GitHub Actions)**:
-    *   Backend and Frontend CI pipelines run tests, linting, and build Docker images.
-    *   Built images are pushed to a **Container Registry** (e.g., Docker Hub, AWS ECR).
-3.  **CD (Continuous Deployment)**:
-    *   A CD pipeline (e.g., using a tool like ArgoCD, FluxCD, or custom script) monitors the container registry for new images.
-    *   Upon detecting new images, it triggers an update to the application deployments on the orchestration platform.
-    *   The orchestration platform pulls the new images, performs a rolling update, and manages the application's lifecycle.
-4.  **Infrastructure**: Managed cloud services are used for the database, load balancing, and potentially networking.
+```bash
+git clone https://github.com/your-username/task-management-system.git . # Clone into current directory
+```
+*Note: Replace `your-username` with your actual GitHub username or repository URL.*
 
-## 2. Prerequisites
+## 3. Configure Environment Variables
 
-*   **Cloud Provider Account**: AWS, Azure, Google Cloud, DigitalOcean, etc.
-*   **Domain Name**: For public access to your application.
-*   **GitHub Repository**: With configured [GitHub Actions CI pipelines](#7-cicd-with-github-actions).
-*   **Container Registry Credentials**: Configured as GitHub Secrets (`DOCKER_USERNAME`, `DOCKER_PASSWORD`) or similar for your chosen registry.
-*   **Deployment Automation Tool**: Kubernetes CLI (`kubectl`), AWS CLI, Terraform, Ansible, or a GitOps tool (ArgoCD, FluxCD).
+Create `.env` files for production in the root directory, and for backend within `backend/` as per `backend/.env.example` and `frontend/.env.example`.
 
-## 3. Cloud Infrastructure Setup (Example: AWS)
+**Important Considerations for Production `.env`:**
 
-This section provides a high-level guide for setting up infrastructure on AWS. Similar concepts apply to other cloud providers.
+*   **`backend/.env`**:
+    *   `NODE_ENV=production`
+    *   `PORT=5000` (internal container port)
+    *   `DB_HOST=db` (Docker service name)
+    *   `REDIS_HOST=redis` (Docker service name)
+    *   `JWT_SECRET`: **Generate a strong, unique secret key.**
+    *   `CORS_ORIGINS`: Your frontend's public URL (e.g., `https://yourtaskapp.com`).
+    *   `LOG_LEVEL=info` (or `error` for less verbosity)
+*   **`frontend/.env`**:
+    *   `REACT_APP_API_BASE_URL`: The public URL of your backend (e.g., `https://api.yourtaskapp.com` or `https://yourtaskapp.com/api/v1` if using a single domain with Nginx path routing). This will be passed as a build-arg to the frontend Dockerfile.
+*   **`docker-compose.yml` (root directory)**:
+    *   The `docker-compose.yml` itself relies on variables like `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, `JWT_SECRET` etc. You can either define these in a `.env` file in the same directory as `docker-compose.yml`, or directly in the `docker-compose.yml` file. Using a `.env` file at the root is generally preferred for sensitive data.
 
-### VPC and Networking
+**Example Production `.env` (at project root):**
+```dotenv
+# .env (at project root)
+# These variables will be picked up by docker-compose for PostgreSQL, Redis, and Backend
+DB_USERNAME=your_db_user
+DB_PASSWORD=your_strong_db_password
+DB_DATABASE=task_prod_db
+JWT_SECRET=a_very_long_and_complex_secret_for_jwt_prod_env_12345!@#$%^&*()
+REDIS_PASSWORD=your_strong_redis_password # If you configure Redis with auth
+CORS_ORIGINS=https://yourtaskapp.com
+```
 
-*   **Virtual Private Cloud (VPC)**: Create a dedicated VPC for your application, separated from other resources.
-*   **Subnets**: Define public and private subnets. Databases and application instances typically reside in private subnets, while load balancers and NAT Gateways are in public subnets.
-*   **Security Groups**: Configure strict security groups for each component:
-    *   **Database**: Allow inbound connections only from application instances (e.g., on port 5432).
-    *   **Backend**: Allow inbound connections only from the Load Balancer.
-    *   **Frontend (Nginx)**: Allow inbound connections only from the Load Balancer.
-*   **Route Tables**: Ensure proper routing between subnets and to the internet (via Internet Gateway for public, NAT Gateway for private outbound).
+## 4. Build and Run Docker Containers
 
-### Database Provisioning
+1.  **Build Docker images:**
+    ```bash
+    docker-compose build
+    ```
+    This will build the `backend` and `frontend` images based on their `Dockerfile`s and the `nginx` configuration. Ensure `REACT_APP_API_BASE_URL` in `frontend/.env` is correctly set to your *production* backend URL before building the frontend image.
 
-*   **Managed PostgreSQL Service**: Provision an **Amazon RDS for PostgreSQL** instance.
-    *   Choose an appropriate instance size and storage based on your needs.
-    *   Configure Multi-AZ deployment for high availability.
-    *   Ensure it's placed in a private subnet.
-    *   Set up backups and recovery.
-*   **Database Credentials**: Store these securely in AWS Secrets Manager.
+2.  **Run migrations and seed data (One-time setup):**
+    Before starting the backend service, you need to run database migrations. You can do this by overriding the `command` in `docker-compose.yml` temporarily, or running it manually after the `db` service is up.
 
-### Container Orchestration
+    *Option A (Manual):*
+    ```bash
+    # Start only the database and redis
+    docker-compose up -d db redis
 
-*   **Amazon Elastic Container Service (ECS)** or **Amazon Elastic Kubernetes Service (EKS)**:
-    *   **ECS**: Define Task Definitions for your backend and frontend. Create an ECS Service to run desired tasks, integrate with ALB.
-    *   **EKS**: Set up an EKS cluster. Deployments and Services/Ingresses will be defined in YAML files.
-    *   **Scaling**: Configure auto-scaling policies based on CPU utilization, memory, or custom metrics.
+    # Wait a few seconds for DB to initialize
+    sleep 15
 
-### Load Balancers
+    # Run migrations and then seeds (adjust path/command if needed)
+    docker-compose run --rm backend npm run migration:run
+    docker-compose run --rm backend npm run seed
+    ```
 
-*   **Application Load Balancer (ALB)**:
-    *   Front-end (HTTP/HTTPS) entry point for your application.
-    *   Route traffic to your Frontend (Nginx) service.
-    *   Terminate SSL/TLS at the ALB using certificates from AWS Certificate Manager (ACM).
-    *   Define target groups for your Frontend and Backend services.
+    *Option B (Via docker-compose command, as in `docker-compose.yml` provided):*
+    The `docker-compose.yml` includes a `command` for the `backend` service that runs `migration:run` and `seed` before `npm start`. This is convenient for a fresh deploy but ensures data is initialized. For subsequent updates, you'd typically manage migrations separately (`docker-compose run --rm backend npm run migration:run`) to avoid re-seeding or running potentially destructive commands on every container restart.
+    
+    If using the provided `docker-compose.yml` command, simply start all services:
+    ```bash
+    docker-compose up -d
+    ```
+    Monitor logs to ensure migrations and seeding are successful: `docker-compose logs backend`.
 
-### DNS and SSL/TLS
+## 5. Set up Nginx as a Reverse Proxy (for SSL and Domain Mapping)
 
-*   **Amazon Route 53**: Manage your domain's DNS records.
-    *   Create an A record pointing to your ALB.
-*   **AWS Certificate Manager (ACM)**: Provision and manage SSL/TLS certificates for your domain.
-    *   Integrate ACM certificates with your ALB to enable HTTPS.
+While the `frontend` container includes Nginx, a separate Nginx instance on the host is usually used for:
+*   Serving multiple applications on one server.
+*   Handling SSL termination (HTTPS).
+*   Routing traffic based on domain/path.
 
-### Secrets Management
+1.  **Install Nginx on your host:**
+    ```bash
+    sudo apt install nginx -y
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+    ```
 
-*   **AWS Secrets Manager** or **AWS Parameter Store**: Store sensitive environment variables (e.g., `DATABASE_URL`, `JWT_SECRET`, API keys) for your backend.
-*   Integrate these services with your ECS Task Definitions or Kubernetes Deployments to inject secrets securely into containers at runtime.
+2.  **Create an Nginx configuration file for your domain:**
+    ```bash
+    sudo nano /etc/nginx/sites-available/yourtaskapp.com
+    ```
+    Add the following configuration (replace `yourtaskapp.com` with your domain):
 
-## 4. CI/CD for Deployment (Continuous Deployment)
+    ```nginx
+    server {
+        listen 80;
+        server_name yourtaskapp.com api.yourtaskapp.com; # Add your API subdomain if any
 
-While the CI pipelines (build, test, push Docker images) are defined in `.github/workflows/`, a Continuous Deployment step is needed to deploy the new images.
+        location / {
+            proxy_pass http://localhost:3000; # Points to the frontend container's exposed port
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
 
-### Backend Deployment
+        # Optional: Route API requests through a specific path
+        location /api/v1/ {
+            proxy_pass http://localhost:5000/api/v1/; # Points to the backend container's exposed port
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    ```
+    *Note:* `localhost:3000` and `localhost:5000` here refer to the ports exposed by your Docker Compose setup on the host machine.
 
-1.  **Image Tagging**: Instead of always pushing `latest`, consider tagging images with Git commit SHAs or semantic versions (e.g., `my-devops-backend:a1b2c3d`). This enables precise rollbacks.
-2.  **Deployment Trigger**:
-    *   **GitOps (Recommended)**: Use tools like ArgoCD or FluxCD. Your Kubernetes manifest files (or ECS Task Definitions) are stored in a Git repository. When a new image is pushed to Docker Hub, your GitOps tool detects the new image tag in the manifest (e.g., via Image Updater) and automatically applies the change to your cluster.
-    *   **Scripted Deployment**: A separate GitHub Actions workflow (e.g., `deploy-backend.yml`) could be triggered after `backend-ci.yml` successfully pushes an image. This workflow would use `kubectl` (for EKS) or AWS CLI (for ECS) to update the running deployment with the new image tag.
-3.  **Rolling Updates**: Configure your deployment (Kubernetes Deployment, ECS Service) to perform rolling updates. This gradually replaces old application instances with new ones, minimizing downtime.
+3.  **Enable the Nginx configuration:**
+    ```bash
+    sudo ln -s /etc/nginx/sites-available/yourtaskapp.com /etc/nginx/sites-enabled/
+    sudo nginx -t # Test Nginx configuration for syntax errors
+    sudo systemctl restart nginx
+    ```
 
-### Frontend Deployment
+## 6. Secure with SSL/TLS (HTTPS) using Certbot (Recommended)
 
-Similar to the backend deployment:
-1.  **Image Tagging**: Tag frontend images appropriately.
-2.  **Deployment Trigger**: Use GitOps or a scripted approach to update the frontend deployment (e.g., Nginx serving React app).
-3.  **CDN Integration**: For higher performance, integrate an AWS CloudFront (CDN) distribution in front of your Nginx Frontend service. This caches static assets closer to users, reducing latency.
+1.  **Install Certbot and its Nginx plugin:**
+    ```bash
+    sudo apt install certbot python3-certbot-nginx -y
+    ```
+2.  **Run Certbot to obtain and install certificates:**
+    ```bash
+    sudo certbot --nginx -d yourtaskapp.com -d api.yourtaskapp.com # Include all your domains/subdomains
+    ```
+    Follow the prompts. Certbot will automatically configure Nginx to use HTTPS and set up automatic renewal.
 
-## 5. Database Migrations in Production
+## 7. Access Your Application
 
-Running database migrations is a critical step during deployment.
+Open your web browser and navigate to `https://yourtaskapp.com`.
 
-*   **Recommended Approach (Kubernetes Init Container)**:
-    *   In a Kubernetes `Deployment` for your backend, use an `initContainer`.
-    *   This `initContainer` uses the same backend Docker image and runs only the migration command (`npm run migrate:run`).
-    *   The main application containers will **only start after** the migration `initContainer` successfully completes. This ensures the application always starts with the correct database schema.
-    *   Ensure the `initContainer` has access to the `DATABASE_URL` secret.
+## 8. Continuous Deployment Considerations
 
-*   **Alternative (Separate Job/Manual)**:
-    *   Run migrations as a separate, one-off job on your orchestration platform.
-    *   Alternatively, execute migrations manually from a secure bastion host or CI/CD environment before deploying the new application version. This
+For a more robust CD pipeline:
+
+*   **Webhook/Git Hooks:** Configure your Git repository (e.g., GitHub) to send a webhook to your server when changes are pushed to `main`.
+*   **Deployment Script:** On the server, have a script that listens for the webhook, pulls the latest code, runs `docker-compose build`, and `docker-compose up -d`.
+*   **Zero-Downtime Deployment:** For truly zero-downtime, consider strategies like blue-green deployments or rolling updates with a more advanced orchestrator (Kubernetes, Docker Swarm) which are beyond the scope of this basic guide.
+*   **Database Migrations:** In production, migrations should be run carefully. It's often safer to run them as a separate step *before* deploying new application code that depends on the new schema, possibly using `docker-compose run --rm backend npm run migration:run`.
+*   **Rollback Strategy:** Always have a plan to roll back to a previous working version in case of issues.
+
+## 9. Monitoring and Logging
+
+*   **Container Logs:** `docker-compose logs -f [service_name]` to view real-time logs.
+*   **Backend Logs:** Winston writes logs to `backend/logs/combined.log` and `backend/logs/error.log` within the container. You can mount these log directories to the host using Docker volumes (`- ./logs:/app/logs`) to persist them.
+*   **Health Checks:** Docker Compose includes basic health checks for `db`. For `backend` and `frontend`, you might add more specific health checks that hit API endpoints.
+*   **External Monitoring:** Integrate with tools like Prometheus/Grafana, ELK stack, or cloud-specific monitoring solutions for comprehensive insights.
+
+By following these steps, you will have a production-ready Task Management System deployed and secured.
+```

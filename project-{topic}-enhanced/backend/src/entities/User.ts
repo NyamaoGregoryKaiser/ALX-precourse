@@ -1,34 +1,47 @@
-```typescript
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { Product } from './Product'; // Assuming a User can create many Products
+import { Entity, Column, OneToMany, BeforeInsert, BeforeUpdate } from 'typeorm';
+import bcrypt from 'bcryptjs';
+import { BaseEntity } from './BaseEntity';
+import { Project } from './Project';
+import { Task } from './Task';
 
-/**
- * Represents a User entity in the database.
- * Includes authentication details and basic user information.
- */
-@Entity('users')
-export class User {
-  @PrimaryGeneratedColumn('uuid') // Universally Unique Identifier for primary key
-  id!: string;
+export enum UserRole {
+  ADMIN = 'admin',
+  USER = 'user',
+}
 
-  @Column({ unique: true, nullable: false })
+@Entity()
+export class User extends BaseEntity {
+  @Column({ unique: true })
   email!: string;
 
-  @Column({ nullable: false })
-  password!: string; // Hashed password
+  @Column()
+  password!: string;
 
-  @Column({ default: 'user' }) // Example role: 'admin', 'user'
-  role!: string;
+  @Column()
+  firstName!: string;
 
-  @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt!: Date;
+  @Column()
+  lastName!: string;
 
-  @UpdateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt!: Date;
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
 
-  // Define a one-to-many relationship with Products
-  // This means one User can own multiple Products
-  @OneToMany(() => Product, product => product.user)
-  products!: Product[];
+  @OneToMany(() => Project, project => project.owner)
+  projects!: Project[];
+
+  @OneToMany(() => Task, task => task.assignedTo)
+  assignedTasks!: Task[];
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  async hashPassword() {
+    if (this.password && this.password.length < 60) { // Check if already hashed
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+  }
+
+  async comparePassword(candidatePassword: string): Promise<boolean> {
+    return bcrypt.compare(candidatePassword, this.password);
+  }
 }
-```

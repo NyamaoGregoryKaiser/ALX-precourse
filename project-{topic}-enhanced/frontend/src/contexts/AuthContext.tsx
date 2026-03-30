@@ -1,90 +1,72 @@
-```tsx
-import React, { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { User, AuthResponse } from 'types';
-import axiosInstance from 'api/axiosInstance';
-import { disconnectSocket } from 'api/socket';
+import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
+import { AuthContextType, User } from '../types';
+import { authApi } from '../services/api';
+import { toast } from 'react-toastify';
 
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  login: (authResponse: AuthResponse) => void;
-  logout: () => void;
-  loading: boolean;
-}
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthContext = createContext<AuthContextType>({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  login: () => {},
-  logout: () => {},
-  loading: true, // Default to true until initial check
-});
-
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  const checkAuthStatus = useCallback(async () => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      try {
-        // Optionally, make a request to /api/users/me to validate token and fetch fresh user data
-        const response = await axiosInstance.get('/users/me', {
-          headers: { Authorization: `Bearer ${storedToken}` }
-        });
-        setUser(response.data.data.user);
-        setToken(storedToken);
-      } catch (error) {
-        console.error('Token validation failed, logging out:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-        setToken(null);
-        disconnectSocket();
-      }
+  const fetchUser = useCallback(async (authToken: string) => {
+    try {
+      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+      const response = await authApi.getMe();
+      setUser(response.data);
+      localStorage.setItem('user', JSON.stringify(response.data));
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+      toast.error('Failed to load user data. Please log in again.');
+      logout(); // Clear invalid token
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
-    checkAuthStatus();
-  }, [checkAuthStatus]);
-
-  const login = (authResponse: AuthResponse) => {
-    localStorage.setItem('token', authResponse.token);
-    localStorage.setItem('user', JSON.stringify(authResponse.user));
-    setToken(authResponse.token);
-    setUser(authResponse.user);
-  };
-
-  const logout = async () => {
-    try {
-      // Invalidate token on the backend
-      await axiosInstance.post('/auth/logout');
-    } catch (error) {
-      console.error('Error logging out on backend:', error);
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setUser(null);
-      setToken(null);
-      disconnectSocket(); // Disconnect socket on logout
+    if (token) {
+      fetchUser(token);
+    } else {
+      setLoading(false);
     }
+  }, [token, fetchUser]);
+
+  const login = (newToken: string, userData: User) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setToken(newToken);
+    setUser(userData);
+    api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
   };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+    delete api.defaults.headers.common['Authorization'];
+    toast.info('You have been logged out.');
+  };
+
+  const isAuthenticated = !!user && !!token;
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated, loading }}>
       {children}
     </AuthContext.Provider>
   );
 };
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 ```
+
+#### `frontend/src/components/ProtectedRoute.tsx`
+```typescript

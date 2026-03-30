@@ -1,77 +1,17 @@
-```typescript
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
+import { Disclosure, Menu, Transition } from '@heroicons/react/react/20/solid';
+import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Fragment } from 'react';
+import { UserRole } from '../types';
 
-const NavWrapper = styled.nav`
-  background-color: var(--dark-color);
-  color: white;
-  padding: 1rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-`;
+function classNames(...classes: string[]) {
+  return classes.filter(Boolean).join(' ')
+}
 
-const Brand = styled(Link)`
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: white;
-  text-decoration: none;
-
-  &:hover {
-    color: var(--primary-color);
-    text-decoration: none;
-  }
-`;
-
-const NavLinks = styled.div`
-  display: flex;
-  align-items: center;
-`;
-
-const NavItem = styled(Link)`
-  color: white;
-  text-decoration: none;
-  margin-left: 1.5rem;
-  font-size: 1rem;
-  transition: color 0.3s ease;
-
-  &:hover {
-    color: var(--primary-color);
-    text-decoration: none;
-  }
-`;
-
-const LogoutButton = styled.button`
-  background-color: var(--danger-color);
-  color: white;
-  border: none;
-  padding: 0.6rem 1.2rem;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1rem;
-  margin-left: 1.5rem;
-  transition: background-color 0.3s ease;
-
-  &:hover {
-    background-color: darken(var(--danger-color), 10%);
-  }
-`;
-
-const UserInfo = styled.span`
-  margin-left: 1.5rem;
-  color: var(--light-color);
-  font-size: 0.9rem;
-`;
-
-/**
- * Navigation bar component for the application.
- * Displays links and logout button based on authentication status.
- */
 const Navbar: React.FC = () => {
-  const { isAuthenticated, logout, user, role } = useAuth(); // Assume `user` object is also available in context for displaying email
+  const { isAuthenticated, logout, user } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -79,27 +19,155 @@ const Navbar: React.FC = () => {
     navigate('/login');
   };
 
+  const navigation = [
+    { name: 'Dashboard', href: '/', current: true },
+    { name: 'Projects', href: '/projects', current: false },
+    { name: 'My Tasks', href: '/tasks/assigned', current: false },
+  ];
+
+  if (user?.role === UserRole.ADMIN) {
+    navigation.push({ name: 'Admin Dashboard', href: '/admin', current: false });
+  }
+
   return (
-    <NavWrapper>
-      <Brand to="/dashboard">My DevOps App</Brand>
-      <NavLinks>
-        {isAuthenticated ? (
-          <>
-            <NavItem to="/dashboard">Dashboard</NavItem>
-            {/* Assuming AuthContext can expose user's email or a display name */}
-            {user?.email && <UserInfo>Logged in as: {user.email} ({role})</UserInfo>}
-            <LogoutButton onClick={handleLogout}>Logout</LogoutButton>
-          </>
-        ) : (
-          <>
-            <NavItem to="/login">Login</NavItem>
-            <NavItem to="/register">Register</NavItem>
-          </>
-        )}
-      </NavLinks>
-    </NavWrapper>
+    <Disclosure as="nav" className="bg-gray-800">
+      {({ open }) => (
+        <>
+          <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
+            <div className="relative flex h-16 items-center justify-between">
+              <div className="absolute inset-y-0 left-0 flex items-center sm:hidden">
+                {/* Mobile menu button*/}
+                <Disclosure.Button className="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
+                  <span className="absolute -inset-1.5" />
+                  <span className="sr-only">Open main menu</span>
+                  {open ? (
+                    <XMarkIcon className="block h-6 w-6" aria-hidden="true" />
+                  ) : (
+                    <Bars3Icon className="block h-6 w-6" aria-hidden="true" />
+                  )}
+                </Disclosure.Button>
+              </div>
+              <div className="flex flex-1 items-center justify-center sm:items-stretch sm:justify-start">
+                <div className="flex flex-shrink-0 items-center">
+                  <Link to="/" className="text-white text-xl font-bold">TaskFlow</Link>
+                </div>
+                {isAuthenticated && (
+                  <div className="hidden sm:ml-6 sm:block">
+                    <div className="flex space-x-4">
+                      {navigation.map((item) => (
+                        <Link
+                          key={item.name}
+                          to={item.href}
+                          className={classNames(
+                            item.current ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+                            'rounded-md px-3 py-2 text-sm font-medium'
+                          )}
+                          aria-current={item.current ? 'page' : undefined}
+                        >
+                          {item.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
+                {isAuthenticated ? (
+                  <>
+                    <button
+                      type="button"
+                      className="relative rounded-full bg-gray-800 p-1 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800"
+                    >
+                      <span className="absolute -inset-1.5" />
+                      <span className="sr-only">View notifications</span>
+                      <BellIcon className="h-6 w-6" aria-hidden="true" />
+                    </button>
+
+                    {/* Profile dropdown */}
+                    <Menu as="div" className="relative ml-3">
+                      <div>
+                        <Menu.Button className="relative flex rounded-full bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800">
+                          <span className="absolute -inset-1.5" />
+                          <span className="sr-only">Open user menu</span>
+                          <span className="h-8 w-8 rounded-full flex items-center justify-center bg-blue-500 text-white font-bold">
+                            {user?.firstName ? user.firstName[0] : 'U'}
+                          </span>
+                        </Menu.Button>
+                      </div>
+                      <Transition
+                        as={Fragment}
+                        enter="transition ease-out duration-100"
+                        enterFrom="transform opacity-0 scale-95"
+                        enterTo="transform opacity-100 scale-100"
+                        leave="transition ease-in duration-75"
+                        leaveFrom="transform opacity-100 scale-100"
+                        leaveTo="transform opacity-0 scale-95"
+                      >
+                        <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                          <Menu.Item>
+                            {({ active }) => (
+                              <Link
+                                to="/profile"
+                                className={classNames(active ? 'bg-gray-100' : '', 'block px-4 py-2 text-sm text-gray-700')}
+                              >
+                                Your Profile
+                              </Link>
+                            )}
+                          </Menu.Item>
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                onClick={handleLogout}
+                                className={classNames(active ? 'bg-gray-100' : '', 'block w-full text-left px-4 py-2 text-sm text-gray-700')}
+                              >
+                                Sign out
+                              </button>
+                            )}
+                          </Menu.Item>
+                        </Menu.Items>
+                      </Transition>
+                    </Menu>
+                  </>
+                ) : (
+                  <div className="space-x-4">
+                    <Link to="/login" className="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">
+                      Login
+                    </Link>
+                    <Link to="/register" className="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">
+                      Register
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Disclosure.Panel className="sm:hidden">
+            <div className="space-y-1 px-2 pb-3 pt-2">
+              {navigation.map((item) => (
+                <Disclosure.Button
+                  key={item.name}
+                  as={Link}
+                  to={item.href}
+                  className={classNames(
+                    item.current ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+                    'block rounded-md px-3 py-2 text-base font-medium'
+                  )}
+                  aria-current={item.current ? 'page' : undefined}
+                >
+                  {item.name}
+                </Disclosure.Button>
+              ))}
+            </div>
+          </Disclosure.Panel>
+        </>
+      )}
+    </Disclosure>
   );
 };
 
 export default Navbar;
 ```
+
+#### `frontend/src/components/LoadingSpinner.tsx`
+```typescript

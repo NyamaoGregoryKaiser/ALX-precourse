@@ -1,22 +1,21 @@
-```typescript
-import { rateLimit } from 'express-rate-limit';
-import { StatusCodes } from 'http-status-codes';
-import config from '../config';
-import logger from '../utils/logger';
+import rateLimit from 'express-rate-limit';
 
-export const apiRateLimiter = rateLimit({
-  windowMs: config.rateLimitWindowMs, // 15 minutes
-  max: config.rateLimitMax, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+export const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per `window` (here, per 15 minutes)
+  message: 'Too many authentication attempts from this IP, please try again after 15 minutes',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  message: {
-    status: 'error',
-    statusCode: StatusCodes.TOO_MANY_REQUESTS,
-    message: 'Too many requests from this IP, please try again after some time.',
-  },
-  handler: (req, res, next, options) => {
-    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
-    res.status(options.statusCode).send(options.message);
-  },
+});
+
+export const apiRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 1000, // Limit each IP to 1000 requests per `window` (here, per 1 hour)
+  message: 'Too many requests from this IP, please try again after an hour',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 ```
+
+#### `backend/src/middleware/cache.ts` (Caching middleware)
+```typescript

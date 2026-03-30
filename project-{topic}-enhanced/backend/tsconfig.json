@@ -1,4 +1,3 @@
-```json
 {
   "compilerOptions": {
     "target": "es2016",
@@ -14,16 +13,26 @@
     "sourceMap": true,
     "baseUrl": "./src",
     "paths": {
-      "*": ["node_modules/*", "src/types/*"]
+      "@config/*": ["config/*"],
+      "@entities/*": ["entities/*"],
+      "@repositories/*": ["repositories/*"],
+      "@services/*": ["services/*"],
+      "@controllers/*": ["controllers/*"],
+      "@middleware/*": ["middleware/*"],
+      "@utils/*": ["utils/*"],
+      "@validation/*": ["validation/*"],
+      "@subscribers/*": ["subscribers/*"],
+      "@migrations/*": ["migrations/*"],
+      "@seeds/*": ["seeds/*"],
+      "@types/*": ["types/*"]
     }
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/tests"
+    "dist"
   ]
 }
-```

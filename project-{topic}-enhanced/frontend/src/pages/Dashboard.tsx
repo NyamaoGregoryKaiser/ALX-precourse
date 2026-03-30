@@ -1,266 +1,141 @@
-```typescript
 import React, { useEffect, useState } from 'react';
-import api from '../api/api';
-import { useAuth } from '../context/AuthContext';
-import styled from 'styled-components';
-import ProductForm from '../components/ProductForm';
+import { useAuth } from '../contexts/AuthContext';
+import { Project, Task, TaskStatus } from '../types';
+import { projectApi, taskApi } from '../services/api';
+import { toast } from 'react-toastify';
+import LoadingSpinner from '../components/LoadingSpinner';
+import { Link } from 'react-router-dom';
+import { format } from 'date-fns';
 
-// Interfaces for data types
-interface Product {
-  id: string;
-  name: string;
-  description?: string;
-  price: number;
-  isActive: boolean;
-  userId: string;
-  user?: {
-    id: string;
-    email: string;
-  };
-}
-
-const DashboardContainer = styled.div`
-  max-width: 1200px;
-  margin: 2rem auto;
-  padding: 20px;
-  background-color: var(--card-background);
-  border-radius: 8px;
-  box-shadow: var(--box-shadow);
-`;
-
-const Header = styled.h1`
-  text-align: center;
-  color: var(--dark-color);
-  margin-bottom: 2rem;
-`;
-
-const SectionTitle = styled.h2`
-  margin-top: 2rem;
-  margin-bottom: 1.5rem;
-  color: var(--dark-color);
-  border-bottom: 2px solid var(--primary-color);
-  padding-bottom: 0.5rem;
-`;
-
-const ProductList = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
-`;
-
-const ProductCard = styled.div<{ isActive: boolean }>`
-  background-color: var(--light-color);
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--border-color);
-  opacity: ${props => props.isActive ? 1 : 0.7};
-  position: relative;
-
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 10px rgba(0, 0, 0, 0.1);
-  }
-`;
-
-const ProductStatus = styled.span<{ isActive: boolean }>`
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background-color: ${props => props.isActive ? var(--success-color) : var(--danger-color)};
-  color: white;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 0.8rem;
-  font-weight: bold;
-`;
-
-const ProductName = styled.h3`
-  color: var(--primary-color);
-  margin-bottom: 0.5rem;
-`;
-
-const ProductPrice = styled.p`
-  font-weight: bold;
-  font-size: 1.2rem;
-  color: var(--text-color);
-  margin-bottom: 1rem;
-`;
-
-const ProductDescription = styled.p`
-  font-size: 0.9rem;
-  color: var(--secondary-color);
-  margin-bottom: 1rem;
-`;
-
-const ProductOwner = styled.p`
-  font-size: 0.8rem;
-  color: var(--info-color);
-  margin-top: 0.5rem;
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  gap: 10px;
-  margin-top: 1rem;
-`;
-
-const EditButton = styled.button`
-  background-color: var(--info-color);
-  &:hover {
-    background-color: darken(var(--info-color), 10%);
-  }
-`;
-
-const DeleteButton = styled.button`
-  background-color: var(--danger-color);
-  &:hover {
-    background-color: darken(var(--danger-color), 10%);
-  }
-`;
-
-const Alert = styled.div<{ type: 'success' | 'error' | 'warning' }>`
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border-radius: 5px;
-  color: white;
-  font-weight: bold;
-  background-color: ${props => {
-    switch (props.type) {
-      case 'success': return 'var(--success-color)';
-      case 'error': return 'var(--danger-color)';
-      case 'warning': return 'var(--warning-color)';
-      default: return 'var(--info-color)';
-    }
-  }};
-  color: ${props => props.type === 'warning' ? 'var(--dark-color)' : 'white'};
-`;
-
-/**
- * Dashboard page displaying a list of products and allowing product creation/editing.
- * Admin users can edit/delete all products, regular users only their own.
- */
-const DashboardPage: React.FC = () => {
-  const { user, role, isAuthenticated } = useAuth(); // Assume `user` is also available if `isAuthenticated` is true
-  const [products, setProducts] = useState<Product[]>([]);
+const Dashboard: React.FC = () => {
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  // Helper function to get the current user's ID from AuthContext
-  const currentUserId = user?.id; // Assuming user.id is exposed from AuthContext
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchProducts();
-    }
-  }, [isAuthenticated, currentUserId]); // Re-fetch if auth state or user ID changes
+    const fetchData = async () => {
+      if (!user) return;
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.get('/products');
-      setProducts(response.data);
-    } catch (err: any) {
-      console.error('Error fetching products:', err);
-      setError(err.response?.data?.message || 'Failed to fetch products.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteProduct = async (productId: string) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) {
-      return;
-    }
-    setError(null);
-    setSuccessMessage(null);
-    try {
-      await api.delete(`/products/${productId}`);
-      setSuccessMessage('Product deleted successfully!');
-      fetchProducts(); // Refresh list
-    } catch (err: any) {
-      console.error('Error deleting product:', err);
-      setError(err.response?.data?.message || 'Failed to delete product.');
-    }
-  };
-
-  const handleProductFormSubmit = async (productData: Partial<Product>) => {
-    setError(null);
-    setSuccessMessage(null);
-    try {
-      if (editingProduct) {
-        // Update product
-        await api.put(`/products/${editingProduct.id}`, productData);
-        setSuccessMessage('Product updated successfully!');
-        setEditingProduct(null); // Exit editing mode
-      } else {
-        // Create new product
-        await api.post('/products', productData);
-        setSuccessMessage('Product created successfully!');
+      try {
+        const [projectsRes, tasksRes] = await Promise.all([
+          projectApi.getAllProjects(),
+          taskApi.getAssignedTasks(TaskStatus.OPEN), // Get only open assigned tasks
+        ]);
+        setProjects(projectsRes.data);
+        setAssignedTasks(tasksRes.data);
+      } catch (err: any) {
+        const message = err.response?.data?.message || err.message || 'Failed to load dashboard data';
+        setError(message);
+        toast.error(message);
+      } finally {
+        setLoading(false);
       }
-      fetchProducts(); // Refresh list
-    } catch (err: any) {
-      console.error('Error saving product:', err);
-      setError(err.response?.data?.message || 'Failed to save product.');
-    }
-  };
+    };
 
-  if (!isAuthenticated) {
-    return <p>Please log in to view the dashboard.</p>;
-  }
+    fetchData();
+  }, [user]);
 
   if (loading) {
-    return <p>Loading products...</p>;
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return <div className="p-6 text-center text-red-500">Error: {error}</div>;
   }
 
   return (
-    <DashboardContainer>
-      <Header>Product Dashboard</Header>
+    <div className="container mx-auto p-6">
+      <h1 className="text-4xl font-bold text-gray-800 mb-8">Welcome, {user?.firstName}!</h1>
 
-      {successMessage && <Alert type="success">{successMessage}</Alert>}
-      {error && <Alert type="error">{error}</Alert>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Quick Stats */}
+        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-indigo-500">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4">Your Projects</h2>
+          <p className="text-3xl font-bold text-indigo-600">{projects.length}</p>
+          <Link to="/projects" className="text-indigo-500 hover:underline">View All Projects</Link>
+        </div>
 
-      <SectionTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</SectionTitle>
-      <ProductForm
-        onSubmit={handleProductFormSubmit}
-        initialData={editingProduct || undefined}
-        onCancel={() => setEditingProduct(null)}
-      />
+        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4">Open Assigned Tasks</h2>
+          <p className="text-3xl font-bold text-blue-600">{assignedTasks.length}</p>
+          <Link to="/tasks/assigned" className="text-blue-500 hover:underline">View Your Tasks</Link>
+        </div>
 
-      <SectionTitle>All Products</SectionTitle>
-      {products.length === 0 ? (
-        <p>No products found. Add some!</p>
-      ) : (
-        <ProductList>
-          {products.map((product) => (
-            <ProductCard key={product.id} isActive={product.isActive}>
-              <ProductStatus isActive={product.isActive}>
-                {product.isActive ? 'Active' : 'Inactive'}
-              </ProductStatus>
-              <ProductName>{product.name}</ProductName>
-              <ProductPrice>${product.price.toFixed(2)}</ProductPrice>
-              {product.description && <ProductDescription>{product.description}</ProductDescription>}
-              {product.user && <ProductOwner>Owner: {product.user.email}</ProductOwner>}
-              <ButtonGroup>
-                {/* Allow edit/delete if admin OR owner */}
-                {(role === 'admin' || product.userId === currentUserId) && (
-                  <>
-                    <EditButton onClick={() => setEditingProduct(product)}>Edit</EditButton>
-                    <DeleteButton onClick={() => handleDeleteProduct(product.id)}>Delete</DeleteButton>
-                  </>
-                )}
-              </ButtonGroup>
-            </ProductCard>
-          ))}
-        </ProductList>
-      )}
-    </DashboardContainer>
+        {/* Placeholder for more stats */}
+        <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4">Completed Tasks (This Month)</h2>
+          <p className="text-3xl font-bold text-green-600">0</p> {/* Implement this in the future */}
+          <span className="text-gray-500 text-sm">Coming Soon</span>
+        </div>
+      </div>
+
+      <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Recently Assigned Tasks */}
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">Your Open Tasks</h2>
+          {assignedTasks.length === 0 ? (
+            <p className="text-gray-600">No open tasks assigned to you. Time to relax!</p>
+          ) : (
+            <ul className="space-y-4">
+              {assignedTasks.slice(0, 5).map((task) => (
+                <li key={task.id} className="border-b pb-2 last:border-b-0 flex justify-between items-center">
+                  <div>
+                    <Link to={`/projects/${task.projectId}/tasks/${task.id}`} className="text-lg font-medium text-indigo-600 hover:underline">
+                      {task.title}
+                    </Link>
+                    <p className="text-sm text-gray-500">Project: {task.project.name}</p>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    task.priority === TaskPriority.HIGH ? 'bg-red-100 text-red-800' :
+                    task.priority === TaskPriority.MEDIUM ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-green-100 text-green-800'
+                  }`}>
+                    {task.priority.toUpperCase()}
+                  </span>
+                  {task.dueDate && <span className="text-sm text-gray-500">Due: {format(new Date(task.dueDate), 'MMM dd, yyyy')}</span>}
+                </li>
+              ))}
+              {assignedTasks.length > 5 && (
+                <div className="text-right mt-4">
+                  <Link to="/tasks/assigned" className="text-indigo-500 hover:underline">View All Tasks</Link>
+                </div>
+              )}
+            </ul>
+          )}
+        </div>
+
+        {/* Your Projects Overview */}
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6">Your Projects</h2>
+          {projects.length === 0 ? (
+            <p className="text-gray-600">You haven't created any projects yet. <Link to="/projects/new" className="text-indigo-500 hover:underline">Start one now!</Link></p>
+          ) : (
+            <ul className="space-y-4">
+              {projects.slice(0, 5).map((project) => (
+                <li key={project.id} className="border-b pb-2 last:border-b-0">
+                  <Link to={`/projects/${project.id}`} className="text-lg font-medium text-indigo-600 hover:underline">
+                    {project.name}
+                  </Link>
+                  <p className="text-sm text-gray-500 line-clamp-2">{project.description || 'No description provided.'}</p>
+                </li>
+              ))}
+              {projects.length > 5 && (
+                <div className="text-right mt-4">
+                  <Link to="/projects" className="text-indigo-500 hover:underline">View All Projects</Link>
+                </div>
+              )}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 
-export default DashboardPage;
+export default Dashboard;
 ```
+
+#### `frontend/src/pages/Project/ProjectDetail.tsx`
+```typescript

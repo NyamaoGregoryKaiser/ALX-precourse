@@ -1,33 +1,48 @@
-```typescript
 import dotenv from 'dotenv';
+import path from 'path';
+import { CacheConfig } from '../types';
 
-// Load environment variables from .env file
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
-/**
- * Configuration object for the application.
- * Reads values from environment variables.
- * Provides default values where appropriate.
- */
-export const config = {
-  port: process.env.PORT || 5000,
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/mydatabase',
-  jwtSecret: process.env.JWT_SECRET || 'supersecretjwtkey_default', // **IMPORTANT: Change this in production**
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
-  cacheTtl: parseInt(process.env.CACHE_TTL || '3600', 10), // Default 1 hour in seconds
-  rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10), // Default 1 minute
-  rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10), // Default 100 requests
-  nodeEnv: process.env.NODE_ENV || 'development',
+const config = {
+  env: process.env.NODE_ENV || 'development',
+  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5000,
+  jwt: {
+    secret: process.env.JWT_SECRET || 'supersecretjwtkey',
+    expiresIn: process.env.JWT_EXPIRES_IN || '1h',
+  },
+  db: {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
+    username: process.env.DB_USERNAME || 'user',
+    password: process.env.DB_PASSWORD || 'password',
+    database: process.env.DB_DATABASE || 'task_db',
+  },
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
+  },
+  log: {
+    level: process.env.LOG_LEVEL || 'info',
+  },
+  cors: {
+    origins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:3000'],
+  },
+  cache: {
+    store: process.env.CACHE_STORE || 'redis', // 'memory' or 'redis'
+    ttl: process.env.CACHE_TTL ? parseInt(process.env.CACHE_TTL, 10) : 60, // seconds
+    max: process.env.CACHE_MAX ? parseInt(process.env.CACHE_MAX, 10) : 100, // max items for memory store
+  } as CacheConfig,
 };
 
-// Validate critical configurations
-if (!config.jwtSecret || config.jwtSecret === 'supersecretjwtkey_default') {
-  console.warn('WARNING: JWT_SECRET is not set or using default. This is insecure in production.');
-}
-if (!config.databaseUrl) {
-  console.error('CRITICAL: DATABASE_URL is not set.');
-  process.exit(1); // Exit if no database connection string
+// Configure Redis if cache store is set to redis
+if (config.cache.store === 'redis') {
+  config.cache.host = config.redis.host;
+  config.cache.port = config.redis.port;
 }
 
-console.log(`Application running in ${config.nodeEnv} mode.`);
+export default config;
 ```
+
+#### `backend/src/config/logger.ts` (Winston logger)
+```typescript

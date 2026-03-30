@@ -1,65 +1,49 @@
-```typescript
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
-import { config } from './config';
-import logger, { loggerStream } from './utils/logger';
-import { apiRateLimiter } from './middleware/rateLimit';
-import { errorHandler, notFoundHandler } from './middleware/errorMiddleware';
+import bodyParser from 'body-parser';
+import config from './config';
+import routesV1 from './routes/v1';
+import errorHandler from './middleware/errorHandler';
+import { ApiError } from './utils/ApiError';
+import httpStatus from 'http-status';
+import requestLogger from './middleware/logging';
+import { apiRateLimiter } from './middleware/rateLimiter';
 
-// Import Routes
-import authRoutes from './routes/auth';
-import userRoutes from './routes/users';
-import productRoutes from './routes/products';
-
-// Create Express app
 const app = express();
 
-// --- Security, Logging, and Middleware ---
-
-// Enable CORS for all origins (adjust for production)
-app.use(cors({
-  origin: config.nodeEnv === 'development' ? '*' : ['http://localhost:3000', 'http://frontend-service-url.com'], // Adjust in production
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-// Apply Helmet middleware for enhanced security headers
+// Set security HTTP headers
 app.use(helmet());
 
-// Apply rate limiting to all requests
-app.use(apiRateLimiter);
+// Enable CORS
+app.use(cors({ origin: config.cors.origins }));
+app.options('*', cors()); // Enable pre-flight across all routes
 
-// Morgan for HTTP request logging (combined with Winston)
-app.use(morgan('combined', { stream: loggerStream }));
+// Parse json request body
+app.use(bodyParser.json());
 
-// Parse JSON request bodies
-app.use(express.json());
-// Parse URL-encoded request bodies
-app.use(express.urlencoded({ extended: true }));
+// Parse urlencoded request body
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- API Routes ---
+// Request logging
+app.use(requestLogger);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'API is healthy' });
+// API rate limiting
+app.use('/api/v1', apiRateLimiter); // Apply to all /api/v1 routes except auth which has its own
+
+// v1 api routes
+app.use('/api/v1', routesV1);
+
+// Send 404 for any unknown API request
+app.use((req, res, next) => {
+  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
 });
-
-// Authentication routes
-app.use('/api/auth', authRoutes);
-// User routes (protected)
-app.use('/api/users', userRoutes);
-// Product routes (protected)
-app.use('/api/products', productRoutes);
-
-// --- Error Handling Middleware ---
-
-// 404 Not Found handler
-app.use(notFoundHandler);
 
 // Global error handler
 app.use(errorHandler);
 
 export default app;
 ```
+
+#### `backend/src/server.ts` (Entry point)
+```typescript

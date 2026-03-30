@@ -1,71 +1,71 @@
-```typescript
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './context/AuthContext';
-import AuthPage from './pages/Auth';
-import DashboardPage from './pages/Dashboard';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 import Navbar from './components/Navbar';
-import styled from 'styled-components';
+import ProtectedRoute from './components/ProtectedRoute';
 
-const AppContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-`;
+// Auth Pages
+import Login from './pages/Auth/Login';
+import Register from './pages/Auth/Register';
 
-const Content = styled.main`
-  flex-grow: 1;
-  padding: 20px;
-  background-color: #f4f7f6;
-`;
+// Main Application Pages
+import Dashboard from './pages/Dashboard';
+import ProjectList from './pages/Project/ProjectList';
+import ProjectDetail from './pages/Project/ProjectDetail';
+import AssignedTasks from './pages/Task/AssignedTasks';
+import TaskDetail from './pages/Task/TaskDetail';
 
-/**
- * PrivateRoute component to protect routes requiring authentication.
- * Redirects unauthenticated users to the login page.
- * @param children The component(s) to render if authenticated.
- */
-const PrivateRoute: React.FC<{ children: JSX.Element }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+// Admin Pages
+import AdminDashboard from './pages/Admin/AdminDashboard';
+import { UserRole } from './types';
 
-  if (loading) {
-    return <div>Loading authentication...</div>; // Or a spinner component
-  }
+// Utility/Error Pages
+import NotFound from './pages/NotFound';
+import Unauthorized from './pages/Unauthorized';
+import Profile from './pages/Profile'; // Simple profile page
 
-  return isAuthenticated ? children : <Navigate to="/login" />;
-};
-
-/**
- * Main application component.
- * Sets up routing and uses AuthContext for authentication state.
- */
 const App: React.FC = () => {
-  const { isAuthenticated } = useAuth();
-
   return (
-    <AppContainer>
-      {isAuthenticated && <Navbar />} {/* Show Navbar only when logged in */}
-      <Content>
-        <Routes>
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/register" element={<AuthPage registerMode />} />
-          <Route
-            path="/dashboard"
-            element={
-              <PrivateRoute>
-                <DashboardPage />
-              </PrivateRoute>
-            }
-          />
-          {/* Redirect to dashboard if authenticated, else to login */}
-          <Route
-            path="*"
-            element={isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
-          />
-        </Routes>
-      </Content>
-    </AppContainer>
+    <Router>
+      <AuthProvider>
+        <Navbar />
+        <main className="flex-grow">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/unauthorized" element={<Unauthorized />} />
+
+            {/* Protected Routes */}
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+
+            {/* Project Routes */}
+            <Route path="/projects" element={<ProtectedRoute><ProjectList /></ProtectedRoute>} />
+            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/tasks/:taskId" element={<ProtectedRoute><TaskDetail /></ProtectedRoute>} />
+
+            {/* Task Routes */}
+            <Route path="/tasks/assigned" element={<ProtectedRoute><AssignedTasks /></ProtectedRoute>} />
+
+            {/* Admin Routes */}
+            <Route path="/admin" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboard /></ProtectedRoute>} />
+
+            {/* Catch-all for 404 */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+        <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+      </AuthProvider>
+    </Router>
   );
 };
 
 export default App;
 ```
+
+#### `frontend/src/pages/Profile.tsx`
+```typescript

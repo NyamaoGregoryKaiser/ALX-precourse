@@ -1,3 +1,4 @@
-##### **`docker-compose.yml`**
+```
 
-```yaml
+#### `frontend/src/index.css` (for Tailwind CSS setup)
+```css

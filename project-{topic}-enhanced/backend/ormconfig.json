@@ -1,48 +1,19 @@
-```json
-[
-  {
-    "name": "default",
-    "type": "postgres",
-    "url": "process.env.DATABASE_URL",
-    "synchronize": false,
-    "logging": false,
-    "entities": [
-      "dist/entities/**/*.js"
-    ],
-    "migrations": [
-      "dist/migrations/**/*.js"
-    ],
-    "subscribers": [
-      "dist/subscribers/**/*.js"
-    ],
-    "seeds": [
-      "dist/seeders/**/*.js"
-    ],
-    "cli": {
-      "entitiesDir": "src/entities",
-      "migrationsDir": "src/migrations",
-      "subscribersDir": "src/subscribers"
-    }
-  },
-  {
-    "name": "seed",
-    "type": "postgres",
-    "url": "process.env.DATABASE_URL",
-    "synchronize": false,
-    "logging": false,
-    "entities": [
-      "src/entities/**/*.ts"
-    ],
-    "migrations": [
-      "src/migrations/**/*.ts"
-    ],
-    "seeds": [
-      "src/seed.ts"
-    ],
-    "cli": {
-      "entitiesDir": "src/entities",
-      "migrationsDir": "src/migrations"
-    }
-  }
-]
-```
+{
+  "type": "postgres",
+  "host": "localhost",
+  "port": 5432,
+  "username": "user",
+  "password": "password",
+  "database": "task_db",
+  "synchronize": false,
+  "logging": false,
+  "entities": [
+    "src/entities/**/*.ts"
+  ],
+  "migrations": [
+    "src/migrations/**/*.ts"
+  ],
+  "subscribers": [
+    "src/subscribers/**/*.ts"
+  ]
+}
