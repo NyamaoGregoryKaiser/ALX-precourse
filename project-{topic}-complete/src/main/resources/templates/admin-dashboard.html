@@ -1,0 +1,63 @@
+```html
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { padding-top: 5rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="/">ALX Product Management</a>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/">Home</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/products">Products</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/categories">Categories</a>
+                </li>
+                <li class="nav-item active">
+                    <a class="nav-link" href="/admin/dashboard">Admin Dashboard <span class="sr-only">(current)</span></a>
+                </li>
+            </ul>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/login">Login</a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <main role="main" class="container">
+        <div class="starter-template">
+            <h1 th:text="${adminMessage}"></h1>
+            <p class="lead">This is the administrative control panel. Access restricted to ADMIN users.</p>
+            <p>
+                From here, an ADMIN can:
+                <ul>
+                    <li>Manage <a href="/admin/users">Users</a> (view only in this demo)</li>
+                    <li>Access <a href="/swagger-ui.html">Swagger UI</a> to perform full CRUD on Products and Categories</li>
+                    <li>Monitor application health via <a href="/actuator">Spring Boot Actuator</a> endpoints (requires ADMIN role via API)</li>
+                </ul>
+            </p>
+            <div class="alert alert-warning">
+                **Important for testing:** The `admin/dashboard` and `admin/users` routes are secured with `ROLE_ADMIN`.
+                If you navigate directly and are not authenticated or not an ADMIN, you'll be redirected to login or get an access denied error.
+                Please log in as 'admin' (username: admin, password: password) to view these pages.
+            </div>
+        </div>
+    </main>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
+```

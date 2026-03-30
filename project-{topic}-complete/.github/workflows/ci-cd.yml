@@ -1,5 +1,5 @@
 ```yaml
-name: Payment Processor CI/CD
+name: ALX Product Management CI/CD Pipeline
 
 on:
   push:
@@ -12,95 +12,121 @@ on:
       - develop
 
 jobs:
-  build_and_test:
+  build-and-test:
+    name: Build, Test & Analyze
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install dependencies (system)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake git libsqlite3-dev
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
 
-    - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Debug # Use Debug for tests, Release for final image
+      - name: Set up PostgreSQL for Integration Tests
+        uses: Harmonize-IO/setup-postgres@v1.4.1 # Or use official PostgreSQL action if available
+        with:
+          postgres-version: '15'
+          database-name: 'testdb'
+          username: 'testuser'
+          password: 'testpass'
 
-    - name: Build application
-      run: cmake --build build --target payment_processor
+      - name: Build with Maven and Run Unit/Integration Tests
+        run: mvn clean verify # 'verify' phase includes 'test' and 'integration-test' (if defined)
 
-    - name: Run Unit Tests
-      # This assumes you have a test executable defined in CMake, e.g., 'payment_processor_tests'
-      # If using Google Test, your CMakeLists.txt would add `add_subdirectory(tests)`
-      # and `add_test` commands.
-      run: |
-        # Example: ./build/tests/unit/payment_processor_unit_tests
-        echo "Running unit tests (placeholder)"
-        # For actual execution:
-        # cd build && ctest --output-on-failure
-        # If tests are part of the main executable or separate executables:
-        # ./build/payment_processor_tests || true # Or run specific test executable
+      - name: Upload JaCoCo Code Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/jacoco.xml
+          # Optionally, if you have a SonarQube setup
+          # - name: SonarQube Scan
+          #   if: success() && github.ref == 'refs/heads/main' # Only scan on main branch push
+          #   uses: SonarSource/sonarcloud-github-action@master
+          #   env:
+          #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided by GitHub
+          #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Your SonarCloud token
 
-    - name: Run Integration Tests
-      # This typically involves starting the app and hitting its endpoints.
-      # Can use `curl`, Python `requests`, or C++ `Boost.Test` with HTTP client.
-      run: |
-        echo "Running integration tests (placeholder)"
-        # Example: start app in background, then run Python tests
-        # ./build/payment_processor &
-        # APP_PID=$!
-        # sleep 5 # Give app time to start
-        # python -m pytest tests/integration/test_api.py
-        # kill $APP_PID
-
-    - name: Generate Coverage Report (optional)
-      # Requires tools like gcov, lcov.
-      # You need to compile with coverage flags (-fprofile-arcs -ftest-coverage)
-      run: echo "Generating coverage report (placeholder)"
-      # Example: lcov --capture --directory . --output-file coverage.info
-
-  docker_build:
-    needs: build_and_test
+  docker-build-and-push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    needs: build-and-test # Only run if build and tests pass
+    if: success() && github.ref == 'refs/heads/main' # Only push to registry on main branch merge/push
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Build Docker image
-      run: docker build -f docker/Dockerfile.app -t payment-processor:${{ github.sha }} .
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Log in to Docker Hub (optional)
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/alx-product-management
+          tags: |
+            type=raw,value=latest,enable={{is_default}}
+            type=sha,format=long,prefix=
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=schedule,enable=true,pattern=monthly
 
-    - name: Push Docker image (optional)
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: |
-        docker tag payment-processor:${{ github.sha }} your_docker_username/payment-processor:latest
-        docker tag payment-processor:${{ github.sha }} your_docker_username/payment-processor:${{ github.sha }}
-        docker push your_docker_username/payment-processor:latest
-        docker push your_docker_username/payment-processor:${{ github.sha }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Use a build-arg for the JWT secret if you want to bake it in (less secure than env var at runtime)
+          # build-args: |
+          #   JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
+  # Placeholder for Deployment job
+  # This would typically involve deploying to Kubernetes, EC2, Azure App Service, etc.
+  # For this comprehensive example, we'll outline the steps but not execute a full cloud deployment.
   deploy:
-    needs: docker_build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    environment: production # Define a production environment in GitHub for secrets
+    needs: docker-build-and-push
+    if: success() && github.ref == 'refs/heads/main' # Only deploy main branch
+
     steps:
-    - name: Deploy to Server (e.g., via SSH)
-      uses: appleboy/ssh-action@v0.1.5
-      with:
-        host: ${{ secrets.DEPLOY_HOST }}
-        username: ${{ secrets.DEPLOY_USER }}
-        key: ${{ secrets.DEPLOY_KEY }}
-        script: |
-          cd /path/to/your/app
-          docker pull your_docker_username/payment-processor:latest
-          docker-compose down # Stop current containers
-          docker-compose pull # Ensure latest images
-          docker-compose up -d --remove-orphans # Start new containers
-          echo "Deployment complete for ${{ github.sha }}"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Simulate Deployment to Kubernetes
+        run: |
+          echo "Simulating deployment to Kubernetes or other production environment..."
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }}"
+          echo "Steps would typically include:"
+          echo "1. Connect to Kubernetes cluster (e.g., using kubectl via kubeconfig)"
+          echo "2. Update Kubernetes deployment manifest (e.g., set new image tag)"
+          echo "   kubectl set image deployment/product-management-app product-management-app=${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }} --namespace=production"
+          echo "3. Perform rolling update or blue/green deployment strategy"
+          echo "4. Monitor deployment health (e.g., kubectl rollout status)"
+          echo "Deployment simulated successfully."
+
+      - name: Simulate Deployment to AWS EC2/ECS
+        run: |
+          echo "Simulating deployment to AWS EC2/ECS..."
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }}"
+          echo "Steps would typically include:"
+          echo "1. Authenticate to AWS (e.g., using aws-actions/configure-aws-credentials)"
+          echo "2. Push new image to Amazon ECR (if not already done via Docker Hub)"
+          echo "3. Update ECS Service or launch new EC2 instances with updated Docker image."
+          echo "4. Perform health checks and traffic shifting."
+          echo "Deployment simulated successfully."
 ```

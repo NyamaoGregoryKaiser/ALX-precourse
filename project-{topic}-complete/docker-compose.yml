@@ -2,23 +2,45 @@
 version: '3.8'
 
 services:
-  task_api:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: task_management_api_container
+    container_name: alx-product-management-app
     ports:
-      - "18080:18080"
-    volumes:
-      # Mount a volume for persistent database storage
-      - ./database:/app/database
+      - "8080:8080"
     environment:
-      # These environment variables override defaults in AppConfig.h
-      # For a production setup, replace with strong, random values
-      # and manage securely (e.g., Docker secrets or external secret management)
-      - JWT_SECRET=your_super_secret_jwt_key_here_for_dev_only
-      - DB_PATH=/app/database/task_manager.sqlite # Path inside the container
-      - SERVER_PORT=18080
-      - APP_ENV=development
-    restart: unless-stopped
+      # Database connection details
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/productdb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      # JWT Secret (IMPORTANT: Use a strong, securely generated secret in production)
+      APPLICATION_SECURITY_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-a_default_dev_secret_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_production_environment_variables_or_vault_for_alx_devops}
+      # Set profiles for specific environments
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      - db
+    # Mount application logs if you want to persist them outside the container
+    # volumes:
+    #   - ./logs:/app/logs
+
+  db:
+    image: postgres:15-alpine
+    container_name: alx-product-management-db
+    environment:
+      POSTGRES_DB: productdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist database data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d productdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
 ```
