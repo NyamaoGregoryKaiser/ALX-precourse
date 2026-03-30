@@ -1,59 +1,86 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database Service
   db:
-    image: postgres:15-alpine # Use a lightweight PostgreSQL image
-    container_name: auth-postgres-db
+    image: postgres:16-alpine
+    container_name: scrapeflow-postgres
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-auth_db}       # Database name
-      POSTGRES_USER: ${DB_USERNAME:-admin}   # Database user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password} # Database password
-    ports:
-      - "5432:5432" # Map container port 5432 to host port 5432
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persistent volume for data
-    healthcheck: # Health check to ensure DB is ready before app starts
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-admin} -d ${DB_NAME:-auth_db}"]
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql # For initial setup, optional
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - auth-network
 
-  # Spring Boot Application Service
-  app:
-    build:
-      context: ../. # Build from the parent directory where pom.xml is
-      dockerfile: Dockerfile
-    container_name: secure-auth-app
+  redis:
+    image: redis:7-alpine
+    container_name: scrapeflow-redis
+    restart: always
     ports:
-      - "8080:8080" # Map container port 8080 to host port 8080
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+    container_name: scrapeflow-backend
+    restart: always
+    env_file:
+      - ./.env
     environment:
-      # Pass database connection details to the Spring Boot app
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-auth_db}
-      DB_USERNAME: ${DB_USERNAME:-admin}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      # Pass JWT secret key (important for security, use a strong random key in production)
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      DB_HOST: db # Connect to the 'db' service
+      REDIS_HOST: redis # Connect to the 'redis' service
+    ports:
+      - "${PORT}:${PORT}"
     depends_on:
       db:
-        condition: service_healthy # Ensure database is healthy before starting the app
-    networks:
-      - auth-network
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend # Mount for live development if needed, remove in production
+      - /app/backend/node_modules # Ensure node_modules is not overwritten by host mount
+    # Command to run migrations and start the server
+    command: sh -c "npm run typeorm:migration:run && npm run start"
 
-# Define a custom network for inter-service communication
-networks:
-  auth-network:
-    driver: bridge
 
-# Define named volumes for data persistence
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend.Dockerfile
+    container_name: scrapeflow-frontend
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      REACT_APP_BACKEND_URL: ${BACKEND_URL} # Pass backend URL to React app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app/frontend # Mount for live development if needed, remove in production
+      - /app/frontend/node_modules # Ensure node_modules is not overwritten by host mount
+
 volumes:
   postgres_data:
+  redis_data:
 ```
 
-#### `Dockerfile`
-
+#### `docker/backend.Dockerfile`
 ```dockerfile

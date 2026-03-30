@@ -1,45 +1,43 @@
-```typescript
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { Dashboard } from './Dashboard';
-import { DataSource } from './DataSource';
-import { Chart } from './Chart';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
+import { Scraper } from "./Scraper";
+import { ScrapeJob } from "./ScrapeJob";
 
 export enum UserRole {
-  USER = 'USER',
-  ADMIN = 'ADMIN',
+    ADMIN = "admin",
+    USER = "user"
 }
 
-@Entity()
+@Entity("users")
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
+    @PrimaryGeneratedColumn("uuid")
+    id!: string;
 
-  @Column({ unique: true })
-  username!: string;
+    @Column({ type: "varchar", length: 50, unique: true, nullable: false })
+    username!: string;
 
-  @Column({ unique: true })
-  email!: string;
+    @Column({ type: "varchar", length: 100, unique: true, nullable: false })
+    email!: string;
 
-  @Column()
-  password!: string; // Hashed password
+    @Column({ type: "varchar", nullable: false })
+    password_hash!: string;
 
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
-  role!: UserRole;
+    @Column({
+        type: "enum",
+        enum: UserRole,
+        default: UserRole.USER,
+        nullable: false
+    })
+    role!: UserRole;
 
-  @CreateDateColumn()
-  createdAt!: Date;
+    @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
+    created_at!: Date;
 
-  @UpdateDateColumn()
-  updatedAt!: Date;
+    @UpdateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP" })
+    updated_at!: Date;
 
-  // Relations
-  @OneToMany(() => Dashboard, (dashboard) => dashboard.user)
-  dashboards!: Dashboard[];
+    @OneToMany(() => Scraper, scraper => scraper.user)
+    scrapers!: Scraper[];
 
-  @OneToMany(() => DataSource, (dataSource) => dataSource.user)
-  dataSources!: DataSource[];
-
-  @OneToMany(() => Chart, (chart) => chart.user)
-  charts!: Chart[];
+    @OneToMany(() => ScrapeJob, job => job.user)
+    scrape_jobs!: ScrapeJob[];
 }
-```

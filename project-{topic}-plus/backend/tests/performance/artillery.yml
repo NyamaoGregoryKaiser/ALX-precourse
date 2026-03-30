@@ -1,0 +1,112 @@
+# Artillery.io configuration for performance testing
+
+config:
+  target: "http://localhost:5000" # Target URL of your backend
+  phases:
+    - duration: 60 # Duration of the test in seconds
+      arrivalRate: 10 # Number of virtual users per second
+      name: "Warm-up phase"
+    - duration: 120
+      arrivalRate: 20
+      rampTo: 50 # Gradually increase arrival rate to 50 users/second
+      name: "Load testing phase"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  plugins:
+    metrics:
+      skip: ["socket_io"] # Skip Socket.io metrics if not used
+    # apdex:
+    #   threshold: 500 # Apdex T (tolerable) in ms
+
+scenarios:
+  - name: "User Registration and Login Flow"
+    flow:
+      - post:
+          url: "/api/auth/register"
+          json:
+            username: "user_{{$randomNumber(1, 100000)}}"
+            email: "user_{{$randomNumber(1, 100000)}}@example.com"
+            password: "password123"
+          capture:
+            json: "$.token"
+            as: "authToken"
+            json: "$.user.id"
+            as: "userId"
+      - think: 1 # Pause for 1 second
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "user_{{$randomNumber(1, 100000)}}@example.com" # This will likely fail for non-existent users
+            password: "password123"
+          capture:
+            json: "$.token"
+            as: "loginToken"
+      - get:
+          url: "/api/users/{{userId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      - get:
+          url: "/api/scrapers"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+
+  - name: "Scraper CRUD and Job Trigger (Authenticated)"
+    flow:
+      - function: "setAuthToken" # Use a JS function to get a pre-generated token for a known user
+      - post:
+          url: "/api/scrapers"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+          json:
+            name: "Test Scraper {{$randomNumber(1, 100000)}}"
+            description: "A test scraper"
+            start_url: "https://example.com"
+            selectors_config: { items: "h1", fields: { title: "h1" } }
+          capture:
+            json: "$.id"
+            as: "scraperId"
+      - get:
+          url: "/api/scrapers/{{scraperId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      - post:
+          url: "/api/scrape-jobs/trigger/{{scraperId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      - get:
+          url: "/api/scrape-jobs?scraperId={{scraperId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      - put:
+          url: "/api/scrapers/{{scraperId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+          json:
+            description: "Updated description {{$timestamp}}"
+      - delete:
+          url: "/api/scrapers/{{scraperId}}"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+
+# Optional: Custom JavaScript functions for more complex scenarios
+# functions:
+#   setAuthToken: |
+#     module.exports = {
+#       setAuthToken: function (userContext, events, done) {
+#         // In a real scenario, you'd have a pre-registered user and retrieve their token from a secret or database
+#         userContext.vars.authToken = "YOUR_PREGEN_ADMIN_OR_USER_TOKEN";
+#         return done();
+#       }
+#     }
+
+# To run this, install Artillery: npm install -g artillery
+# Then execute: artillery run backend/tests/performance/artillery.yml
+# This configuration assumes you have a running backend at http://localhost:5000
+```
+*Note: For `setAuthToken` in Artillery, in a real scenario, you would have a more robust way to obtain valid tokens, e.g., from a pre-login step or by fetching from a database if testing a deployed system.*
+
+### 5. Documentation
+
+#### `README.md`
+```markdown

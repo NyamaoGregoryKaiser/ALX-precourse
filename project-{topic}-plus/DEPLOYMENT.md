@@ -1,245 +1,175 @@
-```markdown
-# Mobile App Backend System: Deployment Guide
+# ScrapeFlow: Deployment Guide
 
-This document provides instructions and considerations for deploying the Mobile App Backend System to a production environment. The primary deployment strategy involves containerization with Docker and can be adapted to various cloud platforms.
+This document provides a guide for deploying the ScrapeFlow application to a production environment. It covers general considerations and specific steps for deploying containerized applications.
 
 ## Table of Contents
 
-1.  [Prerequisites](#prerequisites)
-2.  [Production Environment Configuration](#production-environment-configuration)
-3.  [Containerization](#containerization)
-4.  [Database Setup](#database-setup)
-5.  [Redis Setup](#redis-setup)
-6.  [Running Migrations](#running-migrations)
-7.  [Deployment Options](#deployment-options)
-    *   [Docker Swarm / Single Server](#docker-swarm--single-server)
-    *   [Kubernetes (K8s)](#kubernetes-k8s)
-    *   [Cloud-Specific Services (AWS, GCP, Azure)](#cloud-specific-services-aws-gcp-azure)
-8.  [CI/CD Integration](#cicd-integration)
-9.  [Monitoring & Logging](#monitoring--logging)
-10. [Security Best Practices](#security-best-practices)
-11. [Troubleshooting](#troubleshooting)
+1.  [Deployment Strategy Overview](#1-deployment-strategy-overview)
+2.  [Prerequisites for Production](#2-prerequisites-for-production)
+3.  [Configuration for Production](#3-configuration-for-production)
+4.  [Building Production Images](#4-building-production-images)
+5.  [Deployment to a Cloud Platform (General)](#5-deployment-to-a-cloud-platform-general)
+    *   [Example: AWS ECS/EKS](#example-aws-ecseks)
+    *   [Example: Google Cloud Run/GKE](#example-google-cloud-rungke)
+6.  [Database Management in Production](#6-database-management-in-production)
+7.  [Redis in Production](#7-redis-in-production)
+8.  [CI/CD for Deployment](#8-cicd-for-deployment)
+9.  [Post-Deployment Checklist](#9-post-deployment-checklist)
+10. [Troubleshooting](#10-troubleshooting)
 
-## 1. Prerequisites
+## 1. Deployment Strategy Overview
 
-*   **Docker & Docker Compose:** For building and managing containers.
-*   **Cloud Provider Account (Optional):** AWS, GCP, Azure, etc., if deploying to the cloud.
-*   **Domain Name:** For exposing your API via HTTPS.
-*   **SSL/TLS Certificate:** Essential for HTTPS.
+ScrapeFlow is designed for containerized deployment, leveraging Docker for consistent environments. The recommended approach for production is to use a container orchestration platform (e.g., Kubernetes, Amazon ECS, Google Kubernetes Engine) or managed container services (e.g., Google Cloud Run, AWS Fargate).
 
-## 2. Production Environment Configuration
+This guide assumes you will deploy:
+*   **Backend API**: As a containerized service.
+*   **Frontend SPA**: As a containerized web server (Nginx) serving static files.
+*   **PostgreSQL**: As a managed database service (e.g., AWS RDS, Google Cloud SQL) or a highly available containerized instance.
+*   **Redis**: As a managed caching/message broker service (e.g., AWS ElastiCache, Google Cloud Memorystore) or a highly available containerized instance.
+*   **BullMQ Workers**: Separate containerized processes that run the scraping logic, scaling independently from the API.
 
-Before deploying, ensure your `.env` file is configured for production:
+## 2. Prerequisites for Production
 
-*   `DEBUG=False`: Disables debug mode, suppresses detailed error messages, and turns off interactive API docs (`/docs`, `/redoc`).
-*   `SECRET_KEY`: **Generate a strong, unique, and long secret key.** Never use the development key in production. Store it securely (e.g., AWS Secrets Manager, Vault).
-*   `ACCESS_TOKEN_EXPIRE_MINUTES`: Adjust token expiration as needed for your security policy.
-*   `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_HOST`, `POSTGRES_PORT`: Use credentials for your production PostgreSQL instance. **These should be strong and distinct from development.**
-*   `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`: Use credentials for your production Redis instance.
-*   `LOG_LEVEL`: Set to `INFO` or `WARNING` to reduce verbosity in production.
+*   **Cloud Provider Account**: AWS, Google Cloud, Azure, DigitalOcean, etc.
+*   **Docker Registry**: Docker Hub, Amazon ECR, Google Container Registry, etc., to store your built Docker images.
+*   **Domain Name**: For accessing your application via a friendly URL.
+*   **SSL Certificate**: For secure HTTPS communication.
+*   **CI/CD Pipeline**: Configured to automate builds, tests, and deployments (e.g., GitHub Actions, GitLab CI, Jenkins).
 
-**Example Production `.env` (values should be replaced with actual secrets):**
-```dotenv
-DEBUG=False
-PROJECT_NAME="Mobile App Prod Backend"
-SECRET_KEY="YOUR_SUPER_STRONG_PRODUCTION_SECRET_KEY_HERE"
-ACCESS_TOKEN_EXPIRE_MINUTES=60 # Example: 1 hour
+## 3. Configuration for Production
 
-POSTGRES_USER="prod_user"
-POSTGRES_PASSWORD="YOUR_PROD_DB_PASSWORD"
-POSTGRES_DB="prod_app_db"
-POSTGRES_HOST="prod-db-instance.xxxx.us-east-1.rds.amazonaws.com"
-POSTGRES_PORT=5432
+**Crucial: Never hardcode sensitive information.** All sensitive configurations must be managed via environment variables.
 
-REDIS_HOST="prod-redis-cache.xxxx.us-east-1.cache.amazonaws.com"
-REDIS_PORT=6379
-REDIS_DB=0
+1.  **Update `.env` values**:
+    *   `NODE_ENV=production`
+    *   `PORT`: Ensure this matches the port your backend container will listen on.
+    *   `BACKEND_URL`, `FRONTEND_URL`: Set to your production domain(s).
+    *   **Database Credentials**: Use strong, unique passwords for `DB_USER`, `DB_PASSWORD`. Point `DB_HOST` to your managed PostgreSQL instance endpoint.
+    *   **Redis Credentials**: Point `REDIS_HOST` to your managed Redis instance endpoint. If Redis requires authentication, add `REDIS_PASSWORD`.
+    *   **JWT Secret**: Generate a very strong, long, random secret for `JWT_SECRET`. Store it securely (e.g., AWS Secrets Manager, Google Secret Manager).
+    *   **Rate Limiting**: Adjust `RATE_LIMIT_MAX_REQUESTS` and `RATE_LIMIT_WINDOW_MS` according to expected production traffic.
+    *   `BULLMQ_WORKER_CONCURRENCY`: Adjust based on the capacity of your worker instances and external rate limits of target websites.
 
-LOG_LEVEL=INFO
-DEFAULT_RATE_LIMIT="1000/hour" # More aggressive rate limit for production
-```
+2.  **Dockerfiles**: Ensure your `backend.Dockerfile` and `frontend.Dockerfile` are optimized for production:
+    *   **Multi-stage builds**: Already implemented, ensuring only necessary artifacts and production dependencies are included.
+    *   **Small base images**: Using `alpine` images for smaller footprint.
+    *   **No development dependencies**: `npm install --only=production`.
+    *   **Non-root user**: For enhanced security (consider adding a dedicated user in `Dockerfile`).
 
-## 3. Containerization
+## 4. Building Production Images
 
-The `Dockerfile` in the root of the project is optimized for building the application image.
-
-**Building the Production Image:**
+You'll need to build your Docker images and push them to a Docker Registry. This is typically automated by your CI/CD pipeline.
 
 ```bash
-docker build -t mobile-app-backend:latest .
+# Example for backend
+docker build -t your_registry/scrapeflow-backend:latest -f docker/backend.Dockerfile .
+docker push your_registry/scrapeflow-backend:latest
+
+# Example for frontend
+docker build -t your_registry/scrapeflow-frontend:latest -f docker/frontend.Dockerfile .
+docker push your_registry/scrapeflow-frontend:latest
 ```
-Consider tagging with a version number for better version control (e.g., `mobile-app-backend:v1.0.0`).
+Replace `your_registry` with your actual registry (e.g., `docker.io/your_docker_username`).
 
-## 4. Database Setup
+## 5. Deployment to a Cloud Platform (General)
 
-For production, it's highly recommended to use a **managed database service** (e.g., AWS RDS PostgreSQL, Google Cloud SQL for PostgreSQL, Azure Database for PostgreSQL).
+Choose a cloud provider and a container orchestration service.
 
-1.  **Provision a PostgreSQL instance:** Choose a suitable instance size, enable backups, multi-AZ deployment (for high availability), and configure security groups/firewalls to allow connections only from your application servers.
-2.  **Create the database and user:** Create the database (e.g., `prod_app_db`) and a dedicated user (e.g., `prod_user`) with strong credentials, granting necessary permissions.
-3.  **Update `.env`:** Configure your `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in your production environment to point to this managed instance.
+### General Steps:
 
-## 5. Redis Setup
+1.  **Provision Managed Services**:
+    *   **PostgreSQL**: Set up a managed PostgreSQL instance (AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL). Configure backups, high availability, and network access (private subnets, security groups).
+    *   **Redis**: Set up a managed Redis instance (AWS ElastiCache, Google Cloud Memorystore, Azure Cache for Redis). Configure security and replication.
+    *   **Load Balancer/API Gateway**: For routing external traffic to your backend and frontend services.
 
-Similar to PostgreSQL, use a **managed Redis service** for caching and rate limiting (e.g., AWS ElastiCache for Redis, Google Cloud Memorystore for Redis, Azure Cache for Redis).
+2.  **Deploy Backend API**:
+    *   Create a container service (e.g., AWS ECS Service, Kubernetes Deployment).
+    *   Point it to your backend Docker image in the registry.
+    *   Inject all necessary environment variables from your `.env` file (or a secret management service).
+    *   Configure autoscaling policies.
+    *   Ensure network security groups/firewall rules allow traffic from the frontend/load balancer and to the database/Redis.
+    *   **Crucial for first deploy**: Run database migrations. This can be done as a pre-deployment step, an init container in Kubernetes, or a one-off command.
+        `docker run --rm --network your_network_name your_registry/scrapeflow-backend:latest npm run typeorm:migration:run`
 
-1.  **Provision a Redis instance:** Select an appropriate instance type, configure high availability if needed, and set up security to allow connections only from your application servers.
-2.  **Update `.env`:** Configure your `REDIS_HOST`, `REDIS_PORT`, and `REDIS_DB` to point to this managed instance.
+3.  **Deploy BullMQ Workers**:
+    *   Deploy another container service using the *same backend Docker image*.
+    *   The `CMD` for this worker container should specifically execute the BullMQ worker process, not the API server. For example: `node dist/worker.js` (you'd need a `worker.ts` entry point in your backend).
+    *   Scale the number of worker instances independently based on job load.
+    *   Ensure they have network access to Redis and PostgreSQL.
 
-## 6. Running Migrations
+4.  **Deploy Frontend**:
+    *   Deploy a container service using your Nginx-based frontend Docker image.
+    *   Configure it to serve static files.
+    *   Place it behind a load balancer with SSL termination.
 
-Database migrations (`alembic upgrade head`) are critical for production deployments.
+5.  **Configure DNS and SSL**:
+    *   Point your domain's A/CNAME records to your load balancer.
+    *   Attach your SSL certificate to the load balancer for HTTPS.
 
-**Option 1: During Container Startup (as configured in `Dockerfile`/`docker-compose.yml`)**
-The provided `Dockerfile` and `docker-compose.yml` include `alembic upgrade head` as part of the `CMD`. This is convenient for simple setups but has caveats in highly scaled environments (race conditions if multiple instances try to migrate simultaneously).
+### Example: AWS ECS/EKS
 
-```bash
-# Dockerfile CMD
-CMD ["/bin/bash", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
-```
-**Considerations:** Ensure your deployment platform handles only one instance running migrations at a time during an update (e.g., by running a dedicated migration job).
+*   **Database**: AWS RDS (PostgreSQL)
+*   **Redis**: AWS ElastiCache (Redis)
+*   **Container Orchestration**:
+    *   **ECS (Elastic Container Service)**: Use ECS Fargate (serverless) or EC2 instances for your Backend, Frontend, and Worker services. Define Task Definitions and Services.
+    *   **EKS (Elastic Kubernetes Service)**: Deploy your services as Kubernetes Deployments, Services, and Ingress resources.
+*   **Load Balancing**: AWS Application Load Balancer (ALB)
+*   **Secret Management**: AWS Secrets Manager for JWT secret, DB passwords.
+*   **Logging**: AWS CloudWatch Logs for container logs.
 
-**Option 2: Dedicated Migration Job (Recommended for Production)**
-For robust deployments, run migrations as a separate, one-off job before deploying new application versions.
+### Example: Google Cloud Run/GKE
 
-1.  **Build the image:** `docker build -t mobile-app-backend:vX.Y.Z .`
-2.  **Run migrations:**
-    ```bash
-    docker run --rm \
-      --env-file /path/to/your/prod.env \
-      mobile-app-backend:vX.Y.Z alembic upgrade head
-    ```
-    Replace `/path/to/your/prod.env` with the path to your production environment variables file.
-3.  **Deploy the application instances** after migrations are successfully applied.
+*   **Database**: Google Cloud SQL (PostgreSQL)
+*   **Redis**: Google Cloud Memorystore (Redis)
+*   **Container Orchestration**:
+    *   **Cloud Run**: For Backend API (if mostly stateless and scales to zero) and Frontend (if it can be served as a single container). Requires separate worker deployments.
+    *   **GKE (Google Kubernetes Engine)**: Full Kubernetes cluster for all services.
+*   **Load Balancing**: Google Cloud Load Balancer
+*   **Secret Management**: Google Secret Manager.
+*   **Logging**: Google Cloud Logging.
 
-## 7. Deployment Options
+## 6. Database Management in Production
 
-### 7.1. Docker Swarm / Single Server
+*   **Managed Services**: Strongly recommended for production databases. They handle backups, replication, patching, and scaling.
+*   **Migrations**: Always run migrations as part of your deployment process. Ensure migrations are idempotent. It's often safer to run migrations as a separate step or a Kubernetes `Job` *before* deploying new application versions to prevent schema mismatches.
+*   **Backups**: Configure automated daily backups with point-in-time recovery.
+*   **Monitoring**: Set up alerts for database performance, connection issues, and storage usage.
 
-For simpler deployments or smaller scale, Docker Swarm or directly running Docker containers on a single VM/server might suffice.
+## 7. Redis in Production
 
-1.  **Prepare a `docker-compose.prod.yml`:**
-    *   Remove `volumes` mount (code should be in the image).
-    *   Set `restart: always` for all services.
-    *   Point `db` and `redis` services to your *managed* cloud instances by updating environment variables to use their respective hostnames/IPs. You might remove the `db` and `redis` service definitions if using managed services entirely, only providing their connection strings to the `app` service.
-    *   Add a reverse proxy (e.g., Nginx) for HTTPS termination and load balancing (if multiple app instances).
+*   **Managed Services**: Use AWS ElastiCache, Google Cloud Memorystore, or Azure Cache for Redis for high availability and minimal operational overhead.
+*   **Security**: Ensure Redis is not publicly accessible. Use VPC/private network access.
+*   **Persistence**: If Redis data is critical for BullMQ job state, configure RDB snapshots or AOF persistence, or ensure your workers can gracefully handle Redis restarts.
+*   **Monitoring**: Monitor Redis memory usage, connections, and latency.
 
-    ```yaml
-    # Example docker-compose.prod.yml (partial)
-    version: '3.8'
+## 8. CI/CD for Deployment
 
-    services:
-      app:
-        image: mobile-app-backend:latest
-        environment:
-          # Production specific env vars (e.g., from external secret management)
-          # Point to managed DB/Redis
-          POSTGRES_HOST: prod-db-instance.xxxx.rds.amazonaws.com
-          REDIS_HOST: prod-redis-cache.xxxx.elasticache.amazonaws.com
-          DEBUG: False
-          SECRET_KEY: # ... from secrets manager
-        deploy:
-          replicas: 3 # Run multiple instances for high availability
-          restart_policy:
-            condition: on-failure
-        ports:
-          - "8000:8000" # Expose to reverse proxy
+The `github/workflows/main.yml` provides a basic CI pipeline for building and testing. For full CI/CD, extend it to:
 
-      nginx: # Optional: if managing reverse proxy in same compose
-        image: nginx:alpine
-        ports:
-          - "80:80"
-          - "443:443"
-        volumes:
-          - ./nginx.conf:/etc/nginx/nginx.conf:ro
-          - ./certs:/etc/nginx/certs:ro # SSL certificates
-        depends_on:
-          - app
-        # ... more nginx configuration
-    ```
-2.  **Deploy:** `docker-compose -f docker-compose.prod.yml up -d`
+1.  **Build Docker Images**: Tag images with a unique ID (e.g., Git SHA, build number).
+2.  **Push Images to Registry**: Authenticate with your Docker registry and push the built images.
+3.  **Deploy to Environment**:
+    *   **Development/Staging**: Deploy to a non-production environment for integration testing.
+    *   **Production**: Trigger a production deployment (often manually or after approval) once staging tests pass. This could involve updating an ECS Service, a Kubernetes Deployment, or a Cloud Run service.
+4.  **Post-Deployment Tests**: Run smoke tests or integration tests against the deployed application.
 
-### 7.2. Kubernetes (K8s)
+## 9. Post-Deployment Checklist
 
-For larger-scale, highly available, and auto-scaling deployments, Kubernetes is the industry standard.
+*   **Verify Application Health**: Access the frontend, perform common actions, check API endpoints.
+*   **Check Logs**: Monitor application logs (backend, frontend, workers) for errors or warnings.
+*   **Monitor Resources**: Check CPU, memory, network usage of all services.
+*   **Database Connectivity**: Ensure the application can connect to the database.
+*   **Redis Connectivity**: Ensure the application and workers can connect to Redis.
+*   **Scheduled Jobs**: Verify that BullMQ workers are picking up and processing jobs as expected.
+*   **Alerts**: Confirm monitoring and alerting systems are active and configured correctly.
+*   **Backup**: Ensure database backups are running as scheduled.
 
-1.  **Container Registry:** Push your `mobile-app-backend` image to a container registry (e.g., Docker Hub, AWS ECR, GCP GCR).
-    ```bash
-    docker tag mobile-app-backend:latest your-registry/mobile-app-backend:v1.0.0
-    docker push your-registry/mobile-app-backend:v1.0.0
-    ```
-2.  **Kubernetes Manifests:** Create Kubernetes YAML manifests for:
-    *   **Deployments:** For the FastAPI application (e.g., `app-deployment.yaml`), specifying multiple replicas and resource limits.
-    *   **Services:** For internal load balancing and exposing the API within the cluster.
-    *   **Ingress:** For external access, HTTPS termination, and routing to your FastAPI service.
-    *   **Secrets:** For securely storing database credentials, JWT secret key, etc. (e.g., Kubernetes Secrets or integration with external secret managers).
-    *   **ConfigMaps:** For non-sensitive configurations.
-    *   **Jobs/CronJobs:** For running Alembic migrations or seed scripts.
-    *   **Horizontal Pod Autoscalers (HPA):** To automatically scale pods based on CPU/memory utilization.
+## 10. Troubleshooting
 
-3.  **Managed Kubernetes Service:** Deploy to a managed K8s service (e.g., AWS EKS, GCP GKE, Azure AKS) for ease of management.
-
-### 7.3. Cloud-Specific Services (AWS, GCP, Azure)
-
-Each major cloud provider offers services that can host containerized applications.
-
-*   **AWS:**
-    *   **ECS (Elastic Container Service):** Orchestrates Docker containers. Can use Fargate (serverless) or EC2 (managed VMs).
-    *   **EKS (Elastic Kubernetes Service):** Managed Kubernetes.
-    *   **API Gateway + Lambda (Serverless):** For very high-scale, event-driven, cost-optimized scenarios, you could refactor some parts into AWS Lambda functions triggered via API Gateway. FastAPI can run on Lambda using mangum.
-*   **Google Cloud Platform (GCP):**
-    *   **Cloud Run:** Serverless platform for containerized applications.
-    *   **GKE (Google Kubernetes Engine):** Managed Kubernetes.
-    *   **App Engine Flexible Environment:** PaaS for containerized apps.
-*   **Azure:**
-    *   **Azure Container Instances (ACI):** Run containers without managing VMs.
-    *   **Azure Kubernetes Service (AKS):** Managed Kubernetes.
-    *   **Azure App Service:** PaaS for web apps, supports containers.
-
-## 8. CI/CD Integration
-
-Set up a Continuous Integration/Continuous Deployment (CI/CD) pipeline to automate testing, building, and deployment. The `.github/workflows/ci_cd.yml` file provides an example using GitHub Actions.
-
-**Typical CI/CD Workflow:**
-
-1.  **Code Commit:** Developer pushes code to a Git repository.
-2.  **CI Trigger:** CI system (e.g., GitHub Actions, Jenkins, GitLab CI) triggers.
-3.  **Build:** Build Docker image.
-4.  **Test:** Run unit, integration, and API tests. Check code coverage.
-5.  **Security Scan (Optional):** Scan code/dependencies for vulnerabilities.
-6.  **Push to Registry:** If tests pass, push the Docker image to a container registry.
-7.  **CD Trigger:** If image push is successful, trigger deployment to staging/production.
-8.  **Deployment:**
-    *   Run database migrations (as a job).
-    *   Update application deployment (e.g., Kubernetes Deployment, ECS Service).
-    *   Perform health checks.
-9.  **Notifications:** Notify relevant teams of deployment status.
-
-## 9. Monitoring & Logging
-
-*   **Logging:** The application uses Python's standard `logging` module with custom request IDs.
-    *   In production, configure logs to be sent to a centralized logging system (e.g., ELK Stack, Splunk, Datadog, AWS CloudWatch Logs, GCP Cloud Logging).
-*   **Metrics:** Collect application metrics (e.g., request count, latency, error rates, CPU/memory usage of containers).
-    *   Use Prometheus for collection and Grafana for visualization. FastAPI can expose Prometheus metrics.
-    *   Cloud providers offer their own monitoring services (e.g., AWS CloudWatch, GCP Monitoring).
-*   **Alerting:** Set up alerts for critical errors, high latency, low resource availability, or failed deployments.
-
-## 10. Security Best Practices
-
-*   **HTTPS Everywhere:** Always use HTTPS for all communication.
-*   **Secrets Management:** Never hardcode secrets. Use environment variables and integrate with a dedicated secrets management service (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, HashiCorp Vault).
-*   **Least Privilege:** Grant only necessary permissions to database users, API keys, and service accounts.
-*   **Network Security:** Configure firewalls and security groups to restrict network access to your services.
-*   **Regular Updates:** Keep all dependencies (OS, Python, libraries, Docker images) updated to patch security vulnerabilities.
-*   **Vulnerability Scanning:** Regularly scan your Docker images and dependencies for known vulnerabilities.
-*   **Backup & Restore:** Implement a robust database backup strategy and test restoration procedures.
-*   **Input Validation:** Continue to rely on Pydantic for strict input validation to prevent injection attacks and other vulnerabilities.
-
-## 11. Troubleshooting
-
-*   **Check container logs:** `docker-compose logs -f app` or `kubectl logs -f <pod-name>`
-*   **Verify network connectivity:** Ensure your application container can reach the database and Redis instances.
-*   **Review environment variables:** Double-check that all production environment variables are correctly set.
-*   **Test database connection:** Try to connect to your database from the app container shell (e.g., `psql -h <host> -U <user> -d <db>`).
-*   **Alembic issues:** If you suspect migration problems, check the `alembic_version` table in your database.
-*   **Redis connection:** Verify Redis is accessible and working.
+*   **Container Logs**: Use `docker logs <container_name>` or your cloud provider's logging service (CloudWatch, Cloud Logging) to inspect logs.
+*   **Network Issues**: Check security groups, firewall rules, and VPC configurations to ensure services can communicate.
+*   **Environment Variables**: Double-check that all required environment variables are correctly set for each service in the production environment.
+*   **Database Connection**: Verify database credentials, host, port, and user permissions.
+*   **Redis Connection**: Verify Redis credentials, host, and port.
+*   **Worker Idempotency**: If jobs are retried, ensure your scraping logic handles re-running tasks gracefully to avoid data duplication.
 ```

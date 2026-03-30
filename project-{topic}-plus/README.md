@@ -1,228 +1,433 @@
-```markdown
-# Mobile App Backend System
+# ScrapeFlow: A Production-Ready Web Scraping Tools System
 
-This is a comprehensive, production-ready backend system for mobile applications, built with FastAPI, PostgreSQL, and Docker. It encompasses a wide range of features including user management, item/product listings, order processing, authentication, caching, rate limiting, and robust testing.
+ScrapeFlow is a full-stack, enterprise-grade web application designed for managing, scheduling, executing, and monitoring web scraping tasks. Built with a robust Node.js/TypeScript backend, a modern React/TypeScript frontend, and backed by PostgreSQL and Redis, it offers a comprehensive solution for data extraction needs.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Project Structure](#project-structure)
-3.  [Getting Started](#getting-started)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup](#local-development-setup)
-    *   [Database Migrations](#database-migrations)
-    *   [Seed Data](#seed-data)
-    *   [Running the Application](#running-the-application)
-4.  [API Documentation](#api-documentation)
-5.  [Testing](#testing)
-    *   [Running Tests](#running-tests)
-    *   [Performance Testing](#performance-testing)
-6.  [Architecture](#architecture)
-7.  [Deployment](#deployment)
-8.  [Contributing](#contributing)
-9.  [License](#license)
+    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
+    *   [Manual Setup (Backend)](#manual-setup-backend)
+    *   [Manual Setup (Frontend)](#manual-setup-frontend)
+5.  [Running the Application](#running-the-application)
+6.  [Database Operations](#database-operations)
+    *   [Migrations](#migrations)
+    *   [Seeding](#seeding)
+7.  [Testing](#testing)
+    *   [Backend Tests](#backend-tests)
+    *   [Frontend Tests](#frontend-tests)
+    *   [Performance Tests (Artillery)](#performance-tests-artillery)
+8.  [API Documentation](#api-documentation)
+9.  [Architecture](#architecture)
+10. [Deployment](#deployment)
+11. [Contributing](#contributing)
+12. [License](#license)
 
-## Features
+## 1. Features
 
-*   **User Management:** Register, Login, User Profiles (CRUD for current user), Admin access for managing other users.
-*   **Item Management:** CRUD operations for products/items, with ownership.
-*   **Order Management:** Create orders with multiple items, manage order status, view customer's orders.
-*   **Authentication & Authorization:** JWT-based authentication, Role-Based Access Control (RBAC) for admin and regular users.
-*   **Database Layer:** PostgreSQL with SQLAlchemy 2.0 (async), Alembic for migrations.
-*   **Configuration:** Environment-based settings (`.env`), Pydantic for settings validation.
-*   **Dockerization:** Docker Compose setup for easy local development with multiple services (FastAPI app, PostgreSQL, Redis).
-*   **Logging & Monitoring:** Structured logging middleware, custom request IDs for tracing.
-*   **Error Handling:** Centralized custom exception handling with consistent API responses.
-*   **Caching Layer:** Redis integration for improved performance (e.g., for frequently accessed data).
-*   **Rate Limiting:** Protects API endpoints from abuse using FastAPI-Limiter and Redis.
-*   **Testing:** Comprehensive suite including Unit, Integration, and API tests with `pytest`. Achieves high test coverage.
-*   **Documentation:** Auto-generated OpenAPI/Swagger UI, comprehensive project README, Architecture, and Deployment guides.
-*   **CI/CD:** Example GitHub Actions workflow for automated testing and deployment.
+*   **Scraper Definition**: Create and manage scraper configurations, specifying target URLs, CSS selectors for data extraction, and pagination rules.
+*   **Scrape Job Management**: Manually trigger or schedule scraping jobs. Monitor job status (pending, running, completed, failed).
+*   **Data Storage**: Extracted data is stored in PostgreSQL as JSONB, allowing flexible querying.
+*   **User Management**: Secure user registration, login, and role-based access control (RBAC) with JWT.
+*   **Authentication & Authorization**: JWT-based authentication for API security, with middleware for role-based authorization.
+*   **Logging & Monitoring**: Comprehensive logging with Winston for application events, errors, and job execution.
+*   **Error Handling**: Centralized error handling middleware for consistent API responses.
+*   **Caching**: Redis-backed caching for improved API response times.
+*   **Rate Limiting**: Protect the API from abuse with rate limiting using `express-rate-limit` and Redis.
+*   **Background Jobs**: Utilize BullMQ (Redis-backed) for robust, scalable background processing of scraping tasks.
+*   **Frontend Dashboard**: Intuitive React interface for managing scrapers, viewing jobs, and analyzing results.
+*   **Dockerized**: Easily deployable with Docker and Docker Compose.
+*   **CI/CD Ready**: Example GitHub Actions workflow for automated testing and builds.
 
-## Project Structure
+## 2. Technology Stack
 
-The project is structured for scalability and maintainability, adhering to a modular design.
+**Backend:**
+*   **Runtime**: Node.js (v20+)
+*   **Language**: TypeScript
+*   **Framework**: Express.js
+*   **ORM**: TypeORM
+*   **Database**: PostgreSQL
+*   **Queue/Cache**: Redis, BullMQ
+*   **Scraping**: Cheerio.js (for static HTML parsing), Puppeteer (for dynamic JS-rendered pages - *optional, not fully implemented in initial code due to complexity, but architected for inclusion*)
+*   **Validation**: Joi
+*   **Authentication**: bcryptjs, jsonwebtoken
+*   **Logging**: Winston
+*   **Utilities**: dotenv, cors, helmet, express-rate-limit
+
+**Frontend:**
+*   **Framework**: React (v18+)
+*   **Language**: TypeScript
+*   **Styling**: TailwindCSS
+*   **Routing**: React Router DOM
+*   **API Client**: Axios
+*   **Charting**: Chart.js (or similar for data visualization)
+
+**DevOps & Tools:**
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Jest, Supertest (backend API), React Testing Library (frontend - *not explicitly shown here for brevity but standard practice*)
+*   **Performance Testing**: Artillery.io
+
+## 3. Project Structure
 
 ```
 .
-├── app/                      # Main application source code
-│   ├── api/                  # API routes/endpoints definitions
-│   │   └── v1/               # Version 1 of the API
-│   │       └── endpoints/    # Specific API endpoints (users, items, orders)
-│   ├── core/                 # Core application components (config, security, exceptions, middleware, cache)
-│   ├── db/                   # Database-related files (session, models, migrations)
-│   │   ├── models/           # SQLAlchemy ORM models (User, Item, Order, OrderItem)
-│   │   └── migrations/       # Alembic migration scripts
-│   ├── schemas/              # Pydantic models for request/response validation
-│   ├── services/             # Business logic and data processing
-│   └── main.py               # FastAPI application entry point
-├── tests/                    # Unit, Integration, and API tests
-│   ├── unit/
-│   ├── integration/
-│   ├── api/
-│   └── conftest.py           # Pytest fixtures
-├── scripts/                  # Utility scripts (seed data, performance tests)
-├── .env.example              # Example environment variables
-├── Dockerfile                # Docker build instructions
-├── docker-compose.yml        # Docker Compose setup for local development
-├── requirements.txt          # Python dependency list
-├── alembic.ini               # Alembic configuration for database migrations
-├── .gitignore
-├── README.md                 # This file
-├── ARCHITECTURE.md           # Detailed architecture overview
-├── DEPLOYMENT.md             # Guide for deploying the application
-└── .github/                  # GitHub Actions CI/CD workflows
-    └── workflows/
-        └── ci_cd.yml
+├── .github/                       # CI/CD workflows
+├── backend/                       # Node.js/TypeScript Express API
+│   ├── src/                       # Source code
+│   │   ├── config/                # Environment, DB, Redis configurations
+│   │   ├── db/                    # TypeORM data source, migrations, seeders
+│   │   ├── entities/              # TypeORM entities (models)
+│   │   ├── middlewares/           # Express middleware (auth, error, logging, rate limit)
+│   │   ├── modules/               # Feature-specific modules (auth, users, scrapers, jobs, data)
+│   │   ├── services/              # Core application services (scraping engine, queue, cache)
+│   │   ├── utils/                 # Utility functions (logger, JWT, helpers)
+│   │   ├── types/                 # Custom type definitions
+│   │   ├── app.ts                 # Express application setup
+│   │   └── server.ts              # Application entry point
+│   ├── tests/                     # Unit, Integration, API tests
+│   ├── package.json               # Backend dependencies and scripts
+│   └── tsconfig.json              # TypeScript configuration
+├── database/                      # PostgreSQL setup scripts
+├── docker/                        # Docker configurations for services
+├── frontend/                      # React/TypeScript application
+│   ├── public/                    # Public assets
+│   ├── src/                       # Source code
+│   │   ├── api/                   # API service calls
+│   │   ├── auth/                  # Authentication context and hooks
+│   │   ├── components/            # Reusable UI components
+│   │   ├── hooks/                 # Custom React hooks
+│   │   ├── pages/                 # Application pages
+│   │   ├── routes/                # React Router setup
+│   │   ├── styles/                # Tailwind CSS, global styles
+│   │   ├── utils/                 # Utility functions
+│   │   ├── App.tsx                # Main application component
+│   │   └── index.tsx              # Application entry point
+│   ├── package.json               # Frontend dependencies and scripts
+│   └── tsconfig.json              # TypeScript configuration
+├── .env.example                   # Example environment variables
+├── README.md                      # Project setup, usage, and overview
+├── ARCHITECTURE.md                # Detailed architecture description
+└── DEPLOYMENT.md                  # Deployment guide
 ```
 
-## Getting Started
-
-Follow these steps to set up and run the project locally.
+## 4. Setup and Installation
 
 ### Prerequisites
 
-*   Docker and Docker Compose
-*   Python 3.11+
-*   `pip` (Python package installer)
+*   Node.js (v20 or higher) & npm (v10 or higher)
+*   Docker & Docker Compose (recommended for local development)
+*   Git
 
-### Local Development Setup
+### Local Development with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/mobile-app-backend.git
-    cd mobile-app-backend
+    git clone https://github.com/your-username/scrapeflow.git
+    cd scrapeflow
     ```
 
 2.  **Create `.env` file:**
-    Copy the `.env.example` file and rename it to `.env`. Adjust the values as needed.
+    Copy the `.env.example` file to `.env` in the root directory.
     ```bash
     cp .env.example .env
     ```
-    Ensure `DEBUG=True` for development.
+    You can keep the default values for local development.
 
-3.  **Build and run Docker containers:**
-    This will build the `app` image, set up PostgreSQL (`db`) and Redis (`redis`) containers, and start all services.
+3.  **Build and start services:**
+    This command will build the Docker images, create the containers for PostgreSQL, Redis, Backend, and Frontend, and start them. It will also run backend database migrations automatically.
     ```bash
-    docker-compose up --build -d
+    docker-compose -f docker/docker-compose.yml up --build -d
     ```
-    The `-d` flag runs containers in detached mode. To see logs, use `docker-compose logs -f`.
+    *   `--build`: Rebuilds images (useful after code changes in Dockerfiles).
+    *   `-d`: Runs containers in detached mode (background).
 
-    *Expected services:*
-    *   FastAPI App: `http://localhost:8000`
-    *   PostgreSQL: `localhost:5432`
-    *   Redis: `localhost:6379`
-
-4.  **Install Python dependencies (for running scripts/tests directly on host, or for IDE integration):**
+4.  **Verify services:**
+    Check if all containers are running:
     ```bash
-    pip install -r requirements.txt
+    docker-compose -f docker/docker-compose.yml ps
     ```
+    You should see `db`, `redis`, `backend`, and `frontend` containers in a healthy state.
 
-### Database Migrations
-
-The `docker-compose.yml` file is configured to run `alembic upgrade head` automatically when the `app` container starts. However, if you need to generate new migrations or run them manually:
-
-1.  **Access the `app` container shell:**
+5.  **Run database seeders (optional but recommended for initial data):**
+    After the backend service is up and migrations have run, you can seed the database with initial users and scrapers.
     ```bash
-    docker-compose exec app bash
+    docker-compose -f docker/docker-compose.yml exec backend npm run typeorm:seed
     ```
 
-2.  **Generate a new migration (if you've changed models):**
-    ```bash
-    alembic revision --autogenerate -m "Add new feature table"
-    ```
-    Review the generated script in `alembic/versions/` and adjust if necessary.
+### Manual Setup (Backend)
 
-3.  **Apply migrations (if not auto-run by `docker-compose` or for manual apply):**
+If you prefer to run the backend directly on your machine without Docker:
+
+1.  **Navigate to the backend directory:**
     ```bash
-    alembic upgrade head
+    cd backend
     ```
 
-### Seed Data
-
-You can populate your database with initial data using the seed script.
-
-1.  **Access the `app` container shell:**
+2.  **Install dependencies:**
     ```bash
-    docker-compose exec app bash
+    npm install
     ```
 
-2.  **Run the seed script:**
+3.  **Set up PostgreSQL and Redis:**
+    Ensure you have a PostgreSQL database and a Redis instance running locally, and update your `.env` file in the project root with the correct connection details.
+
+4.  **Run migrations:**
     ```bash
-    python scripts/seed.py
+    npm run typeorm:migration:run
     ```
-    This will create an admin user, a regular user, some items, and sample orders.
 
-### Running the Application
-
-The application should be running at `http://localhost:8000` after `docker-compose up -d`.
-
-*   **API Documentation (Swagger UI):** `http://localhost:8000/docs`
-*   **Alternative API Documentation (Redoc):** `http://localhost:8000/redoc`
-
-## API Documentation
-
-The FastAPI application automatically generates OpenAPI (Swagger UI) and Redoc documentation based on your endpoint definitions and Pydantic schemas.
-
-*   **Swagger UI:** Access at `/docs` (e.g., `http://localhost:8000/docs`)
-*   **Redoc:** Access at `/redoc` (e.g., `http://localhost:8000/redoc`)
-
-These interfaces allow you to explore all available endpoints, their expected request bodies, response formats, and even test them directly from your browser.
-
-## Testing
-
-The project includes a comprehensive test suite covering unit, integration, and API tests.
-
-### Running Tests
-
-1.  **Ensure Docker containers are running:** `docker-compose up -d`
-2.  **Access the `app` container shell:** `docker-compose exec app bash`
-3.  **Run pytest:**
+5.  **Run seeders (optional):**
     ```bash
-    pytest --cov=app --cov-report=term-missing --cov-report=xml tests/
+    npm run typeorm:seed
     ```
-    *   `--cov=app`: Measures code coverage for the `app` directory.
-    *   `--cov-report=term-missing`: Shows missing lines directly in the terminal report.
-    *   `--cov-report=xml`: Generates an XML report (`coverage.xml`) which can be used by CI tools.
 
-### Performance Testing
-
-The `scripts/perf_test.py` file contains a basic performance test using [Locust](https://locust.io/).
-
-1.  **Ensure Docker containers are running.**
-2.  **Access the `app` container shell:** `docker-compose exec app bash`
-3.  **Run Locust (inside the container):**
+6.  **Build and start the backend:**
     ```bash
-    locust -f scripts/perf_test.py --host http://app:8000 # Use service name 'app' for internal network
+    npm run build
+    npm start
     ```
-    Alternatively, if running Locust from your host (after `pip install locust`):
+    Or for development with hot-reloading:
     ```bash
-    locust -f scripts/perf_test.py --host http://localhost:8000
+    npm run dev
     ```
-4.  Open your browser to `http://localhost:8089` (Locust web UI).
-5.  Enter the number of users and spawn rate, then start the swarm.
 
-## Architecture
+    The backend API will be available at `http://localhost:5000` (or your configured `PORT`).
 
-For a detailed understanding of the system's architecture, including its components, data flow, and design patterns, please refer to the [ARCHITECTURE.md](ARCHITECTURE.md) file.
+### Manual Setup (Frontend)
 
-## Deployment
+If you prefer to run the frontend directly on your machine without Docker:
 
-For instructions on how to deploy this application to a production environment, including considerations for cloud providers and advanced configurations, please refer to the [DEPLOYMENT.md](DEPLOYMENT.md) file.
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd frontend
+    ```
 
-## Contributing
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-Contributions are welcome! Please follow these steps:
+3.  **Update backend URL:**
+    Ensure `REACT_APP_BACKEND_URL` in your project's `.env` file (or frontend/.env if separated) points to your running backend (e.g., `http://localhost:5000`).
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and write tests.
-4.  Ensure all tests pass and code coverage remains high.
-5.  Commit your changes (`git commit -am 'feat: Add new feature'`).
-6.  Push to the branch (`git push origin feature/your-feature-name`).
-7.  Create a new Pull Request.
+4.  **Start the frontend:**
+    ```bash
+    npm start
+    ```
 
-## License
+    The frontend application will be available at `http://localhost:3000` (or your configured `FRONTEND_URL`).
 
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+## 5. Running the Application
+
+Once you've completed the setup (preferably with Docker Compose), the application will be accessible:
+
+*   **Frontend**: `http://localhost:3000`
+*   **Backend API**: `http://localhost:5000`
+
+You can log in with the seeded credentials (if you ran the seeder):
+*   **Admin**: `admin@example.com` / `adminpassword`
+*   **User**: `user@example.com` / `userpassword`
+
+## 6. Database Operations
+
+### Migrations
+
+TypeORM migrations are used to manage database schema changes.
+
+*   **Create a new migration:**
+    ```bash
+    cd backend
+    npm run typeorm:migration:create --name=YourMigrationName
+    ```
+    This will create a new TypeScript file in `backend/src/db/migrations/`. Edit this file to define your schema changes in `up` and `down` methods.
+
+*   **Run pending migrations:**
+    ```bash
+    cd backend
+    npm run typeorm:migration:run
+    # Or via Docker:
+    # docker-compose -f docker/docker-compose.yml exec backend npm run typeorm:migration:run
+    ```
+
+*   **Revert the last migration:**
+    ```bash
+    cd backend
+    npm run typeorm:migration:revert
+    # Or via Docker:
+    # docker-compose -f docker/docker-compose.yml exec backend npm run typeorm:migration:revert
+    ```
+
+### Seeding
+
+The seeder populates the database with initial data (e.g., admin user, example scrapers).
+
+*   **Run seeders:**
+    ```bash
+    cd backend
+    npm run typeorm:seed
+    # Or via Docker (recommended for first run):
+    # docker-compose -f docker/docker-compose.yml exec backend npm run typeorm:seed
+    ```
+    The seeder checks if users already exist to prevent duplicate entries on subsequent runs.
+
+## 7. Testing
+
+### Backend Tests
+
+Backend tests are written with Jest and Supertest.
+
+*   **Run all backend tests:**
+    ```bash
+    cd backend
+    npm test
+    ```
+    This will run unit, integration, and API tests and generate a coverage report. Aim for 80%+ coverage.
+
+*   **Run tests in watch mode:**
+    ```bash
+    cd backend
+    npm run test:watch
+    ```
+
+### Frontend Tests
+
+Frontend tests are typically written with Jest and React Testing Library. (Example `jest.config.js` is provided, but no full test files for brevity).
+
+*   **Run all frontend tests:**
+    ```bash
+    cd frontend
+    npm test
+    ```
+
+### Performance Tests (Artillery)
+
+Performance tests use Artillery.io to simulate load on the backend.
+
+1.  **Install Artillery (if not already installed):**
+    ```bash
+    npm install -g artillery
+    ```
+
+2.  **Ensure your backend is running.**
+
+3.  **Run the performance tests:**
+    ```bash
+    artillery run backend/tests/performance/artillery.yml
+    ```
+    *Note: The `backend/tests/performance/artillery.yml` file contains example scenarios. You might need to adjust authentication tokens or specific routes based on your environment.*
+
+## 8. API Documentation
+
+The API endpoints are documented below. Authentication is via a JWT token passed in the `Authorization` header (`Bearer <token>`).
+
+**Base URL**: `/api` (e.g., `http://localhost:5000/api`)
+
+### Authentication (`/api/auth`)
+
+*   **`POST /register`**: Register a new user.
+    *   **Body**: `{ username: string, email: string, password: string }`
+    *   **Response**: `{ token: string, user: { id: string, username: string, email: string, role: string } }` (201 Created)
+*   **`POST /login`**: Authenticate a user.
+    *   **Body**: `{ email: string, password: string }`
+    *   **Response**: `{ token: string, user: { id: string, username: string, email: string, role: string } }` (200 OK)
+*   **`GET /me`**: Get current user's profile (requires authentication).
+    *   **Response**: `{ id: string, username: string, email: string, role: string }` (200 OK)
+
+### Users (`/api/users`) - Admin Only (except self-read/update)
+
+*   **`GET /`**: Get all users.
+    *   **Permissions**: ADMIN
+    *   **Response**: `User[]` (200 OK)
+*   **`GET /:id`**: Get user by ID.
+    *   **Permissions**: ADMIN or user's own ID
+    *   **Response**: `User` (200 OK)
+*   **`PUT /:id`**: Update user by ID.
+    *   **Permissions**: ADMIN or user's own ID
+    *   **Body**: `{ username?: string, email?: string, password?: string, role?: 'admin' | 'user' }` (role update requires ADMIN)
+    *   **Response**: `User` (200 OK)
+*   **`DELETE /:id`**: Delete user by ID.
+    *   **Permissions**: ADMIN
+    *   **Response**: (204 No Content)
+
+### Scrapers (`/api/scrapers`)
+
+*   **`GET /`**: Get all scrapers (or user's scrapers).
+    *   **Permissions**: Authenticated (users see their own, admin sees all)
+    *   **Query Params**: `userId` (optional, for admin to filter)
+    *   **Response**: `Scraper[]` (200 OK)
+*   **`GET /:id`**: Get scraper by ID.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `Scraper` (200 OK)
+*   **`POST /`**: Create a new scraper.
+    *   **Permissions**: Authenticated (user creates their own)
+    *   **Body**: `{ name: string, description?: string, start_url: string, selectors_config: SelectorConfig, pagination_config?: PaginationConfig }`
+    *   **Response**: `Scraper` (201 Created)
+*   **`PUT /:id`**: Update scraper by ID.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Body**: `{ name?: string, description?: string, start_url?: string, selectors_config?: SelectorConfig, pagination_config?: PaginationConfig }`
+    *   **Response**: `Scraper` (200 OK)
+*   **`DELETE /:id`**: Delete scraper by ID.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: (204 No Content)
+
+### Scrape Jobs (`/api/scrape-jobs`)
+
+*   **`GET /`**: Get all scrape jobs.
+    *   **Permissions**: Authenticated (users see their own, admin sees all)
+    *   **Query Params**: `scraperId`, `status`, `userId`
+    *   **Response**: `ScrapeJob[]` (200 OK)
+*   **`GET /:id`**: Get scrape job by ID.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `ScrapeJob` (200 OK)
+*   **`POST /trigger/:scraperId`**: Trigger a new scrape job for a specific scraper.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `{ message: string, jobId: string }` (202 Accepted)
+*   **`POST /schedule/:scraperId`**: Schedule a recurring scrape job (e.g., daily, weekly).
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Body**: `{ cronExpression: string, name?: string }` (e.g., "0 0 * * *" for daily)
+    *   **Response**: `{ message: string, jobId: string }` (202 Accepted)
+*   **`DELETE /schedule/:scraperId`**: Unschedule a recurring scrape job.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `{ message: string }` (200 OK)
+
+### Scraped Data (`/api/scraped-data`)
+
+*   **`GET /`**: Get all scraped data entries.
+    *   **Permissions**: Authenticated (users see data from their jobs, admin sees all)
+    *   **Query Params**: `scraperId`, `jobId`, `limit`, `offset`
+    *   **Response**: `ScrapedData[]` (200 OK)
+*   **`GET /:id`**: Get a single scraped data entry by ID.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `ScrapedData` (200 OK)
+*   **`GET /scraper/:scraperId`**: Get all scraped data for a specific scraper.
+    *   **Permissions**: Authenticated (owner or admin)
+    *   **Response**: `ScrapedData[]` (200 OK)
+
+---
+
+## 9. Architecture
+
+For a detailed architecture overview, including component diagrams, data flow, and technology choices, please refer to the [ARCHITECTURE.md](ARCHITECTURE.md) file.
+
+---
+
+## 10. Deployment
+
+For guidelines on deploying ScrapeFlow to a production environment (e.g., cloud platforms like AWS, Azure, GCP), including considerations for scalability, security, and monitoring, please refer to the [DEPLOYMENT.md](DEPLOYMENT.md) file.
+
+---
+
+## 11. Contributing
+
+We welcome contributions! Please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) (not provided in this response but would be a standard part of an enterprise project) for guidelines on how to contribute to ScrapeFlow.
+
+---
+
+## 12. License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 ```
