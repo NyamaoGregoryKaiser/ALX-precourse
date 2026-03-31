@@ -1,38 +1,27 @@
 ```dockerfile
 # Stage 1: Build the React application
-FROM node:18-alpine AS builder
-
+FROM node:18-alpine AS build
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package.json package-lock.json ./
+COPY package*.json ./
 RUN npm install
 
-# Copy source code
-COPY . .
+COPY . ./
 
-# Build the React app
-# Ensure REACT_APP_API_BASE_URL is set correctly for build time if not using dynamic env vars
-ARG REACT_APP_API_BASE_URL
-ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+# Build the React app for production
+# Set REACT_APP_API_URL during build. In docker-compose, this will be defined.
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 RUN npm run build
 
 # Stage 2: Serve the application with Nginx
 FROM nginx:alpine
+COPY --from=build /app/build /usr/share/nginx/html
 
-WORKDIR /usr/share/nginx/html
+# Copy a custom Nginx configuration to disable caching for index.html
+# and to ensure React Router works correctly with direct URL access.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Remove default Nginx config
-RUN rm /etc/nginx/conf.d/default.conf
-
-# Copy custom Nginx configuration
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy the built React app from the builder stage
-COPY --from=builder /app/build .
-
-# Expose port 80 for web access
-EXPOSE 80
-
+EXPOSE 3000 # The port Nginx will listen on for the frontend
 CMD ["nginx", "-g", "daemon off;"]
 ```

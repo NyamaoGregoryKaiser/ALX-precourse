@@ -1,2 +1,1 @@
----
-This is the end of the Backend Core Application part. The frontend, testing, Docker, CI/CD, and full documentation will follow in subsequent parts to adhere to response length limits.
+**Controller Tests (API with MockMvc)**

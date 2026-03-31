@@ -2,44 +2,62 @@
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: alx-product-management-app
-    ports:
-      - "8080:8080"
-    environment:
-      # Database connection details
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/productdb
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-      # JWT Secret (IMPORTANT: Use a strong, securely generated secret in production)
-      APPLICATION_SECURITY_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-a_default_dev_secret_key_that_is_at_least_256_bits_long_and_should_be_stored_securely_in_production_environment_variables_or_vault_for_alx_devops}
-      # Set profiles for specific environments
-      SPRING_PROFILES_ACTIVE: prod
-    depends_on:
-      - db
-    # Mount application logs if you want to persist them outside the container
-    # volumes:
-    #   - ./logs:/app/logs
-
   db:
     image: postgres:15-alpine
-    container_name: alx-product-management-db
+    container_name: ml-utils-postgres
+    restart: always
     environment:
-      POSTGRES_DB: productdb
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${DB_NAME:-ml_utils_db}
+      POSTGRES_USER: ${DB_USERNAME:-ml_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ml_password}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persist database data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d productdb"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ml_user} -d ${DB_NAME:-ml_utils_db}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml-utils-backend
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-ml_utils_db}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-ml_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-ml_password}
+      JWT_SECRET: ${JWT_SECRET:-aStrongSecretKeyForJWTAuthenticationWhichShouldBeAtLeast32BytesLong}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      SPRING_FLYWAY_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads # Mount a volume for dataset uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend # Path to your React frontend directory
+      dockerfile: Dockerfile
+    container_name: ml-utils-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api # Adjust if backend is on a different host/port
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
