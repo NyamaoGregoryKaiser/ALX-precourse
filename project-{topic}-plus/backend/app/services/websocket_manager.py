@@ -1,101 +1,67 @@
 ```python
-import logging
 from typing import Dict, List
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
+from backend.app.core.logger import app_logger
+import json
 
-logger = logging.getLogger(__name__)
-
-class WebSocketManager:
-    """
-    Manages active WebSocket connections for chat rooms.
-    Allows connecting, disconnecting, and broadcasting messages to specific rooms.
-    """
+class ConnectionManager:
     def __init__(self):
-        # Stores active connections. Key: room_id, Value: List of (WebSocket, user_id) tuples
-        self.active_connections: Dict[int, List[tuple[WebSocket, int]]] = {}
-        # Stores user-to-connection mapping. Key: user_id, Value: List of WebSocket connections
-        # A user might be connected to multiple rooms, hence list of websockets
-        self.user_connections: Dict[int, List[WebSocket]] = {}
+        self.active_connections: Dict[int, List[WebSocket]] = {} # user_id -> List[WebSocket]
+        self.chat_room_connections: Dict[int, List[WebSocket]] = {} # chat_id -> List[WebSocket]
 
-    async def connect(self, websocket: WebSocket, room_id: int, user_id: int):
-        """
-        Establishes a new WebSocket connection and adds it to the manager.
-        """
+    async def connect(self, websocket: WebSocket, user_id: int):
         await websocket.accept()
-        if room_id not in self.active_connections:
-            self.active_connections[room_id] = []
-        self.active_connections[room_id].append((websocket, user_id))
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        app_logger.info(f"User {user_id} connected via WebSocket. Total connections for user: {len(self.active_connections[user_id])}")
 
-        if user_id not in self.user_connections:
-            self.user_connections[user_id] = []
-        self.user_connections[user_id].append(websocket)
+    def disconnect(self, websocket: WebSocket, user_id: int):
+        if user_id in self.active_connections:
+            self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+        app_logger.info(f"User {user_id} disconnected from WebSocket.")
 
-        logger.info(f"User {user_id} connected to room {room_id}. Total connections for room: {len(self.active_connections[room_id])}")
+        # Also remove from any chat rooms it might be in
+        for chat_id, connections in list(self.chat_room_connections.items()):
+            if websocket in connections:
+                connections.remove(websocket)
+                if not connections:
+                    del self.chat_room_connections[chat_id]
+                app_logger.info(f"WebSocket disconnected from chat room {chat_id}.")
 
-    def disconnect(self, websocket: WebSocket, room_id: int, user_id: int):
-        """
-        Removes a WebSocket connection from the manager upon disconnection.
-        """
-        if room_id in self.active_connections:
-            self.active_connections[room_id] = [
-                (ws, uid) for ws, uid in self.active_connections[room_id] if ws != websocket
-            ]
-            if not self.active_connections[room_id]:
-                del self.active_connections[room_id]
-
-        if user_id in self.user_connections:
-            self.user_connections[user_id] = [
-                ws for ws in self.user_connections[user_id] if ws != websocket
-            ]
-            if not self.user_connections[user_id]:
-                del self.user_connections[user_id]
-
-        logger.info(f"User {user_id} disconnected from room {room_id}.")
-        logger.debug(f"Remaining connections for room {room_id}: {len(self.active_connections.get(room_id, []))}")
-
-    async def broadcast_to_room(self, room_id: int, message: str):
-        """
-        Sends a message to all active connections within a specific chat room.
-        Handles `WebSocketDisconnect` errors gracefully.
-        """
-        if room_id in self.active_connections:
-            # Create a list of connections to iterate over to avoid issues during modification
-            connections_to_send = list(self.active_connections[room_id])
-            for websocket, user_id in connections_to_send:
+    async def send_personal_message(self, message: str, user_id: int):
+        if user_id in self.active_connections:
+            for connection in self.active_connections[user_id]:
                 try:
-                    await websocket.send_text(message)
-                except WebSocketDisconnect:
-                    logger.warning(f"WebSocketDisconnect for user {user_id} in room {room_id} during broadcast. Removing connection.")
-                    # Connection is already closed, remove it.
-                    # This implies a more complex removal might be needed if not handled by `disconnect`
-                    # In this basic implementation, `disconnect` is expected to be called by the client.
-                    # For server-side detection, we would need to manually call disconnect here.
-                    # For now, rely on client-side disconnect.
+                    await connection.send_text(message)
                 except Exception as e:
-                    logger.error(f"Error sending message to user {user_id} in room {room_id}: {e}")
+                    app_logger.error(f"Error sending personal message to user {user_id}: {e}")
 
-    async def send_personal_message(self, user_id: int, message: str):
-        """
-        Sends a message to all active connections of a specific user.
-        """
-        if user_id in self.user_connections:
-            for websocket in list(self.user_connections[user_id]):
+    async def broadcast_to_chat(self, chat_id: int, message: str):
+        if chat_id in self.chat_room_connections:
+            for connection in self.chat_room_connections[chat_id]:
                 try:
-                    await websocket.send_text(message)
-                except WebSocketDisconnect:
-                    logger.warning(f"WebSocketDisconnect for user {user_id} during personal message. Removing connection.")
-                    # This would require a more robust way to identify and remove *that specific* websocket from all rooms and user_connections
-                    # For simplicity, we assume client-side disconnect handles it or a periodic cleanup
+                    await connection.send_text(message)
                 except Exception as e:
-                    logger.error(f"Error sending personal message to user {user_id}: {e}")
+                    app_logger.error(f"Error broadcasting to chat {chat_id}: {e}")
 
-    def get_connected_users_in_room(self, room_id: int) -> List[int]:
-        """
-        Returns a list of user IDs currently connected to a given room.
-        """
-        if room_id in self.active_connections:
-            return list(set(uid for _, uid in self.active_connections[room_id]))
-        return []
+    async def join_chat_room(self, websocket: WebSocket, chat_id: int):
+        if chat_id not in self.chat_room_connections:
+            self.chat_room_connections[chat_id] = []
+        if websocket not in self.chat_room_connections[chat_id]:
+            self.chat_room_connections[chat_id].append(websocket)
+            app_logger.info(f"WebSocket joined chat room {chat_id}. Total connections for chat: {len(self.chat_room_connections[chat_id])}")
+            await websocket.send_text(json.dumps({"type": "chat_joined", "chat_id": chat_id}))
 
-websocket_manager = WebSocketManager()
+    async def leave_chat_room(self, websocket: WebSocket, chat_id: int):
+        if chat_id in self.chat_room_connections and websocket in self.chat_room_connections[chat_id]:
+            self.chat_room_connections[chat_id].remove(websocket)
+            if not self.chat_room_connections[chat_id]:
+                del self.chat_room_connections[chat_id]
+            app_logger.info(f"WebSocket left chat room {chat_id}.")
+            await websocket.send_text(json.dumps({"type": "chat_left", "chat_id": chat_id}))
+
+manager = ConnectionManager()
 ```

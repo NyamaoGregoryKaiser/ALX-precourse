@@ -1,222 +1,145 @@
 ```typescript
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from 'hooks/useAuth';
-import axiosInstance from 'api/axiosInstance';
-import { ChatRoom, User } from 'types';
-import RoomList from 'components/RoomList';
-import { Dialog, Transition } from '@headlessui/react';
-import { Fragment } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
+import Header from '../components/Header';
+import ChatList from '../components/ChatList';
+import ChatWindow from '../components/ChatWindow';
+import { getUserChats, getChatMessages, sendMessage, createChat } from '../api/chat';
+import { Chat, Message } from '../types';
+import { toast } from 'react-toastify';
 
 const HomePage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { isAuthenticated, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [publicRooms, setPublicRooms] = useState<ChatRoom[]>([]);
-  const [myRooms, setMyRooms] = useState<ChatRoom[]>([]);
-  const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomDescription, setNewRoomDescription] = useState('');
-  const [newRoomIsPrivate, setNewRoomIsPrivate] = useState(false);
-  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
-  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
-  const fetchRooms = useCallback(async () => {
-    setIsLoadingRooms(true);
-    try {
-      const publicResponse = await axiosInstance.get('/api/v1/rooms/');
-      setPublicRooms(publicResponse.data);
-
-      if (user) {
-        // Fetch rooms the user is a member of (this endpoint should ideally be /users/me/rooms)
-        // For simplicity, we filter existing public rooms. A dedicated backend endpoint is better.
-        const allRoomsResponse = await axiosInstance.get('/api/v1/rooms/?skip=0&limit=999'); // Fetch all rooms (public) to find user's joined ones
-        const userJoinedRooms = allRoomsResponse.data.filter((room: ChatRoom) =>
-          room.members.some(member => member.id === user.id)
-        );
-        setMyRooms(userJoinedRooms);
-      }
-    } catch (error) {
-      console.error('Failed to fetch rooms:', error);
-      // Handle error, e.g., show a toast message
-    } finally {
-      setIsLoadingRooms(false);
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/login');
     }
-  }, [user]);
+  }, [isAuthenticated, authLoading, navigate]);
+
+  // Fetch chats
+  const fetchChats = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setLoadingChats(true);
+    try {
+      const userChats = await getUserChats();
+      setChats(userChats);
+      if (userChats.length > 0 && selectedChatId === null) {
+        setSelectedChatId(userChats[0].id); // Select the first chat by default
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch chats:', error);
+      toast.error(error.response?.data?.detail || 'Failed to load chats.');
+    } finally {
+      setLoadingChats(false);
+    }
+  }, [isAuthenticated, selectedChatId]);
 
   useEffect(() => {
-    fetchRooms();
-  }, [fetchRooms]);
+    fetchChats();
+  }, [fetchChats]);
 
-  const handleSelectRoom = (roomId: number) => {
-    setActiveRoomId(roomId);
-    navigate(`/chat/${roomId}`);
-  };
-
-  const openCreateRoomModal = () => {
-    setIsModalOpen(true);
-    setCreateRoomError(null);
-    setNewRoomName('');
-    setNewRoomDescription('');
-    setNewRoomIsPrivate(false);
-  };
-
-  const handleCreateRoom = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateRoomError(null);
+  // Fetch messages for selected chat
+  const fetchMessages = useCallback(async (chatId: number) => {
+    setLoadingMessages(true);
     try {
-      const response = await axiosInstance.post('/api/v1/rooms/', {
-        name: newRoomName,
-        description: newRoomDescription,
-        is_private: newRoomIsPrivate,
-      });
-      const newRoom: ChatRoom = response.data;
-      // Refresh room lists
-      await fetchRooms();
-      setIsModalOpen(false);
-      navigate(`/chat/${newRoom.id}`); // Navigate to the newly created room
+      const chatMessages = await getChatMessages(chatId);
+      setMessages(chatMessages);
     } catch (error: any) {
-      console.error('Error creating room:', error);
-      setCreateRoomError(error.response?.data?.detail || 'Failed to create room.');
+      console.error(`Failed to fetch messages for chat ${chatId}:`, error);
+      toast.error(error.response?.data?.detail || 'Failed to load messages.');
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedChatId) {
+      fetchMessages(selectedChatId);
+    } else {
+      setMessages([]);
+    }
+  }, [selectedChatId, fetchMessages]);
+
+  const handleSelectChat = (chatId: number) => {
+    setSelectedChatId(chatId);
+  };
+
+  const handleSendMessage = useCallback(async (content: string) => {
+    if (!selectedChatId || !user) {
+      toast.error('No chat selected or user not logged in.');
+      return;
+    }
+    await sendMessage(selectedChatId, content);
+    // Messages are now pushed via WebSocket, so no need to refetch all
+    // The useWebSocket hook will update the messages state
+    // We can optimistically add if needed, but for now rely on WS.
+  }, [selectedChatId, user]);
+
+  const handleCreateNewChat = async () => {
+    if (!user) {
+      toast.error('Please log in to create chats.');
+      return;
+    }
+    const chatName = prompt('Enter name for the new group chat:');
+    if (chatName) {
+      try {
+        const newChat = await createChat({
+          name: chatName,
+          is_group: true,
+          member_ids: [user.id] // Creator is always a member
+        });
+        setChats(prev => [...prev, newChat]);
+        setSelectedChatId(newChat.id);
+        toast.success(`Chat "${chatName}" created!`);
+      } catch (error: any) {
+        console.error('Failed to create chat:', error);
+        toast.error(error.response?.data?.detail || 'Failed to create chat.');
+      }
     }
   };
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background text-text">
-        Loading user data...
-      </div>
-    );
+  if (authLoading || !isAuthenticated) {
+    return <div className="container">Loading authentication...</div>;
   }
 
   return (
-    <div className="flex h-screen bg-background text-text">
-      {/* Sidebar with User Info and Room List */}
-      <div className="w-80 bg-surface border-r border-border flex flex-col">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-2xl font-bold text-text mb-2">Welcome, {user.username}!</h2>
-          <p className="text-sm text-textSecondary">{user.email}</p>
+    <div className="container">
+      <Header />
+      <div className="chat-container">
+        <div className="chat-list">
+          <h2>Your Chats</h2>
+          <button onClick={handleCreateNewChat} style={{ marginBottom: '15px' }}>
+            + New Group Chat
+          </button>
+          {loadingChats ? (
+            <p>Loading chats...</p>
+          ) : (
+            <ChatList chats={chats} onSelectChat={handleSelectChat} selectedChatId={selectedChatId} />
+          )}
         </div>
-
-        {isLoadingRooms ? (
-            <div className="p-4 text-textSecondary">Loading rooms...</div>
-        ) : (
-            <RoomList
-                rooms={publicRooms}
-                onSelectRoom={handleSelectRoom}
-                activeRoomId={activeRoomId}
-                onCreateRoom={openCreateRoomModal}
-                myRooms={myRooms}
-            />
+        {selectedChatId && (
+          <ChatWindow
+            key={selectedChatId} // Key ensures ChatWindow remounts when chat changes
+            chatId={selectedChatId}
+            initialMessages={messages}
+            onSendMessage={handleSendMessage}
+          />
         )}
-
-        <div className="p-4 border-t border-border mt-auto">
-          <button onClick={logout} className="btn-secondary w-full">
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area - Instructions or empty state */}
-      <div className="flex-grow flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-text mb-4">Select a chat room to begin!</h1>
-          <p className="text-lg text-textSecondary">
-            Choose from the list on the left or create your own room.
-          </p>
-          <button onClick={openCreateRoomModal} className="btn-primary mt-6">
-            Create New Room
-          </button>
-        </div>
-      </div>
-
-      {/* Create Room Modal */}
-      <Transition appear show={isModalOpen} as={Fragment}>
-        <Dialog as="div" className="relative z-10" onClose={() => setIsModalOpen(false)}>
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black bg-opacity-75" />
-          </Transition.Child>
-
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 text-center">
-              <Transition.Child
-                as={Fragment}
-                enter="ease-out duration-300"
-                enterFrom="opacity-0 scale-95"
-                enterTo="opacity-100 scale-100"
-                leave="ease-in duration-200"
-                leaveFrom="opacity-100 scale-100"
-                leaveTo="opacity-0 scale-95"
-              >
-                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-surface p-6 text-left align-middle shadow-xl transition-all">
-                  <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-text flex justify-between items-center">
-                    Create New Chat Room
-                    <button onClick={() => setIsModalOpen(false)} className="text-textSecondary hover:text-text">
-                        <XMarkIcon className="h-6 w-6" />
-                    </button>
-                  </Dialog.Title>
-                  <form onSubmit={handleCreateRoom} className="mt-4 space-y-4">
-                    <div>
-                      <label htmlFor="roomName" className="block text-textSecondary text-sm font-bold mb-2">
-                        Room Name
-                      </label>
-                      <input
-                        type="text"
-                        id="roomName"
-                        className="input-field"
-                        value={newRoomName}
-                        onChange={(e) => setNewRoomName(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="roomDescription" className="block text-textSecondary text-sm font-bold mb-2">
-                        Description (Optional)
-                      </label>
-                      <textarea
-                        id="roomDescription"
-                        className="input-field"
-                        value={newRoomDescription}
-                        onChange={(e) => setNewRoomDescription(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="isPrivate"
-                        className="h-4 w-4 text-primary rounded border-border focus:ring-primary"
-                        checked={newRoomIsPrivate}
-                        onChange={(e) => setNewRoomIsPrivate(e.target.checked)}
-                      />
-                      <label htmlFor="isPrivate" className="ml-2 block text-textSecondary text-sm">
-                        Private Room
-                      </label>
-                    </div>
-                    {createRoomError && <p className="error-message">{createRoomError}</p>}
-                    <div className="mt-4">
-                      <button
-                        type="submit"
-                        className="btn-primary w-full"
-                      >
-                        Create Room
-                      </button>
-                    </div>
-                  </form>
-                </Dialog.Panel>
-              </Transition.Child>
-            </div>
+        {!selectedChatId && !loadingChats && (
+          <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <p>Select a chat or create a new one to start talking!</p>
           </div>
-        </Dialog>
-      </Transition>
+        )}
+      </div>
     </div>
   );
 };

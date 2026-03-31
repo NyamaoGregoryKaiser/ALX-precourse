@@ -1,94 +1,139 @@
 ```typescript
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { AuthState, AuthContextType, User } from 'types';
-import { getAuthToken, getUser, saveAuthToken, saveUser, clearAuthData } from 'utils/auth';
-import axiosInstance from 'api/axiosInstance';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { jwtDecode } from 'jwt-decode';
+import { getMe, loginUser, registerUser } from '../api/auth';
+import { AuthUser, DecodedToken, TokenResponse } from '../types';
+import { LOCAL_STORAGE_TOKEN_KEY } from '../utils/constants';
+import { toast } from 'react-toastify';
 
-// Initial state for the authentication context
-const initialState: AuthState = {
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  isLoading: true, // Start as loading
-};
+interface AuthContextType {
+  user: AuthUser | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string) => Promise<void>;
+  logout: () => void;
+  loading: boolean;
+}
 
-// Create the AuthContext
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// AuthProvider component
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [authState, setAuthState] = useState<AuthState>(initialState);
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY));
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!token);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Function to fetch current user data from the backend
-  const fetchCurrentUser = useCallback(async (token: string) => {
+  const saveAuthData = useCallback((tokenResponse: TokenResponse, userProfile: AuthUser) => {
+    localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, tokenResponse.access_token);
+    setToken(tokenResponse.access_token);
+    setUser(userProfile);
+    setIsAuthenticated(true);
+    toast.success(`Welcome, ${userProfile.username}!`);
+  }, []);
+
+  const clearAuthData = useCallback(() => {
+    localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+    toast.info("You have been logged out.");
+  }, []);
+
+  const fetchUserProfile = useCallback(async (accessToken: string) => {
     try {
-      const response = await axiosInstance.get('/api/v1/users/me', {
-        headers: { Authorization: `Bearer ${token}` },
+      const decoded: DecodedToken = jwtDecode(accessToken);
+      const userId = parseInt(decoded.sub);
+      if (isNaN(userId)) throw new Error("Invalid user ID in token");
+
+      const userProfile = await getMe(); // Fetches full user profile from /users/me
+      if (userProfile.id !== userId) throw new Error("Token user ID mismatch with profile");
+
+      setUser({
+        id: userProfile.id,
+        username: userProfile.username,
+        email: userProfile.email
       });
-      const userData: User = response.data;
-      setAuthState({
-        user: userData,
-        token: token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-      saveUser(userData); // Update user in local storage
+      setIsAuthenticated(true);
     } catch (error) {
-      console.error('Failed to fetch current user:', error);
-      clearAuthData(); // Clear invalid token/user data
-      setAuthState({ ...initialState, isLoading: false }); // Reset auth state
+      console.error("Failed to fetch user profile or validate token:", error);
+      clearAuthData(); // Clear token if validation fails
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [clearAuthData]);
 
-  // Effect to initialize auth state from local storage on component mount
   useEffect(() => {
-    const token = getAuthToken();
-    const storedUser = getUser(); // May be outdated or null
-
     if (token) {
-      // If token exists, try to validate it and fetch user data
-      // This is important because the token might be expired or invalid
-      fetchCurrentUser(token);
+      const decoded: DecodedToken | null = token ? jwtDecode(token) : null;
+      if (decoded && decoded.exp * 1000 > Date.now()) {
+        fetchUserProfile(token);
+      } else {
+        clearAuthData();
+        setLoading(false);
+      }
     } else {
-      // No token, so not authenticated
-      setAuthState({ ...initialState, isLoading: false });
+      setLoading(false);
     }
-  }, [fetchCurrentUser]);
+  }, [token, fetchUserProfile, clearAuthData]);
 
-  // Login function
-  const login = useCallback((token: string, user: User) => {
-    saveAuthToken(token);
-    saveUser(user);
-    setAuthState({
-      user: user,
-      token: token,
-      isAuthenticated: true,
-      isLoading: false,
-    });
-  }, []);
+  const loginHandler = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const tokenResponse = await loginUser({ email, password });
+      localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, tokenResponse.access_token);
+      setToken(tokenResponse.access_token);
+      // Fetch user profile immediately after setting token
+      await fetchUserProfile(tokenResponse.access_token);
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      toast.error(error.response?.data?.detail || "Login failed.");
+      clearAuthData();
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [clearAuthData, fetchUserProfile]);
 
-  // Logout function
-  const logout = useCallback(() => {
+  const registerHandler = useCallback(async (username: string, email: string, password: string) => {
+    setLoading(true);
+    try {
+      const tokenResponse = await registerUser({ username, email, password });
+      localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, tokenResponse.access_token);
+      setToken(tokenResponse.access_token);
+      await fetchUserProfile(tokenResponse.access_token);
+    } catch (error: any) {
+      console.error("Registration failed:", error);
+      toast.error(error.response?.data?.detail || "Registration failed.");
+      clearAuthData();
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [clearAuthData, fetchUserProfile]);
+
+  const logoutHandler = useCallback(() => {
     clearAuthData();
-    setAuthState({ ...initialState, isLoading: false });
-  }, []);
+  }, [clearAuthData]);
 
-  // Function to update the user in state (e.g., after profile update)
-  const setUser = useCallback((user: User) => {
-    saveUser(user);
-    setAuthState((prevState) => ({
-      ...prevState,
-      user: user,
-    }));
-  }, []);
-
-  const contextValue: AuthContextType = {
-    ...authState,
-    login,
-    logout,
-    setUser,
+  const value = {
+    user,
+    token,
+    isAuthenticated,
+    login: loginHandler,
+    register: registerHandler,
+    logout: logoutHandler,
+    loading,
   };
 
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };
 ```

@@ -1,30 +1,25 @@
 ```python
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
-from app.schemas.user import UserPublic # Import UserPublic for nested schema
+from backend.app.schemas.user import User
 
-# Base schema for common message attributes
 class MessageBase(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content: str
 
-# Schema for creating a message
 class MessageCreate(MessageBase):
-    pass # No additional fields needed beyond content
+    chat_id: int
+    owner_id: int # This will be set by the server from auth
 
-# Schema for message data as stored in DB
-class MessageInDB(MessageBase):
+class MessageUpdate(MessageBase):
+    pass
+
+class Message(MessageBase):
     id: int
-    chat_room_id: int
-    sender_id: int
-    sent_at: datetime
-
-    class Config:
-        from_attributes = True
-
-# Schema for public message data (includes sender details)
-class MessagePublic(MessageInDB):
-    sender: UserPublic # Nested schema for sender details
+    chat_id: int
+    owner_id: int
+    created_at: datetime
+    updated_at: datetime
+    owner: User # Nested user schema
 
     class Config:
         from_attributes = True
