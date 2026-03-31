@@ -1,332 +1,313 @@
-```markdown
-# Scrapineer: Production-Ready Web Scraping Tools System
+# Mobile Backend System (C++ with Drogon)
 
-Scrapineer is a comprehensive, enterprise-grade web scraping platform built with Spring Boot (Java). It allows users to define web scraping targets, specify CSS selectors for data extraction, schedule scraping jobs, and store the extracted data in a structured format.
+This repository contains a comprehensive, production-ready backend system for a mobile application, built using C++ and the Drogon web framework. It demonstrates an enterprise-grade architecture with multiple modules, full CRUD APIs, authentication, database management, testing, and deployment configurations.
 
 ## Table of Contents
 
 1.  [Features](#features)
 2.  [Technologies Used](#technologies-used)
 3.  [Project Structure](#project-structure)
-4.  [Setup Instructions](#setup-instructions)
+4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development (Non-Docker)](#local-development-non-docker)
-    *   [Docker Setup (Recommended)](#docker-setup-recommended)
+    *   [Local Development (without Docker)](#local-development-without-docker)
+    *   [Docker Compose (Recommended)](#docker-compose-recommended)
 5.  [Running the Application](#running-the-application)
-6.  [Accessing the API and Documentation](#accessing-the-api-and-documentation)
-7.  [Authentication & Authorization](#authentication--authorization)
-8.  [Database](#database)
-9.  [Testing](#testing)
-10. [CI/CD](#ci-cd)
-11. [Monitoring & Logging](#monitoring--logging)
-12. [Caching & Rate Limiting](#caching--rate-limiting)
-13. [Architecture](#architecture)
-14. [Deployment Guide](#deployment-guide)
+6.  [Testing](#testing)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [API Tests](#api-tests)
+    *   [Performance Tests](#performance-tests)
+7.  [API Documentation](#api-documentation)
+8.  [Architecture](#architecture)
+9.  [Deployment](#deployment)
+10. [CI/CD](#cicd)
+11. [Logging and Monitoring](#logging-and-monitoring)
+12. [Error Handling](#error-handling)
+13. [Caching](#caching)
+14. [Rate Limiting](#rate-limiting)
 15. [Contributing](#contributing)
 16. [License](#license)
 
-## Features
+## 1. Features
 
-*   **Scraping Target Management:** Define URLs to scrape with associated metadata.
-*   **Flexible Selector Definition:** Specify multiple CSS selectors for structured data extraction (text, attribute, HTML).
-*   **Scraping Job Scheduling:** Create one-time or recurring jobs using CRON expressions.
-*   **Asynchronous Scraping:** Jobs run in a dedicated thread pool to avoid blocking the API.
-*   **Structured Result Storage:** Extracted data is stored as JSONB in PostgreSQL.
-*   **RESTful API:** Full CRUD operations for targets, jobs, and results.
-*   **User Authentication & Authorization:** Secure access using JWT (JSON Web Tokens) and Spring Security with role-based access control.
-*   **Database Migrations:** Managed by Flyway for version control of database schema.
-*   **Caching Layer:** Uses Spring Cache with Caffeine for improved performance on frequently accessed data.
-*   **Rate Limiting:** Protects API endpoints from abuse using Bucket4j.
-*   **Comprehensive Error Handling:** Global exception handling for consistent API responses.
-*   **Logging & Monitoring:** SLF4J/Logback for logging, Spring Boot Actuator for health checks and metrics.
-*   **Docker Support:** Containerized application and database for easy setup and deployment.
-*   **CI/CD Pipeline:** Example GitHub Actions workflow for automated build, test, and deployment.
-*   **API Documentation:** Interactive API documentation powered by OpenAPI (Swagger UI).
-*   **Minimal UI:** A basic Thymeleaf home page for a friendly entry point.
+*   **User Management**: Register, Login, Get Profile, (Admin) CRUD for users.
+*   **Product Catalog**: View all products, view single product, (Admin) CRUD for products, update product stock.
+*   **Order Processing**: Create orders, view user's orders, cancel orders, (Admin) update order status, (Admin) delete orders.
+*   **Authentication & Authorization**: JWT-based authentication, role-based authorization (user/admin).
+*   **Database Integration**: PostgreSQL with detailed schema, migrations, and seed data.
+*   **Configuration Management**: External JSON configuration.
+*   **Logging**: Structured logging with `spdlog`.
+*   **Caching**: Redis integration for high-speed data retrieval.
+*   **Robust Error Handling**: Standardized API error responses.
+*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
+*   **Testing**: Unit, Integration, and API tests using Catch2.
+*   **CI/CD**: Basic GitHub Actions workflow.
 
-## Technologies Used
+## 2. Technologies Used
 
-*   **Backend:** Java 17, Spring Boot 3
-    *   **Web Framework:** Spring Web MVC
-    *   **Data Persistence:** Spring Data JPA, Hibernate
-    *   **Security:** Spring Security, JWT (jjwt)
-    *   **Web Scraping:** Jsoup
-    *   **Scheduling:** Spring Task Scheduler
-    *   **Caching:** Spring Cache, Caffeine
-    *   **Rate Limiting:** Bucket4j
-    *   **API Docs:** Springdoc-openapi (Swagger UI)
-    *   **Utilities:** Lombok, Guava
-*   **Database:** PostgreSQL
-*   **Database Migration:** Flyway
-*   **Containerization:** Docker, Docker Compose
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, RestAssured, JaCoCo
-*   **CI/CD:** GitHub Actions
+*   **Backend**: C++17
+*   **Web Framework**: [Drogon](https://github.com/drogonframework/drogon)
+*   **Database**: [PostgreSQL](https://www.postgresql.org/)
+*   **Caching**: [Redis](https://redis.io/)
+*   **JSON Handling**: [jsoncpp](https://github.com/open-source-parsers/jsoncpp) (integrated with Drogon)
+*   **JWT**: [jwt-cpp](https://github.com/Thalhammer/jwt-cpp)
+*   **Logging**: [spdlog](https://github.com/gabime/spdlog)
+*   **Testing**: [Catch2](https://github.com/catchorg/Catch2)
+*   **Build System**: CMake
+*   **Containerization**: Docker, Docker Compose
 
-## Project Structure
+## 3. Project Structure
 
 ```
-├── .github/workflows/              # CI/CD workflows (GitHub Actions)
-├── config/
-│   └── flyway/                     # Database migration scripts
-├── docs/                           # Architecture, API, and Deployment documentation
-├── src/
-│   ├── main/
-│   │   ├── java/com/alx/scrapineer/ # Main Java source code
-│   │   │   ├── api/                # REST Controllers, DTOs, Exceptions
-│   │   │   ├── common/             # Global configurations, security, utilities, error handling
-│   │   │   ├── data/               # JPA Entities, Repositories
-│   │   │   ├── scheduler/          # Scheduled job logic
-│   │   │   ├── scraper/            # Web scraping engine and strategies
-│   │   │   └── service/            # Core business services
-│   │   └── resources/              # Application properties, logging, static assets, templates
-│   └── test/
-│       ├── java/com/alx/scrapineer/ # Unit, Integration, and API tests
-│       └── resources/              # Test-specific configurations
-├── docker-compose.yml              # Docker Compose for local environment setup
-├── Dockerfile                      # Dockerfile for Spring Boot application
-├── pom.xml                         # Maven project file
-└── README.md                       # This README
+.
+├── CMakeLists.txt          # Main CMake configuration for the project
+├── docker-compose.yml      # Defines multi-container Docker application
+├── Dockerfile              # Docker build instructions for the C++ backend
+├── .gitignore              # Git ignore file
+├── .github                 # GitHub Actions CI/CD workflows
+│   └── workflows
+│       └── ci.yml
+├── config
+│   └── app_config.json     # Application configuration (DB creds, JWT secret, etc.)
+├── database
+│   ├── schema.sql          # SQL DDL for database schema
+│   └── seed.sql            # SQL INSERT statements for initial data
+├── docs                    # Project documentation
+│   ├── README.md           # This file
+│   ├── api.md              # API endpoint specifications and examples
+│   ├── architecture.md     # High-level architecture overview
+│   └── deployment.md       # Deployment guide
+├── src                     # Core application source code
+│   ├── main.cc             # Application entry point, Drogon setup
+│   ├── controllers         # API endpoint handlers (e.g., AuthController, UserController)
+│   ├── middleware          # HTTP middleware (e.g., AuthMiddleware, ErrorHandler)
+│   ├── models              # Data Transfer Objects (DTOs) and data structures
+│   ├── repositories        # Database interaction logic (CRUD operations)
+│   ├── services            # Business logic and orchestration
+│   └── utils               # Utility classes (e.g., AppConfig, JwtManager, CryptoUtils, RedisManager)
+└── tests                   # Unit and integration tests
+    ├── CMakeLists.txt      # CMake configuration for tests
+    ├── unit                # Unit tests for individual components
+    └── integration         # Integration tests (e.g., repository interactions with DB)
 ```
 
-## Setup Instructions
+## 4. Setup and Installation
 
 ### Prerequisites
 
-*   Java 17 JDK
-*   Maven 3.8+
-*   Docker and Docker Compose (recommended for easy setup)
-*   Git
+*   **Git**: For cloning the repository.
+*   **Docker & Docker Compose**: (Recommended) For easy setup of the backend, database, and Redis.
+*   **C++ Development Tools**: (If not using Docker for development)
+    *   CMake (>= 3.10)
+    *   C++17 capable compiler (g++ or clang++)
+    *   Drogon (v1.8.0 or later)
+    *   jwt-cpp
+    *   jsoncpp
+    *   spdlog
+    *   hiredis (Redis client library)
+    *   libpq (PostgreSQL client library)
 
-### Local Development (Non-Docker)
+### Local Development (without Docker)
 
-1.  **Clone the repository:**
+**Note**: This method requires manual installation and management of all dependencies (Drogon, PostgreSQL, Redis, etc.), which can be complex. Docker Compose is highly recommended.
+
+1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/scrapineer.git
-    cd scrapineer
+    git clone https://github.com/your-username/mobile-backend.git
+    cd mobile-backend
     ```
-2.  **Configure `application.yml`:**
-    *   For H2 (in-memory database, default for `dev` profile), no special setup needed.
-    *   For PostgreSQL:
-        *   Install PostgreSQL locally.
-        *   Create a database (e.g., `scrapineer_db`).
-        *   Update `src/main/resources/application.yml` (or create `application-local.yml` and activate it) with your PostgreSQL credentials:
-            ```yaml
-            spring:
-              datasource:
-                url: jdbc:postgresql://localhost:5432/scrapineer_db
-                username: your_postgres_user
-                password: your_postgres_password
-              jpa:
-                hibernate:
-                  ddl-auto: update # or 'validate' if Flyway handles all
-              flyway:
-                enabled: true
-            ```
-    *   **Important:** Set a strong JWT secret in `application.yml` or via environment variable. **Never commit production secrets.**
-        ```yaml
-        jwt:
-          secret: your_very_secure_and_long_jwt_secret_key_that_is_at_least_32_characters_long
+2.  **Install Drogon and other C++ dependencies**:
+    Follow Drogon's official installation guide ([Drogon Docs](https://drogon.org/doc/index.html)) for your OS. Ensure you also install `jwt-cpp`, `spdlog`, `jsoncpp`, `hiredis`, `libpq-dev`.
+    *   Example for Debian/Ubuntu:
+        ```bash
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential git libjsoncpp-dev libuuid-dev libssl-dev zlib1g-dev libbrotli-dev libhiredis-dev libpq-dev libspdlog-dev
+        # Install Drogon (recommended to build from source for specific version)
+        git clone --depth 1 -b v1.8.0 https://github.com/drogonframework/drogon.git
+        cd drogon
+        git submodule update --init
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        sudo cmake --build build --target install
+        sudo ldconfig
+        cd ..
+        # Install jwt-cpp (build from source)
+        git clone --depth 1 https://github.com/Thalhammer/jwt-cpp.git
+        cd jwt-cpp
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        sudo cmake --build build --target install
+        sudo ldconfig
+        cd ..
         ```
-3.  **Build the project:**
+3.  **Set up PostgreSQL and Redis**:
+    *   Install PostgreSQL and create a database `mobile_app_db` with user `user` and password `password`.
+    *   Apply the `database/schema.sql` and `database/seed.sql` to your PostgreSQL instance.
+    *   Install and start Redis.
+4.  **Configure `config/app_config.json`**:
+    Adjust database credentials, JWT secret, and Redis connection details to match your local setup.
+5.  **Build the application**:
     ```bash
-    mvn clean install
+    mkdir build
+    cd build
+    cmake ..
+    cmake --build .
     ```
-4.  **Run Flyway migrations (if not `ddl-auto: update`):**
-    If `ddl-auto` is set to `validate` or `none`, Flyway will manage schema.
-    You can manually trigger Flyway if needed (though Spring Boot usually does it on startup).
 
-### Docker Setup (Recommended)
+### Docker Compose (Recommended)
 
-1.  **Clone the repository:**
+1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/scrapineer.git
-    cd scrapineer
+    git clone https://github.com/your-username/mobile-backend.git
+    cd mobile-backend
     ```
-2.  **Build the application JAR:**
-    ```bash
-    mvn clean package -DskipTests
-    ```
-    This creates `target/scrapineer-0.0.1-SNAPSHOT.jar`.
-3.  **Ensure `docker-compose.yml` is correctly configured:**
-    *   Check `JWT_SECRET` and database credentials under the `app` service. For local development, the defaults might be fine, but you should use stronger values for any non-local setup.
-    *   The `config/flyway` directory is mounted to `/flyway/sql` in the `db` service to allow Flyway to find and apply migrations.
-4.  **Start Docker Compose:**
+2.  **Ensure Docker and Docker Compose are installed.**
+3.  **Build and run the services**:
     ```bash
     docker-compose up --build -d
     ```
-    *   `--build`: Rebuilds the application image.
-    *   `-d`: Runs containers in detached mode.
+    This command will:
+    *   Build the `backend` service using the `Dockerfile`.
+    *   Start a PostgreSQL container (`db`), apply `schema.sql` and `seed.sql`.
+    *   Start a Redis container (`redis`).
+    *   Start the `backend` application, connecting to `db` and `redis` services by their names defined in `docker-compose.yml`.
+    *   `-d` runs services in detached mode (in the background).
 
-    This will:
-    *   Build the `scrapineer` application Docker image.
-    *   Start a PostgreSQL database container.
-    *   Start the `scrapineer` application container.
-    *   Start `pgAdmin` (optional, accessible at `http://localhost:5050` with credentials `admin@scrapineer.com`/`admin_password`).
+## 5. Running the Application
 
-## Running the Application
-
-*   **From JAR (Local, Non-Docker):**
-    ```bash
-    java -jar target/scrapineer-0.0.1-SNAPSHOT.jar
-    # Or to run with a specific profile (e.g., dev):
-    java -jar -Dspring.profiles.active=dev target/scrapineer-0.0.1-SNAPSHOT.jar
-    ```
-*   **With Docker Compose:**
-    If you used `docker-compose up -d`, it's already running.
+*   **With Docker Compose**: The application starts automatically after `docker-compose up -d`. It will be accessible on `http://localhost:8080`.
+    To check logs: `docker-compose logs -f backend`
     To stop: `docker-compose down`
+*   **Locally (without Docker)**:
+    ```bash
+    cd build
+    ./MobileBackend
+    ```
+    The application will listen on `http://127.0.0.1:8080` (or as configured in `app_config.json`).
 
-The application will be accessible at `http://localhost:8080`.
+## 6. Testing
 
-## Accessing the API and Documentation
+### Unit Tests
 
-*   **Home Page:** `http://localhost:8080/` (basic Thymeleaf UI)
-*   **Swagger UI (API Documentation):** `http://localhost:8080/swagger-ui.html`
-*   **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
+Unit tests are written using `Catch2` and focus on individual components (utilities, services).
 
-## Authentication & Authorization
+1.  **Build the tests (if not already done by `cmake ..`):**
+    ```bash
+    cd build
+    cmake --build . --target UnitTests
+    ```
+2.  **Run unit tests**:
+    ```bash
+    ./tests/UnitTests
+    # Or using CTest
+    ctest -L unit
+    ```
 
-The API uses JWT for authentication.
+### Integration Tests
 
-1.  **Register a User:**
-    *   Endpoint: `POST /api/auth/register`
-    *   Body:
-        ```json
-        {
-          "username": "myuser",
-          "password": "mypassword",
-          "roles": ["USER"]
-        }
-        ```
-    *   This will return a JWT token.
-2.  **Login User:**
-    *   Endpoint: `POST /api/auth/login`
-    *   Body:
-        ```json
-        {
-          "username": "myuser",
-          "password": "mypassword"
-        }
-        ```
-    *   This will return a JWT token.
-3.  **Use the Token:** Include the token in the `Authorization` header for subsequent API requests:
-    `Authorization: Bearer <your_jwt_token>`
+Integration tests are also written using `Catch2` and verify the interaction between components, especially with the database.
 
-**Seed Data:**
-The `V2__add_seed_data.sql` migration script inserts:
-*   **Admin User:** `username: admin`, `password: adminpassword`
-*   **Regular User:** `username: user`, `password: userpassword`
+**Note**: Integration tests require a running PostgreSQL database configured as per `app_config.json`. If using Docker Compose, the `db` service should be healthy.
 
-## Database
+1.  **Build the tests:**
+    ```bash
+    cd build
+    cmake --build . --target IntegrationTests
+    ```
+2.  **Run integration tests**:
+    ```bash
+    ./tests/IntegrationTests
+    # Or using CTest
+    ctest -L integration
+    ```
 
-*   **Type:** PostgreSQL
-*   **Migration Tool:** Flyway
-*   **Schema:** Defined in `config/flyway/V1__initial_schema.sql`
-    *   `users`: Stores user credentials and roles.
-    *   `scraping_targets`: Defines websites/pages to scrape, associated with a user.
-    *   `css_selectors`: Specifies how to extract data (e.g., title, price) from a target.
-    *   `scraping_jobs`: Manages scheduled or manual scraping tasks.
-    *   `scraping_results`: Stores the JSONB output of each scraping run.
-*   **Seed Data:** `config/flyway/V2__add_seed_data.sql` provides initial `admin` and `user` accounts and some example targets/jobs.
+### API Tests
 
-## Testing
+API tests ensure that the HTTP endpoints function correctly. A `curl` script is provided for basic smoke testing.
 
-The project includes various levels of testing:
+1.  Ensure the backend is running.
+2.  Execute the API test script:
+    ```bash
+    cd docs
+    chmod +x api_tests.sh
+    ./api_tests.sh
+    ```
+    (Requires `jq` for pretty printing JSON, but will work without it).
 
-*   **Unit Tests:** Located in `src/test/java/**/service`, `src/test/java/**/util`. These mock external dependencies to test individual components.
-*   **Repository Tests (DataJpaTest):** Located in `src/test/java/**/repository`. Use Spring Boot's `@DataJpaTest` to test JPA repositories with an in-memory H2 database.
-*   **Integration Tests:** Located in `src/test/java/**/integration`. Use `@SpringBootTest` with `Testcontainers` to spin up a real PostgreSQL database, providing a full-stack test environment. These verify the interaction between multiple components.
-*   **API Tests:** Utilizes `RestAssured` within integration tests to make actual HTTP requests against the running application.
+### Performance Tests
 
-**Running Tests:**
-```bash
-mvn clean test
-```
-**Code Coverage:**
-The `pom.xml` is configured with `JaCoCo` to generate code coverage reports.
-After `mvn clean test`, you can find the report at `target/site/jacoco/index.html`.
-The CI pipeline also checks for a minimum coverage ratio (70% line, 60% branch).
+For performance testing, external tools are recommended:
 
-## CI/CD
+*   **`ab` (Apache Bench)**: Simple tool for basic load testing.
+    ```bash
+    # Example: 1000 requests, 10 concurrent
+    ab -n 1000 -c 10 http://localhost:8080/products
+    ```
+*   **JMeter**: More comprehensive tool for various protocols and complex scenarios.
+*   **K6 / Locust**: Scriptable load testing tools (JavaScript/Python respectively).
 
-A conceptual CI/CD pipeline is provided using GitHub Actions in `.github/workflows/ci.yml`.
+**Strategy**:
+1.  Identify critical endpoints (e.g., `/login`, `/products`, `/orders`).
+2.  Simulate typical user flows (login -> browse products -> add to cart -> checkout).
+3.  Monitor system resources (CPU, Memory, Disk I/O, Network) during tests.
+4.  Analyze response times, throughput, and error rates.
 
-*   **`build-and-test` Job:**
-    *   Triggers on `push` and `pull_request` to `main` and `develop` branches.
-    *   Builds the Maven project.
-    *   Runs all unit, integration, and API tests.
-    *   Generates and uploads JaCoCo code coverage report.
-    *   Publishes test results to GitHub Checks.
-*   **`build-docker-image` Job:**
-    *   Runs only if `build-and-test` passes on `main` or `develop` branches.
-    *   Builds the Docker image for the application.
-    *   Pushes the image to Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets).
-*   **`deploy` Job:**
-    *   Runs only if `build-docker-image` passes and on `main` branch.
-    *   Simulates deployment to a production server (replace with actual deployment commands). Requires `SSH_USERNAME` and `PRODUCTION_SERVER_HOST` secrets, potentially an SSH key.
+## 7. API Documentation
 
-## Monitoring & Logging
+Detailed API endpoints, request/response formats, and authentication requirements are documented in `docs/api.md`.
 
-*   **Logging:** Configured with SLF4J and Logback.
-    *   Logs are output to console and a file (`logs/scrapineer.log` in development, `/var/log/scrapineer/scrapineer.log` in production).
-    *   Log levels are configurable via `application.yml` and `logback-spring.xml`.
-*   **Monitoring (Actuator):** Spring Boot Actuator endpoints are enabled for monitoring application health and metrics.
-    *   `http://localhost:8080/actuator`
-    *   `http://localhost:8080/actuator/health`
-    *   `http://localhost:8080/actuator/metrics`
-    *   **Security Note:** In a production environment, `/actuator` endpoints should be secured, typically restricted to ADMIN users or specific monitoring tools.
+## 8. Architecture
 
-## Caching & Rate Limiting
+An overview of the system's architecture, including diagrams and component interactions, is available in `docs/architecture.md`.
 
-*   **Caching:** Spring Cache with Caffeine (in-memory) is configured.
-    *   Annotations like `@Cacheable` and `@CacheEvict` are used in service layers (e.g., `ScrapingTargetService`, `ScrapingResultService`) to cache frequently accessed data.
-    *   Caching helps reduce database load and improve API response times for read operations.
-*   **Rate Limiting:** Implemented using a custom `RateLimitInterceptor` and the `Bucket4j` library.
-    *   Applied to all `/api/**` endpoints (excluding `/api/auth/**`).
-    *   Configuration parameters (`bucket-capacity`, `refill-tokens`, `refill-period-seconds`) are defined in `application.yml`.
-    *   If the rate limit is exceeded, a `429 Too Many Requests` status is returned with a `Retry-After` header.
+## 9. Deployment
 
-## Architecture
+The recommended deployment method is using Docker containers. The `docker-compose.yml` provides a local development and simple single-server deployment setup. For production, consider Kubernetes or other container orchestration platforms.
 
-(See `docs/architecture.md` for a more detailed diagram)
+Refer to `docs/deployment.md` for more details.
 
-The system follows a layered architecture, common in Spring Boot applications:
+## 10. CI/CD
 
-*   **Presentation Layer (API):** `com.alx.scrapineer.api.controller`
-    *   Exposes RESTful endpoints for external interaction.
-    *   Handles request/response mapping (DTOs), input validation.
-    *   Uses Spring Security for authentication and authorization.
-    *   `HomeController` provides a minimal Thymeleaf UI.
-*   **Service/Business Logic Layer:** `com.alx.scrapineer.service`, `com.alx.scrapineer.scraper.service`
-    *   Contains the core business rules and orchestrates operations.
-    *   `AuthService`: User registration and login.
-    *   `ScrapingTargetService`: CRUD for scraping targets.
-    *   `ScrapingJobService`: CRUD and lifecycle management for scraping jobs.
-    *   `ScrapingResultService`: Retrieval of scraping results.
-    *   `ScrapingOrchestrationService`: Manages the execution flow of a single scraping task, interacting with `ScraperEngine`.
-*   **Scraping Layer:** `com.alx.scrapineer.scraper.engine`, `com.alx.scrapineer.scraper.strategy`
-    *   `ScraperEngine` interface defines the contract for scraping.
-    *   `JsoupScraperEngine` is an implementation for static HTML content. More engines (e.g., Selenium for dynamic JS) can be added here.
-*   **Scheduler Layer:** `com.alx.scrapineer.scheduler`
-    *   `ScrapingJobScheduler`: Periodically checks for and triggers scheduled jobs.
-*   **Data Access Layer (Repository):** `com.alx.scrapineer.data.repository`
-    *   Defines interfaces for database operations using Spring Data JPA.
-*   **Domain Layer (Entity):** `com.alx.scrapineer.data.entity`
-    *   JPA entities representing the core data model (User, Target, Selector, Job, Result).
-*   **Infrastructure/Cross-Cutting Concerns:** `com.alx.scrapineer.common`
-    *   **Configuration:** `AppConfig`, `WebSecurityConfig`, `WebMvcConfig`.
-    *   **Security:** JWT utilities, custom `UserPrincipal`, authentication filters.
-    *   **Exception Handling:** `GlobalExceptionHandler` and custom exceptions.
-    *   **Utilities:** Mappers (DTO <-> Entity), JWT token handler, Rate Limiting interceptor.
+A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided. This workflow automatically builds the Docker image and runs tests upon push to `main` and pull requests.
 
-## Deployment Guide
+**Workflow Stages:**
+1.  **Build**: Compiles the C++ application inside a Docker container.
+2.  **Test**: Runs unit and integration tests.
+3.  **Optional Deploy**: (Placeholder) Can be extended to push Docker images to a registry and deploy to a cloud environment.
 
-Please refer to `docs/deployment.md` for detailed deployment instructions, including production considerations for Docker, environment variables, and security.
+## 11. Logging and Monitoring
 
-## Contributing
+*   **Logging**: The application uses `spdlog` for structured, categorized logging. Logs are output to `stdout` (visible in Docker logs) and a rotating file (`logs/backend.log`).
+*   **Monitoring**: For production, integrate with monitoring solutions like Prometheus (for metrics) and Grafana (for dashboards). Drogon can expose metrics via an endpoint, and `spdlog` can be configured to send logs to a centralized log management system (e.g., ELK stack, Splunk).
 
-Feel free to fork the repository, open issues, and submit pull requests. Adhere to conventional commit messages.
+## 12. Error Handling
 
-## License
+The system employs a global `ErrorHandler` middleware that catches exceptions (custom `ApiError` exceptions and generic C++ exceptions) and returns standardized JSON error responses.
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
+*   `400 Bad Request` for invalid input.
+*   `401 Unauthorized` for missing or invalid authentication tokens.
+*   `403 Forbidden` for insufficient permissions.
+*   `404 Not Found` for non-existent resources.
+*   `409 Conflict` for unique constraint violations (e.g., duplicate username).
+*   `500 Internal Server Error` for unexpected server-side issues.
+
+## 13. Caching
+
+Redis is integrated as a caching layer. The `RedisManager` utility provides `set`, `get`, and `del` operations. While not extensively used in the current controller examples, it's available for caching frequently accessed data (e.g., product lists, user profiles) to reduce database load.
+
+**Example Use Case**: Caching product listings that don't change frequently.
+
+## 14. Rate Limiting
+
+Drogon provides built-in mechanisms for rate limiting using filters. For this example, a dedicated `RateLimiter` middleware is not explicitly implemented but would typically:
+
+*   Track requests per IP address or authenticated user ID.
+*   Use a token bucket or fixed window algorithm.
+*   Store rate limiting data in Redis for distributed systems.
+*   Return `429 Too Many Requests` when limits are exceeded.
+
+## 15. Contributing
+
+Contributions are welcome! Please fork the repository, create a feature branch, and submit a pull request. Ensure your code adheres to the project's coding standards and includes appropriate tests.
+
+## 16. License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details (not included in this response, but implied).

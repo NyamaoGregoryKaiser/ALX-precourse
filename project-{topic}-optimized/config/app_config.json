@@ -1,0 +1,20 @@
+{
+    "server_host": "0.0.0.0",
+    "server_port": 8080,
+    "server_threads": 4,
+
+    "db_host": "db",
+    "db_port": 5432,
+    "db_user": "user",
+    "db_password": "password",
+    "db_name": "mobile_app_db",
+    "db_connections": 10,
+    "db_connection_name": "mobile_app_db_conn",
+
+    "jwt_secret": "your_super_secret_jwt_key_that_should_be_long_and_complex",
+    "jwt_expiration_seconds": 3600,
+
+    "redis_host": "redis",
+    "redis_port": 6379,
+    "redis_password": ""
+}

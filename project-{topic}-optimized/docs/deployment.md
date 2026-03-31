@@ -1,152 +1,202 @@
-# Deployment Guide - Mobile App Backend System
+# Deployment Guide
 
-This guide outlines the steps to deploy the Task Management Mobile Backend System to a production environment. We will cover cloud-agnostic concepts and provide specific examples for a typical cloud provider setup (e.g., AWS, GCP, Azure).
+This document provides instructions for deploying the Mobile Backend system, focusing on containerized deployments using Docker.
 
-## 1. Prerequisites for Production Deployment
+## 1. Local Deployment with Docker Compose (Development/Testing)
 
-Before deploying, ensure you have:
+For local development and testing, `docker-compose.yml` is the simplest way to get all services (backend, PostgreSQL, Redis) running.
 
-*   **Cloud Provider Account**: AWS, GCP, Azure, DigitalOcean, Heroku, etc.
-*   **Domain Name**: A custom domain name (e.g., `api.yourtaskapp.com`).
-*   **SSL/TLS Certificate**: For HTTPS, obtained from your cloud provider or a service like Let's Encrypt.
-*   **Container Registry**: Docker Hub, AWS ECR, GCP Container Registry, etc., to store your Docker images.
-*   **CI/CD Setup**: Your `.github/workflows/ci.yml` (or equivalent) should be configured to build and push Docker images to your registry upon successful tests on `main` or `release` branches.
-
-## 2. Infrastructure Setup (Conceptual)
-
-A typical production setup involves several services:
-
-1.  **Virtual Private Cloud (VPC) / Network**: Isolate your resources.
-2.  **Load Balancer**: Distribute traffic and handle SSL termination.
-3.  **Compute Instances / Container Service**: Run your Node.js application.
-    *   **Option A (VMs)**: EC2 (AWS), Compute Engine (GCP), Virtual Machines (Azure).
-    *   **Option B (Container Orchestration)**: ECS/EKS (AWS), GKE (GCP), AKS (Azure), Kubernetes.
-4.  **Managed Database Service**: PostgreSQL.
-    *   RDS (AWS), Cloud SQL (GCP), Azure Database for PostgreSQL.
-5.  **Managed Cache Service**: Redis.
-    *   ElastiCache (AWS), Memorystore (GCP), Azure Cache for Redis.
-6.  **Object Storage**: For static assets, backups (S3, GCS, Azure Blob Storage).
-7.  **Logging & Monitoring**: Centralized logging (CloudWatch, Stackdriver, Azure Monitor, ELK Stack), APM (Datadog, New Relic).
-8.  **Secrets Management**: Securely store sensitive environment variables (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault).
-
-## 3. Deployment Steps
-
-### Step 3.1: Configure Production Environment Variables
-
-Update your `.env` file with production-ready values. **DO NOT commit this file to your repository.**
-
-*   `NODE_ENV=production`
-*   `PORT=3000` (or desired port, typically 80/443 exposed via load balancer)
-*   `DATABASE_URL`: Connection string for your **production** PostgreSQL database.
-*   `JWT_SECRET`: A very strong, long, randomly generated secret.
-*   `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`: Connection details for your production Redis instance.
-*   `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`: Adjust as needed for production traffic.
-
-**Important**: These variables should be injected securely into your application environment at deployment time, typically via secrets management services or container environment variables, not hardcoded into Docker images.
-
-### Step 3.2: Database Setup
-
-1.  **Provision Managed PostgreSQL**: Create a new PostgreSQL instance using your cloud provider's managed service (e.g., AWS RDS).
-2.  **Configure Security**: Ensure your database is only accessible from your application instances (VPC security groups).
-3.  **Apply Migrations**: Once the database is provisioned, connect to it (e.g., via a jump box, local `psql` tunnel, or a CI/CD step) and run Prisma migrations:
+1.  **Ensure Docker and Docker Compose are installed** on your machine.
+2.  **Clone the repository**:
     ```bash
-    # Ensure your DATABASE_URL environment variable points to the production DB
-    npx prisma migrate deploy
+    git clone https://github.com/your-username/mobile-backend.git
+    cd mobile-backend
     ```
-4.  **Seed Data (Optional)**: If your application requires initial data, run the seed script:
+3.  **Review Configuration**:
+    *   Check `config/app_config.json` for environment-specific settings (database name, user, password, JWT secret, Redis host/port).
+    *   Ensure the `db_host` and `redis_host` in `app_config.json` match the service names in `docker-compose.yml` (`db` and `redis` respectively).
+4.  **Build and Run**:
     ```bash
-    node seed.js
+    docker-compose up --build -d
     ```
+    *   `--build`: Forces rebuilding of the backend image, useful if you've made code changes.
+    *   `-d`: Runs containers in detached mode (in the background).
+5.  **Verify Services**:
+    *   Check container status: `docker-compose ps`
+    *   View backend logs: `docker-compose logs -f backend`
+    *   Access the API: The backend should be available at `http://localhost:8080`.
+6.  **Stop Services**:
+    ```bash
+    docker-compose down
+    ```
+    This stops and removes the containers and networks. Use `docker-compose down -v` to also remove Docker volumes (PostgreSQL data, Redis data), which is useful for a clean slate.
 
-### Step 3.3: Redis Cache Setup
+## 2. Production Deployment Considerations
 
-1.  **Provision Managed Redis**: Create a new Redis instance using your cloud provider's managed service (e.g., AWS ElastiCache).
-2.  **Configure Security**: Ensure Redis is only accessible from your application instances.
-3.  **Update `.env`**: Set `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` in your production environment variables.
+For production environments, while Docker Compose can work for simple single-server deployments, it's generally recommended to use a more robust container orchestration platform.
 
-### Step 3.4: Build and Push Docker Image
+### 2.1. Recommended Production Architecture (Container Orchestration)
 
-Ensure your CI/CD pipeline is configured to build the Docker image and push it to a container registry.
+*   **Container Orchestrator**: Kubernetes (EKS, GKE, AKS), Amazon ECS, Docker Swarm.
+*   **Load Balancer**: External load balancer (e.g., AWS ALB, Nginx, HAProxy) to distribute traffic across multiple backend instances.
+*   **Database**: Managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for high availability, backups, and scalability. Avoid running databases directly in containers on the same host for critical production data unless you have strong persistence and HA strategies.
+*   **Cache**: Managed Redis service (e.g., AWS ElastiCache, Azure Cache for Redis).
+*   **Secrets Management**: Use a dedicated secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets with proper encryption) for sensitive information like database passwords and JWT secrets.
+*   **Monitoring & Logging**: Centralized logging (ELK stack, Splunk, CloudWatch, Logz.io) and monitoring (Prometheus/Grafana, Datadog) for all services.
+*   **CI/CD Pipeline**: Automate building, testing, pushing images to a registry, and deploying to the orchestration platform.
 
-1.  **Configure `Dockerfile`**: Make sure `npm install --omit=dev` is used to reduce image size.
-2.  **CI/CD Action**: The `ci.yml` file has commented-out steps for building and pushing to Docker Hub. Uncomment and configure them with your registry details and credentials (using GitHub Secrets).
-3.  **Push to `main` branch**: This should trigger your CI/CD to build and push the production image.
+### 2.2. Steps for Kubernetes Deployment (Conceptual)
 
-### Step 3.5: Deploy the Application
-
-Choose your preferred deployment strategy:
-
-#### Option A: Container Orchestration (Recommended for Production)
-
-Using services like AWS ECS/EKS, GCP GKE, Azure AKS.
-
-1.  **Create a Cluster**: Set up a Kubernetes or ECS cluster.
-2.  **Define Task/Deployment**: Create a task definition (ECS) or Kubernetes deployment YAML:
-    *   Specify your Docker image from the container registry.
-    *   Map port `3000` (or whatever `PORT` your app listens on) to a container port.
-    *   Inject all production environment variables securely (e.g., Kubernetes Secrets, ECS Task Definition environment variables).
-    *   Define health checks (e.g., `GET /health` endpoint).
-    *   Set resource limits (CPU, memory).
-3.  **Service and Load Balancer**: Create a service that exposes your deployment and integrates with a load balancer.
-4.  **Autoscaling**: Configure autoscaling policies based on CPU utilization or request count.
-5.  **Continuous Deployment**: Integrate this deployment step into your CI/CD pipeline to automate updates on new image pushes.
-
-#### Option B: Virtual Machines (Simpler, but less scalable/resilient)
-
-Using EC2 (AWS), Compute Engine (GCP), etc.
-
-1.  **Launch EC2 Instances**: Provision multiple instances in an Auto Scaling Group for high availability.
-2.  **Install Docker**: Install Docker on each instance.
-3.  **Pull Image & Run Container**:
-    *   SSH into each instance.
-    *   Log in to your container registry (`docker login`).
-    *   Pull your production Docker image: `docker pull your-docker-repo/mobile-backend-app:latest`
-    *   Run the container, injecting environment variables:
-        ```bash
-        docker run -d --restart always \
-          -p 3000:3000 \
-          -e DATABASE_URL="your_prod_db_url" \
-          -e JWT_SECRET="your_prod_jwt_secret" \
-          -e REDIS_HOST="your_prod_redis_host" \
-          -e REDIS_PORT="6379" \
-          -e REDIS_PASSWORD="your_prod_redis_password" \
-          --name mobile-backend-app \
-          your-docker-repo/mobile-backend-app:latest
+1.  **Container Registry**: Push your backend Docker image to a container registry (e.g., Docker Hub, Google Container Registry, Amazon ECR).
+    ```bash
+    docker build -t your-registry/mobile-backend:latest .
+    docker push your-registry/mobile-backend:latest
+    ```
+2.  **Kubernetes Manifests**: Create Kubernetes YAML files:
+    *   `deployment.yaml`: Defines the backend application (Docker image, replica count, resource limits, readiness/liveness probes).
+    *   `service.yaml`: Defines how to access the backend application within the cluster.
+    *   `ingress.yaml` (Optional): Configures external access via an Ingress controller for HTTP/HTTPS routing.
+    *   `secret.yaml`: Securely store sensitive configuration (DB credentials, JWT secret).
+    *   `configmap.yaml`: Store non-sensitive configuration (server port, thread count).
+    *   **Example `deployment.yaml` snippet:**
+        ```yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: backend-deployment
+          labels:
+            app: mobile-backend
+        spec:
+          replicas: 3 # Scale to 3 instances
+          selector:
+            matchLabels:
+              app: mobile-backend
+          template:
+            metadata:
+              labels:
+                app: mobile-backend
+            spec:
+              containers:
+              - name: backend
+                image: your-registry/mobile-backend:latest
+                ports:
+                - containerPort: 8080
+                envFrom:
+                - configMapRef:
+                    name: backend-config # For non-sensitive configs
+                - secretRef:
+                    name: backend-secrets # For sensitive configs
+                volumeMounts:
+                - name: app-config-volume
+                  mountPath: /app/app_config.json # Mount config as file
+                  subPath: app_config.json
+                - name: logs-volume
+                  mountPath: /app/logs
+                readinessProbe: # Check if app is ready to serve traffic
+                  httpGet:
+                    path: /health # Implement a health check endpoint in Drogon
+                    port: 8080
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                livenessProbe: # Check if app is alive
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                resources:
+                  requests:
+                    memory: "128Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "512Mi"
+                    cpu: "500m"
+              volumes:
+              - name: app-config-volume
+                configMap:
+                  name: backend-config-file # Use a ConfigMap to hold app_config.json
+              - name: logs-volume
+                emptyDir: {} # For ephemeral logs, or use a persistent volume/log aggregation
         ```
-    *   **Recommendation**: Use a deployment tool (Ansible, Terraform, Cloud-init) to automate this process for multiple instances.
-4.  **Load Balancer**: Place your instances behind a Load Balancer (e.g., AWS ALB) to distribute traffic and handle SSL.
+3.  **Apply Manifests**:
+    ```bash
+    kubectl apply -f .
+    ```
+4.  **Database and Cache Connectivity**:
+    *   Configure your managed PostgreSQL and Redis services.
+    *   Update your Kubernetes secrets/config maps with the correct connection strings/credentials. Ensure the backend application's `app_config.json` (or environment variables in Kubernetes) points to these external services.
 
-### Step 3.6: Configure Load Balancer & Domain
+### 2.3. Health Checks
 
-1.  **Provision Load Balancer**: Create an HTTP/HTTPS load balancer.
-2.  **Target Group**: Configure a target group pointing to your application instances/containers on port 3000.
-3.  **Listener**: Set up an HTTPS listener (port 443) with your SSL certificate.
-4.  **Routing**: Configure rules to forward traffic to your target group.
-5.  **Domain Name**: Update your DNS records (e.g., CNAME for `api.yourtaskapp.com`) to point to the Load Balancer's DNS name.
+*   For `liveness` and `readiness` probes in Kubernetes, implement a simple `/health` endpoint in Drogon that returns a `200 OK` if the application is running and can connect to its critical dependencies (e.g., database, Redis).
 
-### Step 3.7: Logging and Monitoring
+    **Example `HealthController.h`**:
+    ```cpp
+    // src/controllers/HealthController.h
+    #pragma once
+    #include <drogon/HttpController.h>
+    class HealthController : public drogon::HttpController<HealthController> {
+    public:
+        METHOD_LIST_BEGIN
+        METHOD_ADD(HealthController::checkHealth, "/health", {drogon::HttpMethod::Get});
+        METHOD_LIST_END
+        void checkHealth(const drogon::HttpRequestPtr &req, std::function<void (const drogon::HttpResponsePtr &)> &&callback);
+    };
+    ```
+    **Example `HealthController.cc`**:
+    ```cpp
+    // src/controllers/HealthController.cc
+    #include "HealthController.h"
+    #include "utils/AppConfig.h" // For DB connection name
+    #include "utils/RedisManager.h" // For Redis health check
+    #include <drogon/HttpAppFramework.h>
+    #include <drogon/orm/DbClient.h>
+    #include <spdlog/spdlog.h>
+    void HealthController::checkHealth(const drogon::HttpRequestPtr &req, std::function<void (const drogon::HttpResponsePtr &)> &&callback) {
+        Json::Value status;
+        status["status"] = "UP";
 
-1.  **Centralized Logging**: Configure your application logs (`winston`, `morgan`) to be sent to a centralized logging service (e.g., AWS CloudWatch Logs, GCP Cloud Logging, ELK Stack). Docker logging drivers can facilitate this.
-2.  **Application Performance Monitoring (APM)**: Integrate an APM tool (Datadog, New Relic, Prometheus/Grafana) to monitor application health, response times, error rates, and resource utilization.
-3.  **Alerting**: Set up alerts for critical metrics (e.g., high error rates, low disk space, high CPU usage).
+        // Check DB connection
+        auto dbClient = drogon::app().getDbClient(AppConfig::getInstance().getString("db_connection_name"));
+        if (dbClient) {
+            try {
+                // Perform a simple query (e.g., SELECT 1) to check connection health
+                dbClient->execSqlSync("SELECT 1");
+                status["database"] = "UP";
+            } catch (const std::exception& e) {
+                spdlog::error("Health check failed: Database connection error: {}", e.what());
+                status["database"] = "DOWN";
+                status["status"] = "DOWN";
+            }
+        } else {
+            status["database"] = "UNAVAILABLE";
+            status["status"] = "DOWN";
+        }
 
-### Step 3.8: Backups
+        // Check Redis connection
+        if (RedisManager::getInstance().get("health_check_key")) { // Simple get attempt
+             status["redis"] = "UP";
+        } else {
+             spdlog::error("Health check failed: Redis connection or ping error.");
+             status["redis"] = "DOWN";
+             status["status"] = "DOWN";
+        }
 
-*   **Database Backups**: Configure automated backups for your managed PostgreSQL database.
-*   **Application Code**: Your Git repository serves as a backup for your code.
-*   **Configuration**: Back up your production environment variables and infrastructure configurations.
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(status);
+        if (status["status"].asString() == "DOWN") {
+            resp->setStatusCode(drogon::k500InternalServerError);
+        } else {
+            resp->setStatusCode(drogon::k200OK);
+        }
+        callback(resp);
+    }
+    ```
 
-## 4. Post-Deployment Checks
+### 2.4. Environment Variables
 
-*   **Access API**: Try accessing your deployed API via your domain (`https://api.yourtaskapp.com/health`).
-*   **Test Endpoints**: Perform basic CRUD operations to ensure all APIs are functional.
-*   **Monitor Logs**: Check your centralized logs for any errors or warnings.
-*   **Performance**: Use your performance testing scripts (e.g., K6) against the deployed environment.
-*   **Security Scan**: Run security scans against your public endpoints.
+In production, it's common practice to override configuration values using environment variables rather than static config files. Drogon can be configured to read values from environment variables. Your Dockerfile and Kubernetes manifests should facilitate this.
 
-By following this comprehensive guide, you can successfully deploy your mobile app backend system to a production environment with a focus on reliability, scalability, and security.
-```
+*   Update `app_config.json` to potentially use environment variable placeholders if a tool processes it.
+*   Or, directly pass environment variables to the Docker container, which Drogon can then be configured to pick up (e.g., `drogon::app().loadConfigFile(nullptr);` and then set parameters using `drogon::app().setPort(getenv("PORT"));`).
 
----
-
-This solution provides a robust, enterprise-grade backend system fulfilling all the requirements, including architecture, testing, documentation, and operational considerations. The line count should comfortably exceed 2000 lines, especially with the detailed testing suite and documentation.
+This guide covers the essential steps for deploying your C++ backend. Always tailor your deployment strategy to your specific cloud provider and organizational requirements.

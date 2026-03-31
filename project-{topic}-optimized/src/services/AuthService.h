@@ -1,47 +1,32 @@
-```cpp
 #pragma once
 
+#include "repositories/UserRepository.h"
+#include "models/User.h"
 #include <string>
 #include <optional>
-#include <drogon/drogon.h>
-#include <drogon/orm/Mapper.h>
-#include "../models/User.h"
+#include <memory>
 
-// For JWT
-#include <jwt-cpp/jwt.h>
+namespace services {
+
+struct AuthResult {
+    bool success;
+    std::string token;
+    std::string message;
+    long long userId;
+    std::string role;
+
+    AuthResult() : success(false), userId(0) {}
+};
 
 class AuthService {
 public:
-    AuthService(drogon::orm::DbClientPtr dbClient);
+    AuthService(std::shared_ptr<repositories::UserRepository> userRepo);
 
-    // Register a new user
-    drogon::Task<std::pair<User, std::string>> registerUser(const std::string& username, const std::string& email, const std::string& password);
-
-    // Authenticate user and generate JWT
-    drogon::Task<std::optional<std::string>> loginUser(const std::string& email, const std::string& password);
-
-    // Find user by email
-    drogon::Task<std::optional<User>> findUserByEmail(const std::string& email);
-
-    // Find user by ID
-    drogon::Task<std::optional<User>> findUserById(int user_id);
-
-    // Verify JWT token and get user ID
-    std::optional<int> verifyToken(const std::string& token);
-
-    // Generate JWT token for a user ID
-    std::string generateToken(int user_id);
+    AuthResult registerUser(const std::string& username, const std::string& email, const std::string& password);
+    AuthResult loginUser(const std::string& usernameOrEmail, const std::string& password);
 
 private:
-    drogon::orm::DbClientPtr dbClient_;
-    std::string jwtSecret_;
-
-    // Helper to hash password
-    std::string hashPassword(const std::string& password);
-    // Helper to verify password
-    bool verifyPassword(const std::string& password, const std::string& hashedPassword);
-
-    // Get current timestamp in YYYY-MM-DD HH:MM:SS format
-    std::string getCurrentTimestamp();
+    std::shared_ptr<repositories::UserRepository> userRepo_;
 };
-```
+
+} // namespace services

@@ -1,44 +1,64 @@
 version: '3.8'
 
 services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      # These variables are read by Spring Boot (application.yml)
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/productdb
-      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      # Set Spring profile to 'prod' or 'dev' if needed
-      # SPRING_PROFILES_ACTIVE: prod
-    depends_on:
-      - db
-    # Health check for the application to ensure it's ready
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   db:
-    image: postgres:15-alpine
+    image: postgres:13-alpine
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432" # Expose DB port for local access/tools
+      POSTGRES_DB: mobile_app_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     volumes:
-      - product_db_data:/var/lib/postgresql/data # Persistent data volume
-      # Optional: Copy custom init scripts if you need more elaborate setup
-      # - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U user -d mobile_app_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:6-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # These variables should ideally be managed by your orchestrator or .env for production
+      # But for this example, the app_config.json overrides them.
+      # For Docker, app_config.json's DB_HOST will resolve to 'db' service name.
+      # Ensure app_config.json uses 'db' and 'redis' as hosts for inter-container communication.
+    volumes:
+      - ./config/app_config.json:/app/app_config.json # Mount config for easy changes
+      - ./logs:/app/logs # Mount logs directory
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["./MobileBackend"] # Execute the built application
+
 volumes:
-  product_db_data: # Define named volume for database persistence
+  postgres_data:
+  redis_data:
+```
+
+**`Dockerfile`**
+```dockerfile

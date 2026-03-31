@@ -1,347 +1,518 @@
-```markdown
-# Scrapineer API Documentation
+# API Documentation
 
-This document provides a detailed overview of the Scrapineer RESTful API endpoints.
-For an interactive experience, please use the [Swagger UI](http://localhost:8080/swagger-ui.html) locally.
+This document describes the RESTful API endpoints for the Mobile Backend System.
 
 ## Base URL
 
-`http://localhost:8080/api` (for local development)
-`https://api.scrapineer.com/api` (example production URL)
+`http://localhost:8080` (or your configured server host and port)
 
 ## Authentication
 
-All protected API endpoints require a JSON Web Token (JWT) in the `Authorization` header.
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header with the `Bearer` scheme.
 
-**Request Header:**
 `Authorization: Bearer <YOUR_JWT_TOKEN>`
 
-### 1. User Authentication & Registration
+## Error Responses
 
-**Register a New User**
-*   **Endpoint:** `POST /auth/register`
-*   **Description:** Creates a new user account.
-*   **Request Body:** `application/json`
+Errors are returned in a standardized JSON format:
+
+```json
+{
+  "code": 400,          // HTTP status code
+  "errorCode": "BAD_REQUEST", // Application-specific error code
+  "message": "Invalid input provided." // Human-readable error message
+}
+```
+
+## 1. Authentication Endpoints
+
+### 1.1. Register User
+
+*   **URL**: `/register`
+*   **Method**: `POST`
+*   **Description**: Registers a new user with a username, email, and password.
+*   **Request Body**:
     ```json
     {
       "username": "newuser",
-      "password": "strongpassword123",
-      "roles": ["USER"] // Optional, defaults to ["USER"] if not provided
+      "email": "newuser@example.com",
+      "password": "strongpassword123"
     }
     ```
-*   **Response (201 Created):** `application/json`
+*   **Success Response (200 OK)**:
     ```json
     {
+      "message": "User registered successfully.",
       "token": "eyJhbGciOiJIUzI1Ni...",
-      "username": "newuser"
+      "user_id": 101,
+      "role": "user"
     }
     ```
-*   **Error Responses:**
-    *   `400 Bad Request`: If username already exists or validation fails.
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid input (e.g., empty fields, weak password, invalid email format).
+    *   `409 Conflict`: Username or email already exists.
+    *   `500 Internal Server Error`: Server-side issue during registration.
 
-**Authenticate User (Login)**
-*   **Endpoint:** `POST /auth/login`
-*   **Description:** Authenticates an existing user and returns a JWT token.
-*   **Request Body:** `application/json`
+### 1.2. Login User
+
+*   **URL**: `/login`
+*   **Method**: `POST`
+*   **Description**: Authenticates a user and returns a JWT token.
+*   **Request Body**:
     ```json
     {
-      "username": "existinguser",
-      "password": "existingpassword"
+      "username_or_email": "newuser@example.com",
+      "password": "strongpassword123"
     }
     ```
-*   **Response (200 OK):** `application/json`
+*   **Success Response (200 OK)**:
     ```json
     {
+      "message": "Login successful.",
       "token": "eyJhbGciOiJIUzI1Ni...",
-      "username": "existinguser"
+      "user_id": 101,
+      "role": "user"
     }
     ```
-*   **Error Responses:**
-    *   `401 Unauthorized`: If invalid credentials are provided.
-    *   `400 Bad Request`: If validation fails.
+*   **Error Responses**:
+    *   `400 Bad Request`: Missing fields.
+    *   `401 Unauthorized`: Invalid credentials.
+    *   `500 Internal Server Error`: Server-side issue during login.
 
----
+## 2. User Endpoints
 
-### 2. Scraping Targets
+### 2.1. Get User Profile
 
-Manage the websites or pages you want to scrape, including their CSS selectors.
+*   **URL**: `/profile`
+*   **Method**: `GET`
+*   **Description**: Retrieves the profile of the authenticated user.
+*   **Authentication**: Required (User or Admin)
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "id": 101,
+      "username": "newuser",
+      "email": "newuser@example.com",
+      "role": "user",
+      "created_at": "2023-10-27T10:00:00Z",
+      "updated_at": "2023-10-27T10:00:00Z"
+    }
+    ```
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `404 Not Found`: User profile not found (internal error).
 
-**Get All Scraping Targets**
-*   **Endpoint:** `GET /targets`
-*   **Description:** Retrieves a list of all scraping targets owned by the authenticated user.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Response (200 OK):** `application/json` (Array of `ScrapingTargetDto`)
+### 2.2. (Admin) Get All Users
+
+*   **URL**: `/admin/users`
+*   **Method**: `GET`
+*   **Description**: Retrieves a list of all registered users.
+*   **Authentication**: Required (Admin only)
+*   **Success Response (200 OK)**:
     ```json
     [
       {
         "id": 1,
-        "userId": 1,
-        "name": "My Blog Posts",
-        "url": "https://myblog.com/posts",
-        "description": "Scrape titles and links from my blog.",
-        "active": true,
-        "selectors": [
-          {
-            "id": 101,
-            "name": "post_title",
-            "selectorValue": "h2.post-title",
-            "type": "TEXT",
-            "attributeName": null
-          },
-          {
-            "id": 102,
-            "name": "post_link",
-            "selectorValue": "h2.post-title a",
-            "type": "ATTRIBUTE",
-            "attributeName": "href"
-          }
-        ],
-        "createdAt": "2023-10-27T10:00:00",
-        "updatedAt": "2023-10-27T10:00:00"
+        "username": "admin_user",
+        "email": "admin@example.com",
+        "role": "admin",
+        "created_at": "2023-10-27T10:00:00Z",
+        "updated_at": "2023-10-27T10:00:00Z"
+      },
+      {
+        "id": 101,
+        "username": "newuser",
+        "email": "newuser@example.com",
+        "role": "user",
+        "created_at": "2023-10-27T10:00:00Z",
+        "updated_at": "2023-10-27T10:00:00Z"
       }
     ]
     ```
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
 
-**Get Scraping Target by ID**
-*   **Endpoint:** `GET /targets/{id}`
-*   **Description:** Retrieves a single scraping target by its unique ID.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the target.
-*   **Response (200 OK):** `application/json` (`ScrapingTargetDto`)
-    *(Same structure as array element above)*
-*   **Error Responses:**
-    *   `404 Not Found`: If target with the given ID is not found or does not belong to the user.
+### 2.3. (Admin) Get User by ID
 
-**Create New Scraping Target**
-*   **Endpoint:** `POST /targets`
-*   **Description:** Creates a new scraping target with associated CSS selectors.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Request Body:** `application/json` (`ScrapingTargetDto` - `id`, `userId`, `createdAt`, `updatedAt` are ignored or set by server)
+*   **URL**: `/admin/users/{id}`
+*   **Method**: `GET`
+*   **Description**: Retrieves a specific user's profile by ID.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the user.
+*   **Success Response (200 OK)**: (Same as `Get User Profile`)
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: User with the specified ID not found.
+
+### 2.4. (Admin) Update User by ID
+
+*   **URL**: `/admin/users/{id}`
+*   **Method**: `PUT`
+*   **Description**: Updates a user's information by ID.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the user to update.
+*   **Request Body**:
     ```json
     {
-      "name": "New Product Page",
-      "url": "https://ecommerce.com/product/123",
-      "description": "Extract product details.",
-      "active": true,
-      "selectors": [
+      "username": "updated_username",
+      "email": "updated@example.com",
+      "role": "admin"
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "User updated successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid input (e.g., missing fields).
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: User with the specified ID not found.
+    *   `409 Conflict`: Username or email already taken by another user.
+
+### 2.5. (Admin) Delete User by ID
+
+*   **URL**: `/admin/users/{id}`
+*   **Method**: `DELETE`
+*   **Description**: Deletes a user by ID.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the user to delete.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "User deleted successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: User with the specified ID not found.
+
+## 3. Product Endpoints
+
+### 3.1. Get All Products
+
+*   **URL**: `/products`
+*   **Method**: `GET`
+*   **Description**: Retrieves a list of all available products.
+*   **Authentication**: None
+*   **Success Response (200 OK)**:
+    ```json
+    [
+      {
+        "id": 1,
+        "name": "Smartphone X",
+        "description": "Latest generation smartphone...",
+        "price": 999.99,
+        "stock_quantity": 99,
+        "created_at": "2023-10-27T10:00:00Z",
+        "updated_at": "2023-10-27T10:00:00Z"
+      },
+      {
+        "id": 2,
+        "name": "Laptop Pro 15",
+        "description": "High-performance laptop...",
+        "price": 1499.00,
+        "stock_quantity": 50,
+        "created_at": "2023-10-27T10:00:00Z",
+        "updated_at": "2023-10-27T10:00:00Z"
+      }
+    ]
+    ```
+*   **Error Responses**:
+    *   `500 Internal Server Error`: Server-side issue.
+
+### 3.2. Get Product by ID
+
+*   **URL**: `/products/{id}`
+*   **Method**: `GET`
+*   **Description**: Retrieves details of a specific product by ID.
+*   **Authentication**: None
+*   **Path Parameters**:
+    *   `id`: The ID of the product.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "id": 1,
+      "name": "Smartphone X",
+      "description": "Latest generation smartphone...",
+      "price": 999.99,
+      "stock_quantity": 99,
+      "created_at": "2023-10-27T10:00:00Z",
+      "updated_at": "2023-10-27T10:00:00Z"
+    }
+    ```
+*   **Error Responses**:
+    *   `404 Not Found`: Product with the specified ID not found.
+
+### 3.3. (Admin) Create Product
+
+*   **URL**: `/admin/products`
+*   **Method**: `POST`
+*   **Description**: Creates a new product.
+*   **Authentication**: Required (Admin only)
+*   **Request Body**:
+    ```json
+    {
+      "name": "New Awesome Gadget",
+      "description": "This is a brief description of the new gadget.",
+      "price": 123.45,
+      "stock_quantity": 500
+    }
+    ```
+*   **Success Response (201 Created)**:
+    ```json
+    {
+      "message": "Product created successfully.",
+      "id": 6
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Missing or invalid product fields.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `409 Conflict`: Product with this name already exists.
+
+### 3.4. (Admin) Update Product by ID
+
+*   **URL**: `/admin/products/{id}`
+*   **Method**: `PUT`
+*   **Description**: Updates an existing product's information by ID.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the product to update.
+*   **Request Body**:
+    ```json
+    {
+      "name": "Updated Gadget Name",
+      "description": "An updated description for the gadget.",
+      "price": 119.99,
+      "stock_quantity": 480
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Product updated successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Missing or invalid product fields.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: Product with the specified ID not found.
+    *   `409 Conflict`: Another product with this name already exists.
+
+### 3.5. (Admin) Delete Product by ID
+
+*   **URL**: `/admin/products/{id}`
+*   **Method**: `DELETE`
+*   **Description**: Deletes a product by ID.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the product to delete.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Product deleted successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: Product with the specified ID not found.
+
+### 3.6. (Admin) Update Product Stock
+
+*   **URL**: `/admin/products/{id}/stock`
+*   **Method**: `PUT`
+*   **Description**: Adjusts the stock quantity of a product.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the product.
+*   **Request Body**:
+    ```json
+    {
+      "quantity_change": -10   // Can be positive (add) or negative (subtract)
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Product stock updated successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid `quantity_change` or insufficient stock.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: Product with the specified ID not found.
+
+## 4. Order Endpoints
+
+### 4.1. Get Order by ID
+
+*   **URL**: `/orders/{id}`
+*   **Method**: `GET`
+*   **Description**: Retrieves details of a specific order by ID.
+*   **Authentication**: Required (User or Admin)
+*   **Authorization**: Users can only view their own orders. Admins can view any order.
+*   **Path Parameters**:
+    *   `id`: The ID of the order.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "id": 1,
+      "user_id": 101,
+      "order_date": "2023-10-27T10:00:00Z",
+      "total_amount": 1259.49,
+      "status": "processed",
+      "created_at": "2023-10-27T10:00:00Z",
+      "updated_at": "2023-10-27T10:00:00Z",
+      "items": [
         {
-          "name": "product_name",
-          "selectorValue": "h1.product-title",
-          "type": "TEXT"
+          "id": 1,
+          "order_id": 1,
+          "product_id": 1,
+          "product_name": "Smartphone X",
+          "price_at_purchase": 999.99,
+          "quantity": 1
         },
         {
-          "name": "product_price",
-          "selectorValue": "span.price",
-          "type": "TEXT"
-        },
-        {
-          "name": "product_image",
-          "selectorValue": "img.main-image",
-          "type": "ATTRIBUTE",
-          "attributeName": "src"
+          "id": 2,
+          "order_id": 1,
+          "product_id": 3,
+          "product_name": "Wireless Earbuds Z",
+          "price_at_purchase": 129.50,
+          "quantity": 2
         }
       ]
     }
     ```
-*   **Response (201 Created):** `application/json` (`ScrapingTargetDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If validation fails (e.g., missing name, invalid URL, empty selectors) or a target with the same name already exists for the user.
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User tries to access another user's order without admin rights.
+    *   `404 Not Found`: Order with the specified ID not found.
 
-**Update Existing Scraping Target**
-*   **Endpoint:** `PUT /targets/{id}`
-*   **Description:** Updates an existing scraping target. All fields in the request body will replace the existing ones.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the target to update.
-*   **Request Body:** `application/json` (`ScrapingTargetDto` - `id`, `userId`, `createdAt`, `updatedAt` are ignored or set by server)
-    *(Same structure as Create, but `id` is required for path variable)*
-*   **Response (200 OK):** `application/json` (`ScrapingTargetDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If validation fails or the new name conflicts with another target.
-    *   `404 Not Found`: If target with the given ID is not found or does not belong to the user.
+### 4.2. Get Orders for Authenticated User
 
-**Delete Scraping Target**
-*   **Endpoint:** `DELETE /targets/{id}`
-*   **Description:** Deletes a scraping target. This will also delete all associated jobs and results.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the target to delete.
-*   **Response (204 No Content):**
-*   **Error Responses:**
-    *   `404 Not Found`: If target with the given ID is not found or does not belong to the user.
+*   **URL**: `/orders`
+*   **Method**: `GET`
+*   **Description**: Retrieves a list of all orders for the authenticated user.
+*   **Authentication**: Required (User or Admin)
+*   **Success Response (200 OK)**: (Array of Order objects, similar to 4.1. response)
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
 
----
+### 4.3. Create New Order
 
-### 3. Scraping Jobs
-
-Manage and execute scraping jobs for defined targets.
-
-**Get All Scraping Jobs**
-*   **Endpoint:** `GET /jobs`
-*   **Description:** Retrieves a list of all scraping jobs owned by the authenticated user.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Response (200 OK):** `application/json` (Array of `ScrapingJobDto`)
-    ```json
-    [
-      {
-        "id": 1,
-        "targetId": 10,
-        "targetName": "My Blog Posts",
-        "userId": 1,
-        "status": "SCHEDULED",
-        "scheduleCron": "0 0 * * * *",
-        "lastRunAt": "2023-10-27T10:00:00",
-        "nextRunAt": "2023-10-27T11:00:00",
-        "createdAt": "2023-10-27T09:00:00",
-        "updatedAt": "2023-10-27T10:00:00"
-      }
-    ]
-    ```
-
-**Get Scraping Job by ID**
-*   **Endpoint:** `GET /jobs/{id}`
-*   **Description:** Retrieves a single scraping job by its unique ID.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the job.
-*   **Response (200 OK):** `application/json` (`ScrapingJobDto`)
-    *(Same structure as array element above)*
-*   **Error Responses:**
-    *   `404 Not Found`: If job with the given ID is not found or does not belong to the user.
-
-**Create New Scraping Job**
-*   **Endpoint:** `POST /jobs`
-*   **Description:** Creates a new scraping job.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Request Body:** `application/json` (`ScrapingJobDto` - `id`, `userId`, `targetName`, `lastRunAt`, `nextRunAt`, `createdAt`, `updatedAt` are ignored or set by server)
+*   **URL**: `/orders`
+*   **Method**: `POST`
+*   **Description**: Creates a new order for the authenticated user. Deducts product stock.
+*   **Authentication**: Required (User or Admin)
+*   **Request Body**:
     ```json
     {
-      "targetId": 10,
-      "status": "SCHEDULED",
-      "scheduleCron": "0 0 12 * * ?" // Every day at noon. Use null or empty string for manual jobs.
-    }
-    ```
-*   **Response (201 Created):** `application/json` (`ScrapingJobDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If validation fails (e.g., invalid CRON expression) or target ID is invalid.
-    *   `404 Not Found`: If the associated `targetId` does not exist or does not belong to the user.
-
-**Update Existing Scraping Job**
-*   **Endpoint:** `PUT /jobs/{id}`
-*   **Description:** Updates an existing scraping job (e.g., change schedule or status).
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the job to update.
-*   **Request Body:** `application/json` (`ScrapingJobDto` - `id`, `userId`, `targetId`, `targetName`, `createdAt`, `updatedAt` are ignored or set by server)
-    ```json
-    {
-      "status": "PAUSED",
-      "scheduleCron": "0 0/30 * * * *" // Change to every 30 minutes
-    }
-    ```
-*   **Response (200 OK):** `application/json` (`ScrapingJobDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If validation fails (e.g., invalid CRON expression).
-    *   `404 Not Found`: If job with the given ID is not found or does not belong to the user.
-
-**Manually Start a Scraping Job**
-*   **Endpoint:** `POST /jobs/{id}/start`
-*   **Description:** Initiates a single run of a scraping job.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the job to start.
-*   **Response (200 OK):** `application/json` (`ScrapingJobDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If the target is inactive or the job is already running.
-    *   `404 Not Found`: If job with the given ID is not found or does not belong to the user.
-
-**Stop a Scraping Job**
-*   **Endpoint:** `POST /jobs/{id}/stop`
-*   **Description:** Stops a running or scheduled scraping job. Changes status to `STOPPED`.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `id` (Long, required) - The ID of the job to stop.
-*   **Response (200 OK):** `application/json` (`ScrapingJobDto`)
-*   **Error Responses:**
-    *   `400 Bad Request`: If the job is already in a terminal state (COMPLETED, FAILED, STOPPED).
-    *   `404 Not Found`: If job with the given ID is not found or does not belong to the user.
-
----
-
-### 4. Scraping Results
-
-Access the data extracted by scraping jobs.
-
-**Get Scraping Results for a Specific Job**
-*   **Endpoint:** `GET /jobs/{jobId}/results`
-*   **Description:** Retrieves a paginated list of scraping results for a given job.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `jobId` (Long, required) - The ID of the job.
-*   **Query Parameters:**
-    *   `page` (int, optional, default: 0): Page number.
-    *   `size` (int, optional, default: 10): Number of results per page.
-*   **Response (200 OK):** `application/json` (Page of `ScrapingResultDto`)
-    ```json
-    {
-      "content": [
+      "items": [
         {
-          "id": 1,
-          "jobId": 1,
-          "targetId": 10,
-          "extractedData": {
-            "page_title": "My Blog Post Title",
-            "post_link": "https://myblog.com/post-slug"
-          },
-          "successful": true,
-          "errorMessage": null,
-          "timestamp": "2023-10-27T10:00:05"
+          "product_id": 1,
+          "quantity": 1
+        },
+        {
+          "product_id": 4,
+          "quantity": 2
         }
-      ],
-      "pageable": {
-        "pageNumber": 0,
-        "pageSize": 10,
-        "sort": { "empty": true, "sorted": false, "unsorted": true },
-        "offset": 0,
-        "paged": true,
-        "unpaged": false
-      },
-      "last": true,
-      "totalPages": 1,
-      "totalElements": 1,
-      "size": 10,
-      "number": 0,
-      "sort": { "empty": true, "sorted": false, "unsorted": true },
-      "first": true,
-      "numberOfElements": 1,
-      "empty": false
+      ]
     }
     ```
-*   **Error Responses:**
-    *   `404 Not Found`: If the job or its target is not found or does not belong to the user.
+*   **Success Response (201 Created)**:
+    ```json
+    {
+      "message": "Order created successfully.",
+      "id": 10
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Empty items list, invalid product ID or quantity, insufficient stock.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `404 Not Found`: Product not found.
+    *   `500 Internal Server Error`: Server-side issue during order creation or stock update (potential rollback).
 
-**Get Specific Scraping Result by ID**
-*   **Endpoint:** `GET /jobs/results/{resultId}`
-*   **Description:** Retrieves a single scraping result by its unique ID.
-*   **Authentication:** Required (`ROLE_USER` or `ROLE_ADMIN`)
-*   **Path Variable:** `resultId` (Long, required) - The ID of the result.
-*   **Response (200 OK):** `application/json` (`ScrapingResultDto`)
-    *(Same structure as array element in `content` above)*
-*   **Error Responses:**
-    *   `404 Not Found`: If result with the given ID is not found or does not belong to the user.
+### 4.4. Cancel Order
 
----
+*   **URL**: `/orders/{id}/cancel`
+*   **Method**: `POST`
+*   **Description**: Cancels an existing order. Reverts product stock if order is cancellable.
+*   **Authentication**: Required (User or Admin)
+*   **Authorization**: Users can only cancel their own orders. Admins can cancel any order.
+*   **Path Parameters**:
+    *   `id`: The ID of the order to cancel.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Order cancelled successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Order status does not allow cancellation (e.g., already shipped/delivered).
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User tries to cancel another user's order without admin rights.
+    *   `404 Not Found`: Order with the specified ID not found.
+    *   `500 Internal Server Error`: Server-side issue during cancellation or stock reversion.
 
-## Error Responses
+### 4.5. (Admin) Update Order Status
 
-In case of an error, the API will return a JSON object with the following structure:
+*   **URL**: `/admin/orders/{id}/status`
+*   **Method**: `PUT`
+*   **Description**: Updates the status of an order.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the order to update.
+*   **Request Body**:
+    ```json
+    {
+      "status": "shipped" // Allowed values: "pending", "processed", "shipped", "delivered", "cancelled"
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Order status updated successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid status value or invalid status transition.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: Order with the specified ID not found.
 
-```json
-{
-  "status": 404,
-  "timestamp": "27-10-2023 10:30:45",
-  "message": "Scraping target not found with id 999",
-  "details": "uri=/api/targets/999"
-}
+### 4.6. (Admin) Delete Order
+
+*   **URL**: `/admin/orders/{id}`
+*   **Method**: `DELETE`
+*   **Description**: Permanently deletes an order from the system.
+*   **Authentication**: Required (Admin only)
+*   **Path Parameters**:
+    *   `id`: The ID of the order to delete.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+      "message": "Order deleted successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Order cannot be deleted due to its status (e.g., delivered).
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: User is not an admin.
+    *   `404 Not Found`: Order with the specified ID not found.
 ```
 
-*   `status`: HTTP status code (e.g., 400, 401, 403, 404, 500).
-*   `timestamp`: The time when the error occurred.
-*   `message`: A brief description of the error.
-*   `details`: More specific details about the request or error.
-
----
-```
+**`docs/architecture.md`**
+```markdown

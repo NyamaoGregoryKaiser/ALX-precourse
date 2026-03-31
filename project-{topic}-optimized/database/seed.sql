@@ -1,62 +1,35 @@
--- seed.sql
--- This script inserts initial data into the CMS database.
+-- Seed data for initial setup
 
--- Insert an admin user
-INSERT INTO users (id, username, email, password_hash, role)
-VALUES (
-    'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', -- Fixed UUID for consistency in seeding
-    'admin',
-    'admin@example.com',
-    '$2a$10$WkG.1.L7/o4ZkH0F9P282.q2O6jO7X.9Y2P4g9k0S.C0h0F.2F.4', -- Hashed 'password'
-    'admin'
-)
-ON CONFLICT (username) DO NOTHING;
+-- Users
+-- Passwords are 'password123' for all, but hashed with different salts
+INSERT INTO users (username, email, password_hash, password_salt, role) VALUES
+('admin_user', 'admin@example.com', '69e7f7b3c2c7f5c7e8a9f0a2d4c6f8e0b2d4f6c8a0e2c4f6c8a0f2d4c6e8f0b2', 'random_salt_admin', 'admin'),
+('john_doe', 'john.doe@example.com', 'f0e2d4c6e8f0b2d4f6c8a0e2c4f6c8a0e2c4f6c8a0e2c4f6c8a0f2d4c6e8f0b2', 'random_salt_john', 'user'),
+('jane_smith', 'jane.smith@example.com', 'e2c4f6c8a0e2c4f6c8a0f2d4c6e8f0b2d4f6c8a0e2c4f6c8a0f2d4c6e8f0b2', 'random_salt_jane', 'user');
 
--- Insert an editor user
-INSERT INTO users (id, username, email, password_hash, role)
-VALUES (
-    'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
-    'editor',
-    'editor@example.com',
-    '$2a$10$WkG.1.L7/o4ZkH0F9P282.q2O6jO7X.9Y2P4g9k0S.C0h0F.2F.4', -- Hashed 'password'
-    'editor'
-)
-ON CONFLICT (username) DO NOTHING;
+-- Products
+INSERT INTO products (name, description, price, stock_quantity) VALUES
+('Smartphone X', 'Latest generation smartphone with advanced camera and battery.', 999.99, 100),
+('Laptop Pro 15', 'High-performance laptop for professionals and gamers.', 1499.00, 50),
+('Wireless Earbuds Z', 'Noise-cancelling earbuds with crystal clear audio.', 129.50, 200),
+('Smartwatch Lite', 'Fitness tracker and smartwatch with long battery life.', 199.99, 150),
+('4K Monitor 27"', '27-inch 4K UHD monitor for immersive viewing.', 349.99, 75);
 
+-- Orders (Example: John Doe placed an order)
+-- Note: Order items are dependent on existing product IDs. Adjust if product IDs change from `BIGSERIAL` starting at 1.
+INSERT INTO orders (user_id, total_amount, status) VALUES
+((SELECT id FROM users WHERE username = 'john_doe'), 1259.49, 'processed');
 
--- Insert some initial content
-INSERT INTO content (id, title, slug, body, author_id, status, published_at)
-VALUES (
-    'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
-    'Welcome to the ALX C++ CMS',
-    'welcome-to-alx-cpp-cms',
-    'This is the first piece of content in our new C++ CMS. It demonstrates basic content management capabilities.',
-    (SELECT id FROM users WHERE username = 'admin'),
-    'published',
-    CURRENT_TIMESTAMP - INTERVAL '1 day'
-)
-ON CONFLICT (slug) DO NOTHING;
+-- Order Items for John Doe's order
+INSERT INTO order_items (order_id, product_id, product_name, price_at_purchase, quantity) VALUES
+((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'john_doe') LIMIT 1),
+ (SELECT id FROM products WHERE name = 'Smartphone X'), 'Smartphone X', 999.99, 1),
+((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'john_doe') LIMIT 1),
+ (SELECT id FROM products WHERE name = 'Wireless Earbuds Z'), 'Wireless Earbuds Z', 129.50, 2),
+((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'john_doe') LIMIT 1),
+ (SELECT id FROM products WHERE name = 'Smartwatch Lite'), 'Smartwatch Lite', 199.99, 1);
 
-INSERT INTO content (id, title, slug, body, author_id, status)
-VALUES (
-    'd0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44',
-    'Draft Article Example',
-    'draft-article-example',
-    'This article is currently in draft status and not yet visible to the public.',
-    (SELECT id FROM users WHERE username = 'editor'),
-    'draft'
-)
-ON CONFLICT (slug) DO NOTHING;
-
-INSERT INTO content (id, title, slug, body, author_id, status, published_at)
-VALUES (
-    'e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55',
-    'Another Published Post',
-    'another-published-post',
-    'Here is another article demonstrating the content publishing workflow.',
-    (SELECT id FROM users WHERE username = 'admin'),
-    'published',
-    CURRENT_TIMESTAMP - INTERVAL '1 hour'
-)
-ON CONFLICT (slug) DO NOTHING;
-```
+-- Update stock quantities for products in the order
+UPDATE products SET stock_quantity = stock_quantity - 1 WHERE name = 'Smartphone X';
+UPDATE products SET stock_quantity = stock_quantity - 2 WHERE name = 'Wireless Earbuds Z';
+UPDATE products SET stock_quantity = stock_quantity - 1 WHERE name = 'Smartwatch Lite';
