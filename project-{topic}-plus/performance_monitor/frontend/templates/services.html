@@ -1,0 +1,45 @@
+```html
+{% extends "base.html" %}
+
+{% block title %}Services{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Monitored Services</h1>
+
+    {% if services %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Base URL</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                <tr>
+                    <td>{{ service.id }}</td>
+                    <td><a href="{{ url_for('frontend.service_detail', service_id=service.id) }}">{{ service.name }}</a></td>
+                    <td>{{ service.base_url }}</td>
+                    <td class="status-{{ 'good' if service.is_active else 'bad' }}">
+                        {{ 'Active' if service.is_active else 'Inactive' }}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('frontend.service_detail', service_id=service.id) }}" class="btn btn-info btn-sm">View</a>
+                        <!-- Add Edit/Delete buttons if desired, requiring more complex JS/API interaction -->
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>No services registered yet. <a href="#">Add a new service</a> (requires API access or admin UI).</p>
+    {% endif %}
+
+{% endblock %}
+
+```

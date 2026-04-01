@@ -1,0 +1,71 @@
+```html
+{% extends "base.html" %}
+
+{% block title %}Endpoint: {{ endpoint.path }}{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Endpoint: {{ endpoint.service.name }} {{ endpoint.method }} {{ endpoint.path }}</h1>
+
+    <div class="endpoint-details">
+        <p><strong>Service ID:</strong> {{ endpoint.service_id }}</p>
+        <p><strong>Full URL:</strong> <a href="{{ endpoint.service.base_url.rstrip('/') }}/{{ endpoint.path.lstrip('/') }}" target="_blank">{{ endpoint.service.base_url.rstrip('/') }}/{{ endpoint.path.lstrip('/') }}</a></p>
+        <p><strong>Method:</strong> {{ endpoint.method }}</p>
+        <p><strong>Expected Status:</strong> {{ endpoint.expected_status }}</p>
+        <p><strong>Polling Interval:</strong> {{ endpoint.polling_interval_seconds }} seconds</p>
+        <p><strong>Status:</strong> <span class="status-{{ 'good' if endpoint.is_active else 'bad' }}">
+            {{ 'Active' if endpoint.is_active else 'Inactive' }}
+        </span></p>
+        <p><strong>Last Polled:</strong> {{ endpoint.last_polled_at or 'N/A' }}</p>
+        <p><strong>Last Status:</strong> {{ endpoint.last_status or 'N/A' }}</p>
+    </div>
+
+    <h2 class="section-title">Performance Charts (Last 24 Hours)</h2>
+    <div class="chart-container">
+        <canvas id="responseTimeChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="healthChart"></canvas>
+    </div>
+
+    <h2 class="section-title">Raw Metrics (Last 4 Hours)</h2>
+    {% if raw_metrics %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Response Time (ms)</th>
+                    <th>Status Code</th>
+                    <th>Response Size (bytes)</th>
+                    <th>Healthy</th>
+                    <th>Error Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for metric in raw_metrics %}
+                <tr class="status-{{ 'good' if metric.is_healthy else 'bad' }}">
+                    <td>{{ metric.timestamp }}</td>
+                    <td>{{ metric.response_time_ms }}</td>
+                    <td>{{ metric.status_code }}</td>
+                    <td>{{ metric.response_size_bytes or 'N/A' }}</td>
+                    <td>{{ 'Yes' if metric.is_healthy else 'No' }}</td>
+                    <td>{{ metric.error_message or 'None' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>No raw metrics available for this endpoint in the last 4 hours.</p>
+    {% endif %}
+
+    <script src="{{ url_for('frontend.static', filename='js/chart_data.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chartData = {{ chart_data | tojson }};
+            renderCharts(chartData);
+        });
+    </script>
+{% endblock %}
+
+```

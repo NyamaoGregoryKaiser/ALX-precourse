@@ -1,0 +1,51 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Monitor - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('frontend.static', filename='css/style.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('frontend.static', filename='favicon.ico') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <a href="{{ url_for('frontend.index') }}" class="navbar-brand">Performance Monitor</a>
+            <ul class="navbar-nav">
+                {% if 'access_token' in session %}
+                <li class="nav-item"><a href="{{ url_for('frontend.index') }}" class="nav-link">Dashboard</a></li>
+                <li class="nav-item"><a href="{{ url_for('frontend.services_list') }}" class="nav-link">Services</a></li>
+                <li class="nav-item"><a href="{{ url_for('frontend.logout') }}" class="nav-link">Logout</a></li>
+                {% else %}
+                <li class="nav-item"><a href="{{ url_for('frontend.login') }}" class="nav-link">Login</a></li>
+                <li class="nav-item"><a href="{{ url_for('frontend.register') }}" class="nav-link">Register</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 Performance Monitor. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+
+```

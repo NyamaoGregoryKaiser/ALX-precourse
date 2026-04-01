@@ -1,0 +1,73 @@
+```html
+{% extends "base.html" %}
+
+{% block title %}Service: {{ service.name }}{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Service: {{ service.name }}</h1>
+
+    <div class="service-details">
+        <p><strong>Description:</strong> {{ service.description or 'N/A' }}</p>
+        <p><strong>Base URL:</strong> {{ service.base_url }}</p>
+        <p><strong>Status:</strong> <span class="status-{{ 'good' if service.is_active else 'bad' }}">
+            {{ 'Active' if service.is_active else 'Inactive' }}
+        </span></p>
+        <p><strong>Owner ID:</strong> {{ service.owner_id }}</p>
+        <p><strong>Created At:</strong> {{ service.created_at }}</p>
+        <p><strong>Last Updated:</strong> {{ service.updated_at }}</p>
+    </div>
+
+    <h2 class="section-title">Endpoints for {{ service.name }}</h2>
+
+    {% if endpoints %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Path</th>
+                    <th>Method</th>
+                    <th>Expected Status</th>
+                    <th>Last Status</th>
+                    <th>Last Response Time (ms)</th>
+                    <th>Health</th>
+                    <th>Last Polled</th>
+                    <th>Error</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for endpoint in endpoints %}
+                <tr class="status-{{ 'good' if endpoint.get('latest_is_healthy', True) else 'bad' }}">
+                    <td>{{ endpoint.id }}</td>
+                    <td><a href="{{ url_for('frontend.endpoint_detail', endpoint_id=endpoint.id) }}">{{ endpoint.path }}</a></td>
+                    <td>{{ endpoint.method }}</td>
+                    <td>{{ endpoint.expected_status }}</td>
+                    <td>{{ endpoint.get('latest_status_code', 'N/A') }}</td>
+                    <td>{{ endpoint.get('latest_response_time_ms', 'N/A') }}</td>
+                    <td>
+                        {% if 'latest_is_healthy' in endpoint %}
+                            <span class="status-{{ 'good' if endpoint.latest_is_healthy else 'bad' }}">
+                                {{ 'Healthy' if endpoint.latest_is_healthy else 'Unhealthy' }}
+                            </span>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </td>
+                    <td>{{ endpoint.get('latest_timestamp', 'N/A') }}</td>
+                    <td>{{ endpoint.get('latest_error_message', 'N/A') }}</td>
+                    <td>
+                        <a href="{{ url_for('frontend.endpoint_detail', endpoint_id=endpoint.id) }}" class="btn btn-info btn-sm">View Metrics</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>No endpoints configured for this service yet.</p>
+    {% endif %}
+
+{% endblock %}
+
+```

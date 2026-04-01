@@ -1,0 +1,72 @@
+```html
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Dashboard Overview</h1>
+
+    <div class="dashboard-grid">
+        <div class="card metric-card">
+            <h3>Total Services</h3>
+            <p class="metric-value">{{ dashboard_data.total_services }}</p>
+        </div>
+        <div class="card metric-card">
+            <h3>Active Services</h3>
+            <p class="metric-value">{{ dashboard_data.active_services }}</p>
+        </div>
+        <div class="card metric-card">
+            <h3>Total Endpoints</h3>
+            <p class="metric-value">{{ dashboard_data.total_endpoints }}</p>
+        </div>
+        <div class="card metric-card">
+            <h3>Active Monitored Endpoints</h3>
+            <p class="metric-value">{{ dashboard_data.active_monitored_endpoints }}</p>
+        </div>
+        <div class="card metric-card">
+            <h3>Healthy Endpoints (last hour)</h3>
+            <p class="metric-value">{{ dashboard_data.healthy_endpoints_in_window }}</p>
+        </div>
+        <div class="card metric-card">
+            <h3>Unhealthy Endpoints (last hour)</h3>
+            <p class="metric-value">{{ dashboard_data.unhealthy_endpoints_in_window }}</p>
+        </div>
+        <div class="card metric-card {{ 'alert-bad' if dashboard_data.overall_health_percentage < 90 else 'alert-good' }}">
+            <h3>Overall Health Percentage</h3>
+            <p class="metric-value">{{ dashboard_data.overall_health_percentage | round(2) }}%</p>
+        </div>
+    </div>
+
+    <h2 class="section-title">Recent Unhealthy Events</h2>
+    {% if dashboard_data.recent_unhealthy_events %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Endpoint</th>
+                    <th>Method</th>
+                    <th>Timestamp</th>
+                    <th>Error Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in dashboard_data.recent_unhealthy_events %}
+                <tr class="status-bad">
+                    <td><a href="{{ url_for('frontend.service_detail', service_id=event.service_id if event.service_id else '') }}">{{ event.service_name }}</a></td>
+                    <td><a href="{{ url_for('frontend.endpoint_detail', endpoint_id=event.endpoint_id) }}">{{ event.path }}</a></td>
+                    <td>{{ event.method }}</td>
+                    <td>{{ event.timestamp }}</td>
+                    <td>{{ event.error_message }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>No recent unhealthy events detected. System appears stable!</p>
+    {% endif %}
+
+{% endblock %}
+
+```

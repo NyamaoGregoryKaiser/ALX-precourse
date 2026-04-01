@@ -1,95 +1,210 @@
+```python
 import os
-import sys
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
+import random
+import requests
+import json
+import time
 
-# Load environment variables first
-load_dotenv()
+# Set FLASK_APP and FLASK_CONFIG environment variables for the app factory
+os.environ['FLASK_CONFIG'] = 'development'
+os.environ['FLASK_APP'] = 'run.py' # Assuming your app factory is in run.py
 
-# Add the 'app' directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from performance_monitor import create_app
+from performance_monitor.extensions import db
+from performance_monitor.models import User, Service, Endpoint, Metric
+from performance_monitor.services.user_service import UserService
+from performance_monitor.services.service_monitoring import ServiceMonitoringService
+from performance_monitor.tasks import add_endpoint_to_scheduler # Import for adding to scheduler
 
-from app import create_app, db
-from app.models import User, Task, Role, TaskStatus
-from app.services.auth_service import AuthService
-
-def seed_database():
-    """
-    Seeds the database with initial users and tasks for development/testing.
-    """
-    env = os.getenv('FLASK_ENV', 'development')
-    config_name = 'development' if env == 'development' else 'production'
-    app = create_app(config_name)
+def seed_data():
+    app = create_app(os.getenv('FLASK_CONFIG'))
 
     with app.app_context():
-        print(f"Using database: {app.config['SQLALCHEMY_DATABASE_URI']}")
-        print("Dropping all tables...")
-        db.drop_all()
-        print("Creating all tables...")
-        db.create_all()
+        print("Seeding database...")
+        db.create_all() # Ensure tables exist (will not re-create if they do)
 
-        print("Seeding users...")
-        try:
-            admin_user = AuthService.register_user("admin", "admin@example.com", "adminpass", role=Role.ADMIN)
-            regular_user1 = AuthService.register_user("user1", "user1@example.com", "user1pass", role=Role.USER)
-            regular_user2 = AuthService.register_user("user2", "user2@example.com", "user2pass", role=Role.USER)
-            db.session.commit() # Commit users
-        except Exception as e:
-            print(f"Error seeding users: {e}")
-            db.session.rollback()
-            return
+        # Clear existing data (optional, for fresh seed)
+        # db.session.query(Metric).delete()
+        # db.session.query(Endpoint).delete()
+        # db.session.query(Service).delete()
+        # db.session.query(User).delete()
+        # db.session.commit()
+        # print("Cleared existing data.")
 
-        print("Seeding tasks...")
-        try:
-            task1 = Task(
-                title="Review project requirements",
-                description="Go through the SRS and make sure all features are understood.",
-                status=TaskStatus.IN_PROGRESS,
-                due_date=datetime.utcnow() + timedelta(days=7),
-                created_by_id=admin_user.id,
-                assigned_to_id=admin_user.id
-            )
-            task2 = Task(
-                title="Implement user authentication",
-                description="Develop JWT-based authentication for the API.",
-                status=TaskStatus.PENDING,
-                due_date=datetime.utcnow() + timedelta(days=14),
-                created_by_id=admin_user.id,
-                assigned_to_id=regular_user1.id
-            )
-            task3 = Task(
-                title="Write unit tests for services",
-                description="Achieve 80% coverage for user and task services.",
-                status=TaskStatus.PENDING,
-                due_date=datetime.utcnow() + timedelta(days=21),
-                created_by_id=regular_user1.id,
-                assigned_to_id=regular_user2.id
-            )
-            task4 = Task(
-                title="Prepare deployment script",
-                description="Create Dockerfile and docker-compose for production deployment.",
-                status=TaskStatus.COMPLETED,
-                due_date=datetime.utcnow() - timedelta(days=5),
-                created_by_id=admin_user.id,
-                assigned_to_id=regular_user1.id
-            )
-            task5 = Task(
-                title="Research caching strategies",
-                description="Look into Redis and other caching options for performance.",
-                status=TaskStatus.IN_PROGRESS,
-                due_date=datetime.utcnow() + timedelta(days=10),
-                created_by_id=regular_user2.id,
-                assigned_to_id=regular_user2.id
-            )
+        # --- Create Users ---
+        admin_user = User.query.filter_by(username='admin').first()
+        if not admin_user:
+            admin_user, err = UserService.create_user('admin', 'admin@example.com', 'admin_password', is_admin=True)
+            if err:
+                print(f"Error creating admin: {err}")
+            else:
+                print(f"Created admin user: {admin_user.username}")
+        else:
+            print(f"Admin user '{admin_user.username}' already exists.")
 
-            db.session.add_all([task1, task2, task3, task4, task5])
-            db.session.commit()
-            print("Database seeded successfully!")
-        except Exception as e:
-            print(f"Error seeding tasks: {e}")
-            db.session.rollback()
-            return
+        test_user = User.query.filter_by(username='testuser').first()
+        if not test_user:
+            test_user, err = UserService.create_user('testuser', 'test@example.com', 'test_password')
+            if err:
+                print(f"Error creating testuser: {err}")
+            else:
+                print(f"Created test user: {test_user.username}")
+        else:
+            print(f"Test user '{test_user.username}' already exists.")
+
+        # --- Create Services ---
+        service1 = Service.query.filter_by(name='Mock API Service 1').first()
+        if not service1:
+            service1, err = ServiceMonitoringService.create_service(
+                name='Mock API Service 1',
+                base_url='https://jsonplaceholder.typicode.com',
+                owner_id=admin_user.id,
+                description='A free fake API for testing and prototyping.'
+            )
+            if err:
+                print(f"Error creating service: {err}")
+            else:
+                print(f"Created service: {service1.name}")
+        else:
+            print(f"Service '{service1.name}' already exists.")
+
+        service2 = Service.query.filter_by(name='Mock API Service 2').first()
+        if not service2:
+            service2, err = ServiceMonitoringService.create_service(
+                name='Mock API Service 2',
+                base_url='https://mock-api.example.com', # Placeholder for a non-existent service
+                owner_id=test_user.id,
+                description='A hypothetical mock API for demonstrating unhealthy states.'
+            )
+            if err:
+                print(f"Error creating service: {err}")
+            else:
+                print(f"Created service: {service2.name}")
+        else:
+            print(f"Service '{service2.name}' already exists.")
+
+        # --- Create Endpoints ---
+        # Endpoints for Service 1
+        endpoints_s1_data = [
+            ('/posts/1', 'GET', 200, 30),
+            ('/users/1', 'GET', 200, 60),
+            ('/comments', 'GET', 200, 90),
+            ('/nonexistent', 'GET', 404, 45) # Expecting 404
+        ]
+        for path, method, expected_status, interval in endpoints_s1_data:
+            endpoint = Endpoint.query.filter_by(service_id=service1.id, path=path, method=method).first()
+            if not endpoint:
+                endpoint, err = ServiceMonitoringService.create_endpoint(
+                    service_id=service1.id,
+                    path=path,
+                    method=method,
+                    expected_status=expected_status,
+                    polling_interval_seconds=interval
+                )
+                if err:
+                    print(f"Error creating endpoint {path} for {service1.name}: {err}")
+                else:
+                    print(f"Created endpoint: {endpoint.get_full_url()}")
+            else:
+                print(f"Endpoint '{endpoint.get_full_url()}' already exists.")
+                # Ensure it's active and scheduled if it exists but wasn't running
+                if endpoint.is_active and service1.is_active:
+                    add_endpoint_to_scheduler(app, endpoint)
+
+
+        # Endpoints for Service 2 (to demonstrate unhealthy)
+        endpoints_s2_data = [
+            ('/health', 'GET', 200, 30), # Will be unhealthy as base_url is fake
+            ('/status', 'GET', 200, 60)
+        ]
+        for path, method, expected_status, interval in endpoints_s2_data:
+            endpoint = Endpoint.query.filter_by(service_id=service2.id, path=path, method=method).first()
+            if not endpoint:
+                endpoint, err = ServiceMonitoringService.create_endpoint(
+                    service_id=service2.id,
+                    path=path,
+                    method=method,
+                    expected_status=expected_status,
+                    polling_interval_seconds=interval
+                )
+                if err:
+                    print(f"Error creating endpoint {path} for {service2.name}: {err}")
+                else:
+                    print(f"Created endpoint: {endpoint.get_full_url()}")
+            else:
+                print(f"Endpoint '{endpoint.get_full_url()}' already exists.")
+                # Ensure it's active and scheduled if it exists but wasn't running
+                if endpoint.is_active and service2.is_active:
+                    add_endpoint_to_scheduler(app, endpoint)
+
+
+        # --- Populate some historical metrics (optional) ---
+        print("Generating historical metrics (this may take a moment)...")
+        endpoints = Endpoint.query.all()
+        for endpoint in endpoints:
+            # Simulate polls for the last 24 hours
+            current_time = datetime.utcnow()
+            for i in range(24 * 60 // endpoint.polling_interval_seconds): # approx one day of metrics
+                poll_time = current_time - timedelta(seconds=i * endpoint.polling_interval_seconds + random.randint(0, 5))
+                
+                # Simulate varying health/response times
+                if "jsonplaceholder" in endpoint.service.base_url:
+                    if endpoint.path == "/nonexistent":
+                        status_code = 404
+                        is_healthy = True # Healthy if expected is 404
+                        response_time = random.randint(50, 200)
+                        error = None
+                    else:
+                        status_code = 200
+                        is_healthy = True
+                        response_time = random.randint(50, 300)
+                        error = None
+                        if random.random() < 0.05: # 5% chance of being slow/unhealthy
+                            status_code = random.choice([500, 503, 400])
+                            is_healthy = False
+                            response_time = random.randint(500, 2000)
+                            error = f"Simulated error: Status {status_code}"
+                else: # For mock-api.example.com, mostly unhealthy
+                    status_code = 503
+                    is_healthy = False
+                    response_time = random.randint(500, 3000)
+                    error = "Simulated connection error."
+                    if random.random() < 0.1: # 10% chance it briefly works
+                        status_code = 200
+                        is_healthy = True
+                        response_time = random.randint(100, 400)
+                        error = None
+                
+                metric = Metric(
+                    endpoint_id=endpoint.id,
+                    response_time_ms=response_time,
+                    status_code=status_code,
+                    response_size_bytes=random.randint(100, 5000), # Dummy size
+                    timestamp=poll_time,
+                    is_healthy=is_healthy,
+                    error_message=error
+                )
+                db.session.add(metric)
+        db.session.commit()
+        print("Historical metrics generated.")
+
+
+        print("Database seeding complete!")
+        print("\nAdmin Credentials:")
+        print(f"  Username: {admin_user.username}")
+        print(f"  Password: admin_password")
+        print("\nTest User Credentials:")
+        print(f"  Username: {test_user.username}")
+        print(f"  Password: test_password")
+        print("\nRemember to run `docker-compose up` to start the services (app, db, redis) and then access the UI.")
+        print(f"You can access the API docs at http://localhost:5000/api/docs (or your configured port).")
+        print(f"The frontend UI is at http://localhost:5000 (or your configured port).")
+
 
 if __name__ == '__main__':
-    seed_database()
+    seed_data()
+
 ```
+
+**3. Configuration & Setup**

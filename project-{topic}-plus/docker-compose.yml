@@ -3,29 +3,28 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
-    container_name: chat_db
-    env_file:
-      - ./backend/.env
+    image: postgres:13-alpine
+    restart: always
     environment:
-      POSTGRES_DB: chat_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_DB: performance_monitor_dev # Use dev db name for simplicity
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
     ports:
-      - "5432:5432"
+      - "5432:5432" # Expose for local access if needed
+    volumes:
+      - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d chat_db"]
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d performance_monitor_dev"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:7-alpine
-    container_name: chat_redis
+    image: redis:6-alpine
+    restart: always
     ports:
-      - "6379:6379"
+      - "6379:6379" # Expose for local access if needed
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,47 +33,39 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: chat_backend
-    env_file:
-      - ./backend/.env
+  app:
+    build: .
+    restart: always
     ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
+      - "5000:5000"
+    environment:
+      # Inject .env variables from the host using env_file
+      # Or specify them directly here if not using .env
+      FLASK_CONFIG: development # Use 'development' for easier debugging in Docker
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DEV_DATABASE_URL: postgresql://dev_user:dev_password@db:5432/performance_monitor_dev # Use 'db' as hostname for PostgreSQL
+      REDIS_HOST: redis # Use 'redis' as hostname for Redis
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      DEFAULT_POLLING_INTERVAL_SECONDS: ${DEFAULT_POLLING_INTERVAL_SECONDS}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: >
-      sh -c "alembic upgrade head &&
-             python seed.py &&
-             gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000"
-    restart: on-failure
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: chat_frontend
-    ports:
-      - "3000:3000"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules # Prevent host node_modules from overwriting container's
-    depends_on:
-      - backend
-    environment:
-      # Pass backend API URL to frontend build process
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
-      VITE_WS_BASE_URL: ws://localhost:8000/ws
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0" # --host 0.0.0.0 for Docker access
+      - .:/app # Mount current directory to /app for live code changes during development
+              # Remove or change for production to copy code at build time
+    # This command first applies migrations, then seeds the DB, then starts the Gunicorn app
+    # This is useful for initial setup, but in production, migrations/seeding might be
+    # separate steps in a CI/CD pipeline or an explicit `docker exec` command.
+    command: >
+      sh -c "flask db upgrade && python scripts/seed_db.py && gunicorn --bind 0.0.0.0:5000 --workers 4 run:app"
+    # If not using the combined command above, use `command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "run:app"]`
 
 volumes:
-  postgres_data:
+  db_data:
   redis_data:
+
 ```
