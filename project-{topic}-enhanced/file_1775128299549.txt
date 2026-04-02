@@ -1,0 +1,24 @@
+#include "app.hpp"
+#include "utils/logger.hpp"
+#include "config/config.hpp"
+
+int main() {
+    // Initialize configuration manager
+    Config& config = Config::getInstance();
+    config.load_env(); // Load environment variables
+
+    // Initialize logger early
+    Logger::init(config.get_string("LOG_LEVEL", "info"));
+    LOG_INFO("Logger initialized with level: {}", config.get_string("LOG_LEVEL", "info"));
+
+    // Initialize and run the application
+    try {
+        App app;
+        app.run(config.get_int("APP_PORT", 8080));
+    } catch (const std::exception& e) {
+        LOG_CRITICAL("Application crashed: {}", e.what());
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}

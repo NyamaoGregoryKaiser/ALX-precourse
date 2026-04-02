@@ -1,0 +1,28 @@
+#ifndef TASK_REPOSITORY_HPP
+#define TASK_REPOSITORY_HPP
+
+#include <string>
+#include <optional>
+#include <vector>
+#include <pqxx/pqxx>
+#include "db_connection.hpp"
+#include "../models/task.hpp"
+#include "../utils/logger.hpp"
+
+class TaskRepository {
+public:
+    explicit TaskRepository(DBConnection& db_connection);
+
+    std::optional<Task> create_task(const Task& task);
+    std::optional<Task> find_task_by_id(const std::string& id);
+    std::vector<Task> find_tasks_by_user_id(const std::string& user_id, int limit = 10, int offset = 0);
+    std::optional<Task> update_task(const Task& task);
+    bool delete_task(const std::string& id);
+    // Add more query methods as needed, e.g., filter by status, due date
+    std::vector<Task> find_tasks_by_user_id_and_status(const std::string& user_id, TaskStatus status, int limit = 10, int offset = 0);
+
+private:
+    DBConnection& db_connection;
+};
+
+#endif // TASK_REPOSITORY_HPP

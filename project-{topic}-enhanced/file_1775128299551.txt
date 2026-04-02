@@ -1,0 +1,111 @@
+#include "user_service.hpp"
+#include "../utils/logger.hpp"
+#include <fmt/format.h>
+
+extern std::string get_current_timestamp(); // From user_repository.cpp
+
+UserService::UserService(UserRepository& user_repo, PasswordHasher& password_hasher, CacheService& cache_service)
+    : user_repository(user_repo), password_hasher(password_hasher), cache_service(cache_service) {}
+
+std::optional<User> UserService::get_user_profile(const std::string& user_id) {
+    // Try to get from cache first
+    std::string cache_key = fmt::format("user:{}", user_id);
+    std::optional<std::string> cached_user_json = cache_service.get_string(cache_key);
+    if (cached_user_json) {
+        try {
+            nlohmann::json j = nlohmann::json::parse(cached_user_json.value());
+            LOG_DEBUG("User profile for {} retrieved from cache.", user_id);
+            return User::from_json(j);
+        } catch (const nlohmann::json::exception& e) {
+            LOG_ERROR("Failed to parse cached user data for {}: {}", user_id, e.what());
+            // Invalidate cache entry if parsing fails
+            cache_service.delete_key(cache_key);
+        }
+    }
+
+    // If not in cache or cache invalid, retrieve from DB
+    std::optional<User> user = user_repository.find_user_by_id(user_id);
+    if (user) {
+        LOG_INFO("User profile for {} retrieved from DB.", user_id);
+        // Store in cache
+        cache_service.set_string(cache_key, user->to_public_json().dump(), 3600); // Cache for 1 hour
+    } else {
+        LOG_WARN("User profile for {} not found.", user_id);
+    }
+    return user;
+}
+
+std::pair<std::optional<User>, std::string> UserService::update_user_profile(const std::string& requester_id, const std::string& target_user_id,
+                                                                           const std::optional<std::string>& username,
+                                                                           const std::optional<std::string>& email,
+                                                                           const std::optional<std::string>& new_password) {
+    // Authorization check: User can only update their own profile (or admin)
+    // For this example, we assume `requester_id` is the authenticated user ID and can only modify `target_user_id` if they match.
+    // A more complex system would check roles for admin privileges.
+    if (requester_id != target_user_id) {
+        return {std::nullopt, "Forbidden: You can only update your own profile."};
+    }
+
+    std::optional<User> existing_user = user_repository.find_user_by_id(target_user_id);
+    if (!existing_user) {
+        return {std::nullopt, "User not found."};
+    }
+
+    User updated_user_data = *existing_user; // Start with current data
+
+    if (username.has_value() && !username->empty()) {
+        updated_user_data.username = username.value();
+    }
+    if (email.has_value() && !email->empty()) {
+        if (email.value() != existing_user->email) {
+            // Check for email uniqueness if changing
+            if (user_repository.find_user_by_email(email.value()).has_value()) {
+                return {std::nullopt, "Email already in use by another account."};
+            }
+            updated_user_data.email = email.value();
+        }
+    }
+    if (new_password.has_value() && !new_password->empty()) {
+        if (new_password->length() < 8) {
+            return {std::nullopt, "New password must be at least 8 characters long."};
+        }
+        updated_user_data.password_hash = password_hasher.hash_password(new_password.value());
+    }
+
+    std::optional<User> result = user_repository.update_user(updated_user_data);
+
+    if (result) {
+        LOG_INFO("User profile updated successfully for user ID: {}", result->id);
+        // Invalidate cache for this user
+        cache_service.delete_key(fmt::format("user:{}", result->id));
+        return {result, "Profile updated successfully."};
+    } else {
+        return {std::nullopt, "Failed to update user profile due to a database error."};
+    }
+}
+
+std::pair<bool, std::string> UserService::delete_user(const std::string& requester_id, const std::string& target_user_id) {
+    // Authorization check: User can only delete their own account (or admin)
+    if (requester_id != target_user_id) {
+        return {false, "Forbidden: You can only delete your own profile."};
+    }
+
+    bool success = user_repository.delete_user(target_user_id);
+
+    if (success) {
+        LOG_INFO("User deleted successfully for user ID: {}", target_user_id);
+        // Invalidate cache for this user
+        cache_service.delete_key(fmt::format("user:{}", target_user_id));
+        // Also invalidate their session token in cache
+        cache_service.delete_key(fmt::format("user_session:{}", target_user_id));
+        return {true, "User deleted successfully."};
+    } else {
+        return {false, "Failed to delete user. User not found or database error."};
+    }
+}
+
+std::vector<User> UserService::get_all_users(int limit, int offset) {
+    // This would typically have an ADMIN role check
+    LOG_WARN("Accessing all users. Ensure this is restricted to admin roles in production.");
+    return user_repository.find_all_users(limit, offset);
+}

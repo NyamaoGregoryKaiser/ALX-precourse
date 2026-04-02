@@ -1,0 +1,3 @@
+*   **Error Responses**:
+    *   `401 Unauthorized` - `UNAUTHORIZED`: No token or invalid token.
+    *   `400 Bad Request` - `TASK_DELETE_FAILED`: Task not found or not owned by user.
