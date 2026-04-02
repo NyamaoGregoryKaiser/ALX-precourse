@@ -1,4 +1,5 @@
 ```yaml
+# .github/workflows/ci-cd.yml
 name: CI/CD Pipeline
 
 on:
@@ -13,115 +14,154 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test C++ Application
+    name: Build & Test
     runs-on: ubuntu-latest
-
+    services:
+      # Start a PostgreSQL container for integration tests
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d testdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          submodules: 'recursive' # If Drogon or other dependencies are submodules
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
 
-      - name: Install Dependencies
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Build with Maven
+        run: mvn clean install -DskipTests # Build the JAR, but skip tests here to run them separately
+
+      - name: Run Unit & Integration Tests with Coverage
+        # Pass DB connection details for Testcontainers to use the service container
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake git \
-            libjsoncpp-dev libsqlite3-dev libssl-dev uuid-dev zlib1g-dev \
-            libjwt-dev libbcrypt-dev sqlite3
-          # If Drogon is not installed via apt, you'd build and install it here
-          # For example, if building Drogon from source or using vcpkg:
-          # git clone https://github.com/drogonframework/drogon.git
-          # cd drogon
-          # git submodule update --init
-          # cmake -B build
-          # sudo cmake --build build --target install
-          # cd .. # Back to project root
+          mvn test jacoco:report
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: testdb
+          DB_USER: testuser
+          DB_PASSWORD: testpass
+          JWT_SECRET: aVerySecretKeyForTestingDontUseInProd
 
-      - name: Configure CMake
-        run: cmake -B build -S .
+      - name: Upload JaCoCo Code Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/jacoco.xml # Or the HTML report path
 
-      - name: Build Application
-        run: cmake --build build --target TaskManagementSystem
+      - name: SonarCloud Scan (Optional)
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided by GitHub Actions
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Set in GitHub secrets
 
-      - name: Setup Test Database
+  docker-build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build-and-test # This job depends on build-and-test successfully completing
+    if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Maven JAR for Docker
+        run: mvn clean package -DskipTests # Build JAR, skipping tests as they ran in previous job
+
+      - name: Log in to Docker Hub (or GHCR)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          # Or for GHCR:
+          # registry: ghcr.io
+          # username: ${{ github.actor }}
+          # password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/cms-system:latest
+            ${{ secrets.DOCKER_USERNAME }}/cms-system:${{ github.sha }}
+            # Optionally for release branches:
+            # ${{ github.ref == 'refs/heads/main' && format('{0}/cms-system:prod-{1}', secrets.DOCKER_USERNAME, github.run_number) || '' }}
+            # ${{ github.ref == 'refs/heads/develop' && format('{0}/cms-system:dev-{1}', secrets.DOCKER_USERNAME, github.run_number) || '' }}
+          cache-from: type=gha,scope=build-cache-${{ github.sha }}
+          cache-to: type=gha,mode=max,scope=build-cache-${{ github.sha }}
+
+  deploy-to-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: docker-build-and-push
+    if: success() && github.ref == 'refs/heads/develop'
+    environment:
+      name: Staging
+      url: https://staging.your-cms-domain.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging (Conceptual)
         run: |
-          chmod +x scripts/run_migrations.sh
-          ./scripts/run_migrations.sh # This sets up db/app.db
+          echo "Deploying ${{ secrets.DOCKER_USERNAME }}/cms-system:${{ github.sha }} to Staging environment..."
+          # Replace with actual deployment commands (e.g., kubectl, AWS CLI, Azure CLI)
+          # Example for Kubernetes:
+          # kubectl config use-context your-staging-k8s-cluster
+          # kubectl set image deployment/cms-app cms-app=${{ secrets.DOCKER_USERNAME }}/cms-system:${{ github.sha }} -n cms-staging
+          # kubectl rollout status deployment/cms-app -n cms-staging
+          echo "Deployment to staging complete!"
 
-      - name: Build Tests
-        run: cmake --build build --target TaskManagementSystem_tests
+  deploy-to-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: docker-build-and-push
+    if: success() && github.ref == 'refs/heads/main'
+    environment:
+      name: Production
+      url: https://your-cms-domain.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Run Unit Tests
-        run: ./build/TaskManagementSystem_tests --gtest_filter=AuthServiceTest.*:TaskServiceTest.*
-        working-directory: ${{github.workspace}}/build
-
-      - name: Run API Integration Tests
-        run: ./build/TaskManagementSystem_tests --gtest_filter=ApiIntegrationTest.*
-        working-directory: ${{github.workspace}}/build
-
-      # - name: Report Code Coverage (Optional)
-      #   run: |
-      #     # Requires GCOV/LCOV setup in CMake and a tool to upload results
-      #     # e.g., codecov: https://docs.codecov.com/docs/github-actions
-      #     # For C++, this is more involved with compiler flags and tooling.
-      #     echo "Code coverage generation and reporting skipped for brevity."
-
-  # docker-build-and-push:
-  #   name: Build & Push Docker Image
-  #   runs-on: ubuntu-latest
-  #   needs: build-and-test # Only run if tests pass
-  #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only for main/develop branches
-
-  #   steps:
-  #     - name: Checkout Repository
-  #       uses: actions/checkout@v3
-
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v2
-
-  #     - name: Log in to Docker Hub
-  #       uses: docker/login-action@v2
-  #       with:
-  #         username: ${{ secrets.DOCKER_USERNAME }}
-  #         password: ${{ secrets.DOCKER_PASSWORD }}
-
-  #     - name: Build and Push Docker Image
-  #       uses: docker/build-push-action@v4
-  #       with:
-  #         context: .
-  #         file: ./Dockerfile
-  #         push: true
-  #         tags: your_docker_username/task-management-system:${{ github.sha }}, your_docker_username/task-management-system:latest
-
-  # deploy:
-  #   name: Deploy to Production
-  #   runs-on: ubuntu-latest
-  #   needs: docker-build-and-push
-  #   if: github.ref == 'refs/heads/main' # Only deploy main branch to production
-
-  #   steps:
-  #     - name: Deploy to Cloud Provider (e.g., Kubernetes, AWS ECS, GCP Cloud Run)
-  #       # This step would be highly dependent on your cloud provider and deployment strategy.
-  #       # Examples:
-  #       # - Uses a kubectl action to update a Kubernetes deployment
-  #       # - Calls AWS CLI to update an ECS service
-  #       # - Triggers a deployment on Google Cloud Run
-  #       run: |
-  #         echo "Simulating deployment to production..."
-  #         echo "Deployment steps would involve securely accessing the target environment"
-  #         echo "and updating the application service with the new Docker image tag."
-  #         echo "Image: your_docker_username/task-management-system:${{ github.sha }}"
-  #         # Example for a simple SSH deploy:
-  #         # - uses: appleboy/ssh-action@master
-  #         #   with:
-  #         #     host: ${{ secrets.PROD_SSH_HOST }}
-  #         #     username: ${{ secrets.PROD_SSH_USER }}
-  #         #     key: ${{ secrets.PROD_SSH_KEY }}
-  #         #     script: |
-  #         #       cd /path/to/your/app
-  #         #       docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-  #         #       docker compose pull app
-  #         #       docker compose up -d app
-  #       echo "Deployment complete."
+      - name: Deploy to Production (Conceptual)
+        run: |
+          echo "Deploying ${{ secrets.DOCKER_USERNAME }}/cms-system:${{ github.sha }} to Production environment..."
+          # Manual approval step can be added for production deployments in GitHub Environments
+          # Replace with actual deployment commands (e.g., kubectl, AWS CLI, Azure CLI)
+          # Example for Kubernetes:
+          # kubectl config use-context your-prod-k8s-cluster
+          # kubectl set image deployment/cms-app cms-app=${{ secrets.DOCKER_USERNAME }}/cms-system:${{ github.sha }} -n cms-prod
+          # kubectl rollout status deployment/cms-app -n cms-prod
+          echo "Deployment to production complete!"
 ```

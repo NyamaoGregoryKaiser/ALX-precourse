@@ -1,64 +1,46 @@
+```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:13-alpine
-    restart: always
+    image: postgres:15-alpine
+    container_name: cms-db
     environment:
-      POSTGRES_DB: mobile_app_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql
+      POSTGRES_DB: ${DB_NAME:-cms_db}
+      POSTGRES_USER: ${DB_USER:-cmsuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cmspass}
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d mobile_app_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:6-alpine
-    restart: always
-    ports:
-      - "6379:6379"
     volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      - cms_db_data:/var/lib/postgresql/data
+    healthcheck: # Healthcheck for database readiness
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
+  cms-app:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
+    container_name: cms-application
     ports:
       - "8080:8080"
     environment:
-      # These variables should ideally be managed by your orchestrator or .env for production
-      # But for this example, the app_config.json overrides them.
-      # For Docker, app_config.json's DB_HOST will resolve to 'db' service name.
-      # Ensure app_config.json uses 'db' and 'redis' as hosts for inter-container communication.
-    volumes:
-      - ./config/app_config.json:/app/app_config.json # Mount config for easy changes
-      - ./logs:/app/logs # Mount logs directory
+      # Pass database connection details to the Spring Boot app
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-cms_db}
+      DB_USER: ${DB_USER:-cmsuser}
+      DB_PASSWORD: ${DB_PASSWORD:-cmspass}
+      JWT_SECRET: ${JWT_SECRET:YourSuperSecretKeyForJWTAuthenticationDoNotShareThisAndMakeItLongerInProduction}
+      # You can externalize these in a .env file or Kubernetes secrets for production
     depends_on:
       db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: ["./MobileBackend"] # Execute the built application
+        condition: service_healthy # Ensure DB is healthy before starting app
+    # Restart policy to ensure the app stays running
+    restart: always
 
 volumes:
-  postgres_data:
-  redis_data:
+  cms_db_data:
 ```
-
-**`Dockerfile`**
-```dockerfile

@@ -1,69 +1,68 @@
-server:
-  port: 8080 # Default port for the application
-
+```yaml
 spring:
   application:
-    name: product-service
+    name: cms-system
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:productdb}
-    username: ${DB_USERNAME:user}
-    password: ${DB_PASSWORD:password}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cms_db}
+    username: ${DB_USER:cmsuser}
+    password: ${DB_PASSWORD:cmspass}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate # Recommended for production; create-drop or update for development
+      ddl-auto: validate # Use 'none' or 'validate' with Flyway, 'update' for development
+    show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-    show-sql: false # Set to true to log SQL queries
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
   flyway:
     enabled: true
-    locations: classpath:db/migration # Location of migration scripts
-    baseline-on-migrate: true # Creates schema_version table if not exists, useful for existing DBs
+    locations: classpath:db/migration # Location of SQL migration scripts
+    baseline-on-migrate: true # Create metadata table if none exists, then execute migrations
 
-  # Spring Cache configuration using Caffeine
+  security:
+    user:
+      name: user
+      password: password # Default Spring Security user, overridden by custom UserDetailsService
+
   cache:
+    cache-names: contents, contentById, contentBySlug, categories, tags, users
     caffeine:
-      spec: maximumSize=1000,expireAfterWrite=60s # Max 1000 entries, expire after 60 seconds of write
+      spec: maximumSize=1000,expireAfterWrite=60s # Example cache settings
 
-# JWT Configuration
+server:
+  port: 8080
+
 jwt:
-  secret: ${JWT_SECRET:aVerySecretKeyForAlxDevOpsProjectThatIsLongEnoughAndSecureSoNoOneCanGuessItEasily} # IMPORTANT: Use a strong, random key in production and manage securely
-  expiration: 86400000 # 24 hours in milliseconds (24 * 60 * 60 * 1000)
+  secret: ${JWT_SECRET:YourSuperSecretKeyForJWTAuthenticationDoNotShareThisAndMakeItLongerInProduction} # IMPORTANT: Use a strong, random key in production
+  expiration: 3600000 # 1 hour in milliseconds
 
-# Rate Limiting Configuration (custom interceptor)
-rate-limiting:
-  limit: 10 # Max requests per time unit
-  duration-seconds: 60 # Time unit in seconds (e.g., 10 requests per 60 seconds)
-
-# Logging Configuration (custom logback-spring.xml for advanced settings)
-logging:
-  level:
-    com.alx.devops: INFO # Set base package logging level
-    org.springframework.web: INFO
-    org.hibernate: INFO
-    org.springframework.security: INFO
-    com.github.benmanes.caffeine: INFO
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %green([%thread]) %blue(%logger{36}): %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36}: %msg%n"
-  file:
-    name: logs/product-service.log # Log file path
-
-# Actuator Endpoints
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus # Expose useful actuator endpoints
-  endpoint:
-    health:
-      show-details: always
-    info:
+        include: health, info, prometheus # Expose actuator endpoints for monitoring
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
+  api-docs:
+    path: /v3/api-docs
+    groups:
       enabled: true
-    metrics:
-      enabled: true
-    prometheus:
-      enabled: true
+
+logging:
+  level:
+    com.alx.cms: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: INFO
+    org.flywaydb: INFO
+  file:
+    name: logs/cms-system.log # Log to a file
+    max-size: 10MB
+    max-history: 7
 ```

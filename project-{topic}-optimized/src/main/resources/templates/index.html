@@ -1,0 +1,64 @@
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALX CMS Home</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="/">ALX CMS</a>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item" sec:authorize="isAuthenticated()">
+                    <span class="navbar-text mr-3">Welcome, <span sec:authentication="name">User</span>!</span>
+                </li>
+                <li class="nav-item" sec:authorize="hasRole('ADMIN')">
+                    <a class="nav-link" href="/admin/dashboard">Admin Dashboard</a>
+                </li>
+                <li class="nav-item" sec:authorize="isAnonymous()">
+                    <a class="nav-link" href="/login">Login</a>
+                </li>
+                <li class="nav-item" sec:authorize="isAuthenticated()">
+                    <form th:action="@{/logout}" method="post" class="form-inline">
+                        <button class="btn btn-outline-danger my-2 my-sm-0" type="submit">Logout</button>
+                    </form>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1>Welcome to ALX CMS!</h1>
+
+        <div sec:authorize="isAuthenticated()">
+            <p>You are logged in.</p>
+            <p>Your roles: <span sec:authentication="principal.authorities"></span></p>
+            <hr/>
+        </div>
+
+        <h2>Latest Content</h2>
+        <div th:if="${contents.isEmpty()}">
+            <p>No content available yet.</p>
+        </div>
+        <div th:each="content : ${contents}" class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title" th:text="${content.title}">Content Title</h5>
+                <h6 class="card-subtitle mb-2 text-muted" th:text="'By ' + ${content.authorId}">Author ID</h6>
+                <p class="card-text" th:text="${#strings.abbreviate(content.body, 200)}">Content Body Snippet...</p>
+                <a th:href="@{'/api/v1/contents/slug/' + ${content.slug}}" class="card-link">Read More (API)</a>
+                <span class="badge badge-primary" th:if="${content.published}">Published</span>
+                <span class="badge badge-secondary" th:if="${!content.published}">Draft</span>
+                <p class="card-text"><small class="text-muted" th:text="'Published: ' + (${content.publishedAt} ? ${#temporals.format(content.publishedAt, 'yyyy-MM-dd HH:mm')} : 'N/A')"></small></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
+```
