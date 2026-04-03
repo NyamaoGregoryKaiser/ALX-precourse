@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Performance Overview</h2>
+
+    <div class="filter-controls">
+        <div>
+            <label for="service_name">Service Name:</label>
+            <input type="text" id="service_name" value="Performance Monitor">
+        </div>
+        <div>
+            <label for="start_time">Start Time:</label>
+            <input type="datetime-local" id="start_time">
+        </div>
+        <div>
+            <label for="end_time">End Time:</label>
+            <input type="datetime-local" id="end_time">
+        </div>
+        <div>
+            <button class="btn" id="apply-filters-btn">Apply Filters</button>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h3>Total Requests</h3>
+            <p id="total-requests" class="value">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>Avg. Response Time</h3>
+            <p id="avg-response-time" class="value">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>P95 Response Time</h3>
+            <p id="p95-response-time" class="value">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>Error Rate (5xx)</h3>
+            <p id="error-rate" class="value error">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>Avg. CPU Usage</h3>
+            <p id="avg-cpu" class="value">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>Avg. Memory Usage</h3>
+            <p id="avg-memory" class="value">Loading...</p>
+        </div>
+        <div class="card">
+            <h3>Top 5 Slowest Endpoints</h3>
+            <ul id="slowest-endpoints">
+                <li>Loading...</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3>Most Frequent Custom Events</h3>
+            <ul id="frequent-custom-events">
+                <li>Loading...</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section style="margin-top: 3rem;">
+    <h2>Trends</h2>
+    <div class="dashboard-grid">
+        <div class="card">
+            <h3>Response Time Trend (Hourly)</h3>
+            <div class="chart-container">
+                <canvas id="responseTimeChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h3>CPU & Memory Usage Trend (Hourly)</h3>
+            <div class="chart-container">
+                <canvas id="cpuMemoryChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Error Rate Trend (Hourly)</h3>
+            <div class="chart-container">
+                <canvas id="errorRateChart"></canvas>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

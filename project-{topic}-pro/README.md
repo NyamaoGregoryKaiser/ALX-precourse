@@ -1,175 +1,48 @@
-# ALX Content Management System (CMS) Project
+*   **Install Nginx**: `sudo apt update && sudo apt install nginx`
+*   **Obtain SSL Certificates**: Use Certbot (recommended for Let's Encrypt) to get free SSL certificates: `sudo apt install certbot python3-certbot-nginx` then `sudo certbot --nginx -d your_domain.com -d www.your_domain.com`.
+*   **Enable Nginx config**: `sudo ln -s /etc/nginx/sites-available/performance-monitor.conf /etc/nginx/sites-enabled/`
+*   **Test Nginx config**: `sudo nginx -t`
+*   **Reload Nginx**: `sudo systemctl reload nginx`
 
-This is a comprehensive, full-scale Content Management System (CMS) built primarily with C++ for the backend and a simple HTML/CSS/JS frontend. It's designed to be production-ready, focusing on modularity, robust error handling, security, and scalability, adhering to ALX Software Engineering principles.
+## 3. CI/CD Integration
 
-## Features
+The `.github/workflows/ci_cd.yml` file provides a GitHub Actions pipeline configuration:
 
-**Core Application (C++ Backend)**
-*   **RESTful API:** Full CRUD operations for Users, Content, Categories, and Comments.
-*   **Modules:** User Management, Content Management, Category Management, Comment Management.
-*   **Architecture:** Layered design (Controllers -> Services -> Repositories -> Database).
-*   **Models:** Strong type-safe C++ structures for data.
+*   **Triggers**: Runs on pushes to `main` and `develop` branches, and on pull requests to these branches.
+*   **Jobs**:
+    *   `build_and_test`:
+        *   Checks out code.
+        *   Sets up Python environment.
+        *   Installs dependencies.
+        *   Runs `flake8` for linting.
+        *   Sets up Docker Compose for PostgreSQL and Redis test databases.
+        *   Runs Alembic migrations on the test database.
+        *   Executes unit and integration tests using `pytest` with coverage.
+        *   Builds the application Docker image.
+        *   Starts the application container for API tests.
+        *   Executes API tests.
+        *   (Conceptual) Runs performance tests.
+        *   Stops all Docker Compose services in the `finally` block.
+    *   (Optional) `deploy`:
+        *   This job is commented out but provides a template for continuous deployment.
+        *   It typically builds and pushes the Docker image to a registry (e.g., Docker Hub, AWS ECR).
+        *   Then, it connects to the production server (e.g., via SSH) and updates the running containers to use the new image.
+        *   Requires `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY` as GitHub Secrets.
 
-**Database Layer (PostgreSQL)**
-*   **Schema:** Defined for all core entities.
-*   **Migrations:** Scripted for version control of database schema.
-*   **Seed Data:** Initial data for development and testing.
-*   **Query Optimization:** Basic indexing applied; further optimization discussed.
+**To enable CI/CD**:
+1.  Push your code to a GitHub repository.
+2.  (Optional for `deploy` job) Configure GitHub Secrets in your repository settings.
 
-**Configuration & Setup**
-*   **Dependency Management:** `CMake` for C++ packages. `npm` for frontend.
-*   **Environment Variables:** `.env` based configuration.
-*   **Dockerization:** `Dockerfile` for backend and frontend, `docker-compose.yml` for orchestrating the entire stack (App, DB, Frontend Nginx).
-*   **CI/CD:** Example `.gitlab-ci.yml` demonstrating build, test, and deploy stages.
+## 4. Monitoring and Logging
 
-**Testing & Quality**
-*   **Unit Tests:** Using Google Test for business logic and utility functions (e.g., `UserService`, `JWTManager`).
-*   **Integration Tests:** Using Google Test for repository-database interactions and API endpoint validation.
-*   **API Tests:** Covered conceptually by integration tests, or could use external tools like Postman/Newman.
-*   **Performance Tests:** Strategy outlined using tools like JMeter/k6.
-*   **Code Coverage:** Aim for 80%+ (requires integrating coverage tools like `gcovr` with CMake/CI).
+*   **Application Logs**: The FastAPI application logs to standard output (stdout/stderr). Docker Compose captures these logs, which can be viewed with `docker-compose logs -f app`. For production, integrate with a centralized logging solution (e.g., ELK Stack, Grafana Loki, cloud-native services like CloudWatch Logs, Stackdriver Logging).
+*   **Container Monitoring**: Use Docker's built-in commands (`docker stats`) or integrate with container monitoring tools (e.g., Prometheus/Grafana, Datadog, New Relic) to monitor resource usage (CPU, memory, network I/O) of individual containers.
+*   **Performance Metrics**: The system itself collects and provides API endpoints for its own performance metrics. You can query `/api/v1/metrics/summary` or `/api/v1/metrics/trends/*` to monitor the system's health and performance. The dashboard at `/dashboard` provides a visual overview.
+*   **Alerting**: Set up alerts based on critical metrics (e.g., high error rates, long response times, high CPU/memory usage) using your chosen monitoring solution.
 
-**Additional Features**
-*   **Authentication & Authorization:** JWT (JSON Web Token) based authentication, role-based authorization middleware.
-*   **Logging & Monitoring:** `spdlog` for structured logging.
-*   **Error Handling:** Centralized API exception handling middleware.
-*   **Caching:** Simple in-memory caching middleware (can be extended with Redis).
-*   **Rate Limiting:** IP-based rate limiting middleware.
+## 5. Maintenance
 
-## Technologies Used
-
-*   **Backend:** C++17
-    *   **Web Framework:** [Pistache](https://github.com/oktal/pistache) (REST API)
-    *   **Database Driver:** [libpqxx](https://github.com/libpqxx/libpqxx) (PostgreSQL C++ client)
-    *   **JSON Library:** [nlohmann/json](https://github.com/nlohmann/json)
-    *   **JWT Library:** [jwt-cpp](https://github.com/Thalhammer/jwt-cpp)
-    *   **Logging:** [spdlog](https://github.com/gabime/spdlog)
-    *   **Testing:** [Google Test](https://github.com/google/googletest)
-    *   **Build System:** [CMake](https://cmake.org/)
-    *   **Password Hashing:** `bcrypt-cpp` (conceptual, requires linking `-lbcrypt`)
-*   **Frontend:** HTML, CSS, JavaScript (Vanilla JS for simplicity, could be React/Vue/Angular)
-*   **Database:** PostgreSQL
-*   **Deployment:** Docker, Docker Compose
-*   **CI/CD:** GitLab CI (example)
-
-## Setup and Installation
-
-### Prerequisites
-
-*   **Docker & Docker Compose:** Required to run the application easily.
-*   **C++ Development Environment (for local development/testing):**
-    *   GCC/Clang (C++17 compatible)
-    *   CMake 3.10+
-    *   Pistache, libpqxx, jwt-cpp, spdlog (development headers and libraries)
-    *   Google Test (for running local tests)
-    *   `libssl-dev`, `libpq-dev`, `pkg-config` (system dependencies)
-
-### Running with Docker Compose (Recommended)
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/yourusername/cms-project.git
-    cd cms-project
-    ```
-2.  **Configure Environment Variables:**
-    *   Copy `backend/.env.example` to `backend/.env`:
-        ```bash
-        cp backend/.env.example backend/.env
-        ```
-    *   Edit `backend/.env` with your desired configuration (especially `JWT_SECRET`).
-3.  **Build and Run:**
-    ```bash
-    docker-compose up --build -d
-    ```
-    This will:
-    *   Build the `db`, `backend`, and `frontend` Docker images.
-    *   Start a PostgreSQL container, apply schema, and seed initial data.
-    *   Start the C++ backend API server.
-    *   Start an Nginx container serving the frontend and proxying API requests.
-4.  **Access the Application:**
-    *   Frontend: `http://localhost`
-    *   Backend API (direct access, not usually needed if using frontend proxy): `http://localhost:9080`
-
-### Local C++ Backend Development (without Docker)
-
-1.  **Install System Dependencies:**
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y build-essential cmake libpq-dev libssl-dev libpistache-dev libjwt-cpp-dev libspdlog-dev google-test
-    # Note: `libpistache-dev`, `libjwt-cpp-dev`, `libspdlog-dev` package names might vary or may need manual installation/building.
-    # For jwt-cpp and spdlog, they are often header-only or built from source/vcpkg.
-    # The Dockerfile provides hints on installing them if building from source.
-    ```
-2.  **Setup PostgreSQL:**
-    *   Install PostgreSQL locally or ensure a running instance is accessible.
-    *   Create the database and user as specified in `backend/.env`.
-    ```bash
-    # Example commands (replace with your user/password)
-    sudo -u postgres psql -c "CREATE USER user WITH PASSWORD 'password';"
-    sudo -u postgres psql -c "CREATE DATABASE cms_db OWNER user;"
-    ```
-3.  **Apply Schema and Seed Data:**
-    ```bash
-    psql -U user -d cms_db -f database/schema/001_initial_schema.sql
-    psql -U user -d cms_db -f database/seed/seed_data.sql
-    ```
-4.  **Build and Run Backend:**
-    ```bash
-    cd backend
-    mkdir build && cd build
-    cmake ..
-    make
-    ./cms_backend
-    ```
-
-## Running Tests
-
-### Backend Unit & Integration Tests
-
-1.  **Ensure prerequisites (including Google Test) are installed (see local development setup).**
-2.  **Build tests:**
-    ```bash
-    cd backend/build
-    cmake .. -DENABLE_TESTS=ON # Re-run cmake to enable tests if you didn't initially
-    make
-    ```
-3.  **Run tests:**
-    ```bash
-    ./tests/cms_backend_tests
-    ```
-    *Note: Integration tests will attempt to connect to a PostgreSQL database named `cms_api_test_db` and `cms_test_db` on `localhost:5432` with user `user` and password `password`. Ensure your local PostgreSQL is running and accessible with these credentials.*
-
-### Code Coverage
-
-To generate code coverage reports (e.g., with `gcovr` or `lcov`):
-1.  Build the backend with coverage flags (e.g., `-fprofile-arcs -ftest-coverage`).
-2.  Run the tests.
-3.  Use `gcovr -r ../src --html --html-details -o coverage.html` in your build directory.
-
-## API Documentation
-
-See [api_docs.md](api_docs.md) for detailed information on all API endpoints, request/response formats, and authentication.
-
-## Architecture Documentation
-
-See [architecture.md](architecture.md) for a high-level overview of the system design, components, and data flow.
-
-## Deployment Guide
-
-See [deployment_guide.md](deployment_guide.md) for detailed instructions on deploying the application to a production environment.
-
-## Contributing
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes.
-4.  Write and run tests.
-5.  Commit your changes (`git commit -m 'Add new feature'`).
-6.  Push to the branch (`git push origin feature/your-feature`).
-7.  Create a Pull Request.
-
----
-```
-
-#### `api_docs.md`
-```markdown
+*   **Database Backups**: Regularly back up your PostgreSQL data.
+*   **Log Rotation**: Ensure your logging solution has proper log rotation configured to prevent disk space exhaustion.
+*   **Dependency Updates**: Keep Python dependencies and Docker images up to date to patch security vulnerabilities and get new features.
+*   **Alembic Migrations**: Always manage database schema changes with Alembic. Apply migrations carefully in production.
