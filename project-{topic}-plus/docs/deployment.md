@@ -1,193 +1,149 @@
-```markdown
-# DataVizPro Deployment Guide
+# Deployment Guide
 
-This document outlines the steps to deploy the DataVizPro application to a production environment using Docker and a cloud provider. For this guide, we'll assume a generic Linux server or a managed container service.
+This document outlines the steps and considerations for deploying the ML-Utilities-System to a production environment. The system is designed for containerized deployment using Docker, making it highly portable across various cloud providers or on-premise infrastructure.
 
 ## 1. Prerequisites
 
-*   A cloud provider account (e.g., AWS, GCP, Azure, DigitalOcean).
-*   A Linux server (VM or EC2 instance) with Docker and Docker Compose installed, or a managed Kubernetes cluster.
-*   Domain name configured with DNS records pointing to your server/load balancer.
-*   Git installed on your deployment machine.
-*   `ssh` access to your server.
-*   For CI/CD, GitHub Actions configured.
+*   **Docker & Docker Compose**: Essential for local development and can be used for single-host deployments.
+*   **Cloud Provider Account**: (e.g., AWS, GCP, Azure) if deploying to the cloud.
+*   **Kubernetes Cluster**: (Optional) For highly scalable and resilient deployments.
+*   **Domain Name & SSL Certificate**: For securing API traffic (HTTPS).
+*   **CI/CD Pipeline**: (e.g., GitHub Actions, GitLab CI, Jenkins) for automated deployments.
 
-## 2. Environment Configuration
+## 2. Configuration for Production
 
-### 2.1. Server Setup
+Before deploying, ensure your `.env` file (or equivalent environment variables in your deployment environment) is properly configured for production:
 
-1.  **SSH into your server:**
+*   **`SECRET_KEY`**: **CRITICAL** - Generate a strong, random, and long key. Never use the default or a simple key in production. Store it securely (e.g., AWS Secrets Manager, Vault).
+*   **`DATABASE_URL`**: Update to point to your production PostgreSQL instance. This should be an external, managed database service (e.g., AWS RDS, GCP Cloud SQL), not the `db` container from `docker-compose.yml`.
+*   **`REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`**: Update to point to your production Redis instance (e.g., AWS ElastiCache, GCP Memorystore).
+*   **`FIRST_SUPERUSER_EMAIL`, `FIRST_SUPERUSER_PASSWORD`**: These are for initial setup. In production, you might create the admin user manually or via secure scripts, and ensure the default password is changed immediately.
+*   **`BACKEND_CORS_ORIGINS`**: Set this to the exact URLs of your frontend applications or other clients that need to access the API. Do **NOT** use `["*"]` in production.
+*   **`RATE_LIMIT_PER_MINUTE`**: Adjust this value based on expected traffic and desired API usage policies.
+*   **Logging**: Configure Python's logging to output to a centralized logging system (e.g., stdout/stderr for container logs, then forwarded to ELK, Datadog, CloudWatch Logs, etc.).
+*   **`PROJECT_NAME`**: Set an appropriate name for your environment.
+
+## 3. Database Setup
+
+1.  **Provision a Production PostgreSQL Instance**:
+    *   Create a managed PostgreSQL database service (e.g., AWS RDS, GCP Cloud SQL, Azure Database for PostgreSQL).
+    *   Ensure it's accessible from your application's network.
+    *   Note down the connection details (host, port, user, password, database name).
+
+2.  **Apply Database Migrations**:
+    *   The `alembic` tool is used for schema management.
+    *   In your CI/CD pipeline or during initial deployment, execute migrations:
+        ```bash
+        # Ensure alembic.ini points to your production DB
+        # Or pass --sql for review before execution: alembic upgrade head --sql > migrations.sql
+        alembic upgrade head
+        ```
+    *   It's crucial to apply migrations before starting the application, especially on the first deployment.
+
+3.  **Seed Initial Data (Optional)**:
+    *   If your application requires initial data (like the default superuser), run the `seed_data.py` script once.
+    *   This can be part of your deployment script or a separate maintenance job.
+    *   **Caution**: Ensure `seed_data.py` is idempotent, meaning it won't duplicate data if run multiple times. Our `seed_data.py` checks for existing users/data before creating.
+
+## 4. Application Deployment Options
+
+### 4.1. Docker Compose (Single Host)
+
+For smaller deployments or quick proofs-of-concept on a single server:
+
+1.  **Install Docker and Docker Compose** on your production server.
+2.  **Copy project files** (`Dockerfile`, `docker-compose.yml`, `app/`, `main.py`, `requirements.txt`, `.env`) to the server.
+3.  **Configure `.env`** with production settings (especially `DATABASE_URL` pointing to your external PostgreSQL and `REDIS_HOST` to external Redis).
+4.  **Modify `docker-compose.yml`**:
+    *   Remove `volumes` for `./app` to prevent accidental host filesystem changes and ensure the Docker image is self-contained.
+    *   Update `db` and `redis` services to point to your external managed services or remove them if they are entirely external.
+    *   Change the `command` for the `app` service to use Gunicorn for production-grade process management and stability:
+        ```yaml
+        command: >
+          sh -c "alembic upgrade head &&
+                 gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+        ```
+        (Adjust `--workers` based on your server's CPU cores).
+5.  **Build and run**:
     ```bash
-    ssh user@your-server-ip
+    docker-compose up --build -d
     ```
-2.  **Install Docker and Docker Compose (if not already present):**
-    Follow the official Docker installation guides for your Linux distribution.
-    *   [Docker Engine Installation Guide](https://docs.docker.com/engine/install/)
-    *   [Docker Compose Installation Guide](https://docs.docker.com/compose/install/)
-3.  **Clone the repository:**
+6.  **Setup a Reverse Proxy**: Place Nginx or Caddy in front of the FastAPI application for SSL termination, load balancing (if multiple app instances), and static file serving.
+
+### 4.2. Kubernetes (Container Orchestration)
+
+For highly scalable, resilient, and manageable deployments:
+
+1.  **Build Docker Image**:
     ```bash
-    git clone https://github.com/your-username/datavizpro.git
-    cd datavizpro
+    docker build -t your-registry/ml-utils-system:latest .
+    docker push your-registry/ml-utils-system:latest
     ```
-4.  **Create `.env` files:**
-    Copy `.env.example` to `.env` in the project root.
+    (Replace `your-registry` with your Docker Hub or cloud container registry).
+
+2.  **Create Kubernetes Manifests**:
+    *   **Deployment**: Define your application deployment (e.g., 3 replicas of the FastAPI app).
+    *   **Service**: Expose your deployment within the cluster.
+    *   **Ingress**: Configure external access, SSL termination, and routing (e.g., using Nginx Ingress Controller).
+    *   **Secrets**: Store sensitive information (`SECRET_KEY`, `DATABASE_URL`, `REDIS_HOST`) as Kubernetes Secrets.
+    *   **ConfigMaps**: Store non-sensitive configuration (like CORS origins, rate limit values) as ConfigMaps.
+    *   **Health Checks**: Configure liveness and readiness probes pointing to `/health` or similar endpoints.
+    *   **Horizontal Pod Autoscaler (HPA)**: Automatically scale your pods based on CPU/memory usage.
+
+3.  **Apply Manifests**:
     ```bash
-    cp .env.example .env
+    kubectl apply -f k8s/
     ```
-    Edit the `.env` file with production-ready values:
-    *   `JWT_SECRET`: A very strong, long, random string.
-    *   `REFRESH_TOKEN_SECRET`: Another strong, long, random string.
-    *   `DATABASE_URL`: Ensure this points to a persistent PostgreSQL instance (either containerized within Docker Compose or a managed cloud database). If using Docker Compose, the `db` service name will resolve internally.
-    *   `REDIS_HOST`: `redis` if using Docker Compose Redis service, otherwise the host of your managed Redis instance.
-    *   `LOG_LEVEL`: Set to `info` or `warn` for production.
-    *   **Frontend `REACT_APP_API_BASE_URL`**: This needs to point to your *publicly accessible backend URL*, e.g., `https://api.yourdomain.com/api`. This value will be baked into the frontend Docker image during build. It should be passed to the frontend build command or Dockerfile.
+    (Assuming your manifests are in a `k8s/` directory).
 
-    **Example `.env` (root level):**
-    ```env
-    # For Docker Compose
-    JWT_SECRET=YOUR_VERY_STRONG_AND_SECRET_JWT_KEY_HERE_PROD
-    JWT_EXPIRATION_TIME=1h
-    REFRESH_TOKEN_SECRET=YOUR_VERY_STRONG_AND_SECRET_REFRESH_KEY_HERE_PROD
-    REFRESH_TOKEN_EXPIRATION_TIME=7d
-    RATE_LIMIT_WINDOW_MS=60000
-    RATE_LIMIT_MAX_REQUESTS=100
-    LOG_LEVEL=info
-    ```
+4.  **Monitor**: Use Kubernetes logging and monitoring tools (e.g., Prometheus, Grafana, built-in cloud provider tools) to observe your application.
 
-    **Frontend-specific `REACT_APP_API_BASE_URL` (usually set during build or `docker-compose.yml`)**
-    When building the frontend Docker image, `REACT_APP_API_BASE_URL` should be passed as a build argument or defined in `docker-compose.yml` to be injected into the static assets.
+### 4.3. Cloud-Specific Services (e.g., AWS ECS/Fargate, Google Cloud Run, Azure Container Apps)
 
-## 3. Deployment Steps (Docker Compose)
+These managed container services simplify deployment and operations.
 
-This is suitable for smaller deployments or staging environments.
+1.  **Build and Push Docker Image** to the respective cloud container registry (e.g., ECR for AWS, Artifact Registry for GCP).
+2.  **Create Service/Revision**:
+    *   Define your service, pointing to the pushed Docker image.
+    *   Configure environment variables (from Secrets Manager or directly).
+    *   Set up CPU/memory, autoscaling rules, health checks.
+    *   Attach to your managed PostgreSQL and Redis services.
+3.  **Deploy**.
+4.  **Configure Custom Domain & SSL**: Use the cloud provider's load balancer and certificate manager (e.g., AWS ALB + ACM, GCP Load Balancer + Certificate Manager).
 
-1.  **Build and Run Docker Containers:**
-    From the project root (`datavizpro/`), execute:
-    ```bash
-    docker-compose -f docker-compose.yml up --build -d
-    ```
-    *   `--build`: Rebuilds images if changes are detected.
-    *   `-d`: Runs containers in detached mode (in the background).
+## 5. CI/CD Pipeline
 
-    **Important considerations for production `docker-compose.yml`:**
-    *   **Database Migrations**: The current `docker-compose.yml` runs migrations and seeds during `backend` service startup (`command: sh -c "yarn migration:run && yarn seed && yarn start"`). In a true production environment, migrations should be run as a *separate step* (e.g., a one-off container, or during CI/CD) and **not** on every container restart, especially seeding.
-        *   **Recommended production `command` for backend:** `command: ["node", "dist/server.js"]`
-        *   **Separate migration container (example in `docker-compose.override.yml` for production):**
-            ```yaml
-            version: '3.8'
-            services:
-              backend-migration:
-                image: datavizpro-backend:latest # or specific tag
-                depends_on:
-                  db:
-                    condition: service_healthy
-                command: ["yarn", "migration:run"]
-                # Ensure it has access to DB environment variables
-                environment:
-                  DATABASE_URL: postgres://user:password@db:5432/datavizpro_db
-                  NODE_ENV: production
-                # Set a different restart policy, e.g., "no" or "on-failure"
-                restart: "no"
-            ```
-            You would run `docker-compose up -d backend-migration` first, then `docker-compose up -d backend frontend`
-    *   **Frontend Nginx Port**: The frontend is exposed on port 80 inside the container, mapped to host port 3000. For public access, you would likely map it to host port 80 (e.g., `80:80`).
-    *   **Volumes**: Ensure `pgdata` and `redisdata` volumes are properly managed for persistence, especially for backups. The `data_uploads` volume for CSV files is also critical.
-    *   **Resource Limits**: Add `deploy` section for resource limits and restart policies.
-    *   **SSL/TLS**: Use a reverse proxy like Nginx or Caddy on the host machine to terminate SSL/TLS for your domain (e.g., `https://yourdomain.com`). This proxy would then forward traffic to `http://localhost:3000` (for frontend) and `http://localhost:5000` (for backend).
+The `.github/workflows/ci.yml` provides a basic GitHub Actions example for Continuous Integration:
 
-2.  **Verify Deployment:**
-    *   Check Docker logs: `docker-compose logs -f`
-    *   Check container status: `docker-compose ps`
-    *   Access the frontend in your browser: `http://your-server-ip:3000` (or `http://yourdomain.com` if configured with Nginx proxy).
-    *   Access the backend API: `http://your-server-ip:5000/api`
+*   **Build**: Builds the Docker image.
+*   **Test**: Runs unit, integration, and basic performance tests.
+*   **Coverage**: Uploads test coverage reports.
 
-## 4. Setting up a Reverse Proxy with Nginx (for SSL/TLS and cleaner URLs)
+For **Continuous Deployment (CD)**, extend this workflow to:
 
-For production, it's highly recommended to use a reverse proxy (like Nginx) in front of your Docker containers to handle SSL termination, domain routing, and potentially serve static files more efficiently.
+1.  **Tag and Push**: Tag your Docker image with a unique version (e.g., Git SHA, semantic version) and push it to a production container registry.
+2.  **Deploy to Environment**: Trigger a deployment to your staging/production environment using:
+    *   **Kubernetes**: `kubectl apply` with updated image tag.
+    *   **Cloud Services**: Update the service definition with the new image tag using AWS CLI, `gcloud`, Azure CLI, or Terraform/Pulumi.
+3.  **Rollback**: Implement a strategy for quick rollbacks in case of deployment failures.
 
-1.  **Install Nginx on your host machine (if not already done).**
-2.  **Configure Nginx (e.g., `/etc/nginx/sites-available/datavizpro.conf`):**
-    ```nginx
-    # Redirect HTTP to HTTPS
-    server {
-        listen 80;
-        server_name yourdomain.com api.yourdomain.com;
-        return 301 https://$host$request_uri;
-    }
+## 6. Security Best Practices
 
-    # HTTPS server for frontend
-    server {
-        listen 443 ssl;
-        server_name yourdomain.com;
+*   **Environment Variables**: Never hardcode secrets. Use environment variables, and in production, use dedicated secret management services.
+*   **HTTPS**: Always use HTTPS for all API traffic. Configure SSL/TLS at your load balancer or API Gateway.
+*   **CORS**: Restrict `BACKEND_CORS_ORIGINS` to trusted domains only.
+*   **Input Validation**: FastAPI/Pydantic handle this well, but be vigilant about all user inputs.
+*   **Dependencies**: Regularly update dependencies to patch security vulnerabilities. Use tools like Dependabot.
+*   **Container Security**: Scan Docker images for vulnerabilities. Use minimal base images.
+*   **Principle of Least Privilege**:
+    *   Database user should only have necessary permissions.
+    *   Application should run with minimal OS privileges inside the container.
+*   **Error Messages**: Avoid verbose error messages in production that could leak sensitive information. Use generic error messages with internal logging for details.
 
-        ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem; # Path to your SSL cert
-        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem; # Path to your SSL key
+## 7. Monitoring & Alerting
 
-        location / {
-            proxy_pass http://localhost:3000; # Points to frontend container exposed port
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
+*   **Logs**: Centralize logs from all application instances (e.g., ELK Stack, Datadog, Splunk, cloud provider's logging services).
+*   **Metrics**: Collect application metrics (e.g., request latency, error rates, CPU/memory usage, database connection pool size) using tools like Prometheus/Grafana or cloud monitoring services.
+*   **Alerting**: Set up alerts for critical issues (e.g., high error rates, service downtime, low disk space, security events).
 
-    # HTTPS server for backend API
-    server {
-        listen 443 ssl;
-        server_name api.yourdomain.com; # Or yourdomain.com/api if you prefer
-
-        ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem; # Path to your SSL cert
-        ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem; # Path to your SSL key
-
-        location /api/ {
-            proxy_pass http://localhost:5000/api/; # Points to backend container exposed port
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-    ```
-3.  **Obtain SSL Certificates:**
-    Use Certbot to get free Let's Encrypt SSL certificates:
-    ```bash
-    sudo apt install certbot python3-certbot-nginx
-    sudo certbot --nginx -d yourdomain.com -d api.yourdomain.com
-    ```
-4.  **Enable Nginx configuration:**
-    ```bash
-    sudo ln -s /etc/nginx/sites-available/datavizpro.conf /etc/nginx/sites-enabled/
-    sudo nginx -t # Test configuration
-    sudo systemctl restart nginx
-    ```
-5.  **Update Frontend `REACT_APP_API_BASE_URL`:**
-    Ensure your `frontend/.env` (or build process) sets `REACT_APP_API_BASE_URL` to `https://api.yourdomain.com/api` (or `https://yourdomain.com/api` if using a single domain for both). You will need to rebuild your frontend Docker image after this change.
-
-## 5. CI/CD Pipeline (GitHub Actions)
-
-Refer to `.github/workflows/ci-cd.yml` for the CI/CD pipeline configuration. This typically involves:
-
-*   **Build**: Building Docker images for backend and frontend.
-*   **Test**: Running unit, integration, and API tests.
-*   **Lint**: Running code quality checks.
-*   **Deploy**: Pushing images to a container registry (e.g., Docker Hub, AWS ECR) and then deploying to your server (e.g., via SSH to run `docker-compose pull && docker-compose up -d`).
-
-For production deployments, consider:
-*   **Blue/Green or Canary Deployments**: For zero-downtime updates.
-*   **Rollback Strategy**: Ability to revert to previous stable versions.
-*   **Secrets Management**: Using cloud provider secret stores (e.g., AWS Secrets Manager, Vault) instead of `.env` files directly on the server.
-
-## 6. Monitoring and Logging
-
-*   **Host-level Monitoring**: Use `htop`, `top`, `docker stats` for basic resource usage.
-*   **Application Logs**: Configure Winston to send logs to a centralized logging system (e.g., ELK Stack, Splunk, LogDNA) for easy aggregation and analysis.
-*   **Container Monitoring**: Use Prometheus + Grafana or cloud-native monitoring solutions (e.g., AWS CloudWatch, GCP Monitoring) to track container health, resource utilization, and application-specific metrics.
-
-## 7. Backups
-
-*   **Database**: Set up automated backups for your PostgreSQL database (snapshotting volumes, `pg_dump`).
-*   **Data Uploads**: Ensure the `data_uploads` volume is also backed up.
-
-This guide provides a robust starting point for deploying DataVizPro to a production environment. Adapt it based on your specific cloud provider and operational requirements.
-```
+By following this guide, you can confidently deploy and operate the ML-Utilities-System in a production environment.

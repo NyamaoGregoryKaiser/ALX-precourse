@@ -1,474 +1,249 @@
-```markdown
-# ScrapeMaster: Enterprise Web Scraping Tools System
+# ML-Utilities-System
 
-ScrapeMaster is a robust, full-scale web scraping system designed for defining, executing, and managing web scraping jobs. It provides a powerful API and an intuitive frontend for users to interact with their scraping tasks and results.
+A comprehensive, production-ready Machine Learning Utilities System designed to streamline the management of ML datasets, models, and experiments.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Prerequisites](#prerequisites)
-4.  [Setup & Installation](#setup--installation)
-    *   [Backend Setup](#backend-setup)
-    *   [Frontend Setup](#frontend-setup)
-    *   [Database & Migrations](#database--migrations)
-    *   [Running with Docker Compose](#running-with-docker-compose)
-5.  [Configuration](#configuration)
-6.  [API Documentation](#api-documentation)
-7.  [Testing](#testing)
-    *   [Backend Tests](#backend-tests)
-    *   [Frontend Tests](#frontend-tests)
-    *   [Performance Tests](#performance-tests)
-8.  [CI/CD](#cicd)
-9.  [Deployment Guide](#deployment-guide)
-10. [Error Handling](#error-handling)
-11. [Logging & Monitoring](#logging--monitoring)
-12. [Caching](#caching)
-13. [Rate Limiting](#rate-limiting)
-14. [Authentication & Authorization](#authentication--authorization)
-15. [Project Structure](#project-structure)
-16. [Contributing](#contributing)
-17. [License](#license)
+2.  [Technology Stack](#technology-stack)
+3.  [Getting Started](#getting-started)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup (Docker Compose)](#local-development-setup-docker-compose)
+    *   [Running Migrations](#running-migrations)
+    *   [Seeding Initial Data](#seeding-initial-data)
+    *   [Running the Application](#running-the-application)
+4.  [API Documentation](#api-documentation)
+5.  [Frontend (Basic UI)](#frontend-basic-ui)
+6.  [Testing](#testing)
+    *   [Running Tests](#running-tests)
+    *   [Performance Testing (Locust)](#performance-testing-locust)
+7.  [Architecture](#architecture)
+8.  [Deployment](#deployment)
+9.  [Additional Features](#additional-features)
+10. [ALX Software Engineering Focus](#alx-software-engineering-focus)
+11. [License](#license)
+
+---
 
 ## 1. Features
 
-*   **User Authentication & Authorization:** Secure user login and role-based access control using JWT.
-*   **User Management:** CRUD operations for user accounts.
-*   **Scraping Job Management:**
-    *   Create, view, update, delete scraping job configurations.
-    *   Define target URLs, CSS selectors, data extraction rules.
-    *   Schedule immediate or recurring jobs.
-    *   Monitor job status (pending, running, completed, failed).
-*   **Asynchronous Job Processing:** Utilizes a Redis-backed queue (BullMQ) for reliable, non-blocking execution of scraping tasks.
-*   **Scraping Engine:** Powered by Puppeteer for robust headless browser automation, capable of handling dynamic, JavaScript-rendered content.
-*   **Scraping Results Storage:** Persistent storage of extracted data in PostgreSQL.
-*   **API:** Full RESTful API with CRUD operations for all core resources.
-*   **Frontend:** Intuitive React application for managing jobs and viewing results.
-*   **Caching:** Redis-based caching for faster API responses.
-*   **Rate Limiting:** Protects the API from excessive requests.
-*   **Comprehensive Logging:** Structured logging using Winston for traceability and debugging.
-*   **Global Error Handling:** Consistent error responses across the API.
-*   **Database Migrations:** TypeORM migrations for schema evolution.
-*   **Unit & Integration Testing:** High test coverage for backend logic.
-*   **Containerization:** Docker support for easy environment setup.
+*   **User Management**: Secure user registration, login, and role-based access control (normal user, superuser).
+*   **Dataset Management**: CRUD operations for managing ML datasets, including metadata like name, description, file path, size, type, and counts.
+*   **Model Management**: CRUD operations for registering and versioning trained ML models, capturing framework, task type, hyperparameters, and performance metrics.
+*   **Experiment Tracking**: CRUD operations for logging ML experiment runs, including parameters, metrics, artifacts URI, and status.
+*   **Authentication & Authorization**: JWT-based authentication for securing API endpoints.
+*   **Caching**: Redis-backed caching for read-heavy endpoints to improve performance.
+*   **Rate Limiting**: Middleware to protect the API from abuse and ensure fair usage.
+*   **Error Handling**: Centralized error handling middleware for consistent API responses.
+*   **Logging & Monitoring**: Basic logging configuration for application events.
+*   **Database Migrations**: Alembic for managing database schema changes.
+*   **Dockerization**: Containerized application for easy setup and deployment.
+*   **CI/CD**: Example GitHub Actions workflow for automated testing.
+*   **Comprehensive Testing**: Unit, integration, and basic performance tests.
+*   **Interactive API Docs**: Automatically generated OpenAPI (Swagger UI) documentation.
 
-## 2. Architecture
+## 2. Technology Stack
 
-ScrapeMaster follows a modular, layered architecture:
+*   **Backend**: Python (FastAPI)
+*   **Database**: PostgreSQL
+*   **ORM**: SQLAlchemy (Async)
+*   **Caching/Rate Limiting**: Redis
+*   **Database Migrations**: Alembic
+*   **Frontend**: Jinja2 (server-side rendered HTML with vanilla JS for basic interactivity)
+*   **Authentication**: JWT
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Pytest, httpx, Locust
 
-*   **Client Layer:** The React frontend (ScrapeMaster-UI) interacts with the backend API.
-*   **API Layer (NestJS):**
-    *   **Controllers:** Handle incoming HTTP requests, validate input, and delegate to services.
-    *   **Services:** Contain the core business logic, orchestrating data manipulation and external interactions (e.g., triggering scraping jobs).
-    *   **Modules:** Encapsulate related functionality (e.g., `AuthModule`, `UsersModule`, `ScrapingModule`).
-    *   **Middleware/Interceptors/Pipes/Filters:** Global request/response processing, validation, error handling, logging, caching, rate limiting.
-    *   **Jobs/Queue Module:** Manages interaction with the BullMQ queue (adding jobs, monitoring).
-    *   **Scraping Processor:** A dedicated worker service (or separate process) that consumes jobs from the BullMQ queue and executes the actual web scraping using Puppeteer.
-*   **Data Layer (PostgreSQL & TypeORM):**
-    *   **Entities:** TypeScript classes mapping to database tables.
-    *   **Repositories:** TypeORM provides a robust way to interact with the database.
-    *   **Migrations:** Manage database schema changes.
-*   **Cache Layer (Redis):** Used for caching API responses and potentially intermediate scraping data.
-*   **Queue Layer (Redis & BullMQ):** Redis serves as the message broker for BullMQ, which manages the job queue.
+## 3. Getting Started
 
+Follow these instructions to set up and run the project locally.
+
+### Prerequisites
+
+*   Docker and Docker Compose installed
+*   Python 3.11+ (if running without Docker or for development outside containers)
+
+### Local Development Setup (Docker Compose)
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/your-username/ml-utilities-system.git
+    cd ml-utilities-system
+    ```
+
+2.  **Create `.env` file**:
+    Copy the example environment variables and customize them.
+    ```bash
+    cp .env.example .env
+    ```
+    **Important**: Change `SECRET_KEY` in `.env` to a strong, random string for production.
+
+3.  **Build and run Docker containers**:
+    This command will build the `app` service image, start `db`, `redis`, and `app` containers. The `app` container's `command` in `docker-compose.yml` automatically runs Alembic migrations and seeds initial data.
+    ```bash
+    docker-compose up --build -d
+    ```
+    *   `--build`: Rebuilds images (useful after code changes).
+    *   `-d`: Runs containers in detached mode (in the background).
+
+4.  **Verify services are running**:
+    ```bash
+    docker-compose ps
+    ```
+    You should see `ml_utils_db`, `ml_utils_redis`, and `ml_utils_app` in a healthy state.
+
+### Running Migrations (Manual, if not using `docker-compose up`'s command)
+
+If you modify your models, you'll need to create and apply new migrations.
+Connect to the `app` container:
+```bash
+docker-compose exec app bash
 ```
-+-------------------+       +--------------------+       +---------------------+
-|   ScrapeMaster-UI | <---> | NestJS Backend API | <---> |  BullMQ Job Queue   |
-|     (React App)   |       |                    |       |    (Redis-backed)   |
-+-------------------+       +--------------------+       +---------------------+
-                                 ^         ^                       ^
-                                 |         |                       |
-                                 |         |                 +-----------+
-                                 |         +---------------> | Scraping  |
-                                 |                           | Processor |
-                                 |                           | (Puppeteer)|
-                                 |         +---------------+ +-----------+
-                                 |         |
-                                 v         v
-                         +-------------+   +-----------+
-                         | PostgreSQL  |   |   Redis   |
-                         |  (Data, Jobs)|   | (Cache, Queue)|
-                         +-------------+   +-----------+
+Then, inside the container:
+```bash
+# Generate a new migration script
+alembic revision --autogenerate -m "Add new feature X"
+
+# Apply migrations
+alembic upgrade head
 ```
+Exit the container: `exit`
 
-## 3. Prerequisites
+### Seeding Initial Data (Manual, if not using `docker-compose up`'s command)
 
-Before you begin, ensure you have the following installed:
+The `docker-compose.yml` already includes `python seed_data.py` as part of the app's startup command. If you need to re-seed or run it manually:
+```bash
+docker-compose exec app python seed_data.py
+```
+This script creates a default superuser (`admin@example.com` / `adminpassword`) and some sample datasets, models, and experiments.
 
-*   Node.js (LTS version, e.g., v18.x or v20.x)
-*   npm or Yarn
-*   Docker & Docker Compose (for local development and deployment)
-*   Git
+### Running the Application
 
-## 4. Setup & Installation
+After running `docker-compose up -d`, the application should be accessible:
 
-You can run the application either directly on your machine or using Docker Compose. Docker Compose is highly recommended for consistency.
+*   **FastAPI Backend**: `http://localhost:8000`
+*   **Interactive API Docs (Swagger UI)**: `http://localhost:8000/docs`
+*   **Basic Frontend**: `http://localhost:8000` (redirects to `/`)
+*   **Redis**: `http://localhost:6379` (for Redis client access, not a web interface)
+*   **PostgreSQL**: `http://localhost:5432` (for DB client access)
 
-First, clone the repository:
+## 4. API Documentation
+
+The FastAPI application automatically generates OpenAPI documentation, accessible via Swagger UI:
+
+*   **Swagger UI**: `http://localhost:8000/docs`
+*   **ReDoc**: `http://localhost:8000/redoc`
+*   **OpenAPI JSON Schema**: `http://localhost:8000/api/v1/openapi.json`
+
+Refer to these for detailed information on endpoints, request/response schemas, and available operations (CRUD).
+
+## 5. Frontend (Basic UI)
+
+A minimal, backend-rendered HTML frontend (`app/templates/`) with vanilla JavaScript (`app/static/js/main.js`) is provided to demonstrate basic interaction with the API.
+
+*   **Home Page**: `http://localhost:8000/`
+*   **Login Page**: `http://localhost:8000/login`
+    *   Use `admin@example.com` / `adminpassword` to log in initially.
+*   **Dashboard**: `http://localhost:8000/dashboard`
+    *   Here you can create, view, and manage datasets, models, and experiments through a simple web interface.
+
+This UI serves as a demonstration; a full-scale production application would typically use a dedicated SPA framework like React, Vue, or Angular.
+
+## 6. Testing
+
+The project includes unit, integration, and performance tests to ensure code quality and functionality.
+
+### Running Tests
+
+To run all tests (unit, integration, and generate coverage report):
 
 ```bash
-git clone https://github.com/yourusername/scrape-master.git
-cd scrape-master
+docker-compose exec app pytest /app/tests --cov=/app --cov-report=term-missing --cov-report=xml
 ```
+*   `--cov=/app`: Enables coverage measurement for the `app` directory.
+*   `--cov-report=term-missing`: Shows missing lines in the terminal.
+*   `--cov-report=xml`: Generates an XML coverage report (`coverage.xml`), useful for CI/CD tools like Codecov.
 
-### Environment Variables
+**Target Coverage**: Aim for 80%+ code coverage for critical modules.
 
-Both `backend` and `frontend` directories have an `.env.example` file. Copy them to `.env` and fill in the values.
+### Performance Testing (Locust)
 
-**`backend/.env`:**
+Locust is used for load testing the API endpoints.
 
-```env
-PORT=3000
-NODE_ENV=development
-JWT_SECRET=supersecretjwtkey
-JWT_EXPIRES_IN=1d
+1.  **Ensure services are running**:
+    ```bash
+    docker-compose up -d
+    ```
 
-# Database
-DATABASE_TYPE=postgres
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=postgres
-DATABASE_NAME=scrapemaster_db
+2.  **Run Locust from within the app container**:
+    ```bash
+    docker-compose exec app locust -f /app/tests/performance/test_locust.py --web-host 0.0.0.0
+    ```
+    This will start the Locust web UI, usually accessible at `http://localhost:8089`.
 
-# Redis for Caching and BullMQ
-REDIS_HOST=localhost
-REDIS_PORT=6379
+3.  **Access the Locust UI**: Open your browser to `http://localhost:8089`.
+    *   Enter the number of users and spawn rate.
+    *   The host for the FastAPI app should be `http://localhost:8000`.
+    *   Click "Start swarming" to begin the load test.
 
-# Rate Limiting
-THROTTLE_TTL=60 # seconds
-THROTTLE_LIMIT=100 # requests per TTL
+    Alternatively, run in headless mode for automated CI/CD checks:
+    ```bash
+    docker-compose exec app locust -f /app/tests/performance/test_locust.py --web-host 0.0.0.0 --headless --users 10 --spawn-rate 5 --run-time 30s --csv=locust_report
+    ```
+    This will run for 30 seconds with 10 users, spawning 5 users/second, and save results to CSV.
 
-# Puppeteer (Docker specific)
-PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable # This is for the Docker image
-```
+## 7. Architecture
 
-**`frontend/.env`:**
+The system follows a layered, modular architecture:
 
-```env
-REACT_APP_API_BASE_URL=http://localhost:3000/api
-```
+*   **Client Layer**: Basic Jinja2/JS frontend or external SPA/CLI clients interacting via API.
+*   **API Layer (FastAPI)**:
+    *   **Endpoints (`app/api/v1/endpoints`)**: Defines HTTP routes and their handlers, performs request validation, and orchestrates business logic.
+    *   **Schemas (`app/schemas`)**: Pydantic models for data validation and serialization (request and response bodies).
+    *   **Core (`app/core`)**: Configuration, database connection, security utilities (JWT, password hashing), dependency injection, middleware (error handling, rate limiting), and caching.
+*   **Business Logic Layer (`app/crud`, `app/services`)**:
+    *   **CRUD (`app/crud`)**: Database interaction logic, abstracting common Create, Read, Update, Delete operations.
+    *   **Services (`app/services`)**: Contains more complex business rules or orchestrates multiple CRUD operations. (Currently light, but designed for growth).
+*   **Data Access Layer (`app/models`)**: SQLAlchemy ORM models defining the database schema.
+*   **Database (PostgreSQL)**: Persistent storage for all application data.
+*   **Cache (Redis)**: In-memory data store for caching API responses and managing rate limits.
 
 ---
+[Link to `docs/architecture.md` for more details on architecture and design decisions.]
 
-### Running with Docker Compose (Recommended)
+## 8. Deployment
 
-This is the easiest way to get the entire system up and running.
-
-1.  **Build and Run:**
-    Navigate to the root directory of the project (`scrape-master/`) and run:
-    ```bash
-    docker-compose up --build
-    ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Start PostgreSQL, Redis, backend, and frontend containers.
-    *   Execute database migrations and seed data on the backend startup.
-
-2.  **Access the applications:**
-    *   **Backend API:** `http://localhost:3000/api` (Swagger docs at `http://localhost:3000/api-docs`)
-    *   **Frontend UI:** `http://localhost:80` (or `http://localhost:3001` if frontend is not running on port 80 via Nginx/proxy)
-
-3.  **Stop the applications:**
-    ```bash
-    docker-compose down
-    ```
+The project is designed for containerized deployment, making it suitable for various cloud environments (AWS ECS, Google Cloud Run, Kubernetes, etc.).
 
 ---
-
-### Backend Setup (Manual)
-
-1.  **Navigate to the backend directory:**
-    ```bash
-    cd backend
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install # or yarn install
-    ```
-3.  **Ensure PostgreSQL and Redis are running:**
-    You'll need a running PostgreSQL instance (e.g., on port 5432) and a Redis instance (e.g., on port 6379) accessible from your `backend` application. Update your `backend/.env` file accordingly.
-4.  **Database Migrations:**
-    Create a database named `scrapemaster_db` (or whatever you configured in `DATABASE_NAME`).
-    Run the migrations to set up the schema:
-    ```bash
-    npm run typeorm migration:run
-    ```
-5.  **Seed Data (Optional):**
-    ```bash
-    npm run seed
-    ```
-6.  **Start the backend:**
-    ```bash
-    npm run start:dev
-    ```
-    The API will be available at `http://localhost:3000/api`.
-
----
-
-### Frontend Setup (Manual)
-
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd frontend
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install # or yarn install
-    ```
-3.  **Start the frontend:**
-    ```bash
-    npm run start
-    ```
-    The frontend will be available at `http://localhost:3001`.
-
----
-
-## 5. Configuration
-
-Configuration is managed using environment variables, loaded through the `@nestjs/config` module. A validation schema ensures all required variables are present and correctly formatted.
-
-See `backend/src/config/configuration.ts` and `backend/src/config/validation.ts` for details.
-
-## 6. API Documentation
-
-The backend API is documented using Swagger (OpenAPI). Once the backend is running, you can access the interactive API documentation at:
-
-**`http://localhost:3000/api-docs`**
-
-This documentation provides details on all available endpoints, request/response schemas, and allows you to test the API directly from your browser.
-
-## 7. Testing
-
-### Backend Tests
-
-The backend uses Jest for unit, integration, and E2E (API) tests.
-
-*   **Unit Tests:** Focus on individual services, controllers, or utilities in isolation.
-*   **Integration Tests:** Test the interaction between multiple components (e.g., service and database).
-*   **E2E (API) Tests:** Use Supertest to simulate HTTP requests and test the full API flow.
-
-To run all backend tests:
-
-```bash
-cd backend
-npm run test
-```
-
-To run tests with coverage reporting:
-
-```bash
-cd backend
-npm run test:cov
-```
-We aim for 80%+ test coverage.
-
-### Frontend Tests
-
-The frontend uses Jest and React Testing Library for unit and integration tests of components and Redux slices.
-
-To run frontend tests:
-
-```bash
-cd frontend
-npm run test
-```
-
-### Performance Tests
-
-For performance testing, tools like **k6** or **JMeter** are recommended. While not fully implemented in the codebase, a basic setup would involve:
-
-1.  **Install k6:** Follow instructions on [k6.io](https://k6.io/docs/getting-started/installation/).
-2.  **Create a test script (e.g., `performance-test.js` in a `test/performance` directory):**
-
-    ```javascript
-    // test/performance/k6_test.js
-    import http from 'k6/http';
-    import { check, sleep } from 'k6';
-
-    export const options = {
-      vus: 10, // Virtual Users
-      duration: '30s', // Test duration
-    };
-
-    export default function () {
-      const BASE_URL = 'http://localhost:3000/api';
-
-      // Example: Test user login
-      const loginRes = http.post(`${BASE_URL}/auth/login`, JSON.stringify({
-        username: 'testuser',
-        password: 'password'
-      }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      check(loginRes, {
-        'login status is 201': (r) => r.status === 201,
-        'login token exists': (r) => r.json() && r.json().accessToken,
-      });
-
-      const authToken = loginRes.json('accessToken');
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      };
-
-      // Example: Test fetching scraping jobs
-      const jobsRes = http.get(`${BASE_URL}/scraping-jobs`, { headers });
-      check(jobsRes, {
-        'jobs status is 200': (r) => r.status === 200,
-      });
-
-      sleep(1);
-    }
-    ```
-3.  **Run the test:**
-    ```bash
-    k6 run test/performance/k6_test.js
-    ```
-
-## 8. CI/CD
-
-A basic GitHub Actions workflow (`.github/workflows/main.yml`) is provided for Continuous Integration and Deployment. This workflow typically includes:
-
-*   **Trigger:** On push to `main` branch or pull requests.
-*   **Backend:**
-    *   Install Node.js dependencies.
-    *   Run lint checks.
-    *   Run backend tests (unit, integration, E2E).
-    *   Build Docker image.
-*   **Frontend:**
-    *   Install Node.js dependencies.
-    *   Run lint checks.
-    *   Run frontend tests.
-    *   Build Docker image.
-*   **Deployment (Example):** Push Docker images to a registry (e.g., Docker Hub, AWS ECR) and trigger deployment to a staging/production environment.
-
-See `.github/workflows/main.yml` for the example configuration.
-
-## 9. Deployment Guide
-
-This section outlines a basic deployment strategy using Docker. For production, consider using container orchestration platforms like Kubernetes or managed services like AWS ECS, Google Cloud Run, or Azure Container Apps.
-
-1.  **Build Production Docker Images:**
-    Ensure you have `backend/Dockerfile` and `frontend/Dockerfile` configured for production (multi-stage builds are used to create lean images).
-    ```bash
-    # From the root directory
-    docker build -t scrape-master-backend ./backend
-    docker build -t scrape-master-frontend ./frontend
-    ```
-    For a CI/CD pipeline, these steps would be automated.
-
-2.  **Environment Variables:**
-    Prepare your production `.env` files for both backend and frontend. Ensure `DATABASE_HOST`, `REDIS_HOST`, and `REACT_APP_API_BASE_URL` point to your production services.
-
-3.  **Database & Redis:**
-    Provision a managed PostgreSQL instance (e.g., AWS RDS, Azure Database for PostgreSQL) and a managed Redis instance (e.g., AWS ElastiCache, Azure Cache for Redis). This offloads database management and ensures high availability.
-
-4.  **Running Containers:**
-    You can use `docker-compose` for a single-server deployment (less common for true production without additional tooling):
-    ```bash
-    # On your production server
-    # Place your production .env files in backend/ and frontend/
-    docker-compose -f docker-compose.prod.yml up -d # assuming you create a production compose file
-    ```
-    Or, individually run containers:
-    ```bash
-    docker run -d --name scrape-master-db -p 5432:5432 -e POSTGRES_PASSWORD=your_secure_password postgres:13
-    docker run -d --name scrape-master-redis -p 6379:6379 redis:6
-
-    # Wait for DB/Redis to start... then run migrations
-    # (In a real scenario, migrations are part of a deployment script or job)
-    # docker run --rm -v $(pwd)/backend:/app -w /app scrape-master-backend npm run typeorm migration:run
-
-    docker run -d --name scrape-master-backend \
-      -p 3000:3000 \
-      --env-file ./backend/.env \
-      scrape-master-backend
-
-    docker run -d --name scrape-master-frontend \
-      -p 80:80 \ # Or 443:80 for HTTPS with a reverse proxy
-      --env-file ./frontend/.env \
-      scrape-master-frontend
-    ```
-
-5.  **Reverse Proxy (Nginx/Caddy):**
-    For a production setup, it's highly recommended to place a reverse proxy (like Nginx) in front of your frontend and backend applications for:
-    *   SSL termination (HTTPS).
-    *   Load balancing (if you have multiple instances).
-    *   Serving static files.
-    *   URL rewriting.
-
-    Example Nginx configuration (simplified):
-    ```nginx
-    server {
-        listen 80;
-        server_name yourdomain.com;
-
-        location / {
-            proxy_pass http://frontend:80; # Assuming frontend container name 'frontend'
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        location /api/ {
-            proxy_pass http://backend:3000/api/; # Assuming backend container name 'backend'
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        location /api-docs/ {
-            proxy_pass http://backend:3000/api-docs/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-    }
-    ```
-
-## 10. Error Handling
-
-A global `HttpExceptionFilter` intercepts all `HttpException` instances (and extends to catch all uncaught exceptions) to provide consistent, structured error responses across the API.
-
-## 11. Logging & Monitoring
-
-The system integrates `Winston` for structured, configurable logging.
-*   **Backend:** Logs important events, API requests, errors, and job processing status.
-*   **Monitoring:** While not fully implemented with a dedicated monitoring tool, the structured logs can be easily shipped to logging aggregators (e.g., ELK Stack, Splunk, DataDog) for centralized monitoring and alerting.
-
-## 12. Caching
-
-Redis is used as a caching layer.
-*   An `HttpCacheInterceptor` can be applied to specific API endpoints to cache successful `GET` responses, reducing database load and improving response times.
-*   A `CachingService` provides direct access to Redis for custom caching needs.
-
-## 13. Rate Limiting
-
-The `@nestjs/throttler` package is integrated to provide configurable rate limiting on API endpoints, preventing abuse and ensuring fair usage. Configuration is done via environment variables (`THROTTLE_TTL`, `THROTTLE_LIMIT`).
-
-## 14. Authentication & Authorization
-
-*   **Authentication:** JWT (JSON Web Tokens) are used. Users log in with username/password, receive an access token, and include this token in the `Authorization` header (`Bearer <token>`) for subsequent requests.
-*   **Authorization:** `AuthGuard` protects routes, ensuring only authenticated users can access them. Role-based access control can be extended using `RolesGuard` and `RolesDecorator`.
-
-## 15. Project Structure
-
-Refer to the "Project Structure" section at the beginning of this `README.md` for a detailed breakdown of the codebase organization.
-
-## 16. Contributing
-
-Contributions are welcome! Please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Write tests for your changes.
-5.  Ensure all tests pass (`npm run test` in respective directories).
-6.  Commit your changes (`git commit -m 'feat: Add new feature X'`).
-7.  Push to the branch (`git push origin feature/your-feature-name`).
-8.  Create a Pull Request.
-
-## 17. License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
-```
+[Link to `docs/deployment.md` for a comprehensive deployment guide.]
+
+## 9. Additional Features
+
+*   **Authentication/Authorization**: JWT tokens are used for stateless authentication. Users can have `is_superuser` and `is_active` flags for basic role-based authorization.
+*   **Logging and Monitoring**: Python's standard `logging` module is configured. In a production environment, this would integrate with a centralized logging system (e.g., ELK stack, Datadog).
+*   **Error Handling Middleware**: Custom middleware (`app/core/middleware.py`) catches common `HTTPException` types and provides consistent JSON error responses.
+*   **Caching Layer**: Redis is used via `app/core/cache.py` to cache responses for GET endpoints, improving performance for frequently accessed data. Cache invalidation is triggered on data modification.
+*   **Rate Limiting**: Implemented via a middleware (`app/core/middleware.py`) using Redis to track and limit requests per IP address per minute, preventing API abuse.
+
+## 10. ALX Software Engineering Focus
+
+This project embodies several principles covered in ALX Software Engineering pre-course materials:
+
+*   **Programming Logic**: Clear, modular Python code with well-defined functions and classes, adhering to DRY principles in CRUD operations.
+*   **Algorithm Design**:
+    *   **Pagination**: Implemented in `CRUDBase` for efficient retrieval of large datasets.
+    *   **Data Validation**: Pydantic schemas enforce data integrity and structure.
+    *   **Security**: Robust password hashing (bcrypt) and JWT token generation/validation.
+*   **Technical Problem Solving**:
+    *   **Database Management**: Use of Alembic for controlled schema evolution, SQL relationships, and efficient queries.
+    *   **Scalability**: Async FastAPI, PostgreSQL, and Redis for handling concurrent requests and data loads.
+    *   **Maintainability**: Layered architecture, dependency injection, and clear separation of concerns.
+    *   **Error Handling**: Proactive error handling and graceful degradation (e.g., Redis down for rate limiting).
+    *   **Containerization**: Solving environment consistency and deployment complexity using Docker.
+    *   **Testing**: Ensuring reliability and correctness through a comprehensive test suite.
+
+## 11. License
+
+This project is licensed under the MIT License - see the `LICENSE` file for details.

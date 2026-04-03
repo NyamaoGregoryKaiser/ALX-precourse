@@ -1,76 +1,64 @@
-```yaml
-version: '3.8'
+version: '3.9'
 
 services:
-  postgres:
-    image: postgres:13
-    restart: always
+  db:
+    image: postgres:15-alpine
+    container_name: ml_utils_db
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:-scrapemaster_db}
-      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ml_utils_db}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - pg_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-ml_utils_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:6-alpine
-    restart: always
+    image: redis:7-alpine
+    container_name: ml_utils_redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    # command: sh -c "npm run typeorm migration:run && npm run seed && npm run start:dev" # Run migrations & seeds on startup
-    # For local dev, we typically run migrations manually or through a separate script
-    command: npm run start:dev
+    container_name: ml_utils_app
+    env_file:
+      - .env
     ports:
-      - "3000:3000"
-    environment:
-      # Pass through all environment variables from host .env to container
-      # This is for convenience in dev, in prod use explicit ENV vars or secrets
-      - PORT=${PORT:-3000}
-      - NODE_ENV=${NODE_ENV:-development}
-      - JWT_SECRET=${JWT_SECRET:-supersecretjwtkey}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1d}
-      - DATABASE_TYPE=${DATABASE_TYPE:-postgres}
-      - DATABASE_HOST=postgres # Service name in docker-compose
-      - DATABASE_PORT=${DATABASE_PORT:-5432}
-      - DATABASE_USERNAME=${DATABASE_USERNAME:-postgres}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-postgres}
-      - DATABASE_NAME=${DATABASE_NAME:-scrapemaster_db}
-      - REDIS_HOST=redis # Service name in docker-compose
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - THROTTLE_TTL=${THROTTLE_TTL:-60}
-      - THROTTLE_LIMIT=${THROTTLE_LIMIT:-100}
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable # Path inside the Docker image
+      - "8000:8000"
     depends_on:
-      - postgres
-      - redis
+      db:
+        condition: service_healthy # Wait for database to be healthy
+      redis:
+        condition: service_healthy # Wait for redis to be healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python seed_data.py &&
+             uvicorn main:app --host 0.0.0.0 --port 8000"
     volumes:
-      - ./backend:/app
-      - /app/node_modules # Don't overwrite node_modules in container with host's
-    # In production, use healthchecks or wait-for-it scripts
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3001:3001" # Expose frontend on 3001
-    environment:
-      - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-http://localhost:3000/api}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    # In a typical setup, you'd use a reverse proxy like Nginx for frontend on port 80
+      - ./app:/app/app # Mount the app directory for live code changes during development
+      - ./main.py:/app/main.py
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./seed_data.py:/app/seed_data.py
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
 
 volumes:
-  postgres_data:
-  redis_data:
+  pg_data:
 ```
+
+#### `.github/workflows/ci.yml`
+```yaml

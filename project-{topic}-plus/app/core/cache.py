@@ -1,72 +1,87 @@
-```python
-import redis.asyncio as redis
 from typing import Optional
+from redis.asyncio import Redis, ConnectionPool
+from redis.exceptions import ConnectionError as RedisConnectionError
 import logging
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_redis_client: Optional[redis.Redis] = None
+_redis_client: Optional[Redis] = None
+_redis_pool: Optional[ConnectionPool] = None
 
-async def get_redis_client() -> redis.Redis:
+async def init_redis_cache():
     """
-    Initializes and returns a singleton Redis client.
+    Initializes the Redis connection pool and client.
     """
-    global _redis_client
-    if _redis_client is None:
-        try:
-            _redis_client = redis.from_url(
-                settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True # Decodes responses to Python strings automatically
-            )
-            await _redis_client.ping() # Test connection
-            logger.info("Redis client connected successfully.")
-        except Exception as e:
-            logger.error(f"Could not connect to Redis at {settings.REDIS_URL}: {e}")
-            _redis_client = None # Reset to None if connection fails
-            raise # Re-raise to indicate failure
-    return _redis_client
+    global _redis_pool, _redis_client
+    try:
+        _redis_pool = ConnectionPool(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+        _redis_client = Redis(connection_pool=_redis_pool)
+        # Ping to check connection
+        await _redis_client.ping()
+        logger.info(f"Redis connected at {settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}")
+    except RedisConnectionError as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        _redis_client = None # Ensure client is None if connection fails
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during Redis initialization: {e}")
+        _redis_client = None
 
-async def close_redis_client() -> None:
+async def close_redis_cache():
     """
-    Closes the Redis client connection.
+    Closes the Redis connection pool.
     """
-    global _redis_client
+    global _redis_client, _redis_pool
     if _redis_client:
         await _redis_client.close()
         _redis_client = None
-        logger.info("Redis client closed.")
+    if _redis_pool:
+        await _redis_pool.disconnect()
+        _redis_pool = None
+    logger.info("Redis connection closed.")
 
-async def get_from_cache(key: str) -> Optional[str]:
-    """Retrieves data from Redis cache."""
-    try:
-        client = await get_redis_client()
-        if client:
-            return await client.get(key)
-        return None
-    except Exception as e:
-        logger.error(f"Error getting key '{key}' from cache: {e}")
-        return None
+async def get_redis_client() -> Optional[Redis]:
+    """
+    Returns the initialized Redis client.
+    """
+    if _redis_client is None:
+        logger.warning("Redis client not initialized. Call init_redis_cache() first.")
+    return _redis_client
 
-async def set_to_cache(key: str, value: str, ttl: int = 300) -> None:
-    """Sets data to Redis cache with an optional time-to-live (TTL)."""
-    try:
-        client = await get_redis_client()
-        if client:
-            await client.setex(key, ttl, value)
-            logger.debug(f"Key '{key}' set in cache with TTL {ttl}.")
-    except Exception as e:
-        logger.error(f"Error setting key '{key}' to cache: {e}")
+async def invalidate_cache(key: str):
+    """
+    Invalidates a specific key in the Redis cache.
+    """
+    redis = await get_redis_client()
+    if redis:
+        await redis.delete(key)
+        logger.debug(f"Cache key '{key}' invalidated.")
 
-async def delete_from_cache(key: str) -> None:
-    """Deletes data from Redis cache."""
-    try:
-        client = await get_redis_client()
-        if client:
-            await client.delete(key)
-            logger.debug(f"Key '{key}' deleted from cache.")
-    except Exception as e:
-        logger.error(f"Error deleting key '{key}' from cache: {e}")
-```
+async def set_cache(key: str, value: str, ttl: int = 300):
+    """
+    Sets a value in the Redis cache with a time-to-live (TTL).
+    """
+    redis = await get_redis_client()
+    if redis:
+        await redis.set(key, value, ex=ttl)
+        logger.debug(f"Cache key '{key}' set with TTL {ttl}s.")
+
+async def get_cache(key: str) -> Optional[str]:
+    """
+    Retrieves a value from the Redis cache.
+    """
+    redis = await get_redis_client()
+    if redis:
+        value = await redis.get(key)
+        if value:
+            logger.debug(f"Cache key '{key}' hit.")
+            return value
+        logger.debug(f"Cache key '{key}' miss.")
+    return None

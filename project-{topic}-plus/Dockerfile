@@ -1,40 +1,29 @@
-```dockerfile
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim-buster
+# Use a lightweight Python base image
+FROM python:3.11-slim-buster
+
+# Set environment variables for non-interactive execution
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies for psycopg2 (PostgreSQL adapter) and build essentials
-# This is required for `psycopg2-binary` and general Python package compilation
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the requirements file first to leverage Docker cache
-COPY requirements.txt .
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements file and install dependencies
+COPY ./requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the application code
-COPY . .
+COPY ./app /app/app
+COPY ./main.py /app/main.py
+COPY ./alembic /app/alembic
+COPY ./alembic.ini /app/alembic.ini
+COPY ./seed_data.py /app/seed_data.py
 
-# Set environment variables
-ENV FLASK_APP=run.py
-ENV FLASK_CONFIG=production # Set to 'production' for default Docker deployments
+# Expose the port FastAPI runs on
+EXPOSE 8000
 
-# Expose the port the app runs on
-EXPOSE 5000
-
-# Run migrations (ensure database is up before this step in docker-compose)
-# This command is typically run as part of an entrypoint or init script
-# ENTRYPOINT ["/usr/local/bin/python", "run.py"] # We'll use a specific command with Gunicorn
-
-# Command to run the application using Gunicorn (production-ready WSGI server)
-# The scheduler runs as a background thread within this Gunicorn process.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "run:app"]
-
-```
+# Command to run the application using uvicorn
+# Use Gunicorn with Uvicorn workers for production for better process management
+# Example: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000
+# For simplicity, using direct uvicorn for this example.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - ML Utilities</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>ML Utilities System Dashboard</h1>
+        <p>Manage your Datasets, Models, and Experiments</p>
+    </header>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/docs">API Docs</a>
+        <button id="logout-btn">Logout</button>
+    </nav>
+    <div class="container">
+        <h2>Your ML Workspace</h2>
+
+        <p id="success-message" class="success-message" style="display: none;"></p>
+        <p id="error-message" class="error-message" style="display: none;"></p>
+
+        <div class="tab-nav">
+            <button data-tab="datasets">Datasets</button>
+            <button data-tab="models">ML Models</button>
+            <button data-tab="experiments">Experiments</button>
+        </div>
+
+        <!-- Datasets Tab -->
+        <div id="datasets" class="tab-content hidden">
+            <h3>Register New Dataset</h3>
+            <form id="create-dataset-form">
+                <div class="form-group">
+                    <label for="dataset-name">Name:</label>
+                    <input type="text" id="dataset-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="dataset-description">Description:</label>
+                    <textarea id="dataset-description" name="description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="dataset-file-path">File Path (e.g., s3://bucket/data.csv):</label>
+                    <input type="text" id="dataset-file-path" name="file_path" required>
+                </div>
+                <div class="form-group">
+                    <label for="dataset-file-type">File Type (e.g., csv, parquet):</label>
+                    <input type="text" id="dataset-file-type" name="file_type">
+                </div>
+                <div class="form-group">
+                    <label for="dataset-file-size-bytes">File Size (bytes):</label>
+                    <input type="number" id="dataset-file-size-bytes" name="file_size_bytes">
+                </div>
+                <div class="form-group">
+                    <label for="dataset-rows-count">Rows Count:</label>
+                    <input type="number" id="dataset-rows-count" name="rows_count">
+                </div>
+                <div class="form-group">
+                    <label for="dataset-columns-count">Columns Count:</label>
+                    <input type="number" id="dataset-columns-count" name="columns_count">
+                </div>
+                <button type="submit">Register Dataset</button>
+            </form>
+
+            <h3 style="margin-top: 40px;">Registered Datasets</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>File Path</th>
+                        <th>Type</th>
+                        <th>Rows</th>
+                        <th>Uploaded At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="datasets-table-body">
+                    <!-- Datasets will be loaded here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ML Models Tab -->
+        <div id="models" class="tab-content hidden">
+            <h3>Register New ML Model</h3>
+            <form id="create-model-form">
+                <div class="form-group">
+                    <label for="model-name">Name:</label>
+                    <input type="text" id="model-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="model-version">Version (e.g., v1.0, 2023-10-26):</label>
+                    <input type="text" id="model-version" name="version" required>
+                </div>
+                <div class="form-group">
+                    <label for="model-description">Description:</label>
+                    <textarea id="model-description" name="description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="model-path">Model Path (e.g., s3://bucket/model.pkl):</label>
+                    <input type="text" id="model-path" name="model_path" required>
+                </div>
+                <div class="form-group">
+                    <label for="model-framework">Framework (e.g., scikit-learn, TensorFlow):</label>
+                    <input type="text" id="model-framework" name="framework">
+                </div>
+                <div class="form-group">
+                    <label for="model-task-type">Task Type (e.g., classification, regression):</label>
+                    <input type="text" id="model-task-type" name="task_type">
+                </div>
+                <div class="form-group">
+                    <label for="model-hyperparameters">Hyperparameters (JSON):</label>
+                    <textarea id="model-hyperparameters" name="hyperparameters" rows="4" placeholder='{"learning_rate": 0.01, "epochs": 10}'></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="model-metrics">Metrics (JSON):</label>
+                    <textarea id="model-metrics" name="metrics" rows="4" placeholder='{"accuracy": 0.92, "precision": 0.88}'></textarea>
+                </div>
+                <button type="submit">Register ML Model</button>
+            </form>
+
+            <h3 style="margin-top: 40px;">Registered ML Models</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Version</th>
+                        <th>Framework</th>
+                        <th>Task Type</th>
+                        <th>Metrics</th>
+                        <th>Registered At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="models-table-body">
+                    <!-- Models will be loaded here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Experiments Tab -->
+        <div id="experiments" class="tab-content hidden">
+            <h3>Log New Experiment Run</h3>
+            <form id="create-experiment-form">
+                <div class="form-group">
+                    <label for="experiment-name">Name:</label>
+                    <input type="text" id="experiment-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="experiment-description">Description:</label>
+                    <textarea id="experiment-description" name="description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="experiment-parameters">Parameters (JSON):</label>
+                    <textarea id="experiment-parameters" name="parameters" rows="4" placeholder='{"param1": "value1", "param2": 10}'></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="experiment-metrics">Metrics (JSON):</label>
+                    <textarea id="experiment-metrics" name="metrics" rows="4" placeholder='{"accuracy": 0.85, "f1_score": 0.82}'></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="experiment-artifacts-uri">Artifacts URI (e.g., s3://bucket/artifacts/run_xyz):</label>
+                    <input type="text" id="experiment-artifacts-uri" name="artifacts_uri">
+                </div>
+                <div class="form-group">
+                    <label for="experiment-status">Status:</label>
+                    <select id="experiment-status" name="status">
+                        <option value="pending">Pending</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="experiment-model-id">Associated Model ID (Optional):</label>
+                    <input type="number" id="experiment-model-id" name="model_id">
+                </div>
+                <div class="form-group">
+                    <label for="experiment-dataset-id">Associated Dataset ID (Optional):</label>
+                    <input type="number" id="experiment-dataset-id" name="dataset_id">
+                </div>
+                <button type="submit">Log Experiment</button>
+            </form>
+
+            <h3 style="margin-top: 40px;">Logged Experiments</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Run ID</th>
+                        <th>Status</th>
+                        <th>Metrics</th>
+                        <th>Model ID</th>
+                        <th>Dataset ID</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="experiments-table-body">
+                    <!-- Experiments will be loaded here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+    <footer>
+        <p>&copy; 2023 ML Utilities System. All rights reserved.</p>
+    </footer>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

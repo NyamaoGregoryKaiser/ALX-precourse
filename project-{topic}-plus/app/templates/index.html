@@ -1,47 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Task Management API - Swagger UI</title>
-    <link rel="stylesheet" type="text/css" href="{{ swagger_ui_css }}">
-    <style>
-        html {
-            box-sizing: border-box;
-            overflow: -moz-scrollbars-vertical;
-            overflow-y: scroll;
-        }
-        *, *:before, *:after {
-            box-sizing: inherit;
-        }
-        body {
-            margin: 0;
-            background: #fafafa;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }} - Home</title>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div id="swagger-ui"></div>
-    <script src="{{ swagger_ui_bundle_js }}"></script>
-    <script src="{{ swagger_ui_standalone_preset_js }}"></script>
-    <script>
-        window.onload = function() {
-            // Build a system
-            const ui = SwaggerUIBundle({
-                url: "{{ swagger_spec_url }}",
-                dom_id: '#swagger-ui',
-                deepLinking: true,
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: "StandaloneLayout",
-                validatorUrl: null // Disable Swagger validator
-            });
-            window.ui = ui;
-        };
-    </script>
+    <header>
+        <h1>{{ project_name }}</h1>
+        <p>Your one-stop solution for ML workflow management</p>
+    </header>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/login">Login</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/docs">API Docs</a>
+    </nav>
+    <div class="container">
+        <h2>Welcome to the Machine Learning Utilities System</h2>
+        <p>This system provides a robust platform for managing your machine learning lifecycle, from dataset registration to experiment tracking and model deployment.</p>
+        
+        <h3>Key Features:</h3>
+        <ul>
+            <li><strong>Dataset Management:</strong> Register, describe, and track your training and validation datasets.</li>
+            <li><strong>Model Management:</strong> Version and deploy your machine learning models with detailed metadata.</li>
+            <li><strong>Experiment Tracking:</strong> Log hyperparameters, metrics, and artifacts for every experiment run, ensuring reproducibility and easy comparison.</li>
+            <li><strong>User Authentication & Authorization:</strong> Secure access with JWT and role-based controls.</li>
+            <li><strong>Scalable Architecture:</strong> Built with FastAPI, PostgreSQL, and Docker for production readiness.</li>
+        </ul>
+
+        <p>Get started by <a href="/login">logging in</a> or exploring the <a href="/docs">API documentation</a>.</p>
+    </div>
+    <footer>
+        <p>&copy; 2023 {{ project_name }}. All rights reserved.</p>
+    </footer>
 </body>
 </html>
-```

@@ -1,108 +1,96 @@
-```python
 import time
+import json
 import logging
-import uuid
-from typing import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 from starlette.types import ASGIApp
-from fastapi_limiter.depends import RateLimiter
+from starlette import status
+from redis.asyncio import Redis
 
-from app.core.exceptions import CustomException, UnauthorizedException, ForbiddenException
+from app.core.cache import get_redis_client
 from app.core.config import settings
+from app.core.errors import (
+    NotFoundException,
+    ForbiddenException,
+    UnauthorizedException,
+    DuplicateEntryException,
+    InternalServerError,
+)
 
-# Configure structured logging for middleware
-# A more advanced setup might use a library like Loguru or structlog
-logger = logging.getLogger("app.middleware")
-logger.setLevel(settings.LOG_LEVEL)
+logger = logging.getLogger(__name__)
 
-AUTH_HEADER_KEY = "X-Request-ID" # Custom header for tracing requests
-
-def get_request_id(request: Request) -> str:
-    """Retrieves or generates a unique request ID."""
-    request_id = request.headers.get(AUTH_HEADER_KEY)
-    if not request_id:
-        request_id = str(uuid.uuid4())
-        request.state.request_id = request_id # Store for internal use
-    return request_id
-
-async def logging_middleware(request: Request, call_next: Callable) -> Response:
+async def add_process_time_header(request: Request, call_next):
     """
-    Middleware for logging incoming requests and outgoing responses.
-    Assigns a unique request ID for tracing.
+    Middleware to add X-Process-Time header to responses.
     """
-    request_id = get_request_id(request)
-    request.state.request_id = request_id # Ensure request_id is always available on state
-
-    start_time = time.perf_counter()
-    logger.info(f"Request ID: {request_id} - Incoming request: {request.method} {request.url}")
-
+    start_time = time.time()
     response = await call_next(request)
-
-    process_time = time.perf_counter() - start_time
-    logger.info(
-        f"Request ID: {request_id} - Outgoing response: {request.method} {request.url} "
-        f"Status: {response.status_code} - Duration: {process_time:.4f}s"
-    )
-    response.headers[AUTH_HEADER_KEY] = request_id
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    logger.debug(f"Request {request.url.path} processed in {process_time:.4f}s")
     return response
 
-async def exception_handling_middleware(request: Request, call_next: Callable) -> Response:
+async def catch_exceptions_middleware(request: Request, call_next):
     """
-    Middleware for catching unhandled exceptions and returning a consistent error response.
+    Middleware to catch and handle common exceptions, returning appropriate JSON responses.
     """
-    request_id = get_request_id(request)
     try:
         return await call_next(request)
-    except CustomException as e:
-        logger.error(f"Request ID: {request_id} - Caught custom exception: {e.name} - {e.message}", exc_info=True)
-        return JSONResponse(
-            status_code=e.status_code,
-            content={"detail": e.message, "name": e.name},
-            headers={AUTH_HEADER_KEY: request_id}
-        )
+    except NotFoundException as exc:
+        logger.warning(f"NotFoundException: {exc.detail} for {request.url}")
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    except ForbiddenException as exc:
+        logger.warning(f"ForbiddenException: {exc.detail} for {request.url}")
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    except UnauthorizedException as exc:
+        logger.warning(f"UnauthorizedException: {exc.detail} for {request.url}")
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
+    except DuplicateEntryException as exc:
+        logger.warning(f"DuplicateEntryException: {exc.detail} for {request.url}")
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     except Exception as e:
-        # Catch all other unexpected errors
-        logger.exception(f"Request ID: {request_id} - Unhandled exception caught: {e}", exc_info=True)
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         return JSONResponse(
-            status_code=500,
-            content={"detail": "An internal server error occurred.", "name": "InternalServerError"},
-            headers={AUTH_HEADER_KEY: request_id}
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Internal server error occurred."},
         )
 
-async def rate_limit_middleware(request: Request, call_next: Callable) -> Response:
+async def rate_limit_middleware(request: Request, call_next):
     """
-    Middleware for applying global rate limiting using FastAPI-Limiter.
-    This will apply the default rate limit to all endpoints unless overridden.
+    Middleware to enforce rate limiting using Redis.
+    Limits requests based on IP address.
     """
-    request_id = get_request_id(request)
-    # Check if redis client is initialized. If not, bypass rate limiting.
-    if not hasattr(request.app.state, 'redis') or request.app.state.redis is None:
-        logger.warning(f"Request ID: {request_id} - Redis client not available. Bypassing rate limiting.")
+    redis_client: Optional[Redis] = await get_redis_client()
+    if not redis_client:
+        logger.warning("Redis client not available for rate limiting. Skipping.")
         return await call_next(request)
+
+    ip_address = request.client.host if request.client else "unknown"
+    key = f"rate_limit:{ip_address}"
+    max_requests = settings.RATE_LIMIT_PER_MINUTE # Per minute
+    window = 60 # seconds
 
     try:
-        # FastAPI-Limiter applies to endpoints using Depends(RateLimiter(...))
-        # For a global middleware, we need to manually trigger it.
-        # This is a bit tricky with FastAPI-Limiter as it's designed for Depends.
-        # A simpler approach for global limit with FastAPI-Limiter is
-        # to ensure all endpoints have `Depends(RateLimiter(settings.DEFAULT_RATE_LIMIT))`
-        # or use a custom decorator.
-
-        # For a truly global middleware-level rate limit, a custom implementation might be better.
-        # However, to demonstrate FastAPI-Limiter, we will primarily rely on per-endpoint application
-        # or use a simple check here. For this example, let's just make sure FastAPI-Limiter is initialized.
-        # The actual rate limiting logic will be applied at the endpoint level via `Depends`.
-
-        # If a global limit is truly needed at the middleware level, you'd integrate the
-        # logic from fastapi_limiter.FastAPILimiter._check_request_limit directly or use a different library.
-        # For now, this middleware primarily ensures the FastAPI-Limiter setup is robust.
-        return await call_next(request)
+        current_requests = await redis_client.incr(key)
+        if current_requests == 1:
+            await redis_client.expire(key, window)
+        
+        if current_requests > max_requests:
+            logger.warning(f"Rate limit exceeded for IP: {ip_address}")
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": f"Rate limit exceeded. Try again in {window} seconds."},
+                headers={"Retry-After": str(window)},
+            )
     except Exception as e:
-        # FastAPI-Limiter raises RateLimitExceeded exception, which should be caught by exception_handling_middleware
-        # if it's raised within the endpoint. If it's caught here due to some manual check,
-        # ensure it's handled gracefully.
-        logger.exception(f"Request ID: {request_id} - Error in rate limiting middleware: {e}")
-        raise # Re-raise to be caught by the general exception handler
-```
+        logger.error(f"Rate limiting failed due to Redis error: {e}", exc_info=True)
+        # Fail open: if Redis is down, don't block requests
+        pass
+
+    response = await call_next(request)
+    return response
+
+# Basic logging setup
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("ml_utilities_system")
