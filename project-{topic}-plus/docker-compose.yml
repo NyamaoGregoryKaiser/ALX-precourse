@@ -2,70 +2,75 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:13-alpine
+  postgres:
+    image: postgres:13
     restart: always
     environment:
-      POSTGRES_DB: performance_monitor_dev # Use dev db name for simplicity
-      POSTGRES_USER: dev_user
-      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: ${DATABASE_NAME:-scrapemaster_db}
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
     ports:
-      - "5432:5432" # Expose for local access if needed
+      - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dev_user -d performance_monitor_dev"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:6-alpine
     restart: always
     ports:
-      - "6379:6379" # Expose for local access if needed
-    command: redis-server --appendonly yes
+      - "6379:6379"
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
-  app:
-    build: .
-    restart: always
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # command: sh -c "npm run typeorm migration:run && npm run seed && npm run start:dev" # Run migrations & seeds on startup
+    # For local dev, we typically run migrations manually or through a separate script
+    command: npm run start:dev
     ports:
-      - "5000:5000"
+      - "3000:3000"
     environment:
-      # Inject .env variables from the host using env_file
-      # Or specify them directly here if not using .env
-      FLASK_CONFIG: development # Use 'development' for easier debugging in Docker
-      SECRET_KEY: ${SECRET_KEY}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      DEV_DATABASE_URL: postgresql://dev_user:dev_password@db:5432/performance_monitor_dev # Use 'db' as hostname for PostgreSQL
-      REDIS_HOST: redis # Use 'redis' as hostname for Redis
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB}
-      DEFAULT_POLLING_INTERVAL_SECONDS: ${DEFAULT_POLLING_INTERVAL_SECONDS}
+      # Pass through all environment variables from host .env to container
+      # This is for convenience in dev, in prod use explicit ENV vars or secrets
+      - PORT=${PORT:-3000}
+      - NODE_ENV=${NODE_ENV:-development}
+      - JWT_SECRET=${JWT_SECRET:-supersecretjwtkey}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1d}
+      - DATABASE_TYPE=${DATABASE_TYPE:-postgres}
+      - DATABASE_HOST=postgres # Service name in docker-compose
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-postgres}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-postgres}
+      - DATABASE_NAME=${DATABASE_NAME:-scrapemaster_db}
+      - REDIS_HOST=redis # Service name in docker-compose
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - THROTTLE_TTL=${THROTTLE_TTL:-60}
+      - THROTTLE_LIMIT=${THROTTLE_LIMIT:-100}
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable # Path inside the Docker image
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     volumes:
-      - .:/app # Mount current directory to /app for live code changes during development
-              # Remove or change for production to copy code at build time
-    # This command first applies migrations, then seeds the DB, then starts the Gunicorn app
-    # This is useful for initial setup, but in production, migrations/seeding might be
-    # separate steps in a CI/CD pipeline or an explicit `docker exec` command.
-    command: >
-      sh -c "flask db upgrade && python scripts/seed_db.py && gunicorn --bind 0.0.0.0:5000 --workers 4 run:app"
-    # If not using the combined command above, use `command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "run:app"]`
+      - ./backend:/app
+      - /app/node_modules # Don't overwrite node_modules in container with host's
+    # In production, use healthchecks or wait-for-it scripts
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001" # Expose frontend on 3001
+    environment:
+      - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-http://localhost:3000/api}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    # In a typical setup, you'd use a reverse proxy like Nginx for frontend on port 80
 
 volumes:
-  db_data:
+  postgres_data:
   redis_data:
-
 ```

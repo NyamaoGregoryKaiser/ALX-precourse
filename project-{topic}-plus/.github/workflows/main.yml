@@ -5,193 +5,104 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build:
+  build-and-test-backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          python-version: '3.9'
+          node-version: '18'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install alembic # Alembic is used for migrations
+        run: npm ci
 
-      - name: Lint with flake8
-        run: |
-          pip install flake8
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+      - name: Lint backend code
+        run: npm run lint
 
-      - name: Build Docker image
-        run: docker build -t performance-monitor-app:${{ github.sha }} .
+      - name: Setup PostgreSQL for tests
+        uses: Harmonize-IO/setup-postgres@v1
+        with:
+          postgres-version: '13'
+          database-name: 'test_db'
+          username: 'testuser'
+          password: 'testpassword'
 
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13-alpine
+      - name: Setup Redis for tests
+        uses: supercharge/redis-github-action@1.2.0
+        with:
+          redis-version: 6
+
+      - name: Run backend tests
         env:
-          POSTGRES_DB: performance_monitor_test
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5433:5432 # Use a different port for testing DB
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:6-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      FLASK_CONFIG: testing
-      TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5433/performance_monitor_test # Note: 'localhost' refers to the host running the tests, which is the GitHub Actions runner.
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      SECRET_KEY: test-secret
-      JWT_SECRET_KEY: test-jwt-secret
+          JWT_SECRET: test_secret
+          DATABASE_TYPE: postgres
+          DATABASE_HOST: localhost # Provided by Harmonize-IO/setup-postgres
+          DATABASE_PORT: 5432
+          DATABASE_USERNAME: testuser
+          DATABASE_PASSWORD: testpassword
+          DATABASE_NAME: test_db
+          REDIS_HOST: localhost # Provided by supercharge/redis-github-action
+          REDIS_PORT: 6379
+        run: npm run test:cov # Run with coverage
+
+      # Optional: Build Docker image for backend (e.g., push to registry)
+      # - name: Build Docker image
+      #   run: docker build -t your-dockerhub-username/scrape-master-backend:latest .
+      # - name: Log in to Docker Hub
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: Push Docker image
+      #   run: docker push your-dockerhub-username/scrape-master-backend:latest
+
+  build-and-test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          python-version: '3.9'
+          node-version: '18'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install alembic
+        run: npm ci
 
-      - name: Wait for Postgres and Redis to be ready
-        run: |
-          until docker exec $(docker ps -q --filter ancestor=postgres:13-alpine) pg_isready -U test_user -d performance_monitor_test; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-          until docker exec $(docker ps -q --filter ancestor=redis:6-alpine) redis-cli ping; do
-            echo "Waiting for Redis..."
-            sleep 2
-          done
+      - name: Lint frontend code
+        run: npm run lint
 
-      - name: Run database migrations
-        run: |
-          flask db upgrade
+      - name: Run frontend tests
+        run: npm run test -- --watchAll=false # Run tests without watch mode
 
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=performance_monitor --cov-report=xml --junitxml=junit/test-results.xml tests/
+      - name: Build frontend
+        run: npm run build
 
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-results
-          path: junit/test-results.xml
-
-  deploy:
-    needs: test
-    if: github.ref == 'refs/heads/main' # Deploy only from main branch
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Log in to Docker Hub (or your registry)
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Docker image
-        run: |
-          docker build -t your-dockerhub-username/performance-monitor-app:${{ github.sha }} .
-          docker push your-dockerhub-username/performance-monitor-app:${{ github.sha }}
-
-      - name: Deploy to Server (Example using SSH)
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /path/to/your/deployment/directory
-            # Pull the new image
-            docker pull your-dockerhub-username/performance-monitor-app:${{ github.sha }}
-            # Stop existing containers
-            docker-compose down
-            # Update .env or configuration if needed
-            # Deploy new containers
-            docker-compose up -d
-            # Run migrations on the new container
-            docker exec <app_container_name> flask db upgrade
-            # You might need to restart the app container after migrations
-            docker restart <app_container_name>
-            echo "Deployment successful for ${{ github.sha }}"
-
-  # Performance test job (optional, can be run separately or conditionally)
-  performance_test:
-    needs: deploy # Run after deploy to test the deployed application
-    if: always() && github.ref == 'refs/heads/main' # Always run after main deployment
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install Locust
-        run: pip install locust
-
-      - name: Run Locust performance tests
-        env:
-          TARGET_HOST: http://${{ secrets.DEPLOYMENT_HOST }}:5000 # URL of your deployed app
-          # Add any other required environment variables for Locust
-        run: |
-          locust -f locustfile.py --headless -u 100 -r 10 --run-time 60s --csv=locust_results --json --expect-workers 0
-          # -u: number of users, -r: spawn rate, --run-time: duration, --csv: output CSV report, --json: output JSON report
-          echo "Locust test completed."
-
-      - name: Upload Locust results
-        uses: actions/upload-artifact@v3
-        with:
-          name: locust-results
-          path: locust_results*.csv
-
+      # Optional: Build Docker image for frontend (e.g., push to registry)
+      # - name: Build Docker image
+      #   run: docker build -t your-dockerhub-username/scrape-master-frontend:latest .
+      # - name: Log in to Docker Hub
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: Push Docker image
+      #   run: docker push your-dockerhub-username/scrape-master-frontend:latest
 ```
-
-**4. Testing & Quality**

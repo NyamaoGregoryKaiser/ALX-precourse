@@ -1,25 +1,27 @@
 ```dockerfile
-# Use the official Node.js 18 LTS image
-FROM node:18-alpine
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
 
-# Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if exists)
-COPY package*.json ./
+COPY package.json yarn.lock* ./
+RUN npm ci
 
-# Install dependencies
-RUN npm install
-
-# Copy the rest of the application code
 COPY . .
+RUN npm run build
 
-# Build the React app for production
-# RUN npm run build # We'll use dev server for easier development in docker-compose
+# Stage 2: Serve the application with Nginx
+FROM nginx:alpine
 
-# Expose the port the app runs on
-EXPOSE 3000
+# Copy the build output from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Command to run the development server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Copy custom Nginx configuration (optional, for advanced setups)
+# COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80 for the web server
+EXPOSE 80
+
+# Command to run Nginx (default in nginx:alpine)
+CMD ["nginx", "-g", "daemon off;"]
 ```
