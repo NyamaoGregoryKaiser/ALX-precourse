@@ -8,19 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from alembic import context
 
 # this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# access to values within the .ini file in use.
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# This sets up loggers accordingly.
+fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from app.db.base_class import Base # Import your Base
-from app.models import user, project, task # Import all your models so Base sees them
-
+from app.db.base import Base # Import your Base
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -28,9 +25,7 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
-from app.core.config import settings
-
-def run_migrations_offline() -> None:
+def run_migrations_offline():
     """Run migrations in 'offline' mode.
 
     This configures the context with just a URL
@@ -42,7 +37,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = settings.DATABASE_URL
+    url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -54,35 +49,52 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:
+def do_run_migrations(connection):
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
         context.run_migrations()
 
 
-async def run_migrations_online() -> None:
+async def run_migrations_online():
     """Run migrations in 'online' mode.
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
     """
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
-    connectable = AsyncEngine(
+    connectable = config.get_section_by_name("alembic:async")
+    if connectable is None:
+        # Fallback to default sqlalchemy.url if alembic:async is not present
+        connectable = config.get_section_by_name(config.config_ini_section)
+        connectable["sqlalchemy.url"] = config.get_main_option("sqlalchemy.url")
+
+    # Override with DATABASE_URL from environment if available (for Docker/CI)
+    import os
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        connectable["sqlalchemy.url"] = db_url
+    elif os.getenv("TEST_DATABASE_URL"): # For CI/CD
+        connectable["sqlalchemy.url"] = os.getenv("TEST_DATABASE_URL")
+
+    # Set the timezone to UTC for the database connection
+    # This helps ensure consistency across different environments
+    connectable["connect_args"] = {"server_settings": {"application_name": "Alembic", "timezone": "UTC"}}
+
+    # Create an AsyncEngine
+    engine = AsyncEngine(
         engine_from_config(
-            configuration,
+            connectable,
             prefix="sqlalchemy.",
             poolclass=pool.NullPool,
-            future=True,
+            future=True, # SQLAlchemy 2.0 style
         )
     )
 
-    async with connectable.connect() as connection:
+    async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose()
+    await engine.dispose()
 
 
 if context.is_offline_mode():

@@ -1,156 +1,219 @@
-# Mobile Task Manager Backend - Deployment Guide
+# Mobile App Backend Deployment Guide
 
-This document outlines the steps to deploy the FastAPI backend application in a production environment. The recommended approach leverages Docker and Docker Compose for containerization and orchestration, but notes on traditional deployments are also included.
+This document provides instructions for deploying the Mobile App Backend. The primary deployment strategy demonstrated here uses **Docker and Docker Compose** for local development and simplified single-server deployment. For production, concepts for container orchestration platforms like Kubernetes or cloud-specific services (AWS ECS, Google Cloud Run) are discussed.
 
 ## 1. Prerequisites
 
-*   **Server Environment**: A Linux-based server (e.g., Ubuntu, CentOS).
-*   **Docker & Docker Compose**: Installed and configured on the server.
+Before you begin, ensure you have the following installed:
+
 *   **Git**: For cloning the repository.
-*   **Domain Name**: (Optional but recommended) A domain name pointing to your server's IP address.
-*   **SSL Certificate**: (Optional but highly recommended) For HTTPS, e.g., using Let's Encrypt.
-*   **Reverse Proxy**: (Optional but recommended) Nginx or Caddy for SSL termination, load balancing, and serving static files (if any).
+*   **Docker**: Docker Engine and Docker Compose (version 1.28.0+ or Docker Desktop which includes Compose v2).
+    *   [Install Docker Engine](https://docs.docker.com/engine/install/)
+    *   [Install Docker Compose](https://docs.docker.com/compose/install/)
 
-## 2. Production Deployment using Docker Compose
+## 2. Local Deployment with Docker Compose (Development & Testing)
 
-This is the recommended approach for simpler production setups or staging environments.
+This method is ideal for setting up the entire stack (FastAPI app, PostgreSQL, Redis) quickly on your local machine.
 
-1.  **Clone the Repository:**
-    Log in to your server and clone the project.
+### Step 1: Clone the Repository
 
-    ```bash
-    git clone https://github.com/your-username/mobile-task-manager-backend.git
-    cd mobile-task-manager-backend
-    ```
+```bash
+git clone https://github.com/your-username/mobile-backend.git
+cd mobile-backend
+```
+**(Replace `your-username/mobile-backend.git` with the actual repository URL)**
 
-2.  **Create Production `.env` File:**
-    Create a `.env` file based on `.env.example`. **Crucially, ensure:**
-    *   `SECRET_KEY`: Is a **very strong, unique, and securely generated** string. Do not use the example value.
-    *   `POSTGRES_PASSWORD`: Is a strong password for your database.
-    *   `LOG_LEVEL`: Set to `INFO` or `WARNING` for production, to avoid excessive logging.
-    *   `REDIS_HOST`, `POSTGRES_SERVER`: Should remain `redis` and `db` respectively, as these are the service names within the Docker Compose network.
-    *   Other sensitive credentials (e.g., API keys for external services) should also be added here.
+### Step 2: Configure Environment Variables
 
-    ```bash
-    cp .env.example .env
-    # nano .env (or your preferred editor) and fill in production values
-    ```
+Create a `.env` file in the root of the project by copying the example:
 
-3.  **Adjust `docker-compose.yml` for Production:**
-    Open `docker-compose.yml` and modify the `backend` service's `command` to use `gunicorn` for production-grade serving, which provides better performance and reliability than `uvicorn` directly.
-    *   **Uncomment the `gunicorn` command and comment out the `uvicorn` command.**
-    *   Adjust `--workers` based on your server's CPU cores (e.g., `2 * num_cores + 1`).
+```bash
+cp .env.example .env
+```
 
-    ```yaml
-    # ... inside backend service ...
-    # volumes:
-    #   - ./app:/app/app # Comment out or remove for production to prevent accidental host file changes
-    #   - ./alembic:/app/alembic
-    #   - ./scripts:/app/scripts
-    #   - ./alembic.ini:/app/alembic.ini
-    # command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-    ```
-    *It's highly recommended to perform migrations and seeding as separate steps or as part of a CI/CD process, rather than directly in the `command` for a production deployment.* For initial setup, `alembic upgrade head` can be run once before starting the `gunicorn` command.
+Now, edit the `.env` file to customize your settings.
+**Important**:
+*   Change `SECRET_KEY` to a strong, unique value.
+*   Keep `POSTGRES_HOST=db` and `REDIS_HOST=redis` as they are, as these refer to the service names within the Docker network.
+*   You can change database credentials (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) if desired.
+*   Set `DEBUG=True` for development, `False` for production.
+*   `DATABASE_URL` will be automatically constructed by `docker-compose` based on the host `db`.
 
-4.  **Build and Run Services:**
+Example `.env` snippet:
+```
+# ... (other settings) ...
+SECRET_KEY="YOUR_SUPER_STRONG_AND_UNIQUE_SECRET_KEY_FOR_PRODUCTION_OR_DEVELOPMENT"
+DATABASE_URL="postgresql+asyncpg://admin:admin@db:5432/mobile_db"
+# ... (other settings) ...
+```
 
-    ```bash
-    docker-compose build
-    docker-compose run --rm backend alembic upgrade head # Run migrations once
-    docker-compose run --rm backend python scripts/seed.py # Run seed data once (optional)
-    docker-compose up -d
-    ```
-    *   `docker-compose build`: Builds the Docker images.
-    *   `alembic upgrade head`: Applies any pending database migrations.
-    *   `python scripts/seed.py`: Seeds initial data (e.g., admin user).
-    *   `docker-compose up -d`: Starts all services in detached mode.
+### Step 3: Build and Run with Docker Compose
 
-5.  **Monitor Logs:**
-    Check the logs to ensure all services are starting correctly:
+From the project root directory, execute:
 
-    ```bash
-    docker-compose logs -f
-    ```
+```bash
+docker-compose up --build -d
+```
 
-### 2.1. Integrating with a Reverse Proxy (Nginx/Caddy - Recommended)
+*   `docker-compose up`: Starts the services defined in `docker-compose.yml`.
+*   `--build`: Forces Docker to rebuild the application image. Useful if you've changed the `Dockerfile` or `requirements.txt`.
+*   `-d`: Runs the containers in detached mode (in the background).
 
-For production, it's best to place Nginx or Caddy in front of your Docker Compose setup. This provides:
-*   **SSL/TLS Termination**: Secure HTTPS communication.
-*   **Load Balancing**: Distribute traffic across multiple backend containers (if scaled).
-*   **Static File Serving**: (If your application had static files, though this backend doesn't).
-*   **DDoS Protection / Rate Limiting**: Additional layers of security.
+This command will:
+1.  Build the `app` Docker image based on the `Dockerfile`.
+2.  Pull the `postgres` and `redis` images.
+3.  Create the `db`, `redis`, and `app` containers.
+4.  Run Alembic migrations (`alembic upgrade head`) inside the `app` container on startup.
+5.  Run the seeding script (`python scripts/seed_db.py`) to populate initial data.
+6.  Start the FastAPI application using Gunicorn and Uvicorn workers.
 
-**Example Nginx Configuration (`nginx.conf`):**
+### Step 4: Verify Deployment
+
+Once the containers are up, you can check their status:
+
+```bash
+docker-compose ps
+```
+
+You should see `db`, `redis`, and `app` containers running.
+
+The API should now be accessible at `http://localhost:8000`.
+
+*   **API Documentation (Swagger UI)**: `http://localhost:8000/docs`
+*   **Health Check**: `http://localhost:8000/`
+
+To view logs from all services:
+
+```bash
+docker-compose logs -f
+```
+
+To stop and remove the containers:
+
+```bash
+docker-compose down
+```
+
+## 3. Production Deployment Considerations
+
+While Docker Compose is excellent for local development and simple single-server deployments, for a true production environment, consider more robust solutions:
+
+### A. Container Orchestration Platforms (Recommended for Scale)
+
+*   **Kubernetes (K8s)**:
+    *   **Pros**: Industry-standard, highly scalable, self-healing, advanced networking, service discovery, rolling updates, secrets management.
+    *   **Cons**: Complex to set up and manage.
+    *   **Deployment Steps**:
+        1.  Create Docker image and push to a container registry (e.g., Docker Hub, ECR, GCR).
+        2.  Write Kubernetes YAML manifests (`Deployment`, `Service`, `Ingress`, `PersistentVolumeClaim`, `Secret`, `ConfigMap`) for your app, database, and Redis.
+        3.  Apply manifests to your K8s cluster using `kubectl`.
+        4.  Configure `HorizontalPodAutoscaler` for automatic scaling.
+*   **AWS ECS (Elastic Container Service)**:
+    *   **Pros**: AWS-native container orchestration, simpler than K8s, integrates well with other AWS services (ECR, Fargate, ALB, CloudWatch).
+    *   **Cons**: Vendor lock-in, less flexible than raw K8s.
+    *   **Deployment Steps**:
+        1.  Create Docker image and push to Amazon ECR.
+        2.  Define an ECS Task Definition (specifies container, resources, environment).
+        3.  Create an ECS Service in a cluster (e.g., Fargate for serverless, EC2 for self-managed nodes).
+        4.  Attach an Application Load Balancer (ALB) for traffic distribution.
+*   **Google Cloud Run / Azure Container Apps**:
+    *   **Pros**: Serverless container platform, scales to zero, pay-per-request, minimal operational overhead. Ideal for stateless web services.
+    *   **Cons**: May not be suitable for long-running background tasks or stateful services without external databases.
+    *   **Deployment Steps**:
+        1.  Create Docker image and push to Google Container Registry (GCR) or Azure Container Registry (ACR).
+        2.  Deploy the image to Cloud Run/Container Apps, configuring environment variables, CPU/memory, and scaling rules.
+
+### B. Virtual Private Server (VPS) / Cloud VM with Docker
+
+This is a step up from local Docker Compose for single-server production.
+
+1.  **Provision a VM**: Create a Linux VM (e.g., AWS EC2, DigitalOcean Droplet, Linode) and install Docker and Docker Compose.
+2.  **Clone Repository**: `git clone ...`
+3.  **Configure `.env`**: Create a production-ready `.env` file with strong `SECRET_KEY`, `DEBUG=False`, and potentially external database/Redis URLs if you're not running them in Docker on the same VM.
+4.  **Run Docker Compose**: `docker-compose up --build -d`.
+5.  **Reverse Proxy (Nginx)**: Configure Nginx on the host VM to:
+    *   Proxy requests to your FastAPI app (e.g., `proxy_pass http://localhost:8000;`).
+    *   Handle SSL termination (install Certbot for Let's Encrypt certificates).
+    *   Serve static files (if any).
+6.  **Monitoring & Logging**: Set up tools like Prometheus/Grafana or send logs to a centralized service (ELK, Datadog, Splunk).
+
+**Example Nginx Configuration (`/etc/nginx/sites-available/your_domain.conf`):**
 
 ```nginx
-# Add this to your server's Nginx configuration (e.g., /etc/nginx/sites-available/your_domain)
-
 server {
     listen 80;
-    server_name api.yourdomain.com; # Replace with your domain
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
+    server_name your_domain.com www.your_domain.com;
+    return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name api.yourdomain.com; # Replace with your domain
+    server_name your_domain.com www.your_domain.com;
 
-    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem; # Path to your cert
-    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem; # Path to your key
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
+    ssl_certificate /etc/letsencrypt/live/your_domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your_domain.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
-    ssl_ciphers "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20";
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-GCM-SHA256;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "no-referrer-when-downgrade";
 
     location / {
-        proxy_pass http://localhost:8000; # Or the IP:PORT of your backend service
+        proxy_pass http://localhost:8000; # Or the internal IP of your Docker app container
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
     }
+
+    # Optional: Serve static files directly from Nginx (if your app has any)
+    # location /static/ {
+    #    alias /app/static/; # Path inside your Docker container or mounted volume
+    # }
 }
 ```
-*   You would typically run Nginx directly on the host or in a separate Docker container, connecting to the `backend` service using `localhost:8000` (if `8000` is exposed on the host) or by placing Nginx in the same Docker Compose network.
 
-## 3. Scaling the Application
+## 4. CI/CD Integration (GitHub Actions)
 
-To handle more traffic, you can scale the `backend` service.
+The `.github/workflows/ci.yml` file defines a GitHub Actions workflow that:
 
-1.  **Manual Scaling (Docker Compose):**
-    ```bash
-    docker-compose up -d --scale backend=4 # Starts 4 instances of the backend service
-    ```
-    You would need a load balancer (like Nginx configured in round-robin mode or an API Gateway) to distribute requests among these instances.
+1.  **Builds** the Docker image (without pushing it).
+2.  **Installs dependencies** in a Python environment.
+3.  **Sets up a test database and Redis** using `docker-compose.test.yml`.
+4.  **Runs Alembic migrations** against the test database.
+5.  **Executes Pytest unit and integration tests**.
+6.  (Optional) **Uploads coverage reports** to Codecov.
 
-2.  **Container Orchestration (Kubernetes):**
-    For enterprise-grade scaling and management, consider deploying to a Kubernetes cluster. This involves creating Kubernetes Deployment, Service, Ingress, and Persistent Volume Claim configurations based on your Docker images. This is beyond the scope of this document but is the next logical step for large-scale deployments.
+**To enable the CI/CD pipeline:**
 
-## 4. Database Backups
+1.  **Commit your code** to a GitHub repository.
+2.  **Push your changes** to the `main` or `develop` branch, or open a pull request.
+3.  GitHub Actions will automatically trigger the workflow. You can monitor its progress under the "Actions" tab in your GitHub repository.
 
-Regular database backups are critical. Implement a strategy to periodically back up your PostgreSQL data volume (`postgres_data` in `docker-compose.yml`). Tools like `pg_dump` or cloud provider managed backup solutions are recommended.
+**For full CI/CD (including deployment):**
 
-## 5. Monitoring
+*   **Docker Hub/Container Registry Integration**: Uncomment and configure the `build-and-push-docker` job in `ci.yml`. You'll need to set up `DOCKER_USERNAME` and `DOCKER_PASSWORD` as GitHub Secrets.
+*   **Deployment Automation**: For pushing to a server, the `deploy-to-server` step (commented out) would typically use SSH to connect to your production server and pull the latest Docker image, then restart the application containers. This would require `SSH_HOST`, `SSH_USERNAME`, and `SSH_KEY` as GitHub Secrets.
 
-*   **Logs**: Configure log aggregation (e.g., ELK stack, Grafana Loki) to collect and analyze logs from all services. The `app.main.py` is configured with `loguru`.
-*   **Metrics**: Integrate Prometheus and Grafana to collect and visualize application metrics (CPU, memory, request rates, error rates).
-*   **Health Checks**: Leverage the `/health` endpoint and Docker Compose health checks to monitor service availability.
+## 5. Post-Deployment Steps
 
-## 6. CI/CD for Production Deployment
+*   **Monitoring**: Set up real-time monitoring for your application (CPU, memory, request latency, error rates) using tools like Prometheus/Grafana, Datadog, or cloud-specific services.
+*   **Logging**: Ensure all application logs are aggregated to a centralized logging system (ELK, Loki, CloudWatch Logs) for easy debugging and auditing.
+*   **Alerting**: Configure alerts for critical errors, performance degradation, or security incidents.
+*   **Backups**: Set up regular backups for your PostgreSQL database.
+*   **Security Updates**: Regularly update your base Docker images, Python dependencies, and system packages to patch security vulnerabilities.
+*   **Scaling**: Based on traffic patterns, scale your application instances (horizontally) and database/Redis resources (vertically or horizontally) as needed.
+*   **Load Testing**: Perform regular load tests (e.g., using Locust, JMeter) to identify performance bottlenecks and ensure the application can handle expected traffic.
 
-The `.github/workflows/ci.yml` provides a basic CI setup. For full CI/CD, you would extend this to:
-
-1.  **Build Docker Image**: Push the built Docker image to a container registry (e.g., Docker Hub, AWS ECR, GCR) upon successful CI.
-2.  **Deployment Trigger**: Configure a CD pipeline (e.g., using GitHub Actions, Jenkins, GitLab CI, ArgoCD) to:
-    *   Pull the latest image from the registry.
-    *   Run database migrations.
-    *   Update the running containers (e.g., `docker-compose up -d` with a new image tag, or Kubernetes rolling update).
-
-This ensures automated, consistent, and reliable deployments to production.
-```
+By following this guide, you can successfully deploy and manage your FastAPI mobile backend in various environments.

@@ -1,37 +1,30 @@
-# Base image
+# Use an official Python runtime as a parent image
 FROM python:3.11-slim-buster
 
-# Set environment variables
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONDONTWRITEBYTECODE 1
-
-# Set work directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        libpq-dev \
+# Install system dependencies required for psycopg2-binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install python dependencies
-COPY ./requirements.txt /app/requirements.txt
+# Copy the requirements file into the container
+COPY requirements.txt .
+
+# Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project
-COPY ./app /app/app
-COPY ./alembic /app/alembic
-COPY ./scripts /app/scripts
-COPY ./alembic.ini /app/alembic.ini
-COPY ./.env.example /app/.env.example # Copy example, use .env from host or build arg
+# Copy the rest of the application code into the container
+COPY . .
 
-# Expose port
+# Expose port 8000 for the FastAPI application
 EXPOSE 8000
 
-# Command to run the application
-# For production, use Gunicorn with Uvicorn workers
-# CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
-# For development, you can use Uvicorn directly with auto-reload
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the Uvicorn server, binding to all interfaces
+# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Using gunicorn for production-ready deployment with multiple workers
+CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
 ```

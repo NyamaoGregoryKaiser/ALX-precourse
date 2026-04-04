@@ -3,62 +3,77 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
-    container_name: taskmanager_db
-    env_file:
-      - ./.env # Use .env for sensitive data
+    container_name: mobile_backend_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
     ports:
-      - "5432:5432" # Expose for local access if needed
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - backend-network
 
   redis:
     image: redis:7-alpine
-    container_name: taskmanager_redis
+    container_name: mobile_backend_redis
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
+    networks:
+      - backend-network
 
-  backend:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: taskmanager_backend
-    env_file:
-      - ./.env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
-      REDIS_URL: redis://${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
-      POSTGRES_SERVER: db # Override for backend container to use service name
-      REDIS_HOST: redis # Override for backend container to use service name
+    container_name: mobile_backend_app
     ports:
       - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      REFRESH_TOKEN_EXPIRE_MINUTES: ${REFRESH_TOKEN_EXPIRE_MINUTES}
+      ALGORITHM: ${ALGORITHM}
+      LOG_LEVEL: ${LOG_LEVEL}
+      CACHE_EXPIRE_SECONDS: ${CACHE_EXPIRE_SECONDS}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT}
+      ENVIRONMENT: ${ENVIRONMENT}
+      # All other env vars from .env.example will be passed
+      # For a production setup, consider using Docker secrets or similar secure methods for sensitive info
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./app:/app/app # Mount for live code changes in development
-      - ./alembic:/app/alembic
-      - ./scripts:/app/scripts
-      - ./alembic.ini:/app/alembic.ini
-    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    # For production:
-    # command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+      - .:/app
+    networks:
+      - backend-network
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed_db.py &&
+             gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    # For development, you might prefer this:
+    # command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+networks:
+  backend-network:
+    driver: bridge
 
 volumes:
-  postgres_data:
+  pgdata:
 ```

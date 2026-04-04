@@ -1,83 +1,117 @@
-from flask import current_app
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required, get_jwt
-from app.database import db
-from app.models.user import User
-from app.utils.errors import UnauthorizedError, BadRequestError, ForbiddenError
+import logging
 from datetime import timedelta
+
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.db.crud import user_crud
+from app.db.models import User
+from app.schemas.auth import Token, LoginRequest
+from app.schemas.user import UserCreate, UserRegister
+from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
+
+logger = logging.getLogger(__name__)
 
 class AuthService:
     """
-    Handles user authentication, registration, token generation, and revocation.
+    Service layer for authentication related operations.
+    Handles user registration, login, and token generation.
     """
+    def __init__(self, db_session: AsyncSession):
+        self.db_session = db_session
 
-    @staticmethod
-    def register_user(username, email, password):
-        """Registers a new user."""
-        if User.query.filter_by(email=email).first():
-            raise ConflictError("User with this email already exists.")
-        if User.query.filter_by(username=username).first():
-            raise ConflictError("User with this username already exists.")
+    async def register_user(self, user_in: UserRegister) -> User:
+        """
+        Registers a new user in the system.
+        :param user_in: Pydantic model containing user registration data.
+        :return: The created User database object.
+        :raises HTTPException: If a user with the given email already exists.
+        """
+        existing_user = await user_crud.get_multi(self.db_session, filters={"email": user_in.email})
+        if existing_user.data:
+            logger.warning(f"Registration attempt with existing email: {user_in.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
 
-        new_user = User(username=username, email=email)
-        new_user.set_password(password)
-        
-        # Assign default 'CUSTOMER' role
-        customer_role = UserRole.query.filter_by(name='CUSTOMER').first()
-        if not customer_role:
-            current_app.logger.warning("Default 'CUSTOMER' role not found during user registration.")
-            raise InternalServerError("Default user role configuration error.")
-        new_user.roles.append(customer_role)
+        hashed_password = get_password_hash(user_in.password.get_secret_value())
+        user_data = user_in.model_dump(exclude={"password"})
+        user_data["hashed_password"] = hashed_password
 
-        db.session.add(new_user)
-        db.session.commit()
-        current_app.logger.info(f"New user registered: {email}")
-        return new_user
+        # Explicitly convert to UserCreate schema for CRUD method compatibility
+        # This handles the SecretStr from Pydantic automatically
+        user_create_schema = UserCreate(**user_data, password=user_in.password.get_secret_value())
 
-    @staticmethod
-    def authenticate_user(email, password):
-        """Authenticates a user and generates JWT tokens."""
-        user = User.query.filter_by(email=email).first()
+        user = await user_crud.create(self.db_session, user_data)
+        logger.info(f"User registered successfully: {user.email}")
+        return user
 
-        if not user or not user.check_password(password) or not user.is_active:
-            raise UnauthorizedError("Invalid credentials or account is inactive.")
+    async def authenticate_user(self, login_data: LoginRequest) -> User:
+        """
+        Authenticates a user based on email and password.
+        :param login_data: Pydantic model containing login credentials.
+        :return: The authenticated User database object.
+        :raises HTTPException: If authentication fails (incorrect credentials or inactive user).
+        """
+        users = await user_crud.get_multi(self.db_session, filters={"email": login_data.email})
+        user = users.data[0] if users.data else None
 
-        # Prepare user claims (e.g., roles)
-        claims = {
-            "roles": [role.name for role in user.roles],
-            "email": user.email
-        }
+        if not user or not verify_password(login_data.password.get_secret_value(), user.hashed_password):
+            logger.warning(f"Failed login attempt for email: {login_data.email}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not user.is_active:
+            logger.warning(f"Login attempt for inactive user: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Inactive user",
+            )
+        logger.info(f"User authenticated successfully: {user.email}")
+        return user
 
-        access_token = create_access_token(identity=user.id, additional_claims=claims, fresh=True)
-        refresh_token = create_refresh_token(identity=user.id, additional_claims=claims)
-        current_app.logger.info(f"User {email} authenticated successfully.")
-        return {"access_token": access_token, "refresh_token": refresh_token}
+    async def create_auth_tokens(self, user: User) -> Token:
+        """
+        Generates access and refresh tokens for a given user.
+        :param user: The User database object.
+        :return: A Token Pydantic model containing access and refresh tokens.
+        """
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_token_expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
-    @staticmethod
-    @jwt_required(refresh=True)
-    def refresh_access_token():
-        """Refreshes an access token using a refresh token."""
-        current_user_id = get_jwt_identity()
-        user = User.query.get(current_user_id)
-        if not user:
-            raise UnauthorizedError("User not found.")
+        access_token = create_access_token(
+            data={"sub": str(user.id), "email": user.email, "role": user.role},
+            expires_delta=access_token_expires
+        )
+        refresh_token = create_refresh_token(
+            data={"sub": str(user.id)}, # Refresh tokens typically have minimal claims
+            expires_delta=refresh_token_expires
+        )
+        logger.debug(f"Tokens created for user: {user.email}")
+        return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
 
-        claims = {
-            "roles": [role.name for role in user.roles],
-            "email": user.email
-        }
-        new_access_token = create_access_token(identity=current_user_id, additional_claims=claims, fresh=False)
-        current_app.logger.info(f"Access token refreshed for user ID: {current_user_id}")
-        return {"access_token": new_access_token}
+    async def refresh_access_token(self, user_id: int, user_email: str, user_role: str) -> Token:
+        """
+        Generates a new access token using a valid refresh token.
+        A new refresh token is also issued for rolling token strategy.
+        :param user_id: The ID of the user.
+        :param user_email: The email of the user.
+        :param user_role: The role of the user.
+        :return: A Token Pydantic model with new access and refresh tokens.
+        """
+        # For refresh, we assume the refresh_token has already been validated and user_id extracted
+        user = await user_crud.get(self.db_session, user_id)
+        if not user or not user.is_active:
+            logger.warning(f"Attempted token refresh for invalid/inactive user ID: {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or inactive user for token refresh",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    @staticmethod
-    @jwt_required()
-    def logout_user():
-        """Revokes the current access token."""
-        # For a simple JWT setup, logout means the client discards the token.
-        # For token revocation, a blacklist mechanism (e.g., Redis) would be needed.
-        # This example assumes client-side token discarding.
-        # If token blacklisting is implemented, add the JWT ID to the blacklist here.
-        jti = get_jwt()["jti"]
-        # Add jti to a Redis blacklist (e.g., `setex(jti, expire_time, 'true')`)
-        current_app.logger.info(f"User {get_jwt_identity()} logged out (client-side token discarded).")
-        return {"message": "Successfully logged out."}
+        return await self.create_auth_tokens(user)
+```

@@ -1,130 +1,97 @@
+import logging
 import time
-from typing import Any
-import json
 
 from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
-from fastapi.middleware.cors import CORSMiddleware
-from loguru import logger
-from redis.asyncio import Redis
+from fastapi.exceptions import RequestValidationError
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis_backend import RedisBackend
 from fastapi_limiter import FastAPILimiter
+import redis.asyncio as aioredis
 
-from app.api.v1 import auth, users, projects, tasks
+from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.caching import connect_redis, disconnect_redis, get_redis_client
-from app.db.session import engine
-from app.db.base_class import Base # Ensure all models are imported implicitly by this
-from app.core.errors import NotFoundException, ForbiddenException, UnauthorizedException, DuplicateEntryException, BadRequestException
+from app.middleware.error_handler import http_exception_handler, validation_exception_handler
+from app.middleware.logging_middleware import LoggingMiddleware
+from app.utils.logger import setup_logging
 
-
-def custom_generate_unique_id(route: APIRoute) -> str:
-    """Generates unique IDs for API routes, used in OpenAPI docs."""
-    return f"{route.tags[0]}-{route.name}"
-
+# Setup logging before FastAPI app creation
+setup_logging(settings.LOG_LEVEL)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    generate_unique_id_function=custom_generate_unique_id,
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    debug=settings.DEBUG,
+    openapi_url=f"/openapi.json" if settings.DEBUG else None,
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
 )
 
-# Set up logging
-logger.add("logs/app.log", rotation="10 MB", level=settings.LOG_LEVEL)
+# --- Middleware ---
+app.add_middleware(LoggingMiddleware)
 
+# --- Exception Handlers ---
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(status.HTTPException, http_exception_handler)
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting up application...")
-    # Connect to Redis
-    await connect_redis()
-
-    # Initialize rate limiter with Redis
-    if get_redis_client():
-        redis_conn: Redis = get_redis_client()
-        await FastAPILimiter.init(redis_conn)
-        logger.info("FastAPILimiter initialized.")
-    else:
-        logger.warning("Redis not connected, rate limiting will be disabled.")
-
-    # Create all database tables (if not existing) - for development convenience.
-    # In production, use Alembic migrations instead.
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.create_all)
-    # logger.info("Database tables ensured.")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutting down application...")
-    # Disconnect from Redis
-    await disconnect_redis()
-    await engine.dispose() # Close SQLAlchemy engine connections
-
-
-# Middleware for CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production for specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Middleware for request logging and timing
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
+    """
+    Middleware to add X-Process-Time header to responses.
+    This helps in performance monitoring.
+    """
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
-    logger.info(
-        f"Request: {request.method} {request.url} | "
-        f"Status: {response.status_code} | Time: {process_time:.4f}s"
-    )
+    logger.debug(f"Request to {request.url.path} processed in {process_time:.4f} seconds")
     return response
 
-# Global error handlers
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Handles Pydantic validation errors."""
-    detail = exc.errors()
-    logger.error(f"Validation Error for {request.url}: {json.dumps(detail)}")
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": detail},
-    )
+# --- Routers ---
+app.include_router(api_router, prefix="/api/v1")
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handles custom and built-in HTTP exceptions."""
-    logger.warning(f"HTTP Exception at {request.url} - Status: {exc.status_code}, Detail: {exc.detail}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail},
-        headers=exc.headers
-    )
+# --- Event Handlers (Startup/Shutdown) ---
+@app.on_event("startup")
+async def startup_event():
+    """
+    Actions to perform on application startup.
+    Initializes Redis for caching and rate limiting.
+    """
+    logger.info("Application startup initiated.")
+    try:
+        redis_instance = aioredis.from_url(
+            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
+            encoding="utf8",
+            decode_responses=True
+        )
+        await FastAPILimiter.init(redis_instance)
+        FastAPICache.init(RedisBackend(redis_instance), prefix="fastapi-cache")
+        logger.info("Redis connection established and caching/rate limiting initialized.")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        # Depending on criticality, you might want to exit or disable features.
+        # For now, we'll let the app start but features relying on Redis will fail.
 
-@app.exception_handler(Exception)
-async def generic_exception_handler(request: Request, exc: Exception):
-    """Handles all other unhandled exceptions."""
-    logger.exception(f"Unhandled exception at {request.url}: {exc}") # Logs traceback
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred."},
-    )
+    logger.info("Application startup complete.")
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Actions to perform on application shutdown.
+    Cleans up resources.
+    """
+    logger.info("Application shutdown initiated.")
+    # Add any cleanup logic here, e.g., closing database connections if not handled by ORM
+    # For SQLAlchemy, connection pool handles this.
+    logger.info("Application shutdown complete.")
 
-# API routes
-app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
-app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["Users"])
-app.include_router(projects.router, prefix=f"{settings.API_V1_STR}/projects", tags=["Projects"])
-app.include_router(tasks.router, prefix=f"{settings.API_V1_STR}/tasks", tags=["Tasks"])
+# --- Root Endpoint (Health Check) ---
+@app.get("/", summary="Health Check", description="Returns a simple message to indicate the API is running.")
+async def root():
+    """
+    Root endpoint for health checks.
+    """
+    return {"message": "Mobile Backend API is running!"}
 
-# Health check endpoint
-@app.get("/health", response_model=dict, tags=["Monitoring"])
-async def health_check():
-    """Returns a simple health status."""
-    return {"status": "ok", "message": "Service is running"}
 ```

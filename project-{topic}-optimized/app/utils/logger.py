@@ -1,41 +1,96 @@
 import logging
-import os
-from logging.handlers import RotatingFileHandler
+from logging.config import dictConfig
+import json
+import sys
 
-def setup_logging(app):
+def setup_logging(log_level: str = "INFO", log_format_str: str = None):
     """
-    Configures logging for the Flask application.
-    Logs to console and a rotating file.
+    Configures structured logging for the application.
+    Defaults to JSON format for better compatibility with log aggregators.
     """
-    log_level_str = app.config.get('LOG_LEVEL', 'INFO')
-    numeric_level = getattr(logging, log_level_str.upper(), logging.INFO)
+    if not log_format_str:
+        log_format_str = '{"level": "%(levelname)s", "time": "%(asctime)s", "message": "%(message)s", "module": "%(name)s"}'
 
-    app.logger.setLevel(numeric_level)
+    LOGGING_CONFIG = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "json": {
+                "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                "format": log_format_str
+            },
+            "standard": {
+                "format": "%(levelname)s:     %(asctime)s - %(name)s - %(message)s"
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "json", # Use JSON formatter
+                "stream": sys.stdout,
+            },
+        },
+        "loggers": {
+            "root": {
+                "handlers": ["console"],
+                "level": log_level,
+                "propagate": True,
+            },
+            "app": { # Specific logger for your application modules
+                "handlers": ["console"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "uvicorn": { # Uvicorn logs
+                "handlers": ["console"],
+                "level": "INFO", # Keep Uvicorn logs at INFO or higher to avoid verbosity
+                "propagate": False,
+            },
+            "uvicorn.access": { # Uvicorn access logs
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "sqlalchemy": { # SQLAlchemy logs
+                "handlers": ["console"],
+                "level": "WARNING", # Keep SQLAlchemy logs at WARNING or higher
+                "propagate": False,
+            },
+            "alembic": { # Alembic logs
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "fastapi": { # FastAPI framework logs
+                "handlers": ["console"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "fastapi_cache": { # FastAPI Cache logs
+                "handlers": ["console"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "fastapi_limiter": { # FastAPI Limiter logs
+                "handlers": ["console"],
+                "level": log_level,
+                "propagate": False,
+            }
+        },
+    }
 
-    # Remove default Flask handlers to avoid duplicate logs
-    for handler in app.logger.handlers:
-        app.logger.removeHandler(handler)
+    # If pythonjsonlogger is not installed, fallback to standard formatter
+    try:
+        import pythonjsonlogger.jsonlogger
+    except ImportError:
+        LOGGING_CONFIG["formatters"]["json"] = LOGGING_CONFIG["formatters"]["standard"]
+        logging.warning("python-json-logger not found, falling back to standard logging format.")
 
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(
-        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-    ))
-    app.logger.addHandler(console_handler)
+    dictConfig(LOGGING_CONFIG)
+    logging.getLogger("root").setLevel(log_level)
+    logging.getLogger("app").setLevel(log_level)
+    logging.info(f"Logging initialized with level: {log_level}")
 
-    # File handler (only in non-testing environments)
-    if not app.testing:
-        log_dir = 'logs'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        file_handler = RotatingFileHandler(
-            os.path.join(log_dir, 'ecommerce.log'),
-            maxBytes=1024 * 1024 * 10, # 10 MB
-            backupCount=5
-        )
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-        ))
-        app.logger.addHandler(file_handler)
-
-    app.logger.info(f"Logging initialized with level: {log_level_str}")
+# Ensure pythonjsonlogger is in requirements.txt
+# If not, add it: pythonjsonlogger==2.0.7 (or latest)
+```
