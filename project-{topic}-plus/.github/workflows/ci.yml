@@ -1,3 +1,4 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
@@ -12,78 +13,106 @@ on:
 
 jobs:
   build-and-test:
+    name: Build and Test Backend
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-    - name: Install Poetry (if using, otherwise use pip)
-      run: |
-        pip install poetry
-        poetry config virtualenvs.create false
-        poetry install --no-dev
-        # Alternative: pip install -r requirements.txt
+      - name: Cache Node.js modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: npm install
 
-    - name: Set up Docker Compose
-      run: |
-        docker-compose version
-        docker info
+      - name: Set up Docker Compose for DB and Redis
+        run: docker-compose -f docker/docker-compose.yml up -d db redis
 
-    - name: Start services with Docker Compose
-      run: docker-compose -f docker-compose.yml up -d --build
+      - name: Wait for DB and Redis to be healthy
+        # Use a loop or wait-for-it equivalent
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          until docker exec mobile-task-backend-db-1 pg_isready -U user; do
+            echo "PostgreSQL is unavailable - sleeping"
+            sleep 1
+          done
+          echo "PostgreSQL is up and running."
 
-    - name: Wait for services to be healthy
-      # This waits for the DB and Redis health checks defined in docker-compose.yml
-      # For a more robust wait, you might use a script that polls the app's /health endpoint.
-      run: |
-        echo "Waiting for DB to be healthy..."
-        docker-compose exec db pg_isready -U user -d ml_utils_db -t 0
-        echo "Waiting for Redis to be healthy..."
-        docker-compose exec redis redis-cli ping
+          echo "Waiting for Redis to be ready..."
+          until docker exec mobile-task-backend-redis-1 redis-cli ping; do
+            echo "Redis is unavailable - sleeping"
+            sleep 1
+          done
+          echo "Redis is up and running."
 
-    - name: Run Alembic Migrations and Seed Data (if not done by docker-compose command)
-      # This step is often included if `alembic upgrade` is not part of the `command` in docker-compose.yml
-      # Or if seed_data.py is run separately.
-      # Since `command` in docker-compose.yml already handles it, this might be redundant,
-      # but it demonstrates how to run them if needed.
-      run: |
-        docker-compose exec app alembic upgrade head
-        docker-compose exec app python seed_data.py
+      - name: Run Prisma Migrations
+        # Ensure DATABASE_URL is correctly set to point to the Dockerized DB
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/taskdb?schema=public
 
-    - name: Run Unit and Integration Tests
-      run: docker-compose exec app pytest /app/tests --cov=/app --cov-report=xml
+      - name: Seed Database
+        run: npm run prisma:seed
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/taskdb?schema=public
+          ADMIN_EMAIL: ci_admin@example.com # Use specific admin credentials for CI
+          ADMIN_PASSWORD: ci_admin_password
 
-    - name: Run API Tests (against the running app)
-      # Assuming you have specific API tests that use httpx or similar
-      run: docker-compose exec app pytest /app/tests/integration/test_api_*.py
+      - name: Run Unit & Integration Tests with Coverage
+        run: npm run test:coverage
 
-    - name: Generate and upload coverage report
-      uses: codecov/codecov-action@v3
-      with:
-        files: ./coverage.xml
-        # token: ${{ secrets.CODECOV_TOKEN }} # Uncomment if using private repos or needing a token
-        fail_ci_if_error: true
+      - name: Upload coverage reports to Codecov (Optional)
+        # uses: codecov/codecov-action@v4
+        # with:
+        #   token: ${{ secrets.CODECOV_TOKEN }} # Required for private repos
+        #   files: ./coverage/*.json # Adjust path to your coverage report
+        #   fail_ci_if_error: true # Recommended: fail CI if Codecov upload fails
+        #   verbose: true # Optional: enable verbose logging for debug
+        run: echo "Skipping Codecov upload. Uncomment if Codecov is configured."
 
-    - name: Run Performance Tests (Locust) - Example
-      # For real performance tests, you'd typically run Locust on a dedicated machine
-      # This is a very basic example to demonstrate integration
-      run: docker-compose exec app locust -f /app/tests/performance/test_locust.py --web-host 0.0.0.0 --headless --users 10 --spawn-rate 5 --run-time 30s --csv=locust_report
+  # Deploy (Optional - placeholder for actual deployment steps)
+  deploy:
+    name: Deploy to Production
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Deploy only on push to main
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://your-app-url.com # Replace with your actual app URL
 
-    - name: Stop services
-      if: always() # Ensure services are stopped even if previous steps fail
-      run: docker-compose -f docker-compose.yml down -v
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t your-dockerhub-username/mobile-task-backend:${{ github.sha }} -f docker/Dockerfile .
+
+      - name: Log in to Docker Hub (or other registry)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Docker Image
+        run: docker push your-dockerhub-username/mobile-task-backend:${{ github.sha }}
+
+      - name: Deploy to Cloud Provider (e.g., Kubernetes, AWS ECS, Google Cloud Run)
+        run: |
+          echo "Deploying to production environment..."
+          # Example: Kubernetes deployment (requires kubectl configured)
+          # kubectl apply -f kubernetes/deployment.yaml
+          # kubectl set image deployment/mobile-task-backend mobile-task-backend=your-dockerhub-username/mobile-task-backend:${{ github.sha }}
+          echo "Deployment steps go here. This is a placeholder."
 ```
-
-### 4. Testing & Quality
-
-#### `pytest.ini`
-```ini

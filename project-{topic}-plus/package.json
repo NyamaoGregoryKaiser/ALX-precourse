@@ -1,35 +1,89 @@
 ```json
 {
-  "name": "simple-cms",
+  "name": "mobile-task-backend",
   "version": "1.0.0",
-  "description": "A simple content management system",
-  "main": "index.js",
+  "description": "A comprehensive, production-ready mobile app backend for task management.",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "jest",
-    "migrate": "sequelize-cli db:migrate",
-    "seed": "sequelize-cli db:seed:all"
+    "start": "node src/server.js",
+    "dev": "cross-env NODE_ENV=development nodemon src/server.js",
+    "prisma:migrate:dev": "prisma migrate dev --name init",
+    "prisma:generate": "prisma generate",
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "test": "cross-env NODE_ENV=test jest --detectOpenHandles --forceExit",
+    "test:coverage": "cross-env NODE_ENV=test jest --coverage --detectOpenHandles --forceExit",
+    "test:watch": "cross-env NODE_ENV=test jest --watchAll",
+    "test:e2e": "cross-env NODE_ENV=test jest tests/api --detectOpenHandles --forceExit",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.js' 'tests/**/*.js' 'prisma/**/*.ts'",
+    "prepare": "husky install"
   },
+  "keywords": [
+    "mobile-backend",
+    "nodejs",
+    "express",
+    "prisma",
+    "postgresql",
+    "jwt",
+    "authentication",
+    "caching",
+    "rate-limiting",
+    "docker",
+    "ci-cd",
+    "production-ready",
+    "alx"
+  ],
+  "author": "Your Name/ALX Team",
+  "license": "MIT",
   "dependencies": {
-    "body-parser": "^1.20.2",
+    "@prisma/client": "^5.14.0",
+    "bcryptjs": "^2.4.3",
+    "connect-redis": "^7.1.1",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-jwt": "^7.2.1",
-    "jsonwebtoken": "^9.0.1",
-    "pg": "^8.11.2",
-    "sequelize": "^6.34.0",
-    "sequelize-cli": "^6.6.1"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "joi": "^17.13.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "redis": "^4.6.13",
+    "winston": "^3.13.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.17",
-    "@types/jest": "^29.5.3",
-    "jest": "^29.6.2",
-    "nodemon": "^3.0.1",
-    "supertest": "^6.3.3",
-    "@types/jsonwebtoken": "^9.0.1"
-
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/joi": "^17.2.3",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/morgan": "^1.10.3",
+    "@types/node": "^20.12.12",
+    "@types/supertest": "^6.0.2",
+    "@types/winston": "^2.4.4",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "husky": "^9.0.11",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.2",
+    "nodemon": "^3.1.0",
+    "prettier": "^3.2.5",
+    "prisma": "^5.14.0",
+    "supertest": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.ts": [
+      "prettier --write"
+    ]
   }
 }
 ```
