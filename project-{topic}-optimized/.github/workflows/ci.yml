@@ -1,5 +1,4 @@
-```yaml
-name: Backend CI Pipeline
+name: CI Pipeline
 
 on:
   push:
@@ -7,104 +6,120 @@ on:
       - main
       - develop
     paths:
-      - 'backend/**' # Only trigger for changes in the backend directory
+      - 'app/**'
+      - 'alembic/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - 'backend/**'
+      - 'app/**'
+      - 'alembic/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - '.github/workflows/ci.yml'
 
 jobs:
-  build-and-test:
+  lint-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend # All commands run from the backend directory
-
     services:
       postgres:
-        image: postgres:14-alpine
+        image: postgres:15-alpine
         env:
+          POSTGRES_DB: testdb
           POSTGRES_USER: testuser
           POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: testdb
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
       redis:
-        image: redis:6-alpine
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: 18
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: npm install
+        run: pip install -r requirements.txt
+
+      - name: Create .env for tests
+        run: |
+          echo "POSTGRES_SERVER=localhost" >> .env
+          echo "POSTGRES_USER=testuser" >> .env
+          echo "POSTGRES_PASSWORD=testpassword" >> .env
+          echo "POSTGRES_DB=testdb" >> .env
+          echo "DATABASE_URL=postgresql+asyncpg://testuser:testpassword@localhost/testdb" >> .env
+          echo "REDIS_HOST=localhost" >> .env
+          echo "REDIS_PORT=6379" >> .env
+          echo "REDIS_DB=1" >> .env # Use a different DB for tests
+          echo "REDIS_URL=redis://localhost:6379/1" >> .env
+          echo "SECRET_KEY=test_secret_key" >> .env
+          echo "ACCESS_TOKEN_EXPIRE_MINUTES=1" >> .env # Shorter for tests
 
       - name: Wait for PostgreSQL and Redis to be ready
         run: |
           echo "Waiting for PostgreSQL..."
-          for i in $(seq 1 10); do
-            nc -z localhost 5432 && echo "PostgreSQL is up!" && break
-            echo "Waiting for PostgreSQL... ($i/10)"
-            sleep 1
+          for i in `seq 1 10`; do
+            nc -z localhost 5432 && break
+            echo "Attempt $i: PostgreSQL not ready yet. Waiting..."
+            sleep 5
           done
+          echo "PostgreSQL is ready!"
+          
           echo "Waiting for Redis..."
-          for i in $(seq 1 10); do
-            nc -z localhost 6379 && echo "Redis is up!" && break
-            echo "Waiting for Redis... ($i/10)"
-            sleep 1
+          for i in `seq 1 10`; do
+            nc -z localhost 6379 && break
+            echo "Attempt $i: Redis not ready yet. Waiting..."
+            sleep 5
           done
+          echo "Redis is ready!"
 
-      - name: Set up environment variables for tests
+
+      - name: Run Black formatter
+        run: black --check app alembic scripts
+
+      - name: Run Isort checker
+        run: isort --check-only app alembic scripts
+
+      - name: Run Mypy type checker
+        run: mypy app
+
+      - name: Run Alembic Migrations for tests
+        working-directory: .
         run: |
-          echo "DB_HOST=localhost" >> $GITHUB_ENV
-          echo "DB_PORT=5432" >> $GITHUB_ENV
-          echo "DB_USERNAME=testuser" >> $GITHUB_ENV
-          echo "DB_PASSWORD=testpassword" >> $GITHUB_ENV
-          echo "DB_NAME=testdb" >> $GITHUB_ENV
-          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
-          echo "REDIS_PORT=6379" >> $GITHUB_ENV
-          echo "JWT_SECRET=test_jwt_secret" >> $GITHUB_ENV
-          echo "JWT_EXPIRES_IN=1h" >> $GITHUB_ENV
-          echo "NODE_ENV=test" >> $GITHUB_ENV
+          alembic upgrade head
 
-      - name: Run TypeORM Migrations
-        run: npm run migration:run
-
-      - name: Run Linter
-        run: npm run lint
-
-      - name: Run Tests (Unit & Integration)
-        run: npm test -- --coverage # --coverage to generate coverage report
-        env:
-          # Jest will use these environment variables for the test database
-          NODE_ENV: test
-
-      - name: Build TypeScript code
-        run: npm run build
-
-      # Add steps for artifact upload if needed (e.g., coverage reports, built code)
-      # - name: Upload coverage report
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: coverage-report
-      #     path: backend/coverage/
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=app --cov-report=xml --cov-report=term-missing app/tests/
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # If using codecov for reports
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true
 ```

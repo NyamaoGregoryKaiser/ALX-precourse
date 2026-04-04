@@ -1,36 +1,17 @@
-from werkzeug.security import generate_password_hash, check_password_hash
-from app.models.base import Base, db
+from sqlalchemy import Column, String, Boolean
+from sqlalchemy.orm import relationship
+from app.db.base_class import Base
 
 class User(Base):
-    __tablename__ = 'users'
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
 
-    username = db.Column(db.String(64), index=True, unique=True, nullable=False)
-    email = db.Column(db.String(120), index=True, unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    is_admin = db.Column(db.Boolean, default=False, nullable=False)
-
-    # Relationships
-    scraper_configs = db.relationship('ScraperConfig', back_populates='user', lazy=True)
-    scraping_jobs = db.relationship('ScrapingJob', back_populates='user', lazy=True)
+    projects = relationship("Project", back_populates="owner")
+    assigned_tasks = relationship("Task", back_populates="assignee")
 
     def __repr__(self):
-        return f'<User {self.username}>'
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    @classmethod
-    def get_by_username(cls, username):
-        return cls.query.filter_by(username=username).first()
-
-    @classmethod
-    def get_by_email(cls, email):
-        return cls.query.filter_by(email=email).first()
-
-    @classmethod
-    def get_by_id(cls, user_id):
-        return cls.query.get(user_id)
+        return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
 ```

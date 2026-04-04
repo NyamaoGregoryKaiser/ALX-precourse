@@ -1,176 +1,156 @@
-```markdown
-# ALX CMS Deployment Guide
+# Mobile Task Manager Backend - Deployment Guide
 
-This document provides instructions for deploying the ALX Production-Ready CMS System to various environments. It covers building, containerization, and conceptual steps for cloud deployment.
+This document outlines the steps to deploy the FastAPI backend application in a production environment. The recommended approach leverages Docker and Docker Compose for containerization and orchestration, but notes on traditional deployments are also included.
 
-## Table of Contents
+## 1. Prerequisites
 
-1.  [Building the Application](#1-building-the-application)
-2.  [Deployment with Docker Compose (Local/Single-Host)](#2-deployment-with-docker-compose-localsingle-host)
-    *   [Prerequisites](#prerequisites)
-    *   [Steps](#steps)
-3.  [Cloud Deployment (Conceptual)](#3-cloud-deployment-conceptual)
-    *   [AWS](#aws)
-    *   [Azure](#azure)
-    *   [Google Cloud Platform (GCP)](#google-cloud-platform-gcp)
-4.  [Environment Variables](#4-environment-variables)
-5.  [Database Management](#5-database-management)
-6.  [Monitoring and Logging](#6-monitoring-and-logging)
-7.  [Scaling](#7-scaling)
-8.  [Security Best Practices](#8-security-best-practices)
+*   **Server Environment**: A Linux-based server (e.g., Ubuntu, CentOS).
+*   **Docker & Docker Compose**: Installed and configured on the server.
+*   **Git**: For cloning the repository.
+*   **Domain Name**: (Optional but recommended) A domain name pointing to your server's IP address.
+*   **SSL Certificate**: (Optional but highly recommended) For HTTPS, e.g., using Let's Encrypt.
+*   **Reverse Proxy**: (Optional but recommended) Nginx or Caddy for SSL termination, load balancing, and serving static files (if any).
 
----
+## 2. Production Deployment using Docker Compose
 
-## 1. Building the Application
+This is the recommended approach for simpler production setups or staging environments.
 
-Before deployment, you need to build a deployable JAR file.
+1.  **Clone the Repository:**
+    Log in to your server and clone the project.
 
-1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/cms-system.git
-    cd cms-system
+    git clone https://github.com/your-username/mobile-task-manager-backend.git
+    cd mobile-task-manager-backend
     ```
-2.  **Build the project with Maven:**
+
+2.  **Create Production `.env` File:**
+    Create a `.env` file based on `.env.example`. **Crucially, ensure:**
+    *   `SECRET_KEY`: Is a **very strong, unique, and securely generated** string. Do not use the example value.
+    *   `POSTGRES_PASSWORD`: Is a strong password for your database.
+    *   `LOG_LEVEL`: Set to `INFO` or `WARNING` for production, to avoid excessive logging.
+    *   `REDIS_HOST`, `POSTGRES_SERVER`: Should remain `redis` and `db` respectively, as these are the service names within the Docker Compose network.
+    *   Other sensitive credentials (e.g., API keys for external services) should also be added here.
+
     ```bash
-    mvn clean install -DskipTests
-    ```
-    This command compiles the Java code, runs any unit tests (skipped here for deployment build), and packages the application into a `JAR` file (e.g., `target/cms-system-0.0.1-SNAPSHOT.jar`).
-
-## 2. Deployment with Docker Compose (Local/Single-Host)
-
-Docker Compose is ideal for local development, testing, and single-host deployments, bundling the application and its database.
-
-### Prerequisites
-
-*   Docker Engine
-*   Docker Compose
-
-### Steps
-
-1.  **Create an `.env` file:**
-    In the root of your project, create a `.env` file with environment variables for your database and JWT secret. **Crucially, replace placeholders with strong, unique values for production.**
-
-    ```env
-    # .env file for Docker Compose deployment
-    DB_NAME=cms_prod_db
-    DB_USER=cms_prod_user
-    DB_PASSWORD=YOUR_STRONG_DB_PASSWORD_HERE
-    DB_HOST=db # Service name in docker-compose.yml
-    DB_PORT=5432
-    JWT_SECRET=YOUR_VERY_LONG_AND_SECURE_JWT_SECRET_HERE_FOR_PRODUCTION
-    # Optionally, specify specific image tags or other environment variables for the app
-    # SPRING_PROFILES_ACTIVE=prod
+    cp .env.example .env
+    # nano .env (or your preferred editor) and fill in production values
     ```
 
-2.  **Build Docker images:**
-    Ensure your `cms-system-0.0.1-SNAPSHOT.jar` (or whatever your actual JAR name is) exists in the `target/` directory.
+3.  **Adjust `docker-compose.yml` for Production:**
+    Open `docker-compose.yml` and modify the `backend` service's `command` to use `gunicorn` for production-grade serving, which provides better performance and reliability than `uvicorn` directly.
+    *   **Uncomment the `gunicorn` command and comment out the `uvicorn` command.**
+    *   Adjust `--workers` based on your server's CPU cores (e.g., `2 * num_cores + 1`).
+
+    ```yaml
+    # ... inside backend service ...
+    # volumes:
+    #   - ./app:/app/app # Comment out or remove for production to prevent accidental host file changes
+    #   - ./alembic:/app/alembic
+    #   - ./scripts:/app/scripts
+    #   - ./alembic.ini:/app/alembic.ini
+    # command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    ```
+    *It's highly recommended to perform migrations and seeding as separate steps or as part of a CI/CD process, rather than directly in the `command` for a production deployment.* For initial setup, `alembic upgrade head` can be run once before starting the `gunicorn` command.
+
+4.  **Build and Run Services:**
 
     ```bash
     docker-compose build
-    ```
-    This command will build the `cms-app` image based on your `Dockerfile`.
-
-3.  **Start the services:**
-    ```bash
+    docker-compose run --rm backend alembic upgrade head # Run migrations once
+    docker-compose run --rm backend python scripts/seed.py # Run seed data once (optional)
     docker-compose up -d
     ```
-    This will:
-    *   Create a PostgreSQL database container (`cms-db`).
-    *   Create a data volume (`cms_db_data`) for persistent database storage.
-    *   Start the `cms-app` container, which will connect to the database. Flyway will automatically run migrations on startup.
+    *   `docker-compose build`: Builds the Docker images.
+    *   `alembic upgrade head`: Applies any pending database migrations.
+    *   `python scripts/seed.py`: Seeds initial data (e.g., admin user).
+    *   `docker-compose up -d`: Starts all services in detached mode.
 
-4.  **Verify the deployment:**
-    *   Check container status: `docker-compose ps`
-    *   View logs: `docker-compose logs cms-app` or `docker-compose logs db`
-    *   Access the application: `http://localhost:8080`
-    *   Access Swagger UI: `http://localhost:8080/swagger-ui.html`
+5.  **Monitor Logs:**
+    Check the logs to ensure all services are starting correctly:
 
-5.  **Stopping and cleaning up:**
     ```bash
-    docker-compose down
-    # To remove volumes (caution: this deletes your database data!)
-    # docker-compose down --volumes
+    docker-compose logs -f
     ```
 
-## 3. Cloud Deployment (Conceptual)
+### 2.1. Integrating with a Reverse Proxy (Nginx/Caddy - Recommended)
 
-For production-grade scalability, reliability, and management, cloud platforms are recommended. Below are conceptual steps for common providers.
+For production, it's best to place Nginx or Caddy in front of your Docker Compose setup. This provides:
+*   **SSL/TLS Termination**: Secure HTTPS communication.
+*   **Load Balancing**: Distribute traffic across multiple backend containers (if scaled).
+*   **Static File Serving**: (If your application had static files, though this backend doesn't).
+*   **DDoS Protection / Rate Limiting**: Additional layers of security.
 
-### AWS
+**Example Nginx Configuration (`nginx.conf`):**
 
-*   **Database:** Use Amazon RDS for PostgreSQL.
-*   **Application:**
-    *   **AWS Elastic Beanstalk:** Easiest for Spring Boot JAR deployments. Upload your JAR, and Beanstalk handles environment setup, load balancing, and scaling.
-    *   **AWS ECS (Elastic Container Service) or EKS (Elastic Kubernetes Service):** For containerized deployments using your Docker image. ECS is simpler for Docker-based apps, EKS offers full Kubernetes power.
-    *   **AWS App Runner:** Fully managed service for containerized web applications.
-*   **Networking:** AWS VPC, Load Balancers (ALB).
-*   **Secrets Management:** AWS Secrets Manager for database credentials and JWT secret.
-*   **Monitoring:** Amazon CloudWatch, integrate with Prometheus/Grafana if desired.
+```nginx
+# Add this to your server's Nginx configuration (e.g., /etc/nginx/sites-available/your_domain)
 
-### Azure
+server {
+    listen 80;
+    server_name api.yourdomain.com; # Replace with your domain
 
-*   **Database:** Use Azure Database for PostgreSQL.
-*   **Application:**
-    *   **Azure App Service:** Simple deployment of JAR files or Docker images.
-    *   **Azure Kubernetes Service (AKS):** For highly scalable, containerized deployments.
-    *   **Azure Container Apps:** Serverless containers for microservices.
-*   **Networking:** Azure Virtual Network, Azure Application Gateway/Load Balancer.
-*   **Secrets Management:** Azure Key Vault.
-*   **Monitoring:** Azure Monitor.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
 
-### Google Cloud Platform (GCP)
+server {
+    listen 443 ssl http2;
+    server_name api.yourdomain.com; # Replace with your domain
 
-*   **Database:** Use Cloud SQL for PostgreSQL.
-*   **Application:**
-    *   **Google App Engine (Standard/Flexible):** For JAR deployments or Docker images.
-    *   **Google Kubernetes Engine (GKE):** For containerized deployments.
-    *   **Cloud Run:** Serverless platform for containerized applications.
-*   **Networking:** GCP VPC, Cloud Load Balancing.
-*   **Secrets Management:** Google Secret Manager.
-*   **Monitoring:** Google Cloud Monitoring.
+    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem; # Path to your cert
+    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem; # Path to your key
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20";
 
-## 4. Environment Variables
+    location / {
+        proxy_pass http://localhost:8000; # Or the IP:PORT of your backend service
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+    }
+}
+```
+*   You would typically run Nginx directly on the host or in a separate Docker container, connecting to the `backend` service using `localhost:8000` (if `8000` is exposed on the host) or by placing Nginx in the same Docker Compose network.
 
-Always use environment variables for configuration values that change between environments or contain sensitive information.
+## 3. Scaling the Application
 
-*   `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`: Database connection details.
-*   `JWT_SECRET`: A long, random string used for signing JWTs. **Critical for security.**
-*   `SPRING_PROFILES_ACTIVE`: (e.g., `prod`, `dev`, `test`) to activate environment-specific `application-{profile}.yml` files.
+To handle more traffic, you can scale the `backend` service.
 
-**Never hardcode sensitive data in your codebase.** Use cloud-native secret management services (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager) in production.
+1.  **Manual Scaling (Docker Compose):**
+    ```bash
+    docker-compose up -d --scale backend=4 # Starts 4 instances of the backend service
+    ```
+    You would need a load balancer (like Nginx configured in round-robin mode or an API Gateway) to distribute requests among these instances.
 
-## 5. Database Management
+2.  **Container Orchestration (Kubernetes):**
+    For enterprise-grade scaling and management, consider deploying to a Kubernetes cluster. This involves creating Kubernetes Deployment, Service, Ingress, and Persistent Volume Claim configurations based on your Docker images. This is beyond the scope of this document but is the next logical step for large-scale deployments.
 
-*   **Flyway:** Flyway is configured to run database migrations automatically on application startup. Ensure your `V<version>__<description>.sql` scripts are correct and idempotent.
-*   **Backup and Restore:** Implement a robust strategy for backing up your PostgreSQL database (e.g., automated daily backups via cloud provider services or `pg_dump`).
-*   **Monitoring:** Monitor database performance (connections, queries, disk usage) through cloud provider tools or external solutions.
+## 4. Database Backups
 
-## 6. Monitoring and Logging
+Regular database backups are critical. Implement a strategy to periodically back up your PostgreSQL data volume (`postgres_data` in `docker-compose.yml`). Tools like `pg_dump` or cloud provider managed backup solutions are recommended.
 
-*   **Spring Boot Actuator:** Provides endpoints for health, metrics (Prometheus format), and info.
-    *   `GET /actuator/health`
-    *   `GET /actuator/prometheus`
-*   **Logging:** Configure `logback-spring.xml` for structured logging (JSON format recommended for cloud environments) and integrate with centralized log aggregation systems (e.g., ELK Stack, Splunk, cloud-native services like CloudWatch Logs, Azure Monitor Logs, GCP Cloud Logging).
-*   **Alerting:** Set up alerts based on critical metrics (e.g., high error rates, low disk space, high CPU usage) and log patterns.
+## 5. Monitoring
 
-## 7. Scaling
+*   **Logs**: Configure log aggregation (e.g., ELK stack, Grafana Loki) to collect and analyze logs from all services. The `app.main.py` is configured with `loguru`.
+*   **Metrics**: Integrate Prometheus and Grafana to collect and visualize application metrics (CPU, memory, request rates, error rates).
+*   **Health Checks**: Leverage the `/health` endpoint and Docker Compose health checks to monitor service availability.
 
-*   **Stateless Application:** The CMS application is designed to be stateless (using JWTs for auth), making it easy to scale horizontally.
-*   **Load Balancing:** Deploy behind a load balancer (e.g., Nginx, cloud load balancers) to distribute traffic across multiple instances.
-*   **Auto-Scaling:** Configure auto-scaling rules based on CPU utilization, request rate, or custom metrics to automatically adjust the number of application instances.
-*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful instance) or horizontally (read replicas for read-heavy workloads).
+## 6. CI/CD for Production Deployment
 
-## 8. Security Best Practices
+The `.github/workflows/ci.yml` provides a basic CI setup. For full CI/CD, you would extend this to:
 
-*   **Strong Passwords & Secrets:** Use strong, randomly generated passwords for database users and JWT secrets. Rotate them periodically.
-*   **Least Privilege:** Grant only necessary permissions to database users and application service accounts.
-*   **Network Security:**
-    *   Deploy database in a private subnet.
-    *   Restrict inbound access to the database to only the application instances.
-    *   Use firewalls/security groups to control access to application ports.
-    *   Use HTTPS for all external communication.
-*   **Vulnerability Scanning:** Regularly scan your application dependencies and Docker images for known vulnerabilities.
-*   **Input Validation:** Ensure all user input is properly validated both at the client and server side to prevent injection attacks (SQL, XSS).
-*   **Dependency Management:** Keep dependencies up-to-date to patch security vulnerabilities.
-*   **Regular Audits:** Conduct periodic security audits and penetration testing.
+1.  **Build Docker Image**: Push the built Docker image to a container registry (e.g., Docker Hub, AWS ECR, GCR) upon successful CI.
+2.  **Deployment Trigger**: Configure a CD pipeline (e.g., using GitHub Actions, Jenkins, GitLab CI, ArgoCD) to:
+    *   Pull the latest image from the registry.
+    *   Run database migrations.
+    *   Update the running containers (e.g., `docker-compose up -d` with a new image tag, or Kubernetes rolling update).
+
+This ensures automated, consistent, and reliable deployments to production.
 ```

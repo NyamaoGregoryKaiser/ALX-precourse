@@ -1,140 +1,138 @@
-```markdown
-# Architecture Document for ALX Production-Ready CMS System
+# Mobile Task Manager Backend - Architecture Document
 
-This document outlines the architectural design of the ALX CMS, focusing on its structure, components, interactions, and key design principles.
+This document outlines the architecture of the Mobile Task Manager Backend, detailing its core components, interactions, and design principles.
 
-## 1. Introduction
+## 1. High-Level Architecture
 
-The ALX CMS is designed as a robust, scalable, and maintainable content management solution. It follows an API-first approach, leveraging the Spring Boot ecosystem for backend development and providing flexibility for various frontend integrations.
+The backend follows a microservice-lite or modular monolith approach, structured around a FastAPI application, interacting with a PostgreSQL database and Redis for caching/rate limiting. It's designed for an API-first mobile application, providing clear endpoints for client consumption.
 
-## 2. System Overview
-
-The CMS is a monolithic application in terms of deployment (a single JAR/Docker image) but internally follows a layered, modular design. It primarily serves RESTful APIs to clients and includes a basic server-side rendered UI for demonstration and quick administrative access.
-
-**Key Components:**
-
-*   **Backend (Spring Boot):** The core application logic, data management, security, and API exposure.
-*   **Database (PostgreSQL):** Persistent storage for all CMS data.
-*   **Cache (Caffeine):** In-memory caching for performance optimization.
-
-## 3. High-Level Architecture (C4 Model - System Context)
-
-```mermaid
-C4Context
-    title ALX CMS System Context
-    Person(User, "User", "Regular user interacting with content.")
-    Person(ContentCreator, "Content Creator", "Moderator/Admin creating and managing content.")
-    System(CmsSystem, "ALX CMS System", "Manages content lifecycle, user authentication, and authorization.")
-    System(PostgreSQL, "PostgreSQL Database", "Stores all CMS data.")
-    System(JwtProvider, "JWT Provider", "Generates and validates JWTs (internal to CmsSystem).", $link="Authentication Layer")
-    System(ExternalFrontend, "External Frontend (SPA/Mobile)", "Client applications interacting with the CMS via REST APIs (e.g., React, Vue, Mobile App).")
-    System(MonitoringSystem, "Monitoring System (Prometheus/Grafana)", "Monitors the health and performance of the CMS system.")
-    System(CI_CD, "CI/CD Pipeline", "Automates build, test, and deployment of the CMS.")
-
-    Rel(User, CmsSystem, "Views content via basic UI / External Frontend")
-    Rel(ContentCreator, CmsSystem, "Manages content, users, categories, tags via basic UI / External Frontend (Authenticated)")
-    Rel(ExternalFrontend, CmsSystem, "Consumes REST APIs (Authenticated)")
-    Rel(CmsSystem, PostgreSQL, "Reads from and writes to", "JDBC/JPA")
-    Rel(CmsSystem, JwtProvider, "Uses for authentication/authorization", "Internal API")
-    Rel(CmsSystem, MonitoringSystem, "Exposes metrics to", "Actuator Endpoints")
-    Rel(CI_CD, CmsSystem, "Builds and deploys", "Docker")
+```
++----------------+       +-------------------+       +-----------------+
+| Mobile Client  | <---> | Load Balancer/API | <---> |  FastAPI App    |
+| (iOS/Android)  |       |     Gateway       |       |  (Python/Uvicorn)|
++----------------+       +-------------------+       |                 |
+                                                     |  - API Endpoints|
+                                                     |  - Auth/AuthZ   |
+                                                     |  - Business Logic|
+                                                     |  - Caching      |
+                                                     |  - Rate Limiting|
+                                                     +--------+--------+
+                                                              |
+                                                    +---------+----------+
+                                                    |                    |
+                                            +-------v-------+   +--------v--------+
+                                            |  PostgreSQL   |   |     Redis       |
+                                            |   (Database)  |   | (Cache/RateLimit)|
+                                            |               |   |                 |
+                                            | - User Data   |   | - Session/Token |
+                                            | - Project Data|   | - Rate Limiters |
+                                            | - Task Data   |   | - Cached Data   |
+                                            +---------------+   +-----------------+
 ```
 
-## 4. Container Diagram (Deployment View)
+## 2. Core Components
 
-```mermaid
-C4Container
-    title ALX CMS Container Diagram
-    System_Boundary(CmsDeployment, "ALX CMS Deployment") {
-        Container(CmsApp, "CMS Application", "Spring Boot (Java 17)", "Provides REST APIs for content, users, auth; serves basic Thymeleaf UI.")
-        Container(PostgresDb, "PostgreSQL Database", "PostgreSQL 15", "Stores all persistent data (content, users, roles, categories, tags).")
-    }
-    Container(ExternalClient, "External Frontend / Client", "Web Browser, Mobile App, Postman", "Interacts with CMS APIs to display and manage content.")
-    Container(Monitoring, "Monitoring Stack", "Prometheus, Grafana", "Collects metrics and visualizes system health and performance.")
+### 2.1. FastAPI Application (`app/`)
 
-    Rel(ExternalClient, CmsApp, "Makes API calls to", "HTTPS/HTTP REST")
-    Rel(CmsApp, PostgresDb, "Performs CRUD operations on", "JDBC/JPA")
-    Rel(CmsApp, Monitoring, "Exposes metrics for", "HTTP (Actuator)")
+The heart of the backend, implemented using FastAPI.
 
-    Rel_Neighbor(ExternalClient, CmsApp, "Accesses API and UI")
-    Rel_Neighbor(CmsApp, PostgresDb, "Data Persistence")
-    Rel_Neighbor(CmsApp, Monitoring, "Operational Visibility")
-```
+*   **`main.py`**:
+    *   Initializes the FastAPI application.
+    *   Configures global middleware (CORS, Logging, Request Timing).
+    *   Registers custom exception handlers (Validation Errors, HTTP Exceptions, Generic Errors).
+    *   Includes API routers from `app/api/v1/`.
+    *   Manages application lifecycle events (startup: DB/Redis connection, rate limiter init; shutdown: DB/Redis disconnect).
+*   **`api/v1/`**:
+    *   Contains versioned API endpoints (`auth.py`, `users.py`, `projects.py`, `tasks.py`).
+    *   Each file defines routes for a specific resource, enforcing authentication and authorization using FastAPI's dependency injection system.
+*   **`crud/`**:
+    *   Provides a layer of abstraction for database operations (Create, Read, Update, Delete).
+    *   `base.py` offers a generic CRUD class for common operations.
+    *   Specific CRUD classes (`user.py`, `project.py`, `task.py`) extend `CRUDBase` and add domain-specific logic (e.g., `get_by_email` for users, `get_multi_by_owner` for projects).
+    *   This separation ensures business logic in API endpoints is lean and reusable database logic is centralized.
+*   **`models/`**:
+    *   Defines SQLAlchemy ORM models (`user.py`, `project.py`, `task.py`) that map to database tables.
+    *   Uses `app/db/base_class.py` for common attributes (UUID `id`, `created_at`, `updated_at`).
+    *   Relationships between models (e.g., User has Projects, Project has Tasks) are defined here.
+*   **`schemas/`**:
+    *   Pydantic models for data validation, serialization, and deserialization.
+    *   Used for request bodies (`Create`, `Update` schemas) and response bodies (`Read` schemas).
+    *   Ensures data integrity and consistent API contracts.
+*   **`core/`**:
+    *   **`config.py`**: Manages application settings and environment variables using Pydantic Settings.
+    *   **`security.py`**: Handles password hashing (bcrypt) and JWT token creation/verification.
+    *   **`dependencies.py`**: Defines FastAPI dependency injection functions for common tasks:
+        *   `get_db`: Provides an `AsyncSession` to route handlers.
+        *   `get_current_user`: Extracts and validates JWT token, fetches the current user, enforcing authentication.
+        *   `get_current_active_superuser`: Extends `get_current_user` to enforce superuser authorization.
+    *   **`errors.py`**: Custom exception classes for common HTTP error scenarios (e.g., `NotFoundException`, `ForbiddenException`).
+    *   **`caching.py`**: Manages Redis connection and client instance.
+*   **`db/`**:
+    *   **`session.py`**: Configures the SQLAlchemy `AsyncEngine` and `AsyncSessionLocal` for asynchronous database interactions.
+    *   **`base_class.py`**: The declarative base for SQLAlchemy models, providing UUID IDs and timestamps.
+    *   **`init_db.py`**: Script for initial database seeding (e.g., creating a default superuser).
 
-## 5. Component Diagram (Internal Structure of CMS Application)
+### 2.2. Database (PostgreSQL)
 
-```mermaid
-C4Component
-    title ALX CMS Application Component Diagram
-    Container(CmsApp, "CMS Application", "Spring Boot (Java 17)", "Handles all backend logic.") {
-        Component(AuthModule, "Authentication & Authorization Module", "Spring Security, JWT", "Handles user login, token generation, and access control.")
-        Component(UserModule, "User Management Module", "Spring Data JPA, UserService, UserController", "Manages user accounts and roles.")
-        Component(ContentModule, "Content Management Module", "Spring Data JPA, ContentService, ContentController", "Manages content lifecycle (CRUD), categories, tags.")
-        Component(CommonModule, "Common Utilities & Exception Handling", "GlobalExceptionHandler, SlugUtil, RateLimitInterceptor", "Cross-cutting concerns and helper utilities.")
-        Component(ConfigModule, "Configuration & Infrastructure", "Spring Configs, CacheConfig, OpenAPIConfig", "Defines application-wide settings and infrastructure components.")
-        Component(ThymeleafUI, "Basic Thymeleaf UI", "Thymeleaf, HomeController", "Simple server-side rendered UI for basic interaction/admin.")
-        Component(CacheLayer, "Caching Layer", "Spring Cache, Caffeine", "Optimizes performance by caching frequently accessed data.")
-    }
-    ContainerDb(PostgreSQL, "PostgreSQL Database", "Relational Database", "Persistent storage.")
-    
-    Rel(AuthModule, UserModule, "Authenticates and authorizes based on user roles")
-    Rel(ContentModule, UserModule, "Associates content with authors")
-    Rel(AuthModule, PostgreSQL, "Stores user credentials and roles")
-    Rel(UserModule, PostgreSQL, "Performs CRUD on Users/Roles")
-    Rel(ContentModule, PostgreSQL, "Performs CRUD on Content/Categories/Tags")
-    Rel(ContentModule, CacheLayer, "Caches content data")
-    Rel(UserModule, CacheLayer, "Caches user data (optional)")
-    Rel(ThymeleafUI, ContentModule, "Displays content to users (via internal calls or API)")
-    Rel(ThymeleafUI, AuthModule, "Handles login/logout for UI")
-    Rel(AuthModule, ConfigModule, "Uses security configurations")
-    Rel(ContentModule, CommonModule, "Uses utilities (slug generation) and handles exceptions")
-    Rel(CmsApp, PostgreSQL, "Utilizes for persistent storage")
-```
+*   **Persistent Storage**: Stores all application data (users, projects, tasks).
+*   **SQLAlchemy ORM**: Used for programmatic interaction, abstracting raw SQL.
+*   **Alembic**: Manages database schema changes through migrations, ensuring safe and version-controlled updates.
+*   **Query Optimization**: Utilizes indexing on frequently queried columns and eager loading (`selectinload`) to prevent N+1 issues.
 
-## 6. Data Model
+### 2.3. Caching & Rate Limiting (Redis)
 
-The core entities are:
+*   **Caching**: Redis is used for a simple caching layer, primarily for JWT token to user ID mapping. This can be extended to cache frequently accessed user profiles, project lists, or other data to reduce database load.
+*   **Rate Limiting**: `fastapi-limiter` library leverages Redis to implement API rate limiting, protecting the backend from abuse and ensuring fair usage.
 
-*   **User:** Represents a system user with authentication credentials and roles.
-*   **Role:** Defines access privileges (e.g., ADMIN, MODERATOR, USER).
-*   **Content:** The central piece of information (e.g., article, blog post) with title, body, slug, author, category, and tags.
-*   **Category:** Hierarchical or flat grouping for content.
-*   **Tag:** Keywords associated with content for flexible organization.
+## 3. Data Flow
 
-Relationships:
+1.  **Client Request**: A mobile client sends an HTTP request to the API.
+2.  **API Gateway/Load Balancer (Optional in Dev)**: (In production) Routes the request to an available FastAPI instance.
+3.  **FastAPI Application**:
+    *   **Middleware**:
+        *   CORS checks.
+        *   Request logging and timing.
+        *   Rate limiting (checks Redis).
+    *   **Routing**: Matches the request URL and method to a registered API endpoint.
+    *   **Dependency Injection**:
+        *   `get_db()` provides an asynchronous database session.
+        *   `get_current_user()` (for protected routes) validates the JWT token (potentially from Redis cache) and retrieves the `User` object.
+    *   **Pydantic Validation**: Validates incoming request data (query parameters, path parameters, request body) against defined schemas.
+    *   **Business Logic**: The route handler orchestrates operations:
+        *   Calls `crud` functions to interact with the database.
+        *   Applies authorization rules (e.g., is user the project owner? is user a superuser?).
+        *   Interacts with Redis for caching or invalidation if necessary.
+4.  **Database Interaction**: CRUD operations are translated by SQLAlchemy into SQL queries, executed against PostgreSQL.
+5.  **Response**: Data is retrieved/modified, converted back to Pydantic schemas, and returned as a JSON HTTP response to the client.
+6.  **Error Handling**: If any error occurs (validation, authentication, authorization, database, unexpected), the relevant exception handler intercepts it and returns a standardized JSON error response.
 
-*   `User` has `Many-to-Many` `Role`s.
-*   `Content` has `Many-to-One` `Author` (`User`).
-*   `Content` has `Many-to-One` `Category`.
-*   `Content` has `Many-to-Many` `Tag`s.
+## 4. Security Considerations
 
-## 7. Key Design Principles
+*   **Authentication**: JWTs are used for stateless authentication. Tokens are signed with a strong secret key.
+*   **Authorization**: Role-based (superuser) and ownership-based (project owner, task assignee) authorization checks are implemented using FastAPI dependencies.
+*   **Password Hashing**: `bcrypt` (via `passlib`) is used for strong, one-way password hashing.
+*   **Input Validation**: Pydantic schemas rigorously validate all incoming data, preventing common injection attacks and data integrity issues.
+*   **Environment Variables**: Sensitive data (e.g., `SECRET_KEY`, database credentials) are managed via environment variables and loaded securely by `Pydantic Settings`.
+*   **CORS**: Configured to allow necessary cross-origin requests, but should be restricted to known client origins in production.
 
-*   **Separation of Concerns:** Clear distinction between presentation, business logic, and data access layers.
-*   **Loose Coupling:** Components interact through well-defined interfaces (e.g., DTOs, services).
-*   **High Cohesion:** Related functionalities are grouped within modules.
-*   **API-First Design:** Prioritizing API development to support diverse client applications.
-*   **Security by Design:** Implementing authentication, authorization, and secure coding practices from the outset.
-*   **Testability:** Designing components to be easily unit and integration tested.
-*   **Scalability:** Stateless JWT authentication and caching facilitate horizontal scaling.
-*   **Maintainability:** Readable code, consistent style, and comprehensive documentation.
+## 5. Scalability and Reliability
 
-## 8. Cross-Cutting Concerns
+*   **Asynchronous I/O**: FastAPI and SQLAlchemy with `asyncpg` fully leverage Python's `asyncio` for non-blocking I/O, allowing the application to handle many concurrent connections efficiently.
+*   **Containerization (Docker)**: Enables consistent deployment across environments and simplifies scaling by running multiple instances.
+*   **Load Balancing**: The architecture assumes a load balancer in front of multiple FastAPI instances in production to distribute traffic.
+*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) as needed.
+*   **Redis**: Provides a fast, in-memory data store for caching and offloading work from the database, improving response times and reducing database load.
+*   **Observability**: Structured logging provides insights into application behavior, crucial for debugging and performance monitoring.
+*   **Graceful Shutdown**: Application ensures proper closure of database and Redis connections during shutdown.
 
-*   **Security:** Spring Security filters handle authentication, and `@PreAuthorize` handles authorization.
-*   **Logging:** Centralized logging with Logback.
-*   **Error Handling:** Global exception handler (`@ControllerAdvice`) for consistent API error responses.
-*   **Validation:** JSR 303/349 (Bean Validation) annotations ensure data integrity at the API boundary.
-*   **Caching:** Spring's caching abstraction with Caffeine improves read performance.
-*   **Rate Limiting:** A `HandlerInterceptor` (conceptual) can prevent abuse and ensure fair usage.
+## 6. Future Enhancements
 
-## 9. Future Considerations
+*   **Background Tasks**: Integrate with a task queue (e.g., Celery with Redis/RabbitMQ) for long-running operations.
+*   **WebSocket Support**: For real-time updates (e.g., task status changes), integrate FastAPI's WebSocket capabilities.
+*   **Advanced Caching**: Implement more sophisticated caching strategies (e.g., cache invalidation mechanisms, cache-aside patterns).
+*   **Full-text Search**: Integrate with search engines like Elasticsearch for advanced task/project searching.
+*   **Object Storage**: For storing user-uploaded files (e.g., task attachments), integrate with S3-compatible storage.
+*   **Metrics & Tracing**: Integrate Prometheus/Grafana for metrics collection and Jaeger/OpenTelemetry for distributed tracing.
 
-*   **Microservices:** For very large-scale systems, content management, user management, and other modules could be separated into independent microservices.
-*   **CDN Integration:** For serving static assets (images, videos) associated with content.
-*   **Full-text Search:** Integration with Elasticsearch or Apache Solr for advanced content search capabilities.
-*   **Version Control for Content:** Tracking changes and revisions for content.
-*   **Workflow Management:** For content approval processes (draft -> review -> publish).
-*   **Internationalization (i18n):** Support for multiple languages.
-*   **Cloud Storage:** Storing content assets (images, files) in object storage like AWS S3 or Azure Blob Storage.
+This architecture provides a solid foundation for a robust, scalable, and maintainable mobile application backend.
 ```

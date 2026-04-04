@@ -1,46 +1,64 @@
-```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: cms-db
+    container_name: taskmanager_db
+    env_file:
+      - ./.env # Use .env for sensitive data
     environment:
-      POSTGRES_DB: ${DB_NAME:-cms_db}
-      POSTGRES_USER: ${DB_USER:-cmsuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-cmspass}
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - cms_db_data:/var/lib/postgresql/data
-    healthcheck: # Healthcheck for database readiness
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432" # Expose for local access if needed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  cms-app:
+  redis:
+    image: redis:7-alpine
+    container_name: taskmanager_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cms-application
-    ports:
-      - "8080:8080"
+    container_name: taskmanager_backend
+    env_file:
+      - ./.env
     environment:
-      # Pass database connection details to the Spring Boot app
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-cms_db}
-      DB_USER: ${DB_USER:-cmsuser}
-      DB_PASSWORD: ${DB_PASSWORD:-cmspass}
-      JWT_SECRET: ${JWT_SECRET:YourSuperSecretKeyForJWTAuthenticationDoNotShareThisAndMakeItLongerInProduction}
-      # You can externalize these in a .env file or Kubernetes secrets for production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+      REDIS_URL: redis://${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
+      POSTGRES_SERVER: db # Override for backend container to use service name
+      REDIS_HOST: redis # Override for backend container to use service name
+    ports:
+      - "8000:8000"
     depends_on:
       db:
-        condition: service_healthy # Ensure DB is healthy before starting app
-    # Restart policy to ensure the app stays running
-    restart: always
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app # Mount for live code changes in development
+      - ./alembic:/app/alembic
+      - ./scripts:/app/scripts
+      - ./alembic.ini:/app/alembic.ini
+    command: sh -c "alembic upgrade head && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # For production:
+    # command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
 volumes:
-  cms_db_data:
+  postgres_data:
 ```

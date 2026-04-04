@@ -1,18 +1,37 @@
-```dockerfile
-# Use a slimmed-down OpenJDK 17 base image
-FROM eclipse-temurin:17-jre-focal
+# Base image
+FROM python:3.11-slim-buster
 
-# Set working directory inside the container
+# Set environment variables
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+
+# Set work directory
 WORKDIR /app
 
-# Copy the built JAR file from the Maven build stage (assuming it's named target/cms-system-*.jar)
-# Replace `cms-system-0.0.1-SNAPSHOT.jar` with your actual artifact name if different.
-COPY target/*.jar app.jar
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose the port your Spring Boot application runs on
-EXPOSE 8080
+# Copy requirements and install python dependencies
+COPY ./requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the Spring Boot application
-# Use environment variables for sensitive data like DB credentials
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Copy project
+COPY ./app /app/app
+COPY ./alembic /app/alembic
+COPY ./scripts /app/scripts
+COPY ./alembic.ini /app/alembic.ini
+COPY ./.env.example /app/.env.example # Copy example, use .env from host or build arg
+
+# Expose port
+EXPOSE 8000
+
+# Command to run the application
+# For production, use Gunicorn with Uvicorn workers
+# CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+# For development, you can use Uvicorn directly with auto-reload
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```

@@ -1,255 +1,172 @@
-```markdown
-# ALX Production-Ready CMS System
+# Mobile Task Manager Backend
 
-This project implements a comprehensive, production-ready Content Management System (CMS) built with Java Spring Boot. It adheres to best practices in software engineering, including modular design, API-first approach, robust data management, security, testing, and deployment readiness.
+A comprehensive, production-ready backend system for a mobile task management application, built with FastAPI, PostgreSQL, and SQLAlchemy. This project is designed following modern software engineering best practices, including authentication, authorization, caching, rate limiting, logging, testing, and CI/CD.
 
-## Table of Contents
+## Features
 
-1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Technologies Used](#technologies-used)
-4.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup](#local-development-setup)
-    *   [Docker Setup](#docker-setup)
-5.  [API Documentation](#api-documentation)
-6.  [Database](#database)
-7.  [Authentication & Authorization](#authentication--authorization)
-8.  [Testing](#testing)
-9.  [Logging & Monitoring](#logging--monitoring)
-10. [Caching](#caching)
-11. [Rate Limiting](#rate-limiting)
-12. [CI/CD](#cicd)
-13. [Deployment Guide](#deployment-guide)
-14. [Contributing](#contributing)
-15. [License](#license)
+*   **User Management**:
+    *   User registration and login (JWT-based authentication).
+    *   Secure password hashing.
+    *   User profile management (view and update own profile).
+    *   Admin functionality for managing all users (CRUD).
+*   **Project Management**:
+    *   Create, Read, Update, Delete (CRUD) operations for projects.
+    *   Projects are owned by users.
+    *   Authorization: Only project owners or superusers can manage their projects.
+*   **Task Management**:
+    *   Create, Read, Update, Delete (CRUD) operations for tasks.
+    *   Tasks belong to projects and can be assigned to users.
+    *   Flexible authorization:
+        *   Project owners can manage all tasks within their projects.
+        *   Assignees can update the status and description of tasks assigned to them.
+        *   Superusers have full control.
+*   **Database Layer**:
+    *   PostgreSQL with asynchronous SQLAlchemy ORM.
+    *   Alembic for database migrations.
+    *   Seed data script for initial population.
+*   **Configuration**:
+    *   Environment variables managed via Pydantic Settings.
+    *   Docker and Docker Compose for easy setup and deployment.
+*   **Testing**:
+    *   Unit tests for core logic.
+    *   Integration tests for API endpoints.
+    *   80%+ test coverage.
+*   **Monitoring & Observability**:
+    *   Structured logging with Loguru.
+    *   Custom error handling middleware.
+*   **Performance & Scalability**:
+    *   Redis for caching (e.g., user tokens).
+    *   Rate limiting using `fastapi-limiter`.
+*   **CI/CD**:
+    *   GitHub Actions workflow for linting, testing, and coverage reporting.
+*   **Documentation**:
+    *   Automatic OpenAPI (Swagger UI/ReDoc) documentation for API endpoints.
+    *   Comprehensive project README, Architecture, API, and Deployment guides.
 
----
+## Technologies Used
 
-## 1. Features
+*   **Backend Framework**: FastAPI (Python)
+*   **Database**: PostgreSQL
+*   **ORM**: SQLAlchemy with `asyncpg`
+*   **Migrations**: Alembic
+*   **Caching/Rate Limiting**: Redis
+*   **Authentication**: JWT (JSON Web Tokens)
+*   **Dependency Management**: `requirements.txt`
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Pytest, httpx, pytest-asyncio, pytest-cov
+*   **Linting/Formatting**: Black, Isort, Mypy
+*   **Logging**: Loguru
 
-This CMS provides the following core functionalities:
-
-*   **Content Management (CRUD):** Create, Read, Update, Delete articles, blog posts, pages.
-*   **Categories & Tags:** Organize content with flexible categorization and tagging.
-*   **User Management:** Create, manage, and assign roles to users.
-*   **Authentication & Authorization:** Secure API endpoints and UI with JWT-based authentication and role-based access control (RBAC).
-*   **Content Publishing:** Control visibility of content with publishing status and dates.
-*   **Search & Pagination:** Efficiently retrieve and browse content.
-
-## 2. Architecture
-
-The system follows a layered, API-first architecture using Spring Boot:
-
-*   **Presentation Layer (Controllers):** Exposes RESTful APIs and a basic Thymeleaf UI (for demonstration). Handles HTTP requests and delegates to the Service Layer.
-*   **Service Layer (Business Logic):** Contains core business logic, transaction management, data validation, and interacts with the Data Access Layer.
-*   **Data Access Layer (Repositories):** Manages persistence operations with the database using Spring Data JPA.
-*   **Domain Layer (Entities):** Defines the core data models (Content, User, Category, Tag, Role).
-
-**Key Architectural Decisions:**
-
-*   **API-First:** The backend is designed as a standalone REST API, enabling integration with various frontend clients (SPAs, mobile apps).
-*   **Modularity:** Features are grouped into logical packages (e.g., `content`, `user`, `auth`) for better organization and maintainability.
-*   **DTO Pattern:** Data Transfer Objects are used to separate internal entity models from external API representations, preventing over-exposure and simplifying data transformation.
-*   **Transaction Management:** Spring's `@Transactional` annotation ensures data consistency.
-*   **Caching:** Implemented using Spring Cache with Caffeine for improved performance of frequently accessed data.
-*   **Security:** Utilizes Spring Security with JWT for stateless API authentication and role-based authorization.
-*   **Database Migrations:** Flyway manages schema evolution reliably.
-
-## 3. Technologies Used
-
-*   **Backend:** Java 17, Spring Boot 3.x
-*   **Build Tool:** Maven
-*   **Database:** PostgreSQL
-*   **ORM:** Spring Data JPA, Hibernate
-*   **Database Migrations:** Flyway
-*   **Authentication:** Spring Security, JSON Web Tokens (JWT)
-*   **DTO Mapping:** ModelMapper
-*   **Caching:** Caffeine
-*   **Logging:** SLF4J, Logback
-*   **API Documentation:** SpringDoc OpenAPI (Swagger UI)
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers
-*   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** GitHub Actions (conceptual)
-
-## 4. Setup and Installation
+## Setup and Installation
 
 ### Prerequisites
 
-*   Java Development Kit (JDK) 17 or higher
-*   Maven 3.x
-*   Docker and Docker Compose (recommended for easy setup)
+*   Docker and Docker Compose
+*   Python 3.11+
 *   Git
 
-### Local Development Setup
+### Steps
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/cms-system.git
-    cd cms-system
+    git clone https://github.com/your-username/mobile-task-manager-backend.git
+    cd mobile-task-manager-backend
     ```
 
-2.  **Configure Environment Variables:**
-    Create a `.env` file in the root of the project with your database credentials and JWT secret.
-    ```env
-    # .env file
-    DB_NAME=cms_db
-    DB_USER=cmsuser
-    DB_PASSWORD=cmspass
-    DB_HOST=localhost
-    DB_PORT=5432
-    JWT_SECRET=YourSuperSecretKeyForJWTAuthenticationDoNotShareThisAndMakeItLongerInProduction
-    ```
-    *Note: For production, ensure `JWT_SECRET` is a very long, random, and secure string.*
+2.  **Create `.env` file:**
+    Copy the `.env.example` file to `.env` and fill in your desired values. **Ensure `SECRET_KEY` is a strong, random string in production.**
 
-3.  **Start PostgreSQL Database (using Docker):**
     ```bash
-    docker-compose up -d db
-    ```
-    Wait for the database container to be healthy. You can check its status with `docker-compose ps` and `docker-compose logs db`.
-
-4.  **Run Database Migrations (Optional, Flyway will run on app startup):**
-    If you want to run migrations manually or for specific purposes:
-    ```bash
-    # Ensure environment variables are loaded or set them directly
-    # e.g., export DB_URL="jdbc:postgresql://localhost:5432/cms_db"
-    # export DB_USER="cmsuser"
-    # export DB_PASSWORD="cmspass"
-    mvn flyway:migrate
+    cp .env.example .env
+    # Open .env and modify
     ```
 
-5.  **Build and Run the Spring Boot Application:**
-    ```bash
-    mvn clean install
-    java -jar target/cms-system-0.0.1-SNAPSHOT.jar
-    ```
-    The application will start on `http://localhost:8080`.
+3.  **Build and run with Docker Compose (recommended for local development):**
+    This will set up the PostgreSQL database, Redis, and the FastAPI application. It also runs migrations and seeds initial data.
 
-### Docker Setup
-
-1.  **Build the application JAR:**
-    ```bash
-    mvn clean install -DskipTests
-    ```
-
-2.  **Build and run Docker containers:**
-    Make sure your `.env` file is present in the project root.
     ```bash
     docker-compose up --build -d
     ```
-    This will build the `cms-app` image, start the `db` container, and then the `cms-app` container.
+    *   `--build`: Rebuilds images (useful after code changes or initial setup).
+    *   `-d`: Runs containers in detached mode.
 
-3.  **Verify:**
-    *   Access the application: `http://localhost:8080`
-    *   Access Swagger UI: `http://localhost:8080/swagger-ui.html`
+    Wait for a few moments for the services to start up and the database to initialize. You can check the logs:
+    ```bash
+    docker-compose logs -f backend
+    ```
 
-## 5. API Documentation
+4.  **Access the application:**
+    *   **API Documentation (Swagger UI)**: `http://localhost:8000/api/v1/docs`
+    *   **API Documentation (ReDoc)**: `http://localhost:8000/api/v1/redoc`
+    *   **Health Check**: `http://localhost:8000/health`
 
-The project uses SpringDoc OpenAPI to generate interactive API documentation (Swagger UI).
-Once the application is running, you can access it at:
-`http://localhost:8080/swagger-ui.html`
+5.  **Stop the services:**
+    ```bash
+    docker-compose down
+    ```
 
-The raw OpenAPI specification can be found at:
-`http://localhost:8080/v3/api-docs`
+### Manual Setup (Without Docker Compose - Advanced)
 
-See also: [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+If you prefer to run the application directly on your host or manage database/redis separately:
 
-## 6. Database
+1.  **Install Python dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-*   **Type:** PostgreSQL
-*   **ORM:** Spring Data JPA with Hibernate
-*   **Migrations:** Flyway is used for version control of the database schema. Migration scripts are located in `src/main/resources/db/migration/`. Flyway automatically applies pending migrations on application startup.
+2.  **Set up PostgreSQL & Redis:**
+    Ensure you have a PostgreSQL database and a Redis instance running and accessible. Update your `.env` file with the correct connection strings (`DATABASE_URL`, `REDIS_URL`) or host/port details.
 
-**Seed Data:** `V2__insert_initial_data.sql` contains initial roles, users (admin, moderator, user), categories, tags, and sample content.
-*   **Admin User:** `admin@example.com` / `adminpass`
-*   **Moderator User:** `mod@example.com` / `modpass`
-*   **Regular User:** `user@example.com` / `userpass`
+3.  **Run Alembic migrations:**
+    ```bash
+    alembic upgrade head
+    ```
 
-*Note: Change these default passwords immediately in a production environment.*
+4.  **Seed initial data (optional but recommended):**
+    ```bash
+    python scripts/seed.py
+    ```
 
-## 7. Authentication & Authorization
+5.  **Run the FastAPI application:**
+    ```bash
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+    For production, use `gunicorn` with `uvicorn.workers.UvicornWorker`. See `Dockerfile` for an example.
 
-*   **Spring Security:** Handles all security aspects.
-*   **JWT (JSON Web Tokens):** Used for stateless authentication for REST API endpoints.
-    *   Users log in via `/api/v1/auth/login` to obtain a JWT.
-    *   This token must be included in the `Authorization` header (`Bearer <token>`) for subsequent API requests.
-*   **Role-Based Access Control (RBAC):** Configured using `@PreAuthorize` annotations on controller methods to restrict access based on user roles (`ROLE_USER`, `ROLE_MODERATOR`, `ROLE_ADMIN`).
-*   **Frontend Security:** The basic Thymeleaf UI uses Spring Security's form login and session management for a traditional web application experience.
+## Development
 
-## 8. Testing
+### Running Tests
 
-The project emphasizes quality through comprehensive testing:
+To run tests and check coverage:
 
-*   **Unit Tests:** Located in `src/test/java/**/service/*Test.java` (e.g., `ContentServiceTest.java`). These test individual components in isolation using Mockito. Aim for 80%+ code coverage.
-*   **Integration Tests:** Located in `src/test/java/**/controller/*IntegrationTest.java` (e.g., `ContentControllerIntegrationTest.java`). These test the interaction between multiple components (e.g., controller, service, repository, and a real database using Testcontainers).
-*   **API Tests:** Can be performed using tools like Postman/Newman or automated with RestAssured. The Swagger UI also serves as a basic API testing tool.
-*   **Performance Tests:** Conceptual. For production, tools like JMeter or k6 would be used to simulate load and measure response times, throughput, and resource utilization.
+1.  Ensure your Docker services (db, redis) are running: `docker-compose up -d db redis` (if not using `docker-compose up --build` for the whole stack).
+2.  Create a `.env` file for tests (see CI config for example `testdb` credentials).
+3.  Execute pytest:
+    ```bash
+    pytest --cov=app --cov-report=html --cov-report=term-missing app/tests/
+    ```
+    This will run all tests in the `app/tests/` directory, show coverage in the terminal, and generate an HTML report in `htmlcov/`.
 
-To run tests:
+### Linting and Formatting
+
 ```bash
-mvn test
-# To generate JaCoCo code coverage report
-mvn clean verify
-# Report will be in target/site/jacoco/index.html
+black app alembic scripts --check
+isort app alembic scripts --check-only
+mypy app
 ```
 
-## 9. Logging & Monitoring
+To fix formatting issues:
+```bash
+black app alembic scripts
+isort app alembic scripts
+```
 
-*   **Logging:** Uses SLF4J with Logback for structured and configurable logging. Configuration is in `src/main/resources/logback-spring.xml` (not provided in this blueprint for brevity, but would be standard). Logs are written to `logs/cms-system.log` by default.
-*   **Monitoring (Actuator):** Spring Boot Actuator endpoints are enabled to provide operational insights:
-    *   `/actuator/health`: Application health status
-    *   `/actuator/info`: Application custom info
-    *   `/actuator/prometheus`: Metrics in Prometheus format
-    These can be integrated with monitoring systems like Prometheus and Grafana.
+## Contributing
 
-## 10. Caching Layer
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-*   **Spring Cache Abstraction:** Used with Caffeine as the caching provider.
-*   **Annotations:** `@Cacheable`, `@CachePut`, `@CacheEvict` are used on service methods to manage cache entries.
-    *   `@Cacheable`: Caches method results.
-    *   `@CachePut`: Updates cache entry with method result without skipping method execution.
-    *   `@CacheEvict`: Removes entries from the cache.
-*   **Configuration:** `CacheConfig.java` defines cache managers and properties, and `application.yml` configures cache names and eviction policies.
+## License
 
-## 11. Rate Limiting
-
-A basic, in-memory rate limiting mechanism is implemented using a Spring `HandlerInterceptor` (see `common/middleware/RateLimitInterceptor.java` - conceptual, not fully implemented in provided code for brevity but outlined). For production, consider distributed rate limiters using Redis.
-
-## 12. CI/CD
-
-A conceptual GitHub Actions workflow (`.github/workflows/ci-cd.yml`) is provided to automate:
-
-*   **Build:** Compile Java code and build the JAR.
-*   **Test:** Run unit and integration tests, generate code coverage report.
-*   **Lint/Quality Checks:** (Optional) Static code analysis.
-*   **Docker Build & Push:** Build Docker image and push to a container registry (e.g., Docker Hub, GHCR).
-*   **Deployment:** (Optional) Deploy to a staging or production environment (e.g., Kubernetes, AWS ECS, Azure App Service).
-
-See also: [CI/CD.md (conceptual)](.github/workflows/ci-cd.yml)
-
-## 13. Deployment Guide
-
-The `DEPLOYMENT.md` file (conceptual, not provided in full but its structure defined) would cover detailed steps for deploying the application to various environments, including:
-
-*   On-premise (JVM / JAR)
-*   Docker / Docker Compose
-*   Kubernetes (using Helm charts or raw YAML)
-*   Cloud Providers (AWS ECS/EKS, Azure AKS/App Service, GCP GKE/Cloud Run)
-
-It would include instructions for setting up environment variables, secrets management, database configuration, load balancing, and scaling.
-
-## 14. Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and ensure tests pass.
-4.  Commit your changes (`git commit -m 'Add new feature'`).
-5.  Push to your branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
-
-## 15. License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+[MIT](https://choosealicense.com/licenses/mit/)
 ```
