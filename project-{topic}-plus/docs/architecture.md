@@ -1,124 +1,147 @@
-# Architecture Documentation
+# Task Manager System - Architecture Documentation
 
-This document describes the architectural overview of the ML-Utilities-System, outlining its components, their interactions, and the design principles adopted.
+## 1. High-Level Overview
 
-## 1. High-Level Architecture
+The Task Manager System is designed as a RESTful API backend, implemented in C++, serving as the core logic and data provider for a potential frontend client (web, mobile, or desktop). It follows a modular, layered architecture to ensure separation of concerns, maintainability, and scalability.
 
-The system follows a typical **layered microservice-oriented architecture**, with a clear separation of concerns to enhance scalability, maintainability, and fault tolerance.
-
-```mermaid
-graph TD
-    A[Clients: Web UI, CLI, Other Systems] --> B(API Gateway / Load Balancer)
-    B --> C(FastAPI Application)
-    C --> D[Authentication / Authorization]
-    C --> E[Caching Layer: Redis]
-    C --> F[Business Logic / Services]
-    F --> G[Data Access Layer: CRUD]
-    G --> H[Database: PostgreSQL]
-
-    subgraph FastAPI Application Stack
-        C --- C1(API Endpoints)
-        C --- C2(Middleware: Error, Rate Limit, Auth)
-        C --- C3(Dependencies: DB Session, Current User)
-        C1 --> F
-    end
-
-    subgraph Data & Infra
-        H --- H1(Alembic Migrations)
-        E --- E1(Rate Limiting Data)
-        E --- E2(Cached Responses)
-    end
+```
++-------------------+       +--------------------+       +---------------------+
+|   Client (Browser/Mobile)  |  (HTTPS/REST API)  |    Application Server     |
+| (Conceptual, not implemented) |----------------->|       (C++ Crow App)      |
++-------------------+       |                    |                           |
+                            | Authentication & Authorization Middleware      |
+                            | (JWT Validation, Role Checks, Rate Limiting)   |
+                            |                                                |
+                            | Error Handling & Logging Middleware            |
+                            |                                                |
+                            | Routes/API Endpoints                           |
+                            |   - /auth/*                                    |
+                            |   - /users/* (CRUD)                            |
+                            |   - /tasks/* (CRUD)                            |
+                            |                                                |
+                            | Services Layer                                 |
+                            |   - UserService (Business Logic for Users)     |
+                            |   - TaskService (Business Logic for Tasks)     |
+                            |   - AuthService (Business Logic for Auth)      |
+                            |                                                |
+                            | Repository Layer                               |
+                            |   - UserRepository (DB Interaction for Users)  |
+                            |   - TaskRepository (DB Interaction for Tasks)  |
+                            |                                                |
+                            | Utilities (Hashing, Cache, Logger, UUID)       |
+                            +--------------------+-------------------------+
+                                                 |
+                                                 | (SQLite3 C++ Bindings)
+                                                 v
+                                        +---------------------+
+                                        |   Database (SQLite)   |
+                                        |   - users table       |
+                                        |   - tasks table       |
+                                        |   - schema_migrations |
+                                        +---------------------+
 ```
 
-## 2. Component Breakdown
+## 2. Layered Architecture
 
-### 2.1. Clients
-*   **Web UI**: A basic, server-side rendered Jinja2 template with vanilla JavaScript for demonstration purposes. In a production scenario, this would typically be a Single Page Application (SPA) built with frameworks like React, Vue, or Angular, consuming the RESTful API.
-*   **CLI / Other Systems**: Any other client that needs to interact with the ML workflow management, such as ML pipelines, CI/CD tools, or data scientists' scripts.
+The application is structured into distinct layers to manage complexity and promote modularity.
 
-### 2.2. API Gateway / Load Balancer
-(Implicitly outside the application code, but critical in production)
-*   Handles routing, traffic distribution, SSL termination, and potentially basic security policies before requests reach the FastAPI application. Examples: Nginx, AWS ALB, Kubernetes Ingress.
+### 2.1. API/Controller Layer (`src/{module}Controller.h/.cpp`)
 
-### 2.3. FastAPI Application (`ml-utils-app`)
-The core backend service, built with Python FastAPI.
+*   **Responsibility:** Handles HTTP requests, parses incoming data, calls the appropriate service layer method, and formats the HTTP response.
+*   **Technologies:** `Crow` C++ web microframework, `jsoncpp` for JSON parsing/serialization.
+*   **Security:** This layer integrates with middleware for authentication, authorization, and rate limiting *before* business logic is executed. It also translates application-specific exceptions into standard HTTP error responses.
+*   **Example:** `AuthController`, `UserController`, `TaskController`.
 
-*   **`main.py`**: The entry point, responsible for:
-    *   Initializing the FastAPI app.
-    *   Registering API routers.
-    *   Mounting static files and configuring templates.
-    *   Setting up application-wide middleware.
-    *   Managing application lifecycle (startup/shutdown for DB and Redis connections, initial superuser creation).
-*   **`app/api/v1/endpoints`**:
-    *   Defines the RESTful API endpoints for `users`, `auth`, `datasets`, `ml_models`, and `experiments`.
-    *   Each file corresponds to a resource or domain.
-    *   Uses FastAPI's dependency injection for database sessions, authentication, and authorization.
-    *   Handles request parsing, validation (via Pydantic schemas), and calls the appropriate business logic.
-*   **`app/core`**: Contains foundational components and utilities for the application.
-    *   **`config.py`**: Manages environment variables and application settings (e.g., database credentials, secret keys, cache settings). Uses `pydantic-settings` for robust configuration.
-    *   **`database.py`**: Configures the SQLAlchemy asynchronous engine and session factory for PostgreSQL. Provides `get_db` dependency for consistent session management.
-    *   **`security.py`**: Handles password hashing (bcrypt) and JSON Web Token (JWT) creation/validation.
-    *   **`deps.py`**: Defines FastAPI dependencies for injecting a database session, validating JWT tokens, and enforcing user roles (active user, superuser).
-    *   **`middleware.py`**: Implements custom FastAPI middleware for:
-        *   **Error Handling**: Catches exceptions and returns standardized JSON error responses.
-        *   **Rate Limiting**: Protects endpoints from excessive requests using Redis.
-        *   **Request Logging/Performance**: Adds processing time headers.
-    *   **`cache.py`**: Provides an asynchronous Redis client (`redis-py`) for interacting with the caching layer. Includes functions for setting, getting, and invalidating cache entries.
-    *   **`errors.py`**: Custom exception classes for domain-specific errors (e.g., `NotFoundException`, `DuplicateEntryException`).
-*   **`app/schemas`**:
-    *   Pydantic models defining the data structure for API requests and responses (e.g., `UserCreate`, `Dataset`, `Token`).
-    *   Ensures data validation, serialization, and clear API contracts.
-*   **`app/crud`**:
-    *   **`base.py`**: A generic `CRUDBase` class providing standard CRUD operations (get, get_multi, create, update, remove) for any SQLAlchemy model.
-    *   **Specific CRUD modules (`user.py`, `dataset.py`, etc.)**: Extend `CRUDBase` with domain-specific query methods (e.g., `get_by_email` for users, `get_by_name` for datasets).
-    *   Abstracts direct database interactions from the API endpoints and business logic.
-*   **`app/services`**: (Currently minimal but designed for expansion)
-    *   Holds complex business logic that might involve interactions with multiple CRUD objects or external services. E.g., a service for triggering ML model retraining, data preprocessing, or integrating with other ML platforms.
-*   **`app/models`**:
-    *   SQLAlchemy ORM models defining the database tables (e.g., `User`, `Dataset`, `MLModel`, `Experiment`).
-    *   Specifies table names, columns, data types, relationships, and indices.
+### 2.2. Middleware Layer (`src/middleware/`, `src/auth/AuthMiddleware.h/.cpp`)
 
-### 2.4. Database (`PostgreSQL`)
-*   **Persistent Storage**: PostgreSQL is chosen for its robustness, reliability, and support for structured (relational) and semi-structured (JSONB for hyperparameters/metrics) data.
-*   **Alembic (`alembic/`)**:
-    *   Manages database schema migrations, allowing for version-controlled and incremental changes to the database structure.
-    *   `alembic.ini`: Configuration file for Alembic.
-    *   `alembic/env.py`: Script that configures how Alembic interacts with the database.
-    *   `alembic/versions/`: Directory containing migration scripts.
+*   **Responsibility:** Intercepts requests and responses to perform cross-cutting concerns such as logging, authentication, authorization, rate limiting, and global error handling.
+*   **Technologies:** `Crow` middleware features, custom C++ logic.
+*   **Security:**
+    *   `AuthMiddleware`: Validates JWT tokens, extracts user identity and roles, and enforces access control on protected routes.
+    *   `LogMiddleware`: Logs incoming requests and outgoing responses.
+    *   `RateLimiter`: Controls the number of requests a client can make within a time window.
+    *   `ErrorMiddleware`: Catches exceptions and formats consistent JSON error responses.
 
-### 2.5. Caching Layer (`Redis`)
-*   **In-Memory Data Store**: Redis is used for fast data retrieval.
-*   **Use Cases**:
-    *   **API Response Caching**: Caches results of read-heavy API endpoints (e.g., listing datasets, models) to reduce database load and improve response times.
-    *   **Rate Limiting**: Stores per-IP request counts to enforce rate limits.
+### 2.3. Service Layer (`src/{module}Service.h/.cpp`)
 
-## 3. Data Flow
+*   **Responsibility:** Contains the core business logic of the application. It orchestrates operations, applies business rules, and interacts with the repository layer.
+*   **Technologies:** Pure C++ logic.
+*   **Security:** Performs input validation beyond basic syntax checks, implements authorization checks based on user roles (passed from AuthMiddleware), and handles business-level exceptions.
+*   **Example:** `AuthService`, `UserService`, `TaskService`.
 
-1.  **Request**: A client sends an HTTP request to an API endpoint (e.g., `GET /api/v1/datasets`).
-2.  **Middleware**: The request passes through various middleware:
-    *   **Rate Limiting**: Checks if the client's IP has exceeded the allowed request limit using Redis.
-    *   **Authentication**: `SessionMiddleware` (for basic UI) and JWT validation for API endpoints.
-    *   **Process Time**: Adds `X-Process-Time` header.
-    *   **Exception Handling**: Wraps the request to catch and standardize errors.
-3.  **Dependency Injection**: FastAPI injects dependencies (e.g., `AsyncSession` from `get_db`, `User` from `get_current_active_user`).
-4.  **Endpoint Handler**: The endpoint function receives validated input (via Pydantic schemas).
-    *   It might first check the Redis cache for a pre-computed response.
-    *   If no cache hit, it calls the appropriate CRUD operation or service method.
-5.  **Business Logic / CRUD**: Interacts with the database via SQLAlchemy ORM models.
-    *   Executes database queries, handles data manipulation.
-    *   If data is modified, it invalidates relevant cache entries in Redis.
-6.  **Database**: Processes SQL queries, stores/retrieves data.
-7.  **Response**: Data is returned through the layers, serialized by Pydantic schemas, and potentially cached in Redis before being sent back to the client.
+### 2.4. Repository Layer (`src/{module}Repository.h/.cpp`)
 
-## 4. Design Principles
+*   **Responsibility:** Abstracts the data storage details. It handles all interactions with the database (CRUD operations) and maps database results to application-specific models.
+*   **Technologies:** `SQLite3` C++ API.
+*   **Security:** Uses parameterized queries (`sqlite3_bind_text`) to prevent SQL injection vulnerabilities.
 
-*   **Separation of Concerns**: Each component and layer has a distinct responsibility, promoting modularity and easier maintenance.
-*   **Asynchronous Programming**: FastAPI, `asyncpg`, and SQLAlchemy's async capabilities enable non-blocking I/O, improving concurrency and throughput.
-*   **Dependency Injection**: Used extensively in FastAPI to manage resources (DB sessions, current user) and facilitate testing.
-*   **Data Validation & Serialization**: Pydantic schemas ensure robust input validation and consistent output formatting.
-*   **Statelessness**: The API is largely stateless, leveraging JWT for authentication, which simplifies horizontal scaling.
-*   **Containerization**: Docker and Docker Compose provide consistent environments for development, testing, and production.
-*   **Extensibility**: The modular design allows for easy addition of new features (e.g., more ML workflow steps, new services) without major refactoring.
-*   **Observability**: Integrated logging, and potential for monitoring/tracing, to understand system behavior in production.
+### 2.5. Database Layer (`src/database/`)
 
-This architecture provides a solid foundation for a scalable and maintainable ML Utilities System, ready for enterprise-grade applications.
+*   **Responsibility:** Manages the database connection, executes SQL queries, and handles transactions.
+*   **Technologies:** `SQLite3`.
+*   **Features:**
+    *   `SQLiteManager`: Handles connection pooling (though for SQLite, it's a single connection with mutex for thread safety), query execution, and error handling.
+    *   `MigrationManager`: Manages schema evolution and initial data seeding.
+
+## 3. Core Components and Utilities
+
+### 3.1. Models (`src/models/`)
+
+*   Simple C++ structs/classes representing the core entities of the application (e.g., `User`, `Task`). They are typically plain data structures with minimal logic.
+
+### 3.2. Data Transfer Objects (DTOs) (`src/dto/`)
+
+*   Structs/classes used to define the shape of data exchanged between the client and the server (request and response bodies). They help in validation and clear API contracts.
+
+### 3.3. Configuration (`src/config/`)
+
+*   `Config` class loads settings from `config.json` (or environment variables) providing centralized access to application parameters (e.g., database path, JWT secret, API port).
+
+### 3.4. Logging (`src/utils/Logger.h/.cpp`)
+
+*   A wrapper around `spdlog` for structured logging. It provides different logging levels (DEBUG, INFO, WARN, ERROR, CRITICAL) and outputs to both console and file. Essential for monitoring and debugging.
+
+### 3.5. Hashing (`src/utils/Hasher.h/.cpp`)
+
+*   Provides functionality for hashing and verifying passwords. **Critically**, it uses a placeholder in this example but is designed to integrate with strong algorithms like Argon2 or bcrypt for production.
+
+### 3.6. JWT Management (`src/auth/JWTManager.h/.cpp`)
+
+*   Handles the creation, signing, and verification of JSON Web Tokens. Utilizes the `jwt-cpp` library.
+
+### 3.7. Error Handling (`src/utils/ErrorHandler.h/.cpp`)
+
+*   Defines custom exception classes (`AppException`) to categorize and standardize error responses, making it easier for API consumers to interpret errors.
+
+### 3.8. Caching (`src/utils/Cache.h/.cpp`)
+
+*   A simple in-memory LRU (Least Recently Used) cache implementation for storing and retrieving frequently accessed, non-sensitive data to improve performance and reduce database load.
+
+### 3.9. Rate Limiting (`src/utils/RateLimiter.h/.cpp`)
+
+*   An IP-based rate limiter to protect API endpoints from abuse and brute-force attacks by limiting the number of requests from a single IP address within a specified time window.
+
+## 4. Security Highlights
+
+*   **Authentication (JWT):** Stateless, scalable authentication using industry-standard JWTs. Tokens are signed with a strong secret.
+*   **Authorization (RBAC):** Middleware checks user roles (e.g., `user`, `admin`) extracted from JWTs to restrict access to resources and operations.
+*   **Password Security:** Hashing (conceptually Argon2/bcrypt) with unique salts for each user, preventing rainbow table attacks.
+*   **SQL Injection Prevention:** All database interactions use parameterized queries via `sqlite3_prepare_v2` and `sqlite3_bind_text`.
+*   **Input Validation:** Performed at DTO and service layers to ensure data integrity and prevent common vulnerabilities.
+*   **Rate Limiting:** Protects against DoS attacks and brute-force login attempts.
+*   **Secure Configuration:** Sensitive data (like JWT secret) is managed via `config.json` and ideally overridden by environment variables in production.
+*   **HTTPS (External):** Assumed to be handled by a reverse proxy in front of the C++ application.
+*   **Least Privilege:** Docker setup uses `no-new-privileges` and `cap_drop` to minimize attack surface.
+
+## 5. Deployment
+
+The application is containerized using Docker, allowing for consistent deployment across various environments (local, staging, production). `docker-compose.yml` provides a simple way to run the application with volume mappings for persistent data and logs.
+
+## 6. Testing Strategy
+
+*   **Unit Tests:** Focus on individual functions and methods (e.g., `Hasher`, `Cache`, `JWTManager`).
+*   **Integration Tests:** Verify interactions between components (e.g., `UserRepository` with `SQLiteManager`, `AuthService` with `UserRepository`).
+*   **API Tests:** End-to-end tests against the running API endpoints, ensuring correct request/response handling, authentication, and authorization.
+*   **Performance Tests:** (Conceptual) Tools like Apache JMeter or wrk would be used to assess API throughput and latency under load.
+
+This architecture provides a solid foundation for a robust, secure, and maintainable C++ backend application.

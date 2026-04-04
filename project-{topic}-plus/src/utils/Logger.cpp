@@ -1,70 +1,73 @@
-```cpp
 #include "Logger.h"
-#include <stdexcept>
-#include <map>
+#include "config/config.h" // For getting log level and file from config
 
-namespace TaskManager {
-namespace Utils {
+namespace tm_api {
+namespace utils {
 
-std::shared_ptr<spdlog::logger> Logger::s_logger = nullptr;
+std::shared_ptr<spdlog::logger> Logger::instance = nullptr;
 
-void Logger::init(const std::string& level) {
-    if (s_logger) {
-        return; // Already initialized
+void Logger::init(spdlog::level::level_enum level, const std::string& logFile, size_t maxFileSize, size_t maxFiles) {
+    if (instance) {
+        // Logger already initialized, just update level if different
+        instance->set_level(level);
+        return;
     }
 
-    try {
-        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] %v");
+    std::vector<spdlog::sink_ptr> sinks;
 
-        // Create a rotating file sink for logs
-        auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            "logs/task_manager.log", 1048576 * 5, 3); // 5MB max size, 3 rotating files
-        file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [thread %t] %v");
+    // Console sink with colors
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] %v");
+    sinks.push_back(console_sink);
 
-        s_logger = std::make_shared<spdlog::logger>("TaskManager", spdlog::sinks_init_list({console_sink, file_sink}));
-        spdlog::register_logger(s_logger);
+    // File sink
+    std::string effectiveLogFile = logFile.empty() ? Config::getLogFile() : logFile;
+    if (!effectiveLogFile.empty()) {
+        try {
+            // Ensure log directory exists
+            std::filesystem::path logDirPath = std::filesystem::path(effectiveLogFile).parent_path();
+            if (!logDirPath.empty() && !std::filesystem::exists(logDirPath)) {
+                std::filesystem::create_directories(logDirPath);
+            }
 
-        // Set log level
-        std::map<std::string, spdlog::level::level_enum> level_map = {
-            {"trace", spdlog::level::trace},
-            {"debug", spdlog::level::debug},
-            {"info", spdlog::level::info},
-            {"warn", spdlog::level::warn},
-            {"error", spdlog::level::err},
-            {"critical", spdlog::level::critical},
-            {"off", spdlog::level::off}
-        };
-
-        auto it = level_map.find(level);
-        if (it != level_map.end()) {
-            s_logger->set_level(it->second);
-        } else {
-            s_logger->warn("Invalid log level specified: {}. Defaulting to 'info'.", level);
-            s_logger->set_level(spdlog::level::info);
+            auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(effectiveLogFile, maxFileSize, maxFiles);
+            file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [thread %t] %v");
+            sinks.push_back(file_sink);
+        } catch (const std::filesystem::filesystem_error& e) {
+            std::cerr << "Error creating log directory or file sink: " << e.what() << std::endl;
+            // Fallback to console only
         }
+    }
 
-        s_logger->flush_on(spdlog::level::err); // Flush immediately on error or higher
-        s_logger->info("Logger initialized with level: {}", level);
+    instance = std::make_shared<spdlog::logger>("task_manager_logger", begin(sinks), end(sinks));
+    instance->set_level(level);
+    instance->flush_on(spdlog::level::err); // Flush on error to ensure critical logs are written
+    spdlog::set_default_logger(instance);
 
-    } catch (const spdlog::spdlog_ex& ex) {
-        // Fallback if spdlog fails to initialize
-        std::cerr << "Logger initialization failed: " << ex.what() << std::endl;
-        // Optionally, rethrow or exit for critical initialization failure
+    // Convert string log level from config to spdlog enum
+    std::string configLevel = Config::getLogLevel();
+    if (configLevel == "debug") {
+        instance->set_level(spdlog::level::debug);
+    } else if (configLevel == "info") {
+        instance->set_level(spdlog::level::info);
+    } else if (configLevel == "warn") {
+        instance->set_level(spdlog::level::warn);
+    } else if (configLevel == "error") {
+        instance->set_level(spdlog::level::err);
+    } else if (configLevel == "critical") {
+        instance->set_level(spdlog::level::critical);
+    } else {
+        instance->set_level(spdlog::level::info); // Default to info if unknown
     }
 }
 
-std::shared_ptr<spdlog::logger> Logger::getLogger() {
-    if (!s_logger) {
-        // Should ideally be initialized once at startup.
-        // If called before init, provide a default minimal logger or throw.
-        // For robustness, we'll initialize with default settings here.
-        init("info");
-        s_logger->warn("Logger::getLogger() called before Logger::init(). Initializing with default 'info' level.");
+std::shared_ptr<spdlog::logger>& Logger::getLogger() {
+    if (!instance) {
+        // If not explicitly initialized, initialize with default settings
+        init();
     }
-    return s_logger;
+    return instance;
 }
 
-} // namespace Utils
-} // namespace TaskManager
-```
+} // namespace utils
+} // namespace tm_api

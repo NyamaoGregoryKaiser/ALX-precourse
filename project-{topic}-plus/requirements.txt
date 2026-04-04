@@ -1,25 +1,17 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0.post1
-sqlalchemy[asyncio]==2.0.23
-asyncpg==0.28.0
-psycopg2-binary==2.9.9 # For Alembic to inspect schema synchronously
-alembic==1.12.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-pydantic==2.5.2
-pydantic-settings==2.1.0
-python-multipart==0.0.6
-redis==5.0.1
-fastapi-limiter==0.1.5
-Jinja2==3.1.2
+# C++ Core Application Dependencies (managed by CMake/Conan/vcpkg)
+Crow (web framework)
+jsoncpp (JSON parsing)
+sqlite3 (database)
+jwt-cpp (JWT library)
+spdlog (logging)
+Google Test (unit testing)
+OpenSSL (for JWT-cpp and general crypto)
+Argon2 (or bcrypt, for password hashing - direct C++ lib or system library)
 
-# Testing dependencies
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-httpx==0.25.1
-locust==2.19.0
-```
+# Build Tools
+CMake >= 3.10
+g++ / clang++ (C++17/20 compatible)
 
-#### `.env.example`
-```
+# Development / Testing Tools (Python for utilities, optional)
+# requests (for API testing if using Python)
+# pytest (for API testing if using Python)

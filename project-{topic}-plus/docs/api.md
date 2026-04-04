@@ -1,180 +1,378 @@
-```markdown
-# Real-Time Chat Application - API Documentation
+# Task Manager System API Documentation (v1)
 
-The backend API is built using FastAPI, which automatically generates interactive OpenAPI documentation (Swagger UI). You can access it at: `http://localhost:8000/docs` (when running locally).
-
-This document provides a summary of the available endpoints and their purpose.
+This document describes the RESTful API endpoints for the Task Manager System.
 
 ## Base URL
 
-`http://localhost:8000/api/v1`
+`http://localhost:8080/api/v1` (replace `localhost:8080` with your deployed domain)
 
 ## Authentication
 
-All protected endpoints require a JWT Bearer token in the `Authorization` header.
-Example: `Authorization: Bearer <YOUR_ACCESS_TOKEN>`
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
 
-### 1. Auth Endpoints
+`Authorization: Bearer <your_jwt_token>`
 
-*   **`POST /auth/register`**
-    *   **Description**: Register a new user.
-    *   **Request Body**: `UserCreate` schema
-        ```json
-        {
-          "username": "string",
-          "email": "user@example.com",
-          "password": "strongpassword",
-          "full_name": "string (optional)"
-        }
-        ```
-    *   **Response**: `UserPublic` schema (status `201 Created`)
-    *   **Errors**: `400 Bad Request` (e.g., duplicate email/username)
+### 1. Register User
 
-*   **`POST /auth/token`**
-    *   **Description**: Authenticate user and get an access token.
-    *   **Request Body**: Form-urlencoded
-        ```
-        username=<your_username>&password=<your_password>
-        ```
-    *   **Response**: `Token` schema
-        ```json
-        {
-          "access_token": "string",
-          "token_type": "bearer"
-        }
-        ```
-    *   **Errors**: `401 Unauthorized` (incorrect credentials), `400 Bad Request` (inactive user), `429 Too Many Requests` (rate limited)
+`POST /auth/register`
 
-### 2. User Endpoints
+Creates a new user account.
 
-*   **`GET /users/me`**
-    *   **Description**: Get details of the current authenticated user.
-    *   **Authentication**: Required
-    *   **Response**: `UserPublic` schema
-    *   **Errors**: `401 Unauthorized`
+**Request Body:**
+```json
+{
+  "username": "string",  // Unique username
+  "email": "string",     // Unique email
+  "password": "string"   // Minimum 8 characters, strong password recommended
+}
+```
 
-*   **`PATCH /users/me`**
-    *   **Description**: Update details of the current authenticated user.
-    *   **Authentication**: Required
-    *   **Request Body**: `UserUpdate` schema (fields are optional)
-        ```json
-        {
-          "email": "new_email@example.com",
-          "full_name": "New Full Name"
-        }
-        ```
-    *   **Response**: `UserPublic` schema
-    *   **Errors**: `401 Unauthorized`, `422 Unprocessable Entity` (validation errors)
+**Response (200 OK):**
+```json
+{
+  "message": "User registered successfully."
+}
+```
 
-*   **`GET /users/{user_id}`**
-    *   **Description**: Get details of a specific user by ID.
-    *   **Authentication**: Required
-    *   **Path Parameters**: `user_id` (integer)
-    *   **Response**: `UserPublic` schema
-    *   **Errors**: `401 Unauthorized`, `404 Not Found`
+**Error Responses:**
+*   `400 Bad Request`: Invalid input (e.g., missing fields, weak password).
+*   `409 Conflict`: Username or email already exists.
+*   `500 Internal Server Error`: Server-side error.
 
-*   **`GET /users/`**
-    *   **Description**: Retrieve a list of users.
-    *   **Authentication**: Required
-    *   **Query Parameters**:
-        *   `skip` (integer, default: 0)
-        *   `limit` (integer, default: 100)
-    *   **Response**: List of `UserPublic` schemas
-    *   **Errors**: `401 Unauthorized`
+### 2. Login User
 
-### 3. Chat Room Endpoints
+`POST /auth/login`
 
-*   **`POST /rooms/`**
-    *   **Description**: Create a new chat room. The authenticated user becomes the owner and a member.
-    *   **Authentication**: Required
-    *   **Request Body**: `ChatRoomCreate` schema
-        ```json
-        {
-          "name": "string",
-          "description": "string (optional)",
-          "is_private": false
-        }
-        ```
-    *   **Response**: `ChatRoomPublic` schema (status `201 Created`)
-    *   **Errors**: `401 Unauthorized`, `400 Bad Request` (room name already exists)
+Authenticates a user and returns a JWT.
 
-*   **`GET /rooms/`**
-    *   **Description**: Retrieve a list of public chat rooms.
-    *   **Authentication**: Required
-    *   **Query Parameters**:
-        *   `skip` (integer, default: 0)
-        *   `limit` (integer, default: 100)
-    *   **Response**: List of `ChatRoomPublic` schemas
-    *   **Errors**: `401 Unauthorized`
+**Request Body:**
+```json
+{
+  "username": "string",
+  "password": "string"
+}
+```
 
-*   **`GET /rooms/{room_id}`**
-    *   **Description**: Retrieve details of a specific chat room. Includes owner and member information. For private rooms, the current user must be the owner or a member.
-    *   **Authentication**: Required
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Response**: `ChatRoomPublic` schema
-    *   **Errors**: `401 Unauthorized`, `403 Forbidden` (private room access), `404 Not Found`
+**Response (200 OK):**
+```json
+{
+  "message": "Login successful.",
+  "token": "string" // JWT token to be used for authorized requests
+}
+```
 
-*   **`PATCH /rooms/{room_id}`**
-    *   **Description**: Update an existing chat room. Only the room owner can update it.
-    *   **Authentication**: Required (Owner only)
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Request Body**: `ChatRoomUpdate` schema (fields are optional)
-        ```json
-        {
-          "description": "New description",
-          "is_private": true
-        }
-        ```
-    *   **Response**: `ChatRoomPublic` schema
-    *   **Errors**: `401 Unauthorized`, `403 Forbidden`, `404 Not Found`
+**Error Responses:**
+*   `400 Bad Request`: Missing username/password.
+*   `401 Unauthorized`: Invalid username or password.
+*   `500 Internal Server Error`: Server-side error.
 
-*   **`DELETE /rooms/{room_id}`**
-    *   **Description**: Delete a chat room. Only the room owner can delete it. If the owner is the only member, leaving will delete the room.
-    *   **Authentication**: Required (Owner only)
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Response**: Empty response (status `204 No Content`)
-    *   **Errors**: `401 Unauthorized`, `403 Forbidden`, `404 Not Found`
+## Users
 
-*   **`POST /rooms/{room_id}/join`**
-    *   **Description**: Join a chat room. The current user becomes a member. Cannot join private rooms without specific invites (future feature).
-    *   **Authentication**: Required
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Response**: `ChatRoomPublic` schema
-    *   **Errors**: `401 Unauthorized`, `400 Bad Request` (already a member), `403 Forbidden` (private room)
+### 1. Get All Users (Admin Only)
 
-*   **`POST /rooms/{room_id}/leave`**
-    *   **Description**: Leave a chat room. The current user is removed from members. Owner cannot leave their own room if they are the only member.
-    *   **Authentication**: Required
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Response**: Empty response (status `204 No Content`)
-    *   **Errors**: `401 Unauthorized`, `400 Bad Request` (not a member, or owner attempting to leave only-member room), `404 Not Found`
+`GET /users`
 
-### 4. Message Endpoints
+Retrieves a list of all registered users. Requires `admin` role.
 
-*   **`POST /messages/{room_id}`**
-    *   **Description**: Send a message to a specific chat room. The current user must be a member of the room. The message will be broadcast to all connected WebSocket clients in that room.
-    *   **Authentication**: Required
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Request Body**: `MessageCreate` schema
-        ```json
-        {
-          "content": "string"
-        }
-        ```
-    *   **Response**: `MessagePublic` schema (status `201 Created`)
-    *   **Errors**: `401 Unauthorized`, `403 Forbidden` (not a member), `404 Not Found`
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
 
-*   **`GET /messages/{room_id}`**
-    *   **Description**: Retrieve message history for a specific chat room. The current user must be a member or owner of the room (if private).
-    *   **Authentication**: Required
-    *   **Path Parameters**: `room_id` (integer)
-    *   **Query Parameters**:
-        *   `skip` (integer, default: 0)
-        *   `limit` (integer, default: 50)
-    *   **Response**: List of `MessagePublic` schemas
-    *   **Errors**: `401 Unauthorized`, `403 Forbidden` (private room access), `404 Not Found`
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "string",
+    "username": "string",
+    "email": "string",
+    "role": "string", // e.g., "user", "admin"
+    "created_at": "string" // ISO 8601 datetime
+  }
+  // ... more users
+]
+```
 
-## WebSocket Endpoint
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User does not have `admin` role.
+*   `500 Internal Server Error`: Server-side error.
 
-*   **`GET /ws`**
-    *   **Description**: Establishes a WebSocket connection for real-time message
+### 2. Get User by ID
+
+`GET /users/{id}`
+
+Retrieves details of a specific user. Requires `admin` role or the `id` must match the authenticated user's ID.
+
+**Path Parameters:**
+*   `id` (string): The ID of the user.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Response (200 OK):**
+```json
+{
+  "id": "string",
+  "username": "string",
+  "email": "string",
+  "role": "string",
+  "created_at": "string"
+}
+```
+
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User not authorized to view this user's details.
+*   `404 Not Found`: User with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+### 3. Update User (Admin Only or Self)
+
+`PUT /users/{id}`
+
+Updates details of a specific user. Requires `admin` role or the `id` must match the authenticated user's ID. Non-admin users can only update their own username and email. Admin users can update username, email, and role. Password updates are via a separate endpoint for security.
+
+**Path Parameters:**
+*   `id` (string): The ID of the user to update.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Request Body:**
+```json
+{
+  "username": "string", // Optional
+  "email": "string",    // Optional
+  "role": "string"      // Optional, only for admin
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "string",
+  "username": "string",
+  "email": "string",
+  "role": "string",
+  "created_at": "string"
+}
+```
+
+**Error Responses:**
+*   `400 Bad Request`: Invalid input (e.g., username/email conflict, invalid role).
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User not authorized to update this user or specific fields.
+*   `404 Not Found`: User with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+### 4. Delete User (Admin Only)
+
+`DELETE /users/{id}`
+
+Deletes a user account. Requires `admin` role.
+
+**Path Parameters:**
+*   `id` (string): The ID of the user to delete.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Response (200 OK):**
+```json
+{
+  "message": "User deleted successfully."
+}
+```
+
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User does not have `admin` role.
+*   `404 Not Found`: User with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+## Tasks
+
+### 1. Create Task
+
+`POST /tasks`
+
+Creates a new task.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Request Body:**
+```json
+{
+  "title": "string",          // Required
+  "description": "string",    // Optional
+  "status": "string",         // Optional, default "TODO" (e.g., "TODO", "IN_PROGRESS", "DONE")
+  "priority": "string",       // Optional, default "Medium" (e.g., "Low", "Medium", "High")
+  "due_date": "string",       // Optional, ISO 8601 date (e.g., "2023-12-31")
+  "assigned_to": "string"     // Optional, user ID. Must be an existing user.
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "string",
+  "title": "string",
+  "description": "string",
+  "status": "string",
+  "priority": "string",
+  "due_date": "string",
+  "assigned_to": "string",
+  "created_by": "string",
+  "created_at": "string",
+  "updated_at": "string"
+}
+```
+
+**Error Responses:**
+*   `400 Bad Request`: Invalid input (e.g., missing title, invalid user ID for `assigned_to`).
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `500 Internal Server Error`: Server-side error.
+
+### 2. Get All Tasks
+
+`GET /tasks`
+
+Retrieves a list of all tasks.
+Optionally filters by `assigned_to` and `status`.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Query Parameters:**
+*   `assigned_to` (string, optional): Filter tasks assigned to a specific user ID.
+*   `status` (string, optional): Filter tasks by status (e.g., "TODO", "IN_PROGRESS").
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "string",
+    "title": "string",
+    "description": "string",
+    "status": "string",
+    "priority": "string",
+    "due_date": "string",
+    "assigned_to": "string",
+    "created_by": "string",
+    "created_at": "string",
+    "updated_at": "string"
+  }
+  // ... more tasks
+]
+```
+
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `500 Internal Server Error`: Server-side error.
+
+### 3. Get Task by ID
+
+`GET /tasks/{id}`
+
+Retrieves details of a specific task.
+
+**Path Parameters:**
+*   `id` (string): The ID of the task.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Response (200 OK):**
+```json
+{
+  "id": "string",
+  "title": "string",
+  "description": "string",
+  "status": "string",
+  "priority": "string",
+  "due_date": "string",
+  "assigned_to": "string",
+  "created_by": "string",
+  "created_at": "string",
+  "updated_at": "string"
+}
+```
+
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `404 Not Found`: Task with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+### 4. Update Task
+
+`PUT /tasks/{id}`
+
+Updates details of a specific task. Only the `created_by` user or an `admin` can update a task.
+
+**Path Parameters:**
+*   `id` (string): The ID of the task to update.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Request Body:**
+```json
+{
+  "title": "string",          // Optional
+  "description": "string",    // Optional
+  "status": "string",         // Optional
+  "priority": "string",       // Optional
+  "due_date": "string",       // Optional
+  "assigned_to": "string"     // Optional
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "string",
+  "title": "string",
+  "description": "string",
+  "status": "string",
+  "priority": "string",
+  "due_date": "string",
+  "assigned_to": "string",
+  "created_by": "string",
+  "created_at": "string",
+  "updated_at": "string"
+}
+```
+
+**Error Responses:**
+*   `400 Bad Request`: Invalid input.
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User not authorized to update this task.
+*   `404 Not Found`: Task with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+### 5. Delete Task
+
+`DELETE /tasks/{id}`
+
+Deletes a task. Only the `created_by` user or an `admin` can delete a task.
+
+**Path Parameters:**
+*   `id` (string): The ID of the task to delete.
+
+**Headers:**
+*   `Authorization: Bearer <your_jwt_token>`
+
+**Response (200 OK):**
+```json
+{
+  "message": "Task deleted successfully."
+}
+```
+
+**Error Responses:**
+*   `401 Unauthorized`: Missing or invalid JWT.
+*   `403 Forbidden`: User not authorized to delete this task.
+*   `404 Not Found`: Task with the given ID does not exist.
+*   `500 Internal Server Error`: Server-side error.
+
+---

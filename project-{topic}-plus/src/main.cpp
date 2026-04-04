@@ -1,38 +1,45 @@
-```cpp
-#include "server/Server.h"
-#include "config/AppConfig.h"
-#include "database/Database.h"
+#include "app.h"
+#include "config/config.h"
+#include "database/MigrationManager.h"
 #include "utils/Logger.h"
-#include "cache/Cache.h"
 
-int main() {
-    // 1. Initialize Logger first
-    TaskManager::Config::AppConfig& config = TaskManager::Config::AppConfig::getInstance();
-    config.load(); // Load config from .env
-    
-    std::string log_level = config.get("LOG_LEVEL", "info");
-    TaskManager::Utils::Logger::init(log_level);
-    auto logger = TaskManager::Utils::Logger::getLogger();
+#include <iostream>
+#include <stdexcept>
 
-    logger->info("Application started. Loading configurations...");
+int main(int argc, char* argv[]) {
+    // Initialize logger first
+    Logger::init();
+    LOG_INFO("Application starting up...");
 
-    // 2. Get database and cache instances
-    TaskManager::Database::Database& db = TaskManager::Database::Database::getInstance();
-    TaskManager::Cache::Cache& cache = TaskManager::Cache::Cache::getInstance();
-
-    // 3. Create and run the API server
+    // Load configuration
     try {
-        TaskManager::Server::ApiServer api_server(config, db, cache);
-        api_server.run();
+        Config::load("config.json");
+        LOG_INFO("Configuration loaded successfully.");
     } catch (const std::exception& e) {
-        logger->critical("An unhandled exception occurred during server operation: {}", e.what());
-        return 1;
-    } catch (...) {
-        logger->critical("An unknown unhandled exception occurred during server operation.");
+        LOG_CRITICAL("Failed to load configuration: {}", e.what());
+        return 1; // Exit if config cannot be loaded
+    }
+
+    // Run database migrations
+    try {
+        MigrationManager::runMigrations(Config::getDbPath());
+        LOG_INFO("Database migrations completed successfully.");
+    } catch (const std::exception& e) {
+        LOG_CRITICAL("Database migration failed: {}", e.what());
+        return 1; // Exit if migrations fail
+    }
+
+    // Initialize and run the Crow application
+    App app;
+    try {
+        int port = Config::getApiPort();
+        LOG_INFO("Starting API server on port {}", port);
+        app.run(port);
+    } catch (const std::exception& e) {
+        LOG_CRITICAL("Application runtime error: {}", e.what());
         return 1;
     }
 
-    logger->info("Application stopped gracefully.");
+    LOG_INFO("Application shut down.");
     return 0;
 }
-```

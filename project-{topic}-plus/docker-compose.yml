@@ -1,77 +1,38 @@
-```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    restart: always
-    environment:
-      POSTGRES_DB: realtime_chat_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
-    volumes:
-      - chat_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d realtime_chat_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - chat_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  backend:
+  task-manager-app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    restart: always
+    container_name: task-manager-app
     ports:
-      - "5000:5000"
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/realtime_chat_db?schema=public
-      JWT_SECRET: your_jwt_secret_key_here # CHANGE THIS IN PRODUCTION
-      REDIS_URL: redis://redis:6379
-      PORT: 5000
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - "8080:8080"
     volumes:
-      - ./backend:/app # Mount the source code for development, remove for production image
-      - /app/node_modules # Ensure node_modules inside container is used
-    command: sh -c "npx prisma migrate deploy && npm run dev" # Run migrations and then start dev server
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:3000"
+      - ./data:/app/data  # Persist database file
+      - ./logs:/app/logs  # Persist log files
+      - ./config.json:/app/config/config.json:ro # Mount config file
     environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api
-      REACT_APP_SOCKET_URL: http://localhost:5000
-    depends_on:
-      - backend
-    volumes:
-      - ./frontend:/app # Mount the source code for development, remove for production image
-      - /app/node_modules # Ensure node_modules inside container is used
-    command: npm start
+      # These environment variables override values in config.json
+      # Useful for production secrets
+      - JWT_SECRET=your_super_secret_jwt_key_that_is_at_least_32_characters_long_and_ideally_64_bytes_from_env
+      - API_PORT=8080
+      - DB_PATH=/app/data/app.db
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"] # Add a health check endpoint if implemented
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true # Best practice: Prevent container processes from gaining new privileges
+    cap_drop:
+      - ALL # Drop all capabilities
+    cap_add:
+      - NET_BIND_SERVICE # Only add necessary capabilities, e.g., to bind to privileged ports if running as non-root (though we use 8080)
+    read_only: true # Make the root filesystem read-only to prevent unauthorized writes, except for volumes
 
-volumes:
-  chat_db_data:
-  chat_redis_data:
-```
+# To build: docker-compose build
+# To run: docker-compose up -d
+# To stop: docker-compose down

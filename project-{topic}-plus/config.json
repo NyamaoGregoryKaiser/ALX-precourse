@@ -1,0 +1,14 @@
+{
+  "api_port": 8080,
+  "db_path": "./data/app.db",
+  "jwt_secret": "your_super_secret_jwt_key_that_is_at_least_32_characters_long_and_ideally_64_bytes",
+  "jwt_expiry_minutes": 1440,
+  "log_level": "info",
+  "log_file": "./logs/app.log",
+  "rate_limit_enabled": true,
+  "rate_limit_requests": 100,
+  "rate_limit_window_seconds": 60,
+  "cache_enabled": true,
+  "cache_size": 1000,
+  "cache_expiry_seconds": 300
+}
