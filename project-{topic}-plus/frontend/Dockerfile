@@ -4,24 +4,29 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json yarn.lock* ./
+COPY package*.json ./
 RUN npm ci
 
 COPY . .
+
+# Build the React app
+ARG REACT_APP_API_BASE_URL
+ARG REACT_APP_SOCKET_URL
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+ENV REACT_APP_SOCKET_URL=$REACT_APP_SOCKET_URL
+
 RUN npm run build
 
-# Stage 2: Serve the application with Nginx
+# Stage 2: Serve the built application with Nginx
 FROM nginx:alpine
 
-# Copy the build output from the builder stage
+# Copy the built React app from the builder stage
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy custom Nginx configuration (optional, for advanced setups)
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy a custom Nginx configuration for single-page apps and WebSockets
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80 for the web server
 EXPOSE 80
 
-# Command to run Nginx (default in nginx:alpine)
 CMD ["nginx", "-g", "daemon off;"]
 ```

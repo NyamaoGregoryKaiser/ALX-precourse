@@ -1,58 +1,52 @@
-import { app } from './app';
-import { initializeDataSource, AppDataSource } from './db/data-source';
+```typescript
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import app from './app';
+import { logger } from './config/winston';
+import { setupSocketIO } from './sockets';
 import { config } from './config';
-import { LoggerService } from './utils/logger';
-import { RedisService } from './services/cache';
-import { initializeQueueAndWorker } from './services/queue'; // For BullMQ
+import prisma from './prisma'; // Import prisma client
 
-const logger = LoggerService.getLogger();
+const port = config.port;
+const httpServer = createServer(app);
 
-const startServer = async () => {
-  try {
-    // 1. Initialize Database Connection
-    await initializeDataSource(logger);
-    await AppDataSource.runMigrations(); // Ensure migrations run on startup
+// Initialize Socket.IO server
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: config.corsOrigin, // Allow frontend origin
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  // Optionally use Redis adapter for scaling with multiple Socket.IO servers
+  // adapter: createAdapter(redisClient, redisPublisher),
+});
 
-    // 2. Initialize Redis Connection (for cache and BullMQ)
-    await RedisService.connect();
+setupSocketIO(io);
 
-    // 3. Initialize BullMQ Queue and Worker
-    // The worker should ideally run in a separate process/container,
-    // but for simple deployments, it can run in the same process.
-    // In a production setup, you would typically run the API server
-    // and worker processes in separate Docker containers.
-    await initializeQueueAndWorker(logger);
+// Start the server
+httpServer.listen(port, () => {
+  logger.info(`Server running on port ${port}`);
+  logger.info(`CORS origin: ${config.corsOrigin}`);
+  logger.info(`Environment: ${process.env.NODE_ENV}`);
 
-    // 4. Start the Express server
-    app.listen(config.port, () => {
-      logger.info(`Server running on port ${config.port} in ${config.env} mode`);
-      logger.info(`Backend URL: ${config.backendUrl}`);
-      logger.info(`Frontend URL: ${config.frontendUrl}`);
-    });
-
-  } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1); // Exit with failure code
-  }
-};
-
-startServer();
+  // Test DB connection
+  prisma.$connect()
+    .then(() => logger.info('Database connected successfully.'))
+    .catch((err) => logger.error('Database connection failed:', err));
+});
 
 // Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM signal received. Shutting down gracefully.');
-  await RedisService.disconnect();
-  if (AppDataSource.isInitialized) {
-    await AppDataSource.destroy();
-  }
-  process.exit(0);
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  httpServer.close(() => {
+    logger.info('HTTP server closed.');
+    io.close(() => {
+      logger.info('Socket.IO server closed.');
+      prisma.$disconnect()
+        .then(() => logger.info('Prisma client disconnected.'))
+        .catch((err) => logger.error('Prisma client disconnection failed:', err));
+      process.exit(0);
+    });
+  });
 });
-
-process.on('SIGINT', async () => {
-  logger.info('SIGINT signal received. Shutting down gracefully.');
-  await RedisService.disconnect();
-  if (AppDataSource.isInitialized) {
-    await AppDataSource.destroy();
-  }
-  process.exit(0);
-});
+```

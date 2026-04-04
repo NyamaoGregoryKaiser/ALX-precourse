@@ -1,53 +1,36 @@
 ```typescript
+// src/types/index.ts
+
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AuthUser {
-  id: number;
-  username: string;
-  email: string;
-}
-
-export interface ChatMember {
-  id: number;
-  chat_id: number;
-  user_id: number;
-  joined_at: string;
-  user: User; // Nested user object
-}
-
-export interface Chat {
-  id: number;
-  name: string;
-  is_group: boolean;
-  created_at: string;
-  updated_at: string;
-  members: ChatMember[];
+  createdAt?: string;
+  updatedAt?: string;
+  status: 'ONLINE' | 'OFFLINE' | 'AWAY';
 }
 
 export interface Message {
-  id: number;
-  chat_id: number;
-  owner_id: number;
+  id: string;
+  conversationId: string;
+  senderId: string;
   content: string;
-  created_at: string;
-  updated_at: string;
-  owner: User; // Nested user object
+  createdAt: string;
+  updatedAt?: string;
+  sender: Pick<User, 'id' | 'username'>; // Nested sender object for display
 }
 
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
+export interface ConversationParticipant extends Pick<User, 'id' | 'username' | 'status'> {
+  // Add any other participant-specific fields if needed
 }
 
-export interface DecodedToken {
-  sub: string; // User ID
-  exp: number; // Expiration timestamp
+export interface Conversation {
+  id: string;
+  name: string | null;
+  isGroup: boolean;
+  createdAt: string;
+  updatedAt: string;
+  participants: ConversationParticipant[];
+  lastMessage?: Pick<Message, 'id' | 'senderId' | 'content' | 'createdAt'> | null;
 }
 ```

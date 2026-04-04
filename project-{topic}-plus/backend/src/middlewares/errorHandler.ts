@@ -1,87 +1,55 @@
+```typescript
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger';
-import Joi from 'joi';
+import { logger } from '../config/winston';
 
-// Custom error classes for specific scenarios
-export class NotFoundError extends Error {
-  statusCode = 404;
-  constructor(message: string = "Resource not found") {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
+// Custom error class for API errors
+export class ApiError extends Error {
+  statusCode: number;
+  isOperational: boolean;
 
-export class UnauthorizedError extends Error {
-  statusCode = 401;
-  constructor(message: string = "Unauthorized") {
+  constructor(statusCode: number, message: string, isOperational = true, stack = '') {
     super(message);
-    this.name = "UnauthorizedError";
-  }
-}
-
-export class ForbiddenError extends Error {
-  statusCode = 403;
-  constructor(message: string = "Forbidden: Insufficient permissions") {
-    super(message);
-    this.name = "ForbiddenError";
-  }
-}
-
-export class BadRequestError extends Error {
-  statusCode = 400;
-  constructor(message: string = "Bad Request") {
-    super(message);
-    this.name = "BadRequestError";
-  }
-}
-
-export class ConflictError extends Error {
-  statusCode = 409;
-  constructor(message: string = "Conflict") {
-    super(message);
-    this.name = "ConflictError";
+    this.statusCode = statusCode;
+    this.isOperational = isOperational;
+    if (stack) {
+      this.stack = stack;
+    } else {
+      Error.captureStackTrace(this, this.constructor);
+    }
   }
 }
 
 // Global error handling middleware
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  let statusCode = err.statusCode || 500;
-  let message = err.message || 'An unexpected error occurred';
-  let errors: any[] | undefined;
+  let { statusCode, message } = err;
 
-  // Joi validation error
-  if (Joi.isError(err)) {
-    statusCode = 400;
-    message = 'Validation failed';
-    errors = err.details.map(detail => ({
-      field: detail.path.join('.'),
-      message: detail.message.replace(/['"]/g, '')
-    }));
-  } else if (err.code === '23505') { // PostgreSQL unique constraint violation
-    statusCode = 409; // Conflict
-    message = `Duplicate entry: ${err.detail}`;
-  } else if (err instanceof NotFoundError || err instanceof UnauthorizedError || err instanceof ForbiddenError || err instanceof BadRequestError || err instanceof ConflictError) {
-    // Custom errors already have correct statusCode and message
-  } else {
-    // Catch-all for unexpected errors
-    logger.error(`Unhandled error: ${message}`, {
-      stack: err.stack,
-      method: req.method,
-      url: req.originalUrl,
-      body: req.body,
-      user: req.user ? { id: req.user.id, role: req.user.role } : 'anonymous',
-      errorName: err.name,
-    });
-    // In production, avoid leaking sensitive error details
-    if (process.env.NODE_ENV === 'production' && statusCode === 500) {
-      message = 'An internal server error occurred';
-    }
+  // If it's not an operational error, send a generic message
+  if (!(err instanceof ApiError)) {
+    statusCode = err.statusCode || 500;
+    message = 'Internal Server Error';
   }
 
+  // Log the error
+  logger.error(err);
+
+  // Send the error response
   res.status(statusCode).json({
-    status: 'error',
-    statusCode,
     message,
-    ...(errors && { errors }) // Only include errors array if present
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }), // Include stack in dev
   });
 };
+
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason: Error, promise: Promise<any>) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Optional: Gracefully shut down server
+  // process.exit(1);
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught Exception:', error);
+  // Optional: Gracefully shut down server
+  // process.exit(1);
+});
+```

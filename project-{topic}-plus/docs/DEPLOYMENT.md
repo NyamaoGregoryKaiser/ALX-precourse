@@ -1,245 +1,265 @@
 ```markdown
-# Deployment Guide - Task Management System
+# Real-time Chat Application Deployment Guide
 
-This document provides instructions for deploying the C++ Task Management System to various environments, with a focus on Docker and CI/CD best practices.
+This document provides a general guide for deploying the Real-time Chat Application to a production environment. The recommended approach leverages Docker for consistency and ease of management.
 
-## 1. Local Deployment (Development)
+## 1. Prerequisites for Deployment Environment
 
-For local development and testing, you can run the application directly from the build folder or using Docker Compose.
+Before you begin, ensure your target deployment server (e.g., a cloud VM like AWS EC2, DigitalOcean Droplet, GCP Compute Engine) has:
 
-### (a) Run Directly
+*   **Docker Engine:** Installed and running.
+*   **Docker Compose:** Installed.
+*   **Git:** For cloning the repository.
+*   **Firewall Rules:** Configured to allow inbound traffic on ports 80/443 (for HTTP/HTTPS) and potentially 5000 (if exposing backend directly, though not recommended).
+*   **Domain Name:** A registered domain name (e.g., `chat.yourdomain.com`) and DNS configured to point to your server's IP address.
+*   **SSL/TLS Certificate:** (Highly Recommended) For secure HTTPS communication. Let's Encrypt is a free option.
 
-1.  **Build the application**: Follow the instructions in `README.md` under "Setup and Installation" -> "Build from Source".
-2.  **Configure `.env`**: Ensure your `.env` file is set up with local database paths and other settings.
-3.  **Run**:
-    ```bash
-    cd build
-    ./TaskManagementSystem
-    ```
-    The server will start on `http://localhost:18080` (or the port specified in `.env`).
+## 2. Environment Configuration
 
-### (b) Docker Compose
+### Secure your `.env` files
 
-This is the recommended approach for local development as it provides a consistent environment.
+Never commit your actual `.env` files to version control. Use `.env.example` as a template.
+For production, you'll need to create a production `.env` file on your server for the backend with actual secure values.
 
-1.  **Ensure Docker is running**:
-    ```bash
-    systemctl start docker # On Linux
-    # Or start Docker Desktop on macOS/Windows
-    ```
-2.  **Build and run**:
-    ```bash
-    docker-compose up --build
-    ```
-    This command will:
-    *   Build the Docker image (`Dockerfile`).
-    *   Create and start a container named `task-management-system`.
-    *   Map port `18080` from the container to `18080` on your host.
-    *   Mount the `db` directory for persistent database storage and logs for log persistence.
-    *   The application inside the container will use the `.env` file from the host.
+**`backend/.env` (on your server):**
 
-3.  **Access the application**: `http://localhost:18080`
-4.  **Stop and clean up**:
-    ```bash
-    docker-compose down
-    ```
-    To also remove volumes (including database file):
-    ```bash
-    docker-compose down -v
-    ```
+```env
+NODE_ENV=production
+DATABASE_URL="postgresql://<db_user>:<db_password>@<db_host>:<db_port>/<db_name>?schema=public"
+JWT_SECRET="YOUR_VERY_LONG_AND_COMPLEX_JWT_SECRET_KEY_HERE" # Generate a strong, unique key
+REDIS_URL="redis://<redis_host>:6379"
+PORT=5000 # Internal port for the backend container
+```
 
-## 2. Production Deployment (General Principles)
+**`frontend/.env` (during build, values are baked into the JS bundle):**
 
-For production, several considerations are crucial for security, reliability, and scalability.
+```env
+REACT_APP_API_BASE_URL="https://api.chat.yourdomain.com/api" # Public URL of your backend
+REACT_APP_SOCKET_URL="https://api.chat.yourdomain.com"      # Public WebSocket URL
+```
+*   **Important:** Frontend `.env` variables prefixed with `REACT_APP_` are usually bundled into the static assets during the build process. Ensure these point to your *publicly accessible* backend URL.
 
-### (a) Server Environment
+## 3. Deployment Steps
 
-*   **Operating System**: Linux (e.g., Ubuntu, CentOS) is recommended for server deployments.
-*   **Resource Allocation**: Allocate sufficient CPU, memory, and disk space based on expected load.
-*   **Security**: Ensure the server is hardened, with necessary firewall rules (only expose required ports), SSH key-based access, and regular security updates.
+### Step 1: Clone the Repository
 
-### (b) Database Strategy
+On your production server:
 
-*   **SQLite for Production**: While SQLite is used for simplicity, it's generally **not recommended for high-concurrency production environments** due to its file-based nature and potential for write contention.
-*   **Recommended Production Database**: For robust production deployments, consider a client-server relational database like:
-    *   **PostgreSQL**: Open-source, highly reliable, feature-rich.
-    *   **MySQL**: Popular, good performance, large community.
-*   **Migration**: If switching databases, the `Database` class abstraction should help, but schema and SQL queries would need adaptation.
+```bash
+git clone https://github.com/your-username/realtime-chat-app.git
+cd realtime-chat-app
+```
 
-### (c) Container Orchestration
+### Step 2: Create Production `.env` Files
 
-For scalable and resilient deployments, use a container orchestration platform:
+Navigate to `backend/` and `frontend/` directories and create the `.env` files with your production-specific values. For the frontend, you'll use these during the Docker build.
 
-*   **Kubernetes (K8s)**: Industry standard for managing containerized workloads. It provides features like:
-    *   **Automated Scaling**: Scale instances of the C++ backend horizontally.
-    *   **Self-Healing**: Automatically restart failed containers.
-    *   **Load Balancing**: Distribute traffic across healthy instances.
-    *   **Service Discovery**: Easily connect application components.
-    *   **Secrets Management**: Securely store JWT_SECRET and database credentials.
-*   **Docker Swarm**: A simpler alternative to Kubernetes for smaller deployments.
+### Step 3: Build Production Docker Images
 
-### (d) Reverse Proxy and HTTPS
+Modify `docker-compose.yml` for production:
 
-The C++ Crow application does not directly handle HTTPS. For production, a reverse proxy is essential:
+*   **Remove volume mounts** for source code (`./backend:/app`, `./frontend:/app`) in `backend` and `frontend` services. This ensures that the images are self-contained and don't rely on local source code.
+*   **Change `command`** for `backend` service from `npm run dev` to `node dist/server.js` (assuming `npm run build` generates `dist/server.js`). The `npm run dev` command is for development with `ts-node-dev`.
+*   The `frontend` service `command` should ideally be `serve -s build -l 3000` or similar for serving static files, or `npm run start` if your `package.json` script handles a production build and serve. For simplicity, we'll keep `npm start` which typically serves the build.
 
-*   **Nginx / Caddy**: Popular choices for reverse proxies.
-*   **Responsibilities**:
-    *   **HTTPS Termination**: Handle SSL/TLS certificates and encrypt/decrypt traffic.
-    *   **Load Balancing**: Distribute requests to multiple backend C++ instances.
-    *   **Static File Serving**: Serve static assets (if any, not applicable to this purely backend app).
-    *   **Rate Limiting / WAF**: Additional layers of security and traffic management.
-
-### (e) Monitoring and Logging
-
-*   **Centralized Logging**: Ship logs from containers (using `spdlog`'s file sink) to a centralized logging system (e.g., ELK Stack - Elasticsearch, Logstash, Kibana; Grafana Loki; Splunk).
-*   **Application Monitoring**: Use Prometheus and Grafana for collecting metrics (CPU, memory, network I/O, request latency, error rates) and visualizing dashboards.
-*   **Health Checks**: Configure `/health` endpoint for load balancers and orchestrators to check application health.
-
-### (f) Environment Variables Management
-
-*   **DO NOT commit production secrets to version control.**
-*   **Kubernetes Secrets**: Use Kubernetes Secrets for sensitive information like `JWT_SECRET`, database credentials, etc.
-*   **Vault (HashiCorp)**: For more advanced secret management.
-*   **CI/CD Variables**: Store secrets as encrypted variables in your CI/CD pipeline.
-
-## 3. CI/CD Pipeline (GitHub Actions Example)
-
-The `.github/workflows/main.yml` file defines a basic GitHub Actions workflow.
-
-### (a) Workflow Steps (Conceptual)
-
-1.  **Trigger**: On `push` to `main` branch or `pull_request`.
-2.  **Build**:
-    *   Checkout code.
-    *   Install CMake, C++ compiler.
-    *   Build the C++ application (e.g., `cmake .. && make`).
-3.  **Test**:
-    *   Run unit tests (`./build/unit_tests`).
-    *   Run integration tests (`./build/integration_tests`).
-    *   Report test coverage (e.g., using `gcovr` or `lcov`).
-4.  **Containerize**:
-    *   Login to Docker Hub (or other container registry).
-    *   Build Docker image (`docker build -t your-registry/repo:latest .`).
-    *   Push Docker image.
-5.  **Deploy (Staging/Production)**:
-    *   **Staging**: Automatically deploy to a staging environment upon successful build/test/push to `main`. This could involve `kubectl apply` for Kubernetes, `ssh` and `docker pull/run` for a simple Docker host.
-    *   **Production**: Require a manual approval step for deployment to production.
-
-### (b) `.github/workflows/main.yml`
-
-This file illustrates a basic CI/CD pipeline using GitHub Actions.
+**Example Production `docker-compose.yml` snippet modification:**
 
 ```yaml
-name: CI/CD Pipeline
+# ...
+backend:
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  restart: always
+  ports:
+    - "5000:5000" # Internal port, will be exposed via reverse proxy
+  environment:
+    # ... (refer to backend/.env example, or use Docker secrets)
+  # volumes:
+  #   - ./backend:/app # REMOVE OR COMMENT OUT FOR PRODUCTION
+  #   - /app/node_modules # RETAIN IF NEEDED, BUT USUALLY NOT FOR PRODUCTION IMAGE
+  command: sh -c "npx prisma migrate deploy && node dist/server.js" # Production command
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+  restart: always
+  ports:
+    - "3000:3000" # Internal port, will be exposed via reverse proxy
+  environment:
+    # ... (refer to frontend/.env example for build args)
+  # volumes:
+  #   - ./frontend:/app # REMOVE OR COMMENT OUT FOR PRODUCTION
+  #   - /app/node_modules # RETAIN IF NEEDED, BUT USUALLY NOT FOR PRODUCTION IMAGE
+  command: npm start # This typically serves the production build
+# ...
+```
 
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+Now, build and run your services:
 
-    steps:
+```bash
+docker compose -f docker-compose.prod.yml up --build -d # Assuming you create a docker-compose.prod.yml
+```
+Or, if you modify the main `docker-compose.yml`:
+
+```bash
+docker compose up --build -d
+```
+
+### Step 4: Run Database Migrations and Seed Data
+
+If you didn't include `npx prisma migrate deploy` in your `backend` container's `command` (or if it failed), you might need to run it manually.
+
+```bash
+# Connect to your backend container
+docker exec -it <backend_container_id_or_name> bash
+
+# Inside the container:
+npx prisma migrate deploy
+npx prisma db seed # Only run seed if you need initial data, typically only once.
+exit
+```
+
+### Step 5: Set up a Reverse Proxy (Nginx/Caddy - **Crucial for Production**)
+
+You *must* use a reverse proxy in front of your Docker containers for:
+*   **SSL/TLS Termination:** Provide HTTPS for secure communication.
+*   **Load Balancing:** Distribute traffic if you have multiple backend instances.
+*   **Static File Serving:** Serve frontend static files more efficiently.
+*   **Domain Routing:** Route `chat.yourdomain.com` to your frontend and `api.chat.yourdomain.com` to your backend.
+*   **WebSocket Proxying:** Nginx needs special configuration to proxy WebSocket connections.
+
+#### Example Nginx Configuration (`/etc/nginx/sites-available/chat_app.conf`)
+
+```nginx
+server {
+    listen 80;
+    server_name chat.yourdomain.com api.chat.yourdomain.com;
+    return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
+}
+
+server {
+    listen 443 ssl http2;
+    server_name chat.yourdomain.com; # Frontend
+    ssl_certificate /etc/letsencrypt/live/chat.yourdomain.com/fullchain.pem; # Path to your cert
+    ssl_certificate_key /etc/letsencrypt/live/chat.yourdomain.com/privkey.pem; # Path to your key
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/html/frontend; # This assumes you copy frontend build to host or use another method
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html; # For React routing
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.chat.yourdomain.com; # Backend API and WebSockets
+    ssl_certificate /etc/letsencrypt/live/chat.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/chat.yourdomain.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location /api/ {
+        proxy_pass http://localhost:5000; # Forward to backend container's exposed port
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / { # For Socket.IO (no /api prefix)
+        proxy_pass http://localhost:5000; # Forward to backend container's exposed port
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+*   **Note:** The Nginx config assumes `localhost:5000` is accessible from the Nginx container/host. If Nginx is in its own container, you'd reference `http://backend:5000` (the Docker service name) instead of `localhost:5000`.
+*   Ensure the `frontend` build output is available to Nginx. You could build the frontend locally and copy the `build` folder to `/var/www/html/frontend` on the server, or use a multi-stage Dockerfile that builds frontend into a static server like Nginx.
+
+After configuring Nginx:
+```bash
+sudo ln -s /etc/nginx/sites-available/chat_app.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Step 6: Monitor and Maintain
+
+*   **Logging:** Configure `winston` in the backend to write logs to a file or a logging service (e.g., ELK stack, Grafana Loki).
+*   **Monitoring:** Use tools like Prometheus/Grafana to monitor server health, container metrics, and application performance.
+*   **Updates:** Regularly update dependencies and apply security patches.
+*   **Backups:** Implement a robust database backup strategy for PostgreSQL.
+
+## 4. CI/CD for Production
+
+The provided `main.yml` in `.github/workflows/` is a basic CI setup. For production deployment, you would extend it to:
+
+1.  **Build Docker Images:** Create optimized production-ready Docker images.
+2.  **Tag Images:** Tag images with version numbers or Git SHAs.
+3.  **Push to Registry:** Push images to a Docker Registry (e.g., Docker Hub, AWS ECR, GCR).
+4.  **Deployment Trigger:** Trigger a deployment on your cloud provider (e.g., update an ECS service, deploy to Kubernetes, or run a `docker compose pull && docker compose up -d` command on your VM).
+
+**Example of an extended CI/CD step (Conceptual):**
+
+```yaml
+# ... (after build-and-test-backend and build-and-test-frontend jobs)
+
+deploy:
+  name: Deploy to Production
+  runs-on: ubuntu-latest
+  needs: [build-and-test-backend, build-and-test-frontend] # Ensure tests pass and images are built
+  environment: Production # Associate with a GitHub Environment
+  steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      with:
-        submodules: true # To fetch Crow, nlohmann/json, spdlog if needed via FetchContent
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake build-essential libsqlite3-dev
-
-    - name: Create build directory
-      run: mkdir build
-
-    - name: Configure CMake
-      working-directory: ./build
-      run: cmake .. -DCMAKE_BUILD_TYPE=Release
-
-    - name: Build application
-      working-directory: ./build
-      run: make -j$(nproc)
-
-    - name: Run unit tests
-      working-directory: ./build
-      run: ./unit_tests
-
-    - name: Run integration tests
-      working-directory: ./build
-      run: ./integration_tests
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-results
-        path: ./build/test-results.xml # Assuming tests output to JUnit XML
-
-  docker-build-and-push:
-    needs: build-and-test
-    if: success() && github.ref == 'refs/heads/main' # Only build/push on successful main branch builds
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Docker login
+    - name: Log in to Docker Hub (or other registry)
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build Docker image
-      run: docker build -t ${{ secrets.DOCKER_USERNAME }}/task-management-system:latest .
-
-    - name: Push Docker image
-      run: docker push ${{ secrets.DOCKER_USERNAME }}/task-management-system:latest
-
-  deploy-staging:
-    needs: docker-build-and-push
-    if: success() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: Staging
-      url: http://staging.example.com # Replace with your staging URL
-
-    steps:
-    - name: Deploy to staging (Conceptual)
+    - name: Build and push backend image
       run: |
-        echo "Deploying latest image to staging environment..."
-        # Example: kubectl apply -f kubernetes/staging-deployment.yaml
-        # Example: ssh user@staging.server "docker pull ${{ secrets.DOCKER_USERNAME }}/task-management-system:latest && docker stop task_manager && docker rm task_manager && docker run -d --name task_manager -p 18080:18080 ${{ secrets.DOCKER_USERNAME }}/task-management-system:latest"
-        echo "Deployment to staging complete."
+        cd backend
+        docker build -t yourusername/realtime-chat-backend:${{ github.sha }} .
+        docker push yourusername/realtime-chat-backend:${{ github.sha }}
+        docker tag yourusername/realtime-chat-backend:${{ github.sha }} yourusername/realtime-chat-backend:latest
+        docker push yourusername/realtime-chat-backend:latest
 
-  deploy-production:
-    needs: deploy-staging
-    if: success() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: Production
-      url: http://api.example.com # Replace with your production URL
+    - name: Build and push frontend image
+      run: |
+        cd frontend
+        docker build -t yourusername/realtime-chat-frontend:${{ github.sha }} .
+        docker push yourusername/realtime-chat-frontend:${{ github.sha }}
+        docker tag yourusername/realtime-chat-frontend:${{ github.sha }} yourusername/realtime-chat-frontend:latest
+        docker push yourusername/realtime-chat-frontend:latest
 
-    steps:
-    - name: Manual approval for production deployment
-      uses: trstringer/manual-approval@v1
+    - name: Deploy to Server via SSH
+      uses: appleboy/ssh-action@master
       with:
-        secret: ${{ github.TOKEN }}
-        authorized_actors: your-github-username # Or a team slug: your-org/your-team
-        timeout_minutes: 60
-
-    - name: Deploy to production (Conceptual)
-      run: |
-        echo "Deploying latest image to production environment..."
-        # Example: kubectl apply -f kubernetes/production-deployment.yaml
-        # Example: ssh user@production.server "docker pull ${{ secrets.DOCKER_USERNAME }}/task-management-system:latest && docker restart task_manager_prod"
-        echo "Deployment to production complete."
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        script: |
+          cd /path/to/your/app
+          docker compose pull # Pull latest images from registry
+          docker compose -f docker-compose.prod.yml up -d # Use prod compose file
+          # Add commands to restart Nginx if configurations changed
 ```
----
+
+This guide provides a robust starting point for deploying your Real-time Chat Application. Always adapt configurations to your specific hosting environment and security requirements.
 ```

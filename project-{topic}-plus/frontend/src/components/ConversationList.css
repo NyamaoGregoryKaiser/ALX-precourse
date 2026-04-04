@@ -1,0 +1,114 @@
+```css
+.conversation-list-container {
+  width: 300px;
+  border-right: 1px solid #ddd;
+  background-color: #f9f9f9;
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-list-header {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #e2e6ea;
+}
+
+.conversation-list-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+.new-chat-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s ease;
+}
+
+.new-chat-button:hover {
+  background-color: #218838;
+}
+
+.conversation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.conversation-item {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.2s ease;
+}
+
+.conversation-item:hover {
+  background-color: #e9ecef;
+}
+
+.conversation-item.selected {
+  background-color: #e0e7ff; /* Highlight selected conversation */
+  border-left: 3px solid #007bff;
+}
+
+.conversation-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-name {
+  font-weight: bold;
+  color: #333;
+  font-size: 1.1em;
+}
+
+.conversation-status {
+  font-size: 0.8em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin-left: 5px;
+}
+
+.conversation-status.online {
+  color: #28a745;
+  border: 1px solid #28a745;
+}
+
+.conversation-status.offline {
+  color: #6c757d;
+  border: 1px solid #6c757d;
+}
+
+.last-message-preview {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.message-timestamp {
+  font-size: 0.75em;
+  color: #999;
+  align-self: flex-end;
+  margin-top: 5px;
+}
+
+.no-conversations-message, .conversation-list-loading, .conversation-list-error {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+```

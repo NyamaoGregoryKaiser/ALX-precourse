@@ -1,249 +1,262 @@
-# ML-Utilities-System
+```markdown
+# Real-time Chat Application
 
-A comprehensive, production-ready Machine Learning Utilities System designed to streamline the management of ML datasets, models, and experiments.
+This is a comprehensive, full-stack real-time chat application designed to demonstrate enterprise-grade software engineering practices. It features a robust backend built with Node.js, Express, and Socket.IO, a dynamic frontend with React, and a reliable PostgreSQL database managed by Prisma. The entire system is containerized with Docker and includes configurations for CI/CD, testing, and essential production features.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Getting Started](#getting-started)
+2.  [Technologies Used](#technologies-used)
+3.  [Project Structure](#project-structure)
+4.  [Setup Instructions](#setup-instructions)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup (Docker Compose)](#local-development-setup-docker-compose)
-    *   [Running Migrations](#running-migrations)
-    *   [Seeding Initial Data](#seeding-initial-data)
-    *   [Running the Application](#running-the-application)
-4.  [API Documentation](#api-documentation)
-5.  [Frontend (Basic UI)](#frontend-basic-ui)
-6.  [Testing](#testing)
-    *   [Running Tests](#running-tests)
-    *   [Performance Testing (Locust)](#performance-testing-locust)
-7.  [Architecture](#architecture)
-8.  [Deployment](#deployment)
-9.  [Additional Features](#additional-features)
-10. [ALX Software Engineering Focus](#alx-software-engineering-focus)
-11. [License](#license)
+    *   [Local Development (without Docker)](#local-development-without-docker)
+    *   [Local Development (with Docker Compose)](#local-development-with-docker-compose)
+5.  [Running Tests](#running-tests)
+    *   [Backend Unit & Integration Tests](#backend-unit--integration-tests)
+    *   [Frontend Tests](#frontend-tests)
+    *   [Performance Tests](#performance-tests)
+6.  [Documentation](#documentation)
+7.  [CI/CD](#ci/cd)
+8.  [Additional Features](#additional-features)
+9.  [Contribution](#contribution)
+10. [License](#license)
 
----
+## Features
 
-## 1. Features
+*   **User Management:** Register, Login, User Profiles, Search Users.
+*   **Real-time Messaging:** One-on-one and group conversations (basic support for groups).
+*   **Conversations:** Create, list, view conversation history.
+*   **Authentication & Authorization:** JWT-based secured APIs.
+*   **Online Status:** Real-time user online/offline indicators.
+*   **Typing Indicators:** Real-time "user is typing..." functionality.
+*   **Robust Error Handling:** Consistent API error responses.
+*   **Logging & Monitoring:** Structured logging for backend operations.
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **Caching:** Redis integration for sessions and rate limiting.
+*   **Containerization:** Docker for easy deployment and development.
+*   **CI/CD:** GitHub Actions workflow for automated testing and builds.
+*   **Comprehensive Testing:** Unit, Integration, and API tests.
+*   **Extensive Documentation:** README, API Docs, Architecture, Deployment Guide.
 
-*   **User Management**: Secure user registration, login, and role-based access control (normal user, superuser).
-*   **Dataset Management**: CRUD operations for managing ML datasets, including metadata like name, description, file path, size, type, and counts.
-*   **Model Management**: CRUD operations for registering and versioning trained ML models, capturing framework, task type, hyperparameters, and performance metrics.
-*   **Experiment Tracking**: CRUD operations for logging ML experiment runs, including parameters, metrics, artifacts URI, and status.
-*   **Authentication & Authorization**: JWT-based authentication for securing API endpoints.
-*   **Caching**: Redis-backed caching for read-heavy endpoints to improve performance.
-*   **Rate Limiting**: Middleware to protect the API from abuse and ensure fair usage.
-*   **Error Handling**: Centralized error handling middleware for consistent API responses.
-*   **Logging & Monitoring**: Basic logging configuration for application events.
-*   **Database Migrations**: Alembic for managing database schema changes.
-*   **Dockerization**: Containerized application for easy setup and deployment.
-*   **CI/CD**: Example GitHub Actions workflow for automated testing.
-*   **Comprehensive Testing**: Unit, integration, and basic performance tests.
-*   **Interactive API Docs**: Automatically generated OpenAPI (Swagger UI) documentation.
+## Technologies Used
 
-## 2. Technology Stack
+### Backend
+*   **Runtime:** Node.js
+*   **Framework:** Express.js
+*   **Real-time:** Socket.IO
+*   **Language:** TypeScript
+*   **Database:** PostgreSQL
+*   **ORM:** Prisma
+*   **Authentication:** `jsonwebtoken`, `bcrypt`
+*   **Validation:** `joi`
+*   **Logging:** `winston`
+*   **Caching/Messaging:** `redis`
+*   **Rate Limiting:** `express-rate-limit`
+*   **Testing:** `jest`, `supertest`
 
-*   **Backend**: Python (FastAPI)
-*   **Database**: PostgreSQL
-*   **ORM**: SQLAlchemy (Async)
-*   **Caching/Rate Limiting**: Redis
-*   **Database Migrations**: Alembic
-*   **Frontend**: Jinja2 (server-side rendered HTML with vanilla JS for basic interactivity)
-*   **Authentication**: JWT
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-*   **Testing**: Pytest, httpx, Locust
+### Frontend
+*   **Framework:** React
+*   **Language:** TypeScript
+*   **State Management:** React Context API
+*   **Routing:** `react-router-dom`
+*   **API Client:** `axios`
+*   **Real-time:** `socket.io-client`
+*   **Styling:** Basic CSS (or can be extended with Tailwind CSS, Styled Components etc.)
+*   **Testing:** `@testing-library/react` (can be added)
 
-## 3. Getting Started
+### Infrastructure & Tools
+*   **Containerization:** Docker, Docker Compose
+*   **CI/CD:** GitHub Actions
+*   **Performance Testing:** Artillery (configuration provided)
 
-Follow these instructions to set up and run the project locally.
+## Project Structure
+
+```
+.
+├── .github/                         # GitHub Actions CI/CD workflows
+├── backend/                         # Node.js (Express, Socket.IO) backend
+│   ├── src/                         # Source code
+│   │   ├── config/                  # Environment, logger, Redis setup
+│   │   ├── controllers/             # Handle incoming requests, call services
+│   │   ├── middlewares/             # Auth, error handling, rate limiting, validation
+│   │   ├── prisma/                  # Database schema, migrations, seeding
+│   │   ├── routes/                  # API endpoint definitions
+│   │   ├── services/                # Business logic, interact with Prisma
+│   │   ├── sockets/                 # Socket.IO event handlers
+│   │   ├── tests/                   # Unit and integration tests
+│   │   ├── utils/                   # Utility functions
+│   │   ├── app.ts                   # Express app initialization
+│   │   └── server.ts                # HTTP server and Socket.IO listener
+│   ├── Dockerfile                   # Docker image definition
+│   ├── jest.config.ts               # Jest test configuration
+│   ├── package.json                 # Backend dependencies and scripts
+│   └── tsconfig.json                # TypeScript configuration
+├── frontend/                        # React frontend application
+│   ├── public/
+│   ├── src/                         # Source code
+│   │   ├── assets/                  # Static assets (images, icons)
+│   │   ├── components/              # Reusable UI components
+│   │   ├── contexts/                # React Context for global state management
+│   │   ├── hooks/                   # Custom React hooks
+│   │   ├── pages/                   # Top-level page components
+│   │   ├── services/                # API client functions, Socket.IO client setup
+│   │   ├── types/                   # TypeScript type definitions
+│   │   ├── utils/                   # Helper utilities
+│   │   ├── App.tsx                  # Main React application component
+│   │   └── index.tsx                # React app entry point
+│   ├── Dockerfile                   # Docker image definition
+│   ├── package.json                 # Frontend dependencies and scripts
+│   └── tsconfig.json                # TypeScript configuration
+├── docs/                            # Additional documentation
+│   ├── API.md                       # API endpoint details
+│   ├── ARCHITECTURE.md              # System architecture overview
+│   └── DEPLOYMENT.md                # Deployment instructions
+├── performance-tests/               # Artillery configuration for performance testing
+├── docker-compose.yml               # Docker Compose file for multi-service orchestration
+└── README.md                        # Project overview and setup instructions (this file)
+```
+
+## Setup Instructions
 
 ### Prerequisites
 
-*   Docker and Docker Compose installed
-*   Python 3.11+ (if running without Docker or for development outside containers)
+*   Node.js (v18+) and npm
+*   Docker and Docker Compose
+*   Git
 
-### Local Development Setup (Docker Compose)
+### Local Development (without Docker)
 
-1.  **Clone the repository**:
+This method requires you to have PostgreSQL and Redis installed and running locally, or accessible via network.
+
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/ml-utilities-system.git
-    cd ml-utilities-system
+    git clone https://github.com/your-username/realtime-chat-app.git
+    cd realtime-chat-app
     ```
 
-2.  **Create `.env` file**:
-    Copy the example environment variables and customize them.
+2.  **Setup Backend:**
     ```bash
+    cd backend
+    npm install
     cp .env.example .env
-    ```
-    **Important**: Change `SECRET_KEY` in `.env` to a strong, random string for production.
+    # Edit .env to point to your local PostgreSQL and Redis instances
+    # e.g., DATABASE_URL="postgresql://user:password@localhost:5432/realtime_chat_db?schema=public"
+    # REDIS_URL="redis://localhost:6379"
 
-3.  **Build and run Docker containers**:
-    This command will build the `app` service image, start `db`, `redis`, and `app` containers. The `app` container's `command` in `docker-compose.yml` automatically runs Alembic migrations and seeds initial data.
+    npx prisma migrate dev --name init # Apply migrations
+    npx prisma db seed               # Seed initial data
+    npm run dev                      # Start backend (runs on http://localhost:5000)
+    ```
+
+3.  **Setup Frontend:**
     ```bash
-    docker-compose up --build -d
+    cd ../frontend
+    npm install
+    cp .env.example .env
+    # Edit .env for API and Socket URLs (should point to your backend)
+    # REACT_APP_API_BASE_URL=http://localhost:5000/api
+    # REACT_APP_SOCKET_URL=http://localhost:5000
+
+    npm start                        # Start frontend (runs on http://localhost:3000)
+    ```
+
+4.  **Access the application:** Open your browser to `http://localhost:3000`.
+
+### Local Development (with Docker Compose)
+
+This is the recommended way to run the application locally, as it sets up all services (database, Redis, backend, frontend) automatically.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/realtime-chat-app.git
+    cd realtime-chat-app
+    ```
+
+2.  **Build and run all services:**
+    ```bash
+    docker compose up --build -d
     ```
     *   `--build`: Rebuilds images (useful after code changes).
-    *   `-d`: Runs containers in detached mode (in the background).
+    *   `-d`: Runs services in detached mode (in the background).
 
-4.  **Verify services are running**:
+3.  **Verify services:**
     ```bash
-    docker-compose ps
+    docker compose ps
     ```
-    You should see `ml_utils_db`, `ml_utils_redis`, and `ml_utils_app` in a healthy state.
+    You should see `db`, `redis`, `backend`, and `frontend` services running.
 
-### Running Migrations (Manual, if not using `docker-compose up`'s command)
+4.  **Access the application:** Open your browser to `http://localhost:3000`.
 
-If you modify your models, you'll need to create and apply new migrations.
-Connect to the `app` container:
-```bash
-docker-compose exec app bash
-```
-Then, inside the container:
-```bash
-# Generate a new migration script
-alembic revision --autogenerate -m "Add new feature X"
-
-# Apply migrations
-alembic upgrade head
-```
-Exit the container: `exit`
-
-### Seeding Initial Data (Manual, if not using `docker-compose up`'s command)
-
-The `docker-compose.yml` already includes `python seed_data.py` as part of the app's startup command. If you need to re-seed or run it manually:
-```bash
-docker-compose exec app python seed_data.py
-```
-This script creates a default superuser (`admin@example.com` / `adminpassword`) and some sample datasets, models, and experiments.
-
-### Running the Application
-
-After running `docker-compose up -d`, the application should be accessible:
-
-*   **FastAPI Backend**: `http://localhost:8000`
-*   **Interactive API Docs (Swagger UI)**: `http://localhost:8000/docs`
-*   **Basic Frontend**: `http://localhost:8000` (redirects to `/`)
-*   **Redis**: `http://localhost:6379` (for Redis client access, not a web interface)
-*   **PostgreSQL**: `http://localhost:5432` (for DB client access)
-
-## 4. API Documentation
-
-The FastAPI application automatically generates OpenAPI documentation, accessible via Swagger UI:
-
-*   **Swagger UI**: `http://localhost:8000/docs`
-*   **ReDoc**: `http://localhost:8000/redoc`
-*   **OpenAPI JSON Schema**: `http://localhost:8000/api/v1/openapi.json`
-
-Refer to these for detailed information on endpoints, request/response schemas, and available operations (CRUD).
-
-## 5. Frontend (Basic UI)
-
-A minimal, backend-rendered HTML frontend (`app/templates/`) with vanilla JavaScript (`app/static/js/main.js`) is provided to demonstrate basic interaction with the API.
-
-*   **Home Page**: `http://localhost:8000/`
-*   **Login Page**: `http://localhost:8000/login`
-    *   Use `admin@example.com` / `adminpassword` to log in initially.
-*   **Dashboard**: `http://localhost:8000/dashboard`
-    *   Here you can create, view, and manage datasets, models, and experiments through a simple web interface.
-
-This UI serves as a demonstration; a full-scale production application would typically use a dedicated SPA framework like React, Vue, or Angular.
-
-## 6. Testing
-
-The project includes unit, integration, and performance tests to ensure code quality and functionality.
-
-### Running Tests
-
-To run all tests (unit, integration, and generate coverage report):
-
-```bash
-docker-compose exec app pytest /app/tests --cov=/app --cov-report=term-missing --cov-report=xml
-```
-*   `--cov=/app`: Enables coverage measurement for the `app` directory.
-*   `--cov-report=term-missing`: Shows missing lines in the terminal.
-*   `--cov-report=xml`: Generates an XML coverage report (`coverage.xml`), useful for CI/CD tools like Codecov.
-
-**Target Coverage**: Aim for 80%+ code coverage for critical modules.
-
-### Performance Testing (Locust)
-
-Locust is used for load testing the API endpoints.
-
-1.  **Ensure services are running**:
+5.  **Stop services:**
     ```bash
-    docker-compose up -d
+    docker compose down
     ```
 
-2.  **Run Locust from within the app container**:
+## Running Tests
+
+### Backend Unit & Integration Tests
+
+Navigate to the `backend` directory and run:
+
+```bash
+cd backend
+npm test
+# To run tests with coverage report:
+npm test -- --coverage
+```
+*   Unit tests are found in `src/tests/unit/`.
+*   Integration/API tests are found in `src/tests/integration/`.
+
+### Frontend Tests
+
+For this comprehensive example, frontend tests (`@testing-library/react`) are not explicitly written out due to their extensive nature, but the structure allows for them. You would typically create a `src/tests/` or `src/__tests__/` directory within the `frontend` project.
+
+### Performance Tests
+
+This project includes a basic Artillery configuration for performance testing the backend API.
+
+1.  **Install Artillery:**
     ```bash
-    docker-compose exec app locust -f /app/tests/performance/test_locust.py --web-host 0.0.0.0
+    npm install -g artillery
     ```
-    This will start the Locust web UI, usually accessible at `http://localhost:8089`.
 
-3.  **Access the Locust UI**: Open your browser to `http://localhost:8089`.
-    *   Enter the number of users and spawn rate.
-    *   The host for the FastAPI app should be `http://localhost:8000`.
-    *   Click "Start swarming" to begin the load test.
-
-    Alternatively, run in headless mode for automated CI/CD checks:
+2.  **Run performance tests:**
     ```bash
-    docker-compose exec app locust -f /app/tests/performance/test_locust.py --web-host 0.0.0.0 --headless --users 10 --spawn-rate 5 --run-time 30s --csv=locust_report
+    cd performance-tests
+    artillery run artillery.yml
     ```
-    This will run for 30 seconds with 10 users, spawning 5 users/second, and save results to CSV.
+    Ensure your backend is running at `http://localhost:5000` before running these tests.
 
-## 7. Architecture
+## Documentation
 
-The system follows a layered, modular architecture:
+*   **API Documentation:** See `docs/API.md` for a list of all API endpoints, their methods, request/response formats, and authentication requirements.
+*   **Architecture Documentation:** See `docs/ARCHITECTURE.md` for an overview of the system's design, component interactions, and data flow.
+*   **Deployment Guide:** See `docs/DEPLOYMENT.md` for general guidelines on deploying this application to a production environment.
 
-*   **Client Layer**: Basic Jinja2/JS frontend or external SPA/CLI clients interacting via API.
-*   **API Layer (FastAPI)**:
-    *   **Endpoints (`app/api/v1/endpoints`)**: Defines HTTP routes and their handlers, performs request validation, and orchestrates business logic.
-    *   **Schemas (`app/schemas`)**: Pydantic models for data validation and serialization (request and response bodies).
-    *   **Core (`app/core`)**: Configuration, database connection, security utilities (JWT, password hashing), dependency injection, middleware (error handling, rate limiting), and caching.
-*   **Business Logic Layer (`app/crud`, `app/services`)**:
-    *   **CRUD (`app/crud`)**: Database interaction logic, abstracting common Create, Read, Update, Delete operations.
-    *   **Services (`app/services`)**: Contains more complex business rules or orchestrates multiple CRUD operations. (Currently light, but designed for growth).
-*   **Data Access Layer (`app/models`)**: SQLAlchemy ORM models defining the database schema.
-*   **Database (PostgreSQL)**: Persistent storage for all application data.
-*   **Cache (Redis)**: In-memory data store for caching API responses and managing rate limits.
+## CI/CD
 
----
-[Link to `docs/architecture.md` for more details on architecture and design decisions.]
+The `.github/workflows/main.yml` file configures a basic CI/CD pipeline using GitHub Actions.
+*   On every push or pull request to the `main` branch, it will:
+    *   Install dependencies for both backend and frontend.
+    *   Run backend tests.
+    *   Build Docker images for both backend and frontend.
 
-## 8. Deployment
+This pipeline can be extended to include linting, more comprehensive frontend tests, vulnerability scans, and deployment steps to a cloud provider.
 
-The project is designed for containerized deployment, making it suitable for various cloud environments (AWS ECS, Google Cloud Run, Kubernetes, etc.).
+## Additional Features
 
----
-[Link to `docs/deployment.md` for a comprehensive deployment guide.]
+*   **Authentication/Authorization:** JWT tokens for secure access to API endpoints.
+*   **Logging:** Structured logging using `winston` for better observability.
+*   **Error Handling:** Centralized error handling middleware provides consistent error responses.
+*   **Caching/Rate Limiting:** Redis is used for rate limiting API requests to prevent abuse.
+*   **Environment Configuration:** Uses `.env` files and `dotenv` for flexible environment-specific settings.
 
-## 9. Additional Features
+## Contribution
 
-*   **Authentication/Authorization**: JWT tokens are used for stateless authentication. Users can have `is_superuser` and `is_active` flags for basic role-based authorization.
-*   **Logging and Monitoring**: Python's standard `logging` module is configured. In a production environment, this would integrate with a centralized logging system (e.g., ELK stack, Datadog).
-*   **Error Handling Middleware**: Custom middleware (`app/core/middleware.py`) catches common `HTTPException` types and provides consistent JSON error responses.
-*   **Caching Layer**: Redis is used via `app/core/cache.py` to cache responses for GET endpoints, improving performance for frequently accessed data. Cache invalidation is triggered on data modification.
-*   **Rate Limiting**: Implemented via a middleware (`app/core/middleware.py`) using Redis to track and limit requests per IP address per minute, preventing API abuse.
+Feel free to fork this repository, explore the code, and suggest improvements.
 
-## 10. ALX Software Engineering Focus
+## License
 
-This project embodies several principles covered in ALX Software Engineering pre-course materials:
-
-*   **Programming Logic**: Clear, modular Python code with well-defined functions and classes, adhering to DRY principles in CRUD operations.
-*   **Algorithm Design**:
-    *   **Pagination**: Implemented in `CRUDBase` for efficient retrieval of large datasets.
-    *   **Data Validation**: Pydantic schemas enforce data integrity and structure.
-    *   **Security**: Robust password hashing (bcrypt) and JWT token generation/validation.
-*   **Technical Problem Solving**:
-    *   **Database Management**: Use of Alembic for controlled schema evolution, SQL relationships, and efficient queries.
-    *   **Scalability**: Async FastAPI, PostgreSQL, and Redis for handling concurrent requests and data loads.
-    *   **Maintainability**: Layered architecture, dependency injection, and clear separation of concerns.
-    *   **Error Handling**: Proactive error handling and graceful degradation (e.g., Redis down for rate limiting).
-    *   **Containerization**: Solving environment consistency and deployment complexity using Docker.
-    *   **Testing**: Ensuring reliability and correctness through a comprehensive test suite.
-
-## 11. License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+This project is licensed under the MIT License.
+```

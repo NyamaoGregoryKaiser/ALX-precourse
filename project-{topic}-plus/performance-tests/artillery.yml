@@ -1,0 +1,48 @@
+```yaml
+# performance-tests/artillery.yml
+config:
+  target: "http://localhost:5000/api" # Target your backend API
+  phases:
+    - duration: 60 # 1 minute
+      arrivalRate: 5 # Start with 5 new users per second
+      rampTo: 50 # Ramp up to 50 new users per second
+      name: "Warm-up and sustained load"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "User Registration and Login"
+    flow:
+      - post:
+          url: "/auth/register"
+          json:
+            username: "testuser_{{$randomNumber(1, 100000)}}"
+            password: "password123"
+            email: "test_{{$randomNumber(1, 100000)}}@example.com"
+          capture:
+            json: "$.token"
+            as: "authToken"
+      - post:
+          url: "/auth/login"
+          json:
+            email: "test_{{$randomNumber(1, 100000)}}@example.com"
+            password: "password123"
+          capture:
+            json: "$.token"
+            as: "authToken"
+
+  - name: "Authenticated User Actions"
+    flow:
+      - get:
+          url: "/users/me"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      - get:
+          url: "/conversations"
+          headers:
+            Authorization: "Bearer {{authToken}}"
+      # This is a placeholder, actual chat interactions (WebSockets)
+      # would require a custom Artillery plugin or external tool
+      - log: "Simulating chat messages via WebSocket (Artillery's HTTP-only nature makes this complex directly)"
+```

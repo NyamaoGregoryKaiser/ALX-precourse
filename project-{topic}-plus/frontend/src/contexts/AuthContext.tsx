@@ -1,69 +1,56 @@
 ```typescript
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axiosInstance from '../api/axios';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { User } from '../types';
-import { useNotification } from './NotificationContext';
+import * as authService from '../services/auth';
+import { getAuthToken, saveAuthToken, removeAuthToken } from '../utils/localStorage';
+import * as userService from '../services/user';
 
 interface AuthContextType {
   user: User | null;
-  isAuthenticated: boolean;
+  token: string | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  loading: boolean;
+  updateUserProfile: (updatedUser: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [token, setToken] = useState<string | null>(getAuthToken());
   const [loading, setLoading] = useState<boolean>(true);
-  const navigate = useNavigate();
-  const { showNotification } = useNotification();
-
-  const loadUser = useCallback(async () => {
-    const accessToken = localStorage.getItem('accessToken');
-    if (accessToken) {
-      try {
-        const response = await axiosInstance.get('/auth/me');
-        setUser(response.data.data);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Failed to fetch user data, token might be invalid/expired:', error);
-        localStorage.clear(); // Clear invalid tokens
-        setIsAuthenticated(false);
-        setUser(null);
-        showNotification('Session expired. Please log in again.', 'error');
-        // navigate('/login'); // Let the interceptor handle navigation
-      }
-    } else {
-      setIsAuthenticated(false);
-      setUser(null);
-    }
-    setLoading(false);
-  }, [showNotification]);
 
   useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+    const loadUserFromToken = async () => {
+      const storedToken = getAuthToken();
+      if (storedToken) {
+        setToken(storedToken);
+        try {
+          // Verify token and fetch user data from backend
+          const fetchedUser = await userService.getMe(storedToken);
+          setUser(fetchedUser);
+        } catch (error) {
+          console.error('Failed to fetch user from token:', error);
+          removeAuthToken(); // Token might be invalid or expired
+          setToken(null);
+          setUser(null);
+        }
+      }
+      setLoading(false);
+    };
+
+    loadUserFromToken();
+  }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await axiosInstance.post('/auth/login', { email, password });
-      const { accessToken, refreshToken, user: userData } = response.data.data;
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      const { token, user: userData } = await authService.login(email, password);
+      saveAuthToken(token);
+      setToken(token);
       setUser(userData);
-      setIsAuthenticated(true);
-      showNotification('Login successful!', 'success');
-      navigate('/');
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Login failed.';
-      showNotification(errorMessage, 'error');
-      throw error;
     } finally {
       setLoading(false);
     }
@@ -72,30 +59,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (username: string, email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await axiosInstance.post('/auth/register', { username, email, password });
-      showNotification('Registration successful! Please log in.', 'success');
-      navigate('/login');
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Registration failed.';
-      showNotification(errorMessage, 'error');
-      throw error;
+      await authService.register(username, email, password);
     } finally {
       setLoading(false);
     }
   };
 
   const logout = () => {
-    setLoading(true);
-    localStorage.clear();
+    removeAuthToken();
+    setToken(null);
     setUser(null);
-    setIsAuthenticated(false);
-    showNotification('You have been logged out.', 'info');
-    navigate('/login');
-    setLoading(false);
+  };
+
+  const updateUserProfile = (updatedUser: Partial<User>) => {
+    setUser(prevUser => (prevUser ? { ...prevUser, ...updatedUser } : null));
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

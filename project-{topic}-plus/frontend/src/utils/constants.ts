@@ -1,6 +1,13 @@
 ```typescript
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/ws';
+// src/utils/constants.ts
 
-export const LOCAL_STORAGE_TOKEN_KEY = 'chat_access_token';
+interface AppConfig {
+  API_BASE_URL: string;
+  SOCKET_URL: string;
+}
+
+export const config: AppConfig = {
+  API_BASE_URL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api',
+  SOCKET_URL: process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000',
+};
 ```

@@ -1,0 +1,81 @@
+```css
+.user-search-container {
+  padding: 10px 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.user-search-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  font-size: 1em;
+  box-sizing: border-box;
+}
+
+.search-results-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 10px;
+  background-color: #fff;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+}
+
+.search-result-item {
+  padding: 10px 15px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.2s ease;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background-color: #f0f0f0;
+}
+
+.search-result-username {
+  font-weight: bold;
+  color: #333;
+}
+
+.search-result-email {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.search-result-status {
+  font-size: 0.8em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin: 0 10px;
+}
+
+.search-result-status.online {
+  color: #28a745;
+  border: 1px solid #28a745;
+}
+
+.search-result-status.offline {
+  color: #6c757d;
+  border: 1px solid #6c757d;
+}
+
+.search-result-status.away {
+  color: #ffc107;
+  border: 1px solid #ffc107;
+}
+
+.loading-message, .no-results-message {
+  padding: 10px;
+  text-align: center;
+  color: #666;
+  font-size: 0.9em;
+}
+```

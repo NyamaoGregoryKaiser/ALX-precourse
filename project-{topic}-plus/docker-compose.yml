@@ -1,64 +1,77 @@
-version: '3.9'
+```yaml
+version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: ml_utils_db
+    restart: always
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ml_utils_db}
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-    volumes:
-      - pg_data:/var/lib/postgresql/data/
+      POSTGRES_DB: realtime_chat_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
+    volumes:
+      - chat_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-ml_utils_db}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d realtime_chat_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: ml_utils_redis
+    restart: always
     ports:
       - "6379:6379"
+    volumes:
+      - chat_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
+  backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    container_name: ml_utils_app
-    env_file:
-      - .env
+    restart: always
     ports:
-      - "8000:8000"
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/realtime_chat_db?schema=public
+      JWT_SECRET: your_jwt_secret_key_here # CHANGE THIS IN PRODUCTION
+      REDIS_URL: redis://redis:6379
+      PORT: 5000
     depends_on:
       db:
-        condition: service_healthy # Wait for database to be healthy
+        condition: service_healthy
       redis:
-        condition: service_healthy # Wait for redis to be healthy
-    command: >
-      sh -c "alembic upgrade head &&
-             python seed_data.py &&
-             uvicorn main:app --host 0.0.0.0 --port 8000"
+        condition: service_healthy
     volumes:
-      - ./app:/app/app # Mount the app directory for live code changes during development
-      - ./main.py:/app/main.py
-      - ./alembic:/app/alembic
-      - ./alembic.ini:/app/alembic.ini
-      - ./seed_data.py:/app/seed_data.py
-      - ./tests:/app/tests
-      - ./pytest.ini:/app/pytest.ini
+      - ./backend:/app # Mount the source code for development, remove for production image
+      - /app/node_modules # Ensure node_modules inside container is used
+    command: sh -c "npx prisma migrate deploy && npm run dev" # Run migrations and then start dev server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:5000/api
+      REACT_APP_SOCKET_URL: http://localhost:5000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app # Mount the source code for development, remove for production image
+      - /app/node_modules # Ensure node_modules inside container is used
+    command: npm start
 
 volumes:
-  pg_data:
+  chat_db_data:
+  chat_redis_data:
 ```
-
-#### `.github/workflows/ci.yml`
-```yaml
