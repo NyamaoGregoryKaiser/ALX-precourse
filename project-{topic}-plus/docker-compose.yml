@@ -1,38 +1,56 @@
 version: '3.8'
 
 services:
-  task-manager-app:
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cms_db}
+      POSTGRES_USER: ${DB_USER:-cms_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cms_password}
+    env_file:
+      - .env
+    ports:
+      - "5432:5432" # Expose for local development/inspection
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cms_user} -d ${DB_NAME:-cms_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: task-manager-app
-    ports:
-      - "8080:8080"
+    command: gunicorn my_enterprise_cms.wsgi:application --bind 0.0.0.0:8000
     volumes:
-      - ./data:/app/data  # Persist database file
-      - ./logs:/app/logs  # Persist log files
-      - ./config.json:/app/config/config.json:ro # Mount config file
-    environment:
-      # These environment variables override values in config.json
-      # Useful for production secrets
-      - JWT_SECRET=your_super_secret_jwt_key_that_is_at_least_32_characters_long_and_ideally_64_bytes_from_env
-      - API_PORT=8080
-      - DB_PATH=/app/data/app.db
-      - LOG_LEVEL=info
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"] # Add a health check endpoint if implemented
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true # Best practice: Prevent container processes from gaining new privileges
-    cap_drop:
-      - ALL # Drop all capabilities
-    cap_add:
-      - NET_BIND_SERVICE # Only add necessary capabilities, e.g., to bind to privileged ports if running as non-root (though we use 8080)
-    read_only: true # Make the root filesystem read-only to prevent unauthorized writes, except for volumes
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
 
-# To build: docker-compose build
-# To run: docker-compose up -d
-# To stop: docker-compose down
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+```

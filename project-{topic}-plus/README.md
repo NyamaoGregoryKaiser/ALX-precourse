@@ -1,173 +1,334 @@
-# Task Manager System - Enterprise Grade Backend (C++)
+# My Enterprise CMS (Content Management System)
 
-This project implements a comprehensive, production-ready backend system for a Task Manager application, built with C++ and focusing on modern software engineering practices, security, and scalability. It serves as an example of a full-stack project adhering to ALX Software Engineering principles covering programming logic, algorithm design, and technical problem solving.
+A comprehensive, production-ready Content Management System built with Django, Django REST Framework, and HTMX. This project aims to demonstrate a full-stack application following best practices in software engineering, including a robust backend, interactive frontend, database management, testing, deployment, and comprehensive documentation.
 
-## Features
+## Table of Contents
 
-### Core Application
-*   **C++ Backend:** High-performance RESTful API using the `Crow` microframework.
-*   **Modular Design:** Separate modules for Authentication, Users, and Tasks.
-*   **CRUD Operations:** Full Create, Read, Update, Delete operations for Users and Tasks.
-*   **Layered Architecture:** Clear separation of concerns (Controller, Service, Repository).
+1.  [Features](#features)
+2.  [Architecture](#architecture)
+3.  [Setup Guide](#setup-guide)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development with Docker](#local-development-with-docker)
+    *   [Local Development without Docker](#local-development-without-docker)
+4.  [Usage](#usage)
+    *   [Admin Panel](#admin-panel)
+    *   [Web Interface](#web-interface)
+    *   [API Endpoints](#api-endpoints)
+5.  [Testing](#testing)
+6.  [Deployment Considerations](#deployment-considerations)
+7.  [CI/CD](#cicd)
+8.  [Credits & License](#credits--license)
 
-### Database Layer
-*   **SQLite3:** Embedded database for simplified setup in this example (easily swappable with PostgreSQL/MySQL).
-*   **Schema Definitions:** `users` and `tasks` tables with appropriate fields and relations.
-*   **Migration System:** Automated database schema management on startup.
-*   **Seed Data:** Initial data (e.g., admin user, sample tasks) populated on first run.
-*   **Query Optimization:** Use of prepared statements for security and performance.
+## 1. Features
 
-### Configuration & Setup
-*   **CMake:** Modern C++ build system.
-*   **`config.json`:** Externalized configuration for environment-specific settings.
-*   **Docker:** Containerization for consistent development and deployment environments.
-*   **Docker Compose:** Orchestration for running the application easily.
-*   **CI/CD Configuration:** GitHub Actions workflow for automated testing and building.
+**Core CMS Functionality:**
+*   **Content Types:** Articles and Pages, inheriting from a base `Content` model.
+*   **Categorization & Tagging:** Organize content with Categories and Tags.
+*   **Media Management:** Upload and manage image/file assets.
+*   **Commenting System:** Users can comment on content, with moderation (approval).
+*   **Content Status:** Draft, Published, Archived.
+*   **Search:** Full-text search across content titles, excerpts, and bodies.
 
-### Security Implementations
-*   **Authentication (JWT):** JSON Web Tokens for stateless API authentication.
-*   **Authorization (RBAC):** Role-Based Access Control (Admin, User roles).
-*   **Password Hashing:** Strong, salted password hashing (conceptually Argon2/bcrypt).
-*   **Rate Limiting:** IP-based request rate limiting to prevent abuse.
-*   **Error Handling:** Centralized, structured error responses for API calls.
-*   **Input Validation:** Basic validation on DTOs and service layers.
-*   **Secure API Design:** Use of HTTPS (assumed at deployment via proxy), parameterized queries to prevent SQL injection.
+**User Management & Authentication:**
+*   Custom User model extending Django's `AbstractUser`.
+*   User registration, login, logout, password reset.
+*   User profiles with custom fields (profile picture, bio).
+*   Role-based access control (Staff, Superuser, Regular User).
 
-### Additional Features
-*   **Logging & Monitoring:** Structured logging using `spdlog` to files and console.
-*   **Caching Layer:** Simple in-memory LRU cache for frequently accessed, non-sensitive data.
-*   **Health Check Endpoint:** (Conceptual, can be added for Docker health checks).
+**API & Integration:**
+*   **RESTful API:** Powered by Django REST Framework (DRF) with full CRUD operations for all major models.
+*   **JWT Authentication:** Secure API access using JSON Web Tokens.
+*   **OpenAPI/Swagger Documentation:** Auto-generated API documentation using `drf-spectacular`.
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **CORS Support:** Configurable for frontend integrations.
 
-### Testing & Quality
-*   **Unit Tests:** Using Google Test for individual component validation (aiming for high coverage).
-*   **Integration Tests:** Testing interactions between components (e.g., service with repository).
-*   **API Tests:** End-to-end tests for API endpoints.
-*   **Code Quality:** Static analysis (via compiler flags), adherence to C++ best practices.
+**Technical Excellence:**
+*   **Python/Django:** Robust, scalable backend.
+*   **PostgreSQL:** Production-ready database.
+*   **Docker:** Containerization for consistent environments.
+*   **Comprehensive Testing:** Unit, Integration, API, and basic Performance tests.
+*   **Logging & Monitoring:** Structured logging with file and console handlers, admin email notifications.
+*   **Error Handling:** Custom 404/500 pages, DRF exception handling.
+*   **Caching:** Configurable caching layer (e.g., Redis).
+*   **Query Optimization:** Demonstrates `select_related` and `prefetch_related` for N+1 problem.
+*   **CI/CD:** Basic GitHub Actions workflow for automated testing.
 
-## Prerequisites
+## 2. Architecture
 
-*   **CMake:** Version 3.10 or higher
-*   **C++ Compiler:** GCC/Clang with C++17/C++20 support
-*   **Git**
-*   **Docker & Docker Compose** (for containerized setup)
-*   **Libraries:**
-    *   `Crow` (Web Framework)
-    *   `jsoncpp` (JSON handling)
-    *   `sqlite3` (Database)
-    *   `jwt-cpp` (JWT)
-    *   `spdlog` (Logging)
-    *   `Google Test` (for running tests)
-    *   `OpenSSL` (dependency for `jwt-cpp`)
+The project follows a modular Django application structure:
 
-    *Note: For simplicity in this example, some libraries are assumed to be installed system-wide or cloned into a `vendor/` directory and linked via `CMakeLists.txt` include paths. In a real project, consider using a package manager like `Conan` or `vcpkg` for C++ dependency management.*
+*   **`my_enterprise_cms/` (Project Root):** Contains global settings, URL routing, and WSGI configuration.
+*   **`core_users/` (Django App):** Manages user authentication, authorization, and profiles. Extends Django's `AbstractUser` model. Includes API endpoints for user management.
+*   **`cms_app/` (Django App):** The core content management logic.
+    *   **Models:** Define `Category`, `Tag`, `MediaFile`, `Article`, `Page`, `Comment` (using `GenericForeignKey`).
+    *   **Views:** Both traditional Django class-based views for server-rendered HTML (with HTMX for partial updates) and DRF ViewSets/Generics for the REST API.
+    *   **Forms:** For creating and updating content via the web interface.
+    *   **Serializers:** For converting Django models to JSON/XML for the API.
+    *   **Permissions:** Custom permission classes for fine-grained access control.
+    *   **Admin:** Configured for all models, with custom display and actions.
+*   **`templates/` (Global):** Base HTML templates shared across apps.
+*   **`static/` (Global):** Project-level static assets (CSS, JS).
+*   **`media/`:** Stores user-uploaded media files.
+*   **`nginx/`:** Nginx configuration for reverse proxy and static/media serving.
+*   **`docker-compose.yml`:** Orchestrates Django app and PostgreSQL database.
+*   **`Dockerfile`:** Defines the Docker image for the Django application.
+*   **`.env.example`:** Template for environment variables.
+*   **`requirements.txt`:** Python dependencies.
+*   **`cms_app/management/commands/seed_db.py`:** Custom management command to populate the database with dummy data for development.
 
-## Setup and Installation
+## 3. Setup Guide
 
-1.  **Clone the Repository:**
+### Prerequisites
+
+*   Python 3.11+
+*   pip (Python package installer)
+*   Git
+*   Docker and Docker Compose (recommended for easy setup)
+*   Node.js/npm (if you plan to use a separate frontend framework, but not strictly needed for this Django+HTMX setup)
+
+### Local Development with Docker (Recommended)
+
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/task-manager-system.git
-    cd task-manager-system
+    git clone https://github.com/your-username/my-enterprise-cms.git # Replace with your repo
+    cd my-enterprise-cms
     ```
 
-2.  **Install C++ Libraries (Manual/System-wide - adjust for your OS):**
-    *   **Ubuntu/Debian:**
-        ```bash
-        sudo apt update
-        sudo apt install -y build-essential cmake libssl-dev libjsoncpp-dev libsqlite3-dev libgtest-dev
-        # For jwt-cpp and spdlog, you might clone them into `vendor/` or install via system if available
-        # Example for jwt-cpp (assuming it's not pre-packaged):
-        mkdir -p vendor && cd vendor
-        git clone https://github.com/Thalhammer/jwt-cpp.git
-        git clone https://github.com/gabime/spdlog.git
-        cd ..
-        ```
-    *   **macOS (with Homebrew):**
-        ```bash
-        brew install cmake jsoncpp sqlite3 openssl google-test
-        # For jwt-cpp and spdlog, clone into vendor/ as above
-        ```
-
-3.  **Build using CMake:**
+2.  **Create `.env` file:**
+    Copy the example environment file:
     ```bash
-    mkdir build
-    cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release # Or Debug for development
-    make
+    cp .env.example .env
     ```
-    This will create the executable `task_manager_app` in the `build/` directory.
-
-4.  **Run the Application (Native):**
-    ```bash
-    # Ensure config.json is in the project root or accessible
-    # Create data and logs directories
-    mkdir -p ../data ../logs
-    # Copy config.json if not in CWD or build dir
-    cp ../config.json .
-
-    ./task_manager_app
-    ```
-    The API server will start on port 8080 (or as configured in `config.json`).
-
-## Docker Setup
-
-For a consistent and isolated environment, use Docker:
-
-1.  **Build Docker Image:**
-    ```bash
-    docker-compose build
+    Open `.env` and fill in `SECRET_KEY`, and if you plan to use PostgreSQL, update `DATABASE_URL` to point to the `db` service as defined in `docker-compose.yml`:
+    ```ini
+    # .env
+    DEBUG=True
+    SECRET_KEY=YOUR_VERY_LONG_AND_RANDOM_SECRET_KEY # IMPORTANT: Change this!
+    DATABASE_URL=postgres://cms_user:cms_password@db:5432/cms_db # Matches docker-compose.yml
+    CACHE_URL=locmemcache:// # Or redis://redis:6379/1 if you add a Redis service
+    ALLOWED_HOSTS=.localhost,127.0.0.1
+    # ... other settings
     ```
 
-2.  **Run with Docker Compose:**
+3.  **Build and run containers:**
     ```bash
-    docker-compose up -d
+    docker compose up --build
     ```
-    The application will be accessible at `http://localhost:8080`.
-    Logs will be in `./logs` and database in `./data` on your host machine.
+    This command will:
+    *   Build the Django application image.
+    *   Start the PostgreSQL database.
+    *   Start the Gunicorn server for the Django app.
+    *   Start Nginx to proxy requests and serve static/media files.
+    *   Automatically wait for the DB, run migrations, collect static files, and seed initial data (if `DEBUG=True` and no users exist).
 
-3.  **Stop Docker Compose:**
+4.  **Access the application:**
+    *   Web Interface: `http://localhost/`
+    *   Django Admin: `http://localhost/admin/`
+    *   API Root: `http://localhost/api/v1/`
+    *   API Docs (Swagger UI): `http://localhost/api/schema/swagger-ui/`
+    *   API Docs (ReDoc): `http://localhost/api/schema/redoc/`
+
+    **Default Admin Credentials (after seeding):**
+    *   Username: `admin`
+    *   Password: `adminpassword`
+    **Default Test User Credentials (after seeding):**
+    *   Username: `testuser`
+    *   Password: `testpassword`
+
+### Local Development without Docker
+
+1.  **Clone the repository:**
     ```bash
-    docker-compose down
+    git clone https://github.com/your-username/my-enterprise-cms.git
+    cd my-enterprise-cms
     ```
 
-## Testing
-
-1.  **Build Tests:**
-    Ensure you've built the project using CMake (`make` in the `build/` directory).
-    The `test_runner` executable will be created in `build/test/`.
-
-2.  **Run Tests:**
+2.  **Create a virtual environment and install dependencies:**
     ```bash
-    cd build/test
-    ./test_runner
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
     ```
-    This will execute all unit, integration, and API (if configured to hit local server) tests.
 
-    For detailed test output:
+3.  **Create `.env` file:**
     ```bash
-    ./test_runner --gtest_output="xml:test_results.xml" --gtest_brief=0
+    cp .env.example .env
+    ```
+    Update `SECRET_KEY` and ensure `DATABASE_URL` points to a local SQLite file or your local PostgreSQL instance (e.g., `DATABASE_URL=sqlite:///db.sqlite3`).
+
+4.  **Run migrations:**
+    ```bash
+    python manage.py migrate
     ```
 
-## API Documentation
+5.  **Create a superuser:**
+    ```bash
+    python manage.py createsuperuser
+    ```
+    Follow the prompts to create an admin user.
 
-Refer to `docs/api.md` for detailed API endpoint specifications.
+6.  **Seed initial data (optional but recommended for dev):**
+    ```bash
+    python manage.py seed_db --count 20
+    ```
+    This will create dummy articles, pages, categories, tags, and media files, plus a `testuser` (testuser/testpassword).
 
-## Architecture Documentation
+7.  **Collect static files:**
+    ```bash
+    python manage.py collectstatic --noinput
+    ```
 
-Refer to `docs/architecture.md` for an overview of the system design, layered architecture, and component interactions.
+8.  **Start the development server:**
+    ```bash
+    python manage.py runserver
+    ```
+    Access the application at `http://127.0.0.1:8000/`.
 
-## Deployment Guide
+## 4. Usage
 
-Refer to `docs/deployment.md` for detailed instructions on deploying the application to various environments (e.g., bare metal, cloud VMs, Kubernetes).
+### Admin Panel
 
-## Security Considerations
+Access the Django Admin at `/admin/`. Use your superuser credentials to log in. Here you can manage all aspects of the CMS: users, content, categories, tags, media files, and comments.
 
-*   **JWT Secret:** **Crucially**, change `jwt_secret` in `config.json` and in `docker-compose.yml` environment variables to a very strong, randomly generated string (at least 32 characters, ideally 64 bytes). Do not hardcode it in production. Use environment variables or a secrets manager.
-*   **HTTPS:** Always deploy behind a reverse proxy (e.g., Nginx, Caddy) to enable HTTPS. The C++ application itself serves HTTP for simplicity, but production must use HTTPS.
-*   **Password Hashing:** The `Hasher` utility uses a placeholder. In a real-world scenario, integrate a robust library like `argon2` or `bcrypt` (e.g., `libargon2` or `libbcrypt` C++ wrappers). These are computationally intensive and resistant to brute-force attacks.
-*   **Input Validation:** Implement comprehensive input validation beyond basic checks to prevent XSS, injection attacks.
-*   **Error Handling:** Detailed error messages should not be exposed to end-users in production. Standardized, generic error messages are preferred.
-*   **Logging:** Ensure sensitive information (passwords, JWTs) is never logged.
-*   **Least Privilege:** Run the application with the minimum necessary privileges, especially in Docker containers. The `docker-compose.yml` includes `no-new-privileges` and `cap_drop` directives.
-*   **Dependency Management:** Regularly update C++ libraries to patch security vulnerabilities.
+### Web Interface
 
----
+The main web interface provides:
+*   **Homepage (`/`):** Displays recent articles and pages.
+*   **Articles (`/articles/`):** List and detail views for articles.
+*   **Pages (`/pages/`):** List and detail views for static pages.
+*   **Categories (`/categories/`):** Browse content by category.
+*   **Tags (`/tags/`):** Browse content by tag.
+*   **Search (`/search/?q=query`):** Search functionality across content.
+*   **User Profiles (`/accounts/<username>/`):** View and edit user profiles.
+*   **Content Creation/Editing:** Authenticated users can create/edit their own articles/pages. Staff users can manage all content, categories, tags, and media.
+
+The web interface utilizes HTMX for dynamic interactions (e.g., submitting comments without full page reloads, deleting items).
+
+### API Endpoints
+
+The API is available under `/api/v1/`. You can explore the endpoints and their schemas using the Swagger UI or ReDoc.
+
+**Base URL:** `http://localhost/api/v1/` (or `http://127.0.0.1:8000/api/v1/` without Nginx)
+
+**Authentication:**
+*   **Get JWT Token:** `POST /api/v1/token/` (send `username`, `password`)
+*   **Refresh Token:** `POST /api/v1/token/refresh/`
+*   **Verify Token:** `POST /api/v1/token/verify/`
+
+Once you have an `access` token, include it in your requests as an `Authorization` header: `Authorization: Bearer <your_access_token>`.
+
+**Key Endpoints:**
+
+*   **Users:**
+    *   `POST /api/v1/users/register/` - Register a new user.
+    *   `GET /api/v1/users/` - List all active users.
+    *   `GET /api/v1/users/<username>/` - Retrieve a user's profile.
+    *   `GET /api/v1/users/me/` - Retrieve authenticated user's profile.
+    *   `PUT/PATCH /api/v1/users/<username>/` - Update a user's profile (owner or admin only).
+*   **Content (Articles, Pages):**
+    *   `GET /api/v1/cms/articles/` - List published articles.
+    *   `POST /api/v1/cms/articles/` - Create a new article (authenticated users).
+    *   `GET /api/v1/cms/articles/<slug>/` - Retrieve an article.
+    *   `PUT/PATCH /api/v1/cms/articles/<slug>/` - Update an article (author or admin).
+    *   `DELETE /api/v1/cms/articles/<slug>/` - Delete an article (author or admin).
+    *   `POST /api/v1/cms/articles/<slug>/publish/` - Publish an article.
+    *   `POST /api/v1/cms/articles/<slug>/unpublish/` - Unpublish an article.
+    *   (Similar endpoints for `/api/v1/cms/pages/`)
+*   **Categories:** `GET, POST, PUT, PATCH, DELETE /api/v1/cms/categories/` (read-only for non-staff, full CRUD for staff).
+*   **Tags:** `GET, POST, PUT, PATCH, DELETE /api/v1/cms/tags/` (read-only for non-staff, full CRUD for staff).
+*   **Media Files:** `GET, POST, PUT, PATCH, DELETE /api/v1/cms/media/` (read-only for non-staff, full CRUD for staff).
+*   **Comments:**
+    *   `GET /api/v1/cms/<content_type_id>/<object_id>/comments/` - List approved comments for an article/page.
+    *   `POST /api/v1/cms/<content_type_id>/<object_id>/comments/` - Post a new comment (authenticated users).
+    *   `GET /api/v1/cms/comments/<id>/` - Retrieve a specific comment.
+    *   `PUT/PATCH /api/v1/cms/comments/<id>/` - Update a comment (comment author or staff).
+    *   `DELETE /api/v1/cms/comments/<id>/` - Delete a comment (comment author or staff).
+    *   `POST /api/v1/cms/comments/<id>/approve/` - Approve a comment (admin only).
+    *   `POST /api/v1/cms/comments/<id>/unapprove/` - Unapprove a comment (admin only).
+
+## 5. Testing
+
+The project includes a comprehensive test suite covering:
+
+*   **Unit Tests:** For models (`cms_app/tests/test_models.py`).
+*   **Integration Tests:** For Django views (`cms_app/tests/test_views.py`) simulating user interactions with the web interface.
+*   **API Tests:** For Django REST Framework endpoints (`cms_app/tests/test_api.py`) verifying API behavior, permissions, and data integrity.
+*   **Performance Tests:** Basic tests to identify N+1 query problems and measure query efficiency (`cms_app/tests/test_performance.py`).
+
+To run all tests:
+
+```bash
+python manage.py test
+```
+
+For more detailed output including coverage, you would typically use `pytest` with `pytest-django` and `pytest-cov`.
+*(Note: `pytest` setup is not fully included here but is a common next step for enterprise projects).*
+
+## 6. Deployment Considerations
+
+For production deployment, consider the following:
+
+*   **Environment Variables:** Securely manage sensitive information (e.g., `SECRET_KEY`, `DATABASE_URL`) using environment variables. Tools like `django-environ` are already integrated.
+*   **Database:** Use a managed PostgreSQL service (AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL).
+*   **Static & Media Files:**
+    *   **Static:** Use `whitenoise` (already included) for serving static files directly from Django in a simple setup, or an external CDN/storage service (AWS S3, Google Cloud Storage) for high traffic.
+    *   **Media:** Definitely use an external storage service (AWS S3, Google Cloud Storage) for user-uploaded media. This requires configuring Django's `DEFAULT_FILE_STORAGE` setting (e.g., using `django-storages`).
+*   **Web Server:** Use a production-ready WSGI server like `Gunicorn` (included in `Dockerfile` and `docker-compose.yml`).
+*   **Reverse Proxy:** Use `Nginx` (configured in `docker-compose.yml`) to serve static/media files directly and proxy dynamic requests to Gunicorn.
+*   **Caching:** Integrate a robust caching solution like `Redis` (`django-redis` is a common library). Update `CACHE_URL` in `.env`.
+*   **Logging:** Configure `LOGGING` in `settings.py` to send logs to a centralized logging service (ELK stack, CloudWatch Logs, Splunk).
+*   **Error Reporting:** Integrate with error monitoring tools like Sentry.
+*   **HTTPS:** Always use HTTPS for production to encrypt traffic. Configure your Nginx or load balancer for SSL termination.
+*   **Backup Strategy:** Implement regular database backups and file storage backups.
+*   **Monitoring:** Set up application and infrastructure monitoring (CPU, memory, disk, request rates, error rates).
+*   **Security:**
+    *   Ensure `DEBUG` is `False` in production.
+    *   Use strong, unique `SECRET_KEY`.
+    *   Configure `ALLOWED_HOSTS` correctly.
+    *   Regularly update dependencies.
+    *   Perform security audits.
+
+## 7. CI/CD
+
+A basic GitHub Actions workflow is provided (`.github/workflows/ci.yml`) to automate code quality checks and testing. This workflow will:
+
+1.  **Checkout code.**
+2.  **Set up Python environment.**
+3.  **Install dependencies.**
+4.  **Run migrations** (or a simple check that migrations are up-to-date).
+5.  **Run tests.**
+6.  **(Optional):** Add linting, static analysis (`flake8`, `mypy`), security scanning.
+7.  **(Optional):** Build and push Docker images to a container registry.
+8.  **(Optional):** Deploy to a cloud provider.
+
+This `ci.yml` file will be a starting point for more complex pipelines.
+
+## 8. Credits & License
+
+*   **Developed by:** [Your Name/ALX Student]
+*   **Frameworks & Libraries:** Django, Django REST Framework, HTMX, Docker, PostgreSQL, etc.
+*   **License:** MIT License (or your preferred open-source license).
+
+```
+MIT License
+
+Copyright (c) [Year] [Your Name]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

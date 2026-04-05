@@ -1,17 +1,14 @@
-# C++ Core Application Dependencies (managed by CMake/Conan/vcpkg)
-Crow (web framework)
-jsoncpp (JSON parsing)
-sqlite3 (database)
-jwt-cpp (JWT library)
-spdlog (logging)
-Google Test (unit testing)
-OpenSSL (for JWT-cpp and general crypto)
-Argon2 (or bcrypt, for password hashing - direct C++ lib or system library)
-
-# Build Tools
-CMake >= 3.10
-g++ / clang++ (C++17/20 compatible)
-
-# Development / Testing Tools (Python for utilities, optional)
-# requests (for API testing if using Python)
-# pytest (for API testing if using Python)
+Django==5.0.*
+djangorestframework==3.15.*
+djangorestframework-simplejwt==5.3.*
+psycopg2-binary==2.9.* # For PostgreSQL
+django-environ==0.11.*
+Pillow==10.3.* # For image uploads
+django-filter==24.2.*
+django-cors-headers==4.3.*
+drf-spectacular==0.27.*
+django-debug-toolbar==4.3.*
+whitenoise==6.6.* # For serving static files in production
+gunicorn==22.0.* # WSGI HTTP Server
+django-htmx==1.17.*
+```

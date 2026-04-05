@@ -1,23 +1,29 @@
-#!/bin/bash
-# docker-entrypoint.sh
+#!/bin/sh
 
-set -e
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL to become available..."
+/usr/bin/env python /app/manage.py wait_for_db
 
-echo "Starting database initialization..."
+# Apply database migrations
+echo "Applying database migrations..."
+/usr/bin/env python /app/manage.py migrate --noinput
 
-# Check if the database file exists. If not, create and seed it.
-if [ ! -f "$DATABASE_PATH" ]; then
-    echo "Database file $DATABASE_PATH not found. Initializing new database."
-    sqlite3 "$DATABASE_PATH" < /app/db/schema.sql
-    sqlite3 "$DATABASE_PATH" < /app/db/seed.sql
-    echo "Database initialized and seeded successfully."
-else
-    echo "Database file $DATABASE_PATH found. Skipping initialization."
-    # Optional: You could run migration scripts here if you had a more advanced setup
-    # sqlite3 "$DATABASE_PATH" < /app/db/migrations/001_create_tables.sql
+# Collect static files
+echo "Collecting static files..."
+/usr/bin/env python /app/manage.py collectstatic --noinput --clear
+
+# Run custom seed script if in debug mode and not already seeded
+if [ "$DEBUG" = "True" ]; then
+    echo "Checking for seed data..."
+    if ! /usr/bin/env python /app/manage.py shell -c "from core_users.models import User; print(User.objects.count())" | grep -q "0"; then
+        echo "Database already has users. Skipping seed."
+    else
+        echo "Seeding initial data..."
+        /usr/bin/env python /app/manage.py seed_db
+    fi
 fi
 
-echo "Database readiness check complete. Starting application."
-
-# Execute the main application command
-exec "$@"
+# Start Gunicorn
+echo "Starting Gunicorn..."
+exec gunicorn my_enterprise_cms.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+```

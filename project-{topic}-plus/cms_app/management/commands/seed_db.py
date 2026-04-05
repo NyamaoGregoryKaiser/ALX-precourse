@@ -8,6 +8,7 @@ from django.utils import timezone
 import os
 import random
 import logging
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class Command(BaseCommand):
             MediaFile.objects.all().delete()
             Tag.objects.all().delete()
             Category.objects.all().delete()
-            User.objects.filter(is_superuser=False).delete() # Keep superuser if it exists
+            User.objects.filter(is_superuser=False, username__in=['testuser']).delete() # Only delete non-superuser test users
             self.stdout.write(self.style.SUCCESS("Data cleared."))
 
         self.stdout.write(self.style.SUCCESS(f"Seeding {count} items of data..."))
@@ -71,25 +72,26 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Created {len(tags)} tags."))
 
         # Create Media Files (dummy images)
-        dummy_image_path = os.path.join(os.path.dirname(__file__), 'dummy_image.jpg')
-        if not os.path.exists(dummy_image_path):
-            # Create a simple dummy image if it doesn't exist
-            from PIL import Image
-            img = Image.new('RGB', (600, 400), color = 'red')
-            img.save(dummy_image_path)
-
+        # Create a simple dummy image programmatically
         media_files = []
         for i in range(min(count, 5)): # Create up to 5 dummy media files
-            with open(dummy_image_path, 'rb') as f:
-                image_file = SimpleUploadedFile(name=f'dummy_image_{i+1}.jpg', content=f.read(), content_type='image/jpeg')
-                media = MediaFile.objects.create(
-                    title=f'Dummy Image {i+1}',
-                    file=image_file,
-                    media_type='image',
-                    uploaded_by=random.choice(users),
-                    description=f'A placeholder image for content {i+1}.'
-                )
-                media_files.append(media)
+            image_name = f'dummy_image_{i+1}.jpg'
+            img = Image.new('RGB', (600, 400), color = (random.randint(0,255), random.randint(0,255), random.randint(0,255)))
+            
+            # Save image to a BytesIO object
+            from io import BytesIO
+            img_io = BytesIO()
+            img.save(img_io, format='JPEG')
+            image_file = SimpleUploadedFile(name=image_name, content=img_io.getvalue(), content_type='image/jpeg')
+
+            media = MediaFile.objects.create(
+                title=f'Dummy Image {i+1}',
+                file=image_file,
+                media_type='image',
+                uploaded_by=random.choice(users),
+                description=f'A placeholder image for content {i+1}.'
+            )
+            media_files.append(media)
         self.stdout.write(self.style.SUCCESS(f"Created {len(media_files)} media files."))
 
         # Create Articles
@@ -206,16 +208,4 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Created numerous comments."))
 
         self.stdout.write(self.style.SUCCESS("Database seeding complete!"))
-
-# To use this command:
-# 1. Ensure 'scripts' is a package (add __init__.py).
-# 2. Place this file at my_enterprise_cms/scripts/management/commands/seed_db.py
-# (Django auto-discovers commands in management/commands of an app/project)
-# Or, if directly under `scripts/seed_db.py`, you'd call it `python manage.py runscript seed_db`
-# using `django-extensions`, but sticking to native Django management command for this.
-# So, it should be placed in `cms_app/management/commands/seed_db.py` or similar.
-# For simplicity in this long output, I will assume a direct path and modify manage.py
-# If placing it in `cms_app/management/commands/`, the app must be in INSTALLED_APPS.
-# I will place it in `cms_app/management/commands/seed_db.py` to be discoverable.
-
 ```

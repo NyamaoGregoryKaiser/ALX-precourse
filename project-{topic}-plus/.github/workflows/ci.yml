@@ -1,118 +1,106 @@
-```yaml
-name: CI/CD Pipeline
+name: Django CI
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [ "main", "develop" ]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [ "main", "develop" ]
 
 jobs:
-  build-and-test:
-    name: Build and Test Backend
+  build:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Cache Node.js modules
-        id: cache-node-modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Set up Docker Compose for DB and Redis
-        run: docker-compose -f docker/docker-compose.yml up -d db redis
-
-      - name: Wait for DB and Redis to be healthy
-        # Use a loop or wait-for-it equivalent
-        run: |
-          echo "Waiting for PostgreSQL to be ready..."
-          until docker exec mobile-task-backend-db-1 pg_isready -U user; do
-            echo "PostgreSQL is unavailable - sleeping"
-            sleep 1
-          done
-          echo "PostgreSQL is up and running."
-
-          echo "Waiting for Redis to be ready..."
-          until docker exec mobile-task-backend-redis-1 redis-cli ping; do
-            echo "Redis is unavailable - sleeping"
-            sleep 1
-          done
-          echo "Redis is up and running."
-
-      - name: Run Prisma Migrations
-        # Ensure DATABASE_URL is correctly set to point to the Dockerized DB
-        run: npx prisma migrate deploy
+    services:
+      postgres:
+        image: postgres:15-alpine
         env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/taskdb?schema=public
-
-      - name: Seed Database
-        run: npm run prisma:seed
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/taskdb?schema=public
-          ADMIN_EMAIL: ci_admin@example.com # Use specific admin credentials for CI
-          ADMIN_PASSWORD: ci_admin_password
-
-      - name: Run Unit & Integration Tests with Coverage
-        run: npm run test:coverage
-
-      - name: Upload coverage reports to Codecov (Optional)
-        # uses: codecov/codecov-action@v4
-        # with:
-        #   token: ${{ secrets.CODECOV_TOKEN }} # Required for private repos
-        #   files: ./coverage/*.json # Adjust path to your coverage report
-        #   fail_ci_if_error: true # Recommended: fail CI if Codecov upload fails
-        #   verbose: true # Optional: enable verbose logging for debug
-        run: echo "Skipping Codecov upload. Uncomment if Codecov is configured."
-
-  # Deploy (Optional - placeholder for actual deployment steps)
-  deploy:
-    name: Deploy to Production
-    needs: build-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Deploy only on push to main
-    runs-on: ubuntu-latest
-    environment:
-      name: Production
-      url: https://your-app-url.com # Replace with your actual app URL
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Build Docker Image
-        run: docker build -t your-dockerhub-username/mobile-task-backend:${{ github.sha }} -f docker/Dockerfile .
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Log in to Docker Hub (or other registry)
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install coverage # For coverage report
 
-      - name: Push Docker Image
-        run: docker push your-dockerhub-username/mobile-task-backend:${{ github.sha }}
+    - name: Wait for PostgreSQL
+      run: |
+        /usr/bin/env python -c "
+import psycopg2
+import time
+import os
+db_ready = False
+for _ in range(10):
+    try:
+        conn = psycopg2.connect(
+            dbname=os.getenv('POSTGRES_DB'),
+            user=os.getenv('POSTGRES_USER'),
+            password=os.getenv('POSTGRES_PASSWORD'),
+            host='localhost',
+            port='5432'
+        )
+        conn.close()
+        db_ready = True
+        break
+    except psycopg2.OperationalError:
+        print('DB not ready yet...')
+        time.sleep(1)
+if not db_ready:
+    raise Exception('Database did not become ready in time.')
+"
+      env:
+        POSTGRES_DB: ${{ services.postgres.env.POSTGRES_DB }}
+        POSTGRES_USER: ${{ services.postgres.env.POSTGRES_USER }}
+        POSTGRES_PASSWORD: ${{ services.postgres.env.POSTGRES_PASSWORD }}
 
-      - name: Deploy to Cloud Provider (e.g., Kubernetes, AWS ECS, Google Cloud Run)
-        run: |
-          echo "Deploying to production environment..."
-          # Example: Kubernetes deployment (requires kubectl configured)
-          # kubectl apply -f kubernetes/deployment.yaml
-          # kubectl set image deployment/mobile-task-backend mobile-task-backend=your-dockerhub-username/mobile-task-backend:${{ github.sha }}
-          echo "Deployment steps go here. This is a placeholder."
+    - name: Create .env for CI
+      run: |
+        echo "DEBUG=True" >> .env
+        echo "SECRET_KEY=ci-test-secret-key-1234567890abcdefghijklmnopqrstuvwxyz" >> .env
+        echo "DATABASE_URL=postgres://test_user:test_password@localhost:5432/test_db" >> .env
+        echo "CACHE_URL=locmemcache://" >> .env
+        echo "ALLOWED_HOSTS=['*']" >> .env
+
+    - name: Run Migrations
+      run: python manage.py migrate
+
+    - name: Run Tests with Coverage
+      run: |
+        coverage run manage.py test
+        coverage report --omit='*/migrations/*,*/tests/*,manage.py,my_enterprise_cms/wsgi.py'
+
+    - name: (Optional) Lint with Flake8
+      run: |
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --max-complexity=10 --max-line-length=120 --statistics
+
+    # Optional: Build Docker Image for CI (useful if you need to push it later)
+    - name: Build Docker Image
+      run: docker build . --file Dockerfile --tag my-enterprise-cms:latest
+
+    # Optional: Deploy to a staging environment (example placeholder)
+    # - name: Deploy to Staging
+    #   if: github.ref == 'refs/heads/main'
+    #   run: |
+    #     echo "Deploying to staging environment..."
+    #     # Add your deployment commands here (e.g., ansible, kubectl, caprover, heroku, etc.)
+    #   env:
+    #     DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 ```
