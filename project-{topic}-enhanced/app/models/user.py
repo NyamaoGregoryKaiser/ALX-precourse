@@ -1,37 +1,30 @@
-from datetime import datetime
-from app import db, bcrypt
-from flask_jwt_extended import create_access_token, create_refresh_token
+```python
+from sqlalchemy import Column, String, Boolean, Enum
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+import enum
 
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), default='customer') # 'customer', 'admin'
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+from app.core.database import Base
+from app.models.base import TimestampMixin
 
-    cart = db.relationship('Cart', backref='user', uselist=False, lazy=True, cascade='all, delete-orphan')
-    orders = db.relationship('Order', backref='user', lazy=True, cascade='all, delete-orphan')
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    MERCHANT = "merchant"
+    CUSTOMER = "customer" # Not directly managing funds, but could be for a wallet system
 
-    def __init__(self, username, email, password, role='customer'):
-        self.username = username
-        self.email = email
-        self.password_hash = self.set_password(password)
-        self.role = role
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
 
-    def set_password(self, password):
-        return bcrypt.generate_password_hash(password).decode('utf-8')
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    role = Column(Enum(UserRole), default=UserRole.MERCHANT, nullable=False)
 
-    def check_password(self, password):
-        return bcrypt.check_password_hash(self.password_hash, password)
-
-    def generate_tokens(self):
-        access_token = create_access_token(identity={'id': self.id, 'role': self.role})
-        refresh_token = create_refresh_token(identity={'id': self.id, 'role': self.role})
-        return {'access_token': access_token, 'refresh_token': refresh_token}
+    merchants = relationship("Merchant", back_populates="owner", uselist=True) # A user can own multiple merchants
 
     def __repr__(self):
-        return f"<User {self.username}>"
+        return f"<User {self.username} ({self.role})>"
+```

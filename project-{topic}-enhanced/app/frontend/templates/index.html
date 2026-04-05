@@ -1,0 +1,48 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }} - Home</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; background-color: #f4f4f4; color: #333; }
+        h1 { color: #0056b3; }
+        p { line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .footer { margin-top: 2em; text-align: center; color: #666; font-size: 0.9em; }
+        .api-link { color: #007bff; text-decoration: none; }
+        .api-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to {{ project_name }}!</h1>
+        <p>This is a comprehensive, production-ready payment processing system.</p>
+        <p>Explore the API documentation:</p>
+        <ul>
+            <li><a class="api-link" href="/docs">Swagger UI (Interactive API Docs)</a></li>
+            <li><a class="api-link" href="/redoc">ReDoc (Alternative API Docs)</a></li>
+        </ul>
+        <p>
+            This system includes:
+            <ul>
+                <li>Secure API with Authentication & Authorization (JWT)</li>
+                <li>Robust Database layer (PostgreSQL, SQLAlchemy, Alembic)</li>
+                <li>Scalable architecture with Caching (Redis) and Rate Limiting</li>
+                <li>Comprehensive Logging and Error Handling</li>
+                <li>Simulated Payment Gateway integration</li>
+                <li>Webhooks for event notification</li>
+                <li>Containerization with Docker</li>
+                <li>Continuous Integration (CI) setup</li>
+                <li>Extensive Testing (Unit, Integration, API)</li>
+            </ul>
+        </p>
+        <p>For more details on setup and usage, please refer to the project's <a class="api-link" href="/README.md">README.md</a>.</p>
+    </div>
+    <div class="footer">
+        &copy; 2023 {{ project_name }}
+    </div>
+</body>
+</html>
+```

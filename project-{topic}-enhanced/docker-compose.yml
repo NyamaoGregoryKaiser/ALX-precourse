@@ -6,32 +6,80 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: payment_processor_app
     ports:
-      - "18080:18080"
+      - "8000:8000"
     volumes:
-      # Mount a volume for persistent database and logs
-      - app_data:/app/data
-      - app_logs:/app/logs
-      # Mount .env file for configuration (create this file from .env.example)
-      - ./config/.env:/app/.env:ro
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    # For development, use the command below (comment out gunicorn in Dockerfile)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # For production, use the gunicorn command from Dockerfile
+
+  db:
+    image: postgres:15-alpine
+    container_name: payment_processor_db
     environment:
-      # These variables can be set directly here or loaded from the .env file
-      # Loading from .env file via `Config.cpp` is preferred.
-      # Ensure these match .env.example keys.
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      # All other variables like APP_PORT, DATABASE_PATH, LOG_LEVEL, etc.,
-      # will be loaded by the C++ app from the mounted .env file.
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:18080/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s # Give the app time to start and run migrations
-    restart: always
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: payment_processor_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass your_redis_password_here # IMPORTANT: Use a strong password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "your_redis_password_here", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: A mock external payment gateway
+  mock-gateway:
+    build:
+      context: ./mock_gateway # Assuming you have a mock_gateway folder with its Dockerfile/app
+    container_name: mock_payment_gateway
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env # Can share some settings or have its own
+    # Example command for a simple Python mock gateway app:
+    command: python -m uvicorn mock_gateway.main:app --host 0.0.0.0 --port 8001
 
 volumes:
-  app_data:
-  app_logs:
+  db_data:
+  redis_data:
+
+# Create a mock_gateway folder with a simple FastAPI app (e.g., main.py)
+# mock_gateway/main.py:
+# from fastapi import FastAPI, Request
+# app = FastAPI()
+# @app.post("/mock-gateway/payments")
+# async def create_mock_payment(request: Request):
+#     payload = await request.json()
+#     # Simulate payment processing
+#     import uuid
+#     return {"gateway_payment_id": str(uuid.uuid4()), "status": "pending", "message": "Payment initiated"}
+# @app.post("/mock-gateway/webhooks")
+# async def receive_mock_webhook(request: Request):
+#     payload = await request.json()
+#     print(f"Mock Gateway received webhook: {payload}")
+#     return {"status": "received"}
 ```

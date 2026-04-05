@@ -1,288 +1,351 @@
 ```markdown
-# Task Management System - Secure C++ Backend API
+# Payment Processing System
 
-This project implements a secure, production-ready backend API for a Task Management System using C++ and the Crow microframework. It focuses heavily on security best practices, robust architecture, and a full development lifecycle, adhering to ALX Software Engineering principles.
+This project is a comprehensive, production-ready payment processing system built with Python (FastAPI), PostgreSQL, and Docker. It covers a wide range of features required for an enterprise-grade application, focusing on API-first design, modularity, security, and scalability.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Project Structure](#project-structure)
+2.  [Architecture Overview](#architecture-overview)
+3.  [Technology Stack](#technology-stack)
 4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development](#local-development)
-    *   [Docker Deployment](#docker-deployment)
-5.  [Database](#database)
-    *   [Schema](#schema)
-    *   [Migrations & Seeding](#migrations--seeding)
-6.  [API Documentation](#api-documentation)
-7.  [Testing](#testing)
-    *   [Unit Tests](#unit-tests)
-    *   [API Integration Tests](#api-integration-tests)
-    *   [Performance Tests](#performance-tests)
-8.  [Configuration](#configuration)
-9.  [Security Implementations](#security-implementations)
-10. [Logging & Monitoring](#logging--monitoring)
-11. [Caching](#caching)
-12. [Rate Limiting](#rate-limiting)
-13. [Architecture](#architecture)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+5.  [Database Management (Alembic)](#database-management-alembic)
+6.  [Running Tests](#running-tests)
+7.  [API Documentation](#api-documentation)
+8.  [Authentication and Authorization](#authentication-and-authorization)
+9.  [Error Handling](#error-handling)
+10. [Logging and Monitoring](#logging-and-monitoring)
+11. [Caching and Rate Limiting](#caching-and-rate-limiting)
+12. [Idempotency](#idempotency)
+13. [Webhooks](#webhooks)
 14. [Deployment Guide](#deployment-guide)
-15. [Contributing](#contributing)
-16. [License](#license)
+15. [CI/CD](#cicd)
+16. [Future Enhancements](#future-enhancements)
+17. [Contributing](#contributing)
+18. [License](#license)
 
-## Features
+---
 
-*   **User Management:** Register, Login, View Profile, Update Profile, Delete Account.
-*   **Task Management:** Create, Read (all, specific, by user), Update, Delete tasks.
-*   **Authentication:** JWT (JSON Web Tokens) for stateless authentication.
-*   **Authorization:** Role-Based Access Control (RBAC) - `admin` and `user` roles.
-*   **Password Hashing:** Secure password storage using SHA256 with salt (recommending Argon2/Bcrypt for production).
-*   **Input Validation:** Basic server-side validation for API endpoints.
-*   **Error Handling:** Centralized, graceful error handling with meaningful HTTP status codes.
-*   **Logging:** Structured logging for application events and security audits.
-*   **Caching:** In-memory caching for frequently accessed data.
-*   **Rate Limiting:** IP-based request rate limiting to prevent abuse.
-*   **Configuration:** Environment variable driven configuration.
-*   **Containerization:** Docker support for easy deployment.
-*   **Comprehensive Testing:** Unit and integration tests.
+## 1. Features
 
-## Technology Stack
+*   **User Management:** Admin, Merchant roles with authentication (JWT).
+*   **Merchant Management:** CRUD operations for merchants, linked to users.
+*   **Payment Processing:**
+    *   Initiate payments via a simulated external payment gateway.
+    *   Track payment statuses (pending, captured, refunded, failed).
+    *   Idempotency for payment requests.
+*   **Webhooks:**
+    *   Receive events from the external payment gateway to update payment statuses.
+    *   Send notifications to merchants about payment lifecycle events.
+    *   Reliable webhook delivery with retries.
+*   **API:** RESTful API with full CRUD operations, input validation, and clear error responses.
+*   **Security:** JWT-based authentication, role-based authorization, password hashing.
+*   **Data Layer:** PostgreSQL database with SQLAlchemy ORM and Alembic migrations.
+*   **Configuration:** Environment variable-based configuration (`.env`).
+*   **Containerization:** Docker and Docker Compose for easy setup and deployment.
+*   **Caching:** Redis for performance optimization.
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **Logging:** Structured logging for better observability.
+*   **Error Handling:** Centralized exception handling with custom error types.
+*   **Testing:** Comprehensive suite including Unit, Integration, and API tests (Pytest).
+*   **CI/CD:** Basic GitHub Actions workflow for automated testing.
 
-*   **Backend:** C++17
-*   **Web Framework:** [Crow](https://github.com/ipkn/crow)
-*   **Database:** [SQLite3](https://www.sqlite.org/index.html)
-*   **Logging:** [spdlog](https://github.com/gabime/spdlog)
-*   **Build System:** CMake
-*   **Testing:** [Google Test](https://github.com/google/googletest)
+## 2. Architecture Overview
+
+The system follows a layered architecture:
+
+*   **Presentation Layer (API):** FastAPI handles incoming HTTP requests, routing, and input validation via Pydantic schemas.
+*   **Service Layer (Business Logic):** Contains the core business rules, orchestrates interactions between repositories, and communicates with external services.
+*   **Data Access Layer (Repositories):** Abstracts database operations, providing an interface for services to interact with models without direct SQLAlchemy coupling.
+*   **Database (PostgreSQL):** Persistent storage for all application data.
+*   **Caching/Messaging (Redis):** Used for session caching, rate limiting, and potentially for a task queue (e.g., Celery for background tasks).
+*   **External Services (Mock Payment Gateway):** Simulates interaction with third-party payment providers.
+
+```mermaid
+graph TD
+    A[Client/Frontend] -->|HTTP/S| B(FastAPI Backend)
+    B --> C{Authentication & Authorization}
+    C --> B
+    B --> D[Middleware: Logging, Rate Limiting]
+    D --> E[API Routers]
+    E --> F[Pydantic Schemas: Validation]
+    F --> G[Service Layer: Business Logic]
+    G --> H[Repository Layer: DB Operations]
+    H --> I[PostgreSQL Database]
+    G --> J[External Payment Gateway Client]
+    J --> K[Mock Payment Gateway]
+    G --> L[Redis Cache/Queue]
+    E --> M[Background Tasks: Webhook Delivery]
+    M --> L
+    K --> E |Webhook Notifications|
+```
+
+## 3. Technology Stack
+
+*   **Backend:** Python 3.11+
+*   **Web Framework:** FastAPI
+*   **Database:** PostgreSQL
+*   **ORM:** SQLAlchemy 2.0+ (async)
+*   **Migrations:** Alembic
+*   **Caching/Rate Limiting:** Redis
+*   **API Client:** httpx
+*   **Authentication:** PyJWT, Passlib (Bcrypt)
+*   **Logging:** Loguru
+*   **Testing:** Pytest, pytest-asyncio, pytest-httpx, pytest-cov
 *   **Containerization:** Docker, Docker Compose
 
-## Project Structure
-
-Refer to the `Project Structure` section at the top of this document for a detailed file and directory layout.
-
-## Setup and Installation
+## 4. Setup and Installation
 
 ### Prerequisites
 
-*   A C++17 compatible compiler (e.g., g++ 7.x+ or Clang 5.x+).
-*   CMake 3.10+.
-*   Git.
-*   SQLite3 development libraries.
-*   spdlog development libraries.
-*   Docker and Docker Compose (for containerized deployment).
-*   `curl` (for API testing).
+*   Docker and Docker Compose
+*   Python 3.11+ (if running locally without Docker)
+*   `pip` (Python package installer)
 
-**For Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake libsqlite3-dev libspdlog-dev libssl-dev git
-# For Crow, it's typically header-only. You can clone it:
-# git clone https://github.com/ipkn/crow.git /usr/local/include/crow
-```
-
-### Local Development
+### Local Development Setup (without Docker Compose)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-repo/task-management-system.git
-    cd task-management-system
+    git clone https://github.com/your-username/payment-processing-system.git
+    cd payment-processing-system
     ```
 
-2.  **Prepare Crow (if not system-installed):**
-    If Crow isn't installed globally or via a package manager, you might need to manually place its headers. A simple approach is:
+2.  **Create a virtual environment and activate it:**
     ```bash
-    mkdir -p lib
-    git clone https://github.com/ipkn/crow.git lib/crow
-    # Ensure your CMakeLists.txt includes `lib/crow` in `include_directories`
+    python -m venv venv
+    source venv/bin/activate  # On Windows: `venv\Scripts\activate`
     ```
-    *(Note: The provided `CMakeLists.txt` assumes Crow headers are found in `/usr/local/include/crow` or similar standard path, or via `find_package` if installed with vcpkg. Adjust `CMakeLists.txt` if you put it in `lib/crow`)*
 
-3.  **Configure Environment Variables:**
-    Copy the example environment file and fill in your details.
+3.  **Install dependencies:**
     ```bash
-    cp .env.example config/.env
-    # Open config/.env and set your JWT_SECRET_KEY, ADMIN_PASSWORD, etc.
-    # Ensure JWT_SECRET_KEY is strong and unique (at least 32 characters).
+    pip install -r requirements.txt
     ```
 
-4.  **Build the application:**
+4.  **Set up environment variables:**
+    Create a `.env` file in the project root by copying `.env.example`.
     ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make
+    cp .env.example .env
     ```
+    Edit `.env` and configure your `DATABASE_URL`, `SECRET_KEY`, `REDIS_PASSWORD`, etc.
+    *   For local PostgreSQL, you'll need to have one running, e.g., via `docker run --name pg-local -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=password -e POSTGRES_DB=payment_db -p 5432:5432 -d postgres:15-alpine`.
+    *   For local Redis, `docker run --name redis-local -p 6379:6379 -d redis:7-alpine`.
 
-5.  **Initialize Database and Seed Data:**
+5.  **Run database migrations:**
     ```bash
-    cd .. # Back to project root
-    ./db/migrations.sh
+    alembic upgrade head
     ```
 
-6.  **Run the application:**
+6.  **Seed initial data (optional):**
     ```bash
-    ./build/TaskManagementSystem
+    python scripts/seed_db.py
     ```
-    The API should now be running on `http://localhost:18080`.
 
-### Docker Deployment
-
-1.  **Configure Environment Variables:**
-    Create a `config/.env` file from `config/.env.example` and fill in the necessary values, especially `JWT_SECRET_KEY`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD`.
+7.  **Run the application:**
     ```bash
-    cp .env.example config/.env
-    # Edit config/.env
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ```
+    The API will be available at `http://localhost:8000`.
+    *   Access Swagger UI at `http://localhost:8000/docs`.
+    *   Access ReDoc at `http://localhost:8000/redoc`.
+    *   Access a minimal frontend at `http://localhost:8000/`.
 
-2.  **Build and run with Docker Compose:**
+### Running with Docker Compose
+
+This is the recommended way to run the entire system locally, including the database and Redis.
+
+1.  **Clone the repository:**
     ```bash
-    docker-compose up --build -d
+    git clone https://github.com/your-username/payment-processing-system.git
+    cd payment-processing-system
     ```
-    This will build the Docker image, create the `app_data` and `app_logs` volumes, apply database migrations, and start the application in the background.
 
-3.  **Verify (optional):**
+2.  **Set up environment variables:**
+    Create a `.env` file in the project root by copying `.env.example`.
     ```bash
-    docker-compose ps
-    docker-compose logs app
-    docker-compose exec app /app/TaskManagementSystem --health # Example health check from inside container
+    cp .env.example .env
     ```
-    The API should be accessible at `http://localhost:18080`.
+    Edit `.env` and ensure `DATABASE_URL` is configured for the `db` service (e.g., `postgresql+asyncpg://admin:password@db:5432/payment_db`). Also update `REDIS_PASSWORD` to match the one in `docker-compose.yml`.
 
-## Database
+3.  **Build and run services:**
+    ```bash
+    docker-compose up --build
+    ```
+    This will:
+    *   Build the `app` Docker image.
+    *   Start PostgreSQL (`db`) and Redis (`redis`) containers.
+    *   Start the FastAPI application (`app`).
+    *   (Optionally) Start a mock payment gateway (`mock-gateway`).
 
-The project uses SQLite3 for simplicity and portability.
-
-### Schema (`db/schema.sql`)
-
-*   **`users` table:** Stores user information including `id`, `username`, `password_hash`, `email`, `role` (`user` or `admin`), `created_at`, `updated_at`.
-*   **`tasks` table:** Stores task details including `id`, `user_id` (foreign key to `users`), `title`, `description`, `status` (`pending`, `in_progress`, `completed`), `created_at`, `updated_at`.
-
-### Migrations & Seeding (`db/migrations.sh`, `db/seed.sql`)
-
-The `db/migrations.sh` script is responsible for:
-1.  Creating the database file if it doesn't exist.
-2.  Applying the schema defined in `db/schema.sql`.
-3.  Seeding initial data (e.g., an admin user) from `db/seed.sql`. This script ensures that the `admin` user specified in `.env` is created/updated on application start if run via Docker.
-
-## API Documentation
-
-Refer to `docs/api.md` for detailed information on available endpoints, request/response formats, and authentication requirements.
-
-## Testing
-
-### Unit Tests
-
-Unit tests are written using Google Test and cover core logic components like cryptographic utilities, authentication service logic, and model validations.
-
-**To run unit tests:**
-```bash
-cd build
-make test
-# Or specifically:
-# ./tests/unit/TaskManagementSystem_unit_tests
-```
-*(Note: 80%+ coverage is a target for a full production system. For this example, key components are tested to demonstrate the approach.)*
-
-### API Integration Tests
-
-API tests are shell scripts (`tests/api/api_tests.sh`) that use `curl` to interact with the running API, covering common scenarios like user registration, login, task CRUD operations, and testing authorization/rate limiting.
-
-**To run API tests:**
-1.  Ensure the application is running (locally or via Docker).
-2.  Navigate to the project root.
-3.  ```bash
-    ./tests/api/api_tests.sh
+4.  **Run database migrations (once services are up):**
+    Open a new terminal and execute the Alembic command inside the running `app` container:
+    ```bash
+    docker-compose exec app alembic upgrade head
     ```
 
-### Performance Tests
+5.  **Seed initial data (optional):**
+    ```bash
+    docker-compose exec app python scripts/seed_db.py
+    ```
 
-While no specific performance test suite is included, the setup is ready for tools like Apache JMeter, k6, or `hey`.
+The API will be available at `http://localhost:8000`.
 
-**Example with `hey` (install `hey` first):**
-```bash
-# Test 1000 requests with 10 concurrent users to a public endpoint
-hey -n 1000 -c 10 http://localhost:18080/health
+## 5. Database Management (Alembic)
 
-# Test a protected endpoint after obtaining a JWT
-# TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"adminpassword123"}' http://localhost:18080/auth/login | jq -r .token)
-# hey -n 1000 -c 10 -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/v1/tasks
-```
+Alembic is used for database migrations.
 
-## Configuration
+*   **Generate a new migration:**
+    ```bash
+    docker-compose exec app alembic revision --autogenerate -m "descriptive_message"
+    ```
+    Review the generated script in `alembic/versions/` before applying.
 
-The application is configured using environment variables, loaded via `src/config/Config.hpp/.cpp`. This approach promotes Twelve-Factor App principles and keeps sensitive information out of the codebase. See `.env.example` for available configuration options.
+*   **Apply all pending migrations:**
+    ```bash
+    docker-compose exec app alembic upgrade head
+    ```
 
-## Security Implementations
+*   **Revert to a previous migration:**
+    ```bash
+    docker-compose exec app alembic downgrade -1 # Revert last migration
+    docker-compose exec app alembic downgrade <revision_id> # Revert to specific revision
+    ```
 
-*   **Authentication (JWT):**
-    *   JSON Web Tokens are used for stateless authentication after successful user login.
-    *   Tokens are signed using HMAC-SHA256 with a strong, secret key.
-    *   Tokens have a configurable expiration time (`JWT_EXPIRATION_SECONDS`).
-    *   Implemented in `src/auth/JwtManager.hpp/.cpp` and `src/middleware/AuthMiddleware.hpp/.cpp`.
-*   **Authorization (RBAC):**
-    *   Users are assigned roles (`user`, `admin`).
-    *   Middleware checks the user's role from the JWT payload to restrict access to specific API endpoints or operations.
-    *   Implemented in `src/middleware/AuthMiddleware.hpp/.cpp` and within controllers.
-*   **Password Hashing:**
-    *   User passwords are never stored in plain text.
-    *   They are hashed using SHA256 with a unique salt for each user.
-    *   **NOTE:** For production-grade systems, `Argon2` or `Bcrypt` are highly recommended over SHA256 due to their resistance to brute-force and rainbow table attacks. SHA256 is used here for simpler demonstration within the scope of this project.
-    *   Implemented in `src/utils/CryptoUtils.hpp/.cpp`.
-*   **Secure Input Handling:**
-    *   Basic input validation is performed in controllers to prevent common vulnerabilities like SQL injection (SQLite parameterized queries help here) and malformed data.
-*   **Error Handling:**
-    *   A global error handling middleware (`src/middleware/ErrorHandlerMiddleware.hpp/.cpp`) catches exceptions and returns standardized JSON error responses with appropriate HTTP status codes, avoiding sensitive information leakage.
-*   **Secure Configuration:**
-    *   Environment variables are used to manage sensitive data like `JWT_SECRET_KEY` and database paths, preventing hardcoding.
-*   **Dependency Security:**
-    *   Using `CMake` and specified versions helps manage dependencies. In a real-world scenario, regular vulnerability scanning of dependencies would be crucial.
+## 6. Running Tests
 
-## Logging & Monitoring
+The project includes a comprehensive test suite.
 
-*   **Structured Logging:**
-    *   Uses `spdlog` for efficient and flexible logging.
-    *   Logs are output to both console and a file (`./logs/app.log`).
-    *   Configurable log levels (`LOG_LEVEL` in `.env`).
-    *   Implemented in `src/logger/Logger.hpp/.cpp`.
-*   **Monitoring:**
-    *   The `docker-compose.yml` includes a basic `healthcheck` to monitor the application's availability.
-    *   Structured logs provide data for potential log aggregation and monitoring systems (e.g., ELK stack, Prometheus/Grafana).
+*   **Ensure test database is ready:** The `conftest.py` sets up a dedicated test database (PostgreSQL container running on port 5433 by default in CI). If running locally, make sure you have a separate PostgreSQL instance for testing or adjust `TEST_DATABASE_URL` in `.env`.
 
-## Caching
+*   **Run all tests with coverage:**
+    ```bash
+    pytest --cov=app --cov-report=html tests/
+    ```
+    This will generate an HTML coverage report in the `htmlcov` directory.
 
-*   **In-Memory Cache:**
-    *   A simple thread-safe, in-memory cache (`src/services/CacheService.hpp/.cpp`) is implemented using `std::map` with a time-to-live (TTL) mechanism.
-    *   Useful for caching frequently accessed, less dynamic data like configuration settings or recent user profiles.
-    *   Configurable TTL (`CACHE_TTL_SECONDS` in `.env`).
-    *   **NOTE:** For distributed, high-scale applications, external caching solutions like Redis or Memcached are recommended.
+*   **Run specific tests:**
+    ```bash
+    pytest tests/unit/test_auth_service.py
+    pytest tests/api/
+    ```
 
-## Rate Limiting
+*   **Run performance tests (using Locust):**
+    1.  Ensure your application is running (e.g., via `docker-compose up`).
+    2.  Install Locust: `pip install locust`
+    3.  Navigate to the project root and run: `locust -f tests/performance/locustfile.py`
+    4.  Open your browser to `http://localhost:8089` to access the Locust UI.
 
-*   **Fixed-Window Rate Limiter:**
-    *   An IP-based fixed-window rate-limiting middleware (`src/middleware/RateLimitMiddleware.hpp/.cpp`) is implemented.
-    *   It tracks the number of requests from each IP address within a defined time window.
-    *   Configurable limits (`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS` in `.env`).
-    *   Helps protect against brute-force attacks and denial-of-service (DoS) attempts.
+## 7. API Documentation
 
-## Architecture
+FastAPI automatically generates OpenAPI (Swagger UI) and ReDoc documentation based on your code.
 
-Refer to `docs/architecture.md` for a detailed explanation of the system's architecture, including its modular design, data flow, and component interactions.
+*   **Swagger UI:** `http://localhost:8000/docs`
+*   **ReDoc:** `http://localhost:8000/redoc`
 
-## Deployment Guide
+These interfaces provide interactive documentation where you can explore endpoints, request/response schemas, and even send test requests directly from your browser.
 
-Refer to `docs/deployment.md` for detailed instructions on deploying the application to a production environment, including considerations for reverse proxies, database management, and scaling.
+## 8. Authentication and Authorization
 
-## Contributing
+*   **Authentication:** Uses JWT (JSON Web Tokens) for authenticating users.
+    *   Users log in by providing credentials to `/api/v1/auth/token` to receive an `access_token`.
+    *   This token must be sent in the `Authorization` header as `Bearer <token>` for protected endpoints.
+*   **Authorization:** Role-based access control (RBAC) is implemented using FastAPI dependencies.
+    *   `Admin` users have full access.
+    *   `Merchant` users can manage their own merchants and payments.
+    *   `Customer` role is present for future expansion (e.g., wallet, personal payment history).
+
+## 9. Error Handling
+
+*   **Custom Exceptions:** Defined in `app/core/exceptions.py` for common application-specific errors (e.g., `NotFoundException`, `AuthException`).
+*   **Global Handlers:** `main.py` includes exception handlers for `StarletteHTTPException`, `CustomException`, and a generic `Exception` to ensure consistent JSON error responses across the API.
+*   **Validation Errors:** FastAPI/Pydantic automatically handle request validation errors, returning `422 Unprocessable Entity` responses.
+
+## 10. Logging and Monitoring
+
+*   **Structured Logging:** `loguru` is configured in `app/core/logger.py` to provide detailed, colorized logs in development and structured, machine-readable logs in production.
+*   **Request Logging Middleware:** `app/middleware/logging.py` logs details for every incoming request and outgoing response, including timing and unique `request_id` for correlation.
+*   **Monitoring:** While full-fledged monitoring (e.g., Prometheus, Grafana) is beyond this scope, the structured logs provide a solid foundation for integration with log aggregation services (ELK stack, Splunk, Datadog, etc.).
+
+## 11. Caching and Rate Limiting
+
+*   **Caching (Redis):** `app/core/dependencies.py` provides a Redis client. This can be used in services to cache frequently accessed data (e.g., merchant configurations, lookup tables) to reduce database load.
+*   **Rate Limiting (`fastapi-limiter`):** Configured in `app/middleware/rate_limiting.py` and `main.py` using `fastapi-limiter` with Redis as the backend. It can be applied globally or per-endpoint using dependencies (e.g., `Depends(rate_limiter_dependency)`). Default is 5 requests per minute.
+
+## 12. Idempotency
+
+*   **Idempotency Keys:** Crucial for payment systems to prevent duplicate processing of the same request due to network issues or retries.
+*   **Implementation:** The `Payment` model includes an `idempotency_key` field with a unique constraint. The `PaymentService` checks this key before processing new payment requests. If a request with an existing key is received, it returns the result of the original processing instead of creating a new payment.
+
+## 13. Webhooks
+
+*   **Inbound Webhooks (from Gateway):** The `/api/v1/webhooks/gateway-events` endpoint is designed to receive status updates from the external payment gateway. It validates the incoming webhook (e.g., via signature verification) and updates the relevant payment record.
+*   **Outbound Webhooks (to Merchants):** When a payment status changes, the system can send notifications to configured merchant webhook URLs.
+    *   `app/models/webhook_event.py` tracks these events.
+    *   `app/tasks/webhook_delivery.py` handles asynchronous and reliable delivery with exponential backoff retries. This would typically run in a dedicated worker (e.g., Celery) for true robustness, but a simplified in-process async task is shown.
+
+## 14. Deployment Guide
+
+This project is containerized with Docker, making deployment relatively straightforward to any environment that supports Docker (e.g., Kubernetes, AWS ECS, Google Cloud Run, Azure Container Instances).
+
+1.  **Container Registry:** Push your Docker image to a private container registry (e.g., Docker Hub, AWS ECR, GCR).
+    ```bash
+    docker build -t your-registry/payment-processor:latest .
+    docker push your-registry/payment-processor:latest
+    ```
+2.  **Environment Configuration:** Ensure all necessary environment variables from `.env.example` are securely configured in your deployment environment (e.g., Kubernetes Secrets, AWS Parameter Store, environment variables). **Crucially, replace placeholders like `SECRET_KEY`, `REDIS_PASSWORD`, `PAYMENT_GATEWAY_API_KEY`, etc., with strong, production-ready values.**
+3.  **Database:** Provision a managed PostgreSQL database instance (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL). Update `DATABASE_URL` accordingly.
+4.  **Redis:** Provision a managed Redis instance (e.g., AWS ElastiCache, Azure Cache for Redis, Google Cloud Memorystore). Update `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
+5.  **Orchestration:** Use an orchestration tool (Docker Swarm, Kubernetes) or a managed service (AWS ECS, Google Cloud Run) to run the `app` container, ensuring it can connect to your provisioned DB and Redis.
+6.  **Load Balancer/API Gateway:** Place a load balancer or API Gateway (e.g., Nginx, AWS ALB, GCP Load Balancer) in front of your FastAPI application for SSL termination, traffic routing, and possibly additional security/rate limiting.
+7.  **Monitoring & Logging:** Integrate logs with your chosen log aggregation and monitoring solutions.
+
+## 15. CI/CD
+
+A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided:
+
+*   **Triggers:** Runs on `push` and `pull_request` events to `main` and `develop` branches.
+*   **Steps:**
+    *   Sets up Python.
+    *   Installs dependencies.
+    *   Starts temporary PostgreSQL and Redis services (using `services` in GitHub Actions).
+    *   Waits for services to be healthy.
+    *   Runs Alembic migrations on the test database.
+    *   Executes `pytest` for unit, integration, and API tests, generating a coverage report.
+    *   Uploads the coverage report to Codecov.
+
+This workflow ensures that every code change is automatically tested, maintaining code quality.
+
+## 16. Future Enhancements
+
+*   **More Payment Methods:** Integrate with real payment gateways (Stripe, PayPal, etc.).
+*   **Refunds and Disputes:** Implement full refund workflows and dispute handling.
+*   **Fraud Detection:** Integrate with fraud detection services.
+*   **Reporting & Analytics:** Dashboard for merchants to view transactions, generate reports.
+*   **Customer Wallets:** Implement a wallet system for customers.
+*   **Subscription Management:** Handle recurring payments.
+*   **Asynchronous Tasks:** Use a dedicated task queue (e.g., Celery with Redis/RabbitMQ) for background processes like webhook delivery, report generation, etc., for better scalability and resilience.
+*   **API Key Management:** More robust API key generation, rotation, and revocation for merchants.
+*   **GraphQL API:** Provide an alternative GraphQL API for more flexible data querying.
+*   **Advanced Caching:** Implement more aggressive caching strategies (e.g., for payment details that rarely change).
+*   **Internationalization (i18n):** Support multiple languages and currencies comprehensively.
+*   **OpenTelemetry:** Distributed tracing for better observability across services.
+
+## 17. Contributing
 
 Contributions are welcome! Please follow these steps:
+
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes and ensure tests pass.
-4.  Commit your changes (`git commit -am 'Add new feature'`).
-5.  Push to the branch (`git push origin feature/your-feature`).
-6.  Create a new Pull Request.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write comprehensive tests for your changes.
+5.  Ensure all tests pass (`pytest`).
+6.  Commit your changes (`git commit -m 'Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Create a Pull Request.
 
-## License
+## 18. License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ```

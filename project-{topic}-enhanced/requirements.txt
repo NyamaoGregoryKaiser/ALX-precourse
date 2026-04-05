@@ -1,25 +1,20 @@
-Flask==2.3.3
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.5
-psycopg2-binary==2.9.9 # For PostgreSQL
-SQLAlchemy==2.0.23
-Flask-RESTful==0.3.10
-Flask-JWT-Extended==4.4.0
-Flask-Bcrypt==1.0.1
+```
+fastapi[all]==0.104.1
+uvicorn==0.23.2
+sqlalchemy==2.0.22
+asyncpg==0.28.0
+psycopg2-binary==2.9.9
+alembic==1.12.0
 python-dotenv==1.0.0
-Flask-Caching==2.0.2
-redis==5.0.1 # For caching/rate limiting with Redis
-Flask-Limiter==3.5.1
-PyYAML==6.0.1 # For Flasgger
-Flasgger==0.9.5
-gunicorn==21.2.0 # Production WSGI server
-requests==2.31.0 # For API testing
+pydantic-settings==2.0.3
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+loguru==0.7.2
+httpx==0.25.1
+redis==5.0.1
+fastapi-limiter==0.1.5
 pytest==7.4.3
+pytest-asyncio==0.21.1
 pytest-cov==4.1.0
-Faker==20.1.0 # For seed data
-alembic==1.12.1
-coverage==7.3.2
-locust==2.19.0 # For performance testing (install separately or only in dev)
-Werkzeug==2.3.7 # Explicitly define if needed, Flask depends on it
-marshmallow==3.20.1
-webargs==8.2.0
+pytest-httpx==0.27.0
+```
