@@ -1,80 +1,37 @@
+```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:14-alpine
-    container_name: task_db
-    environment:
-      POSTGRES_DB: ${DB_DATABASE:-task_db}
-      POSTGRES_USER: ${DB_USERNAME:-user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "18080:18080"
     volumes:
-      - pg_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
+      # Mount a volume for persistent database and logs
+      - app_data:/app/data
+      - app_logs:/app/logs
+      # Mount .env file for configuration (create this file from .env.example)
+      - ./config/.env:/app/.env:ro
+    environment:
+      # These variables can be set directly here or loaded from the .env file
+      # Loading from .env file via `Config.cpp` is preferred.
+      # Ensure these match .env.example keys.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # All other variables like APP_PORT, DATABASE_PATH, LOG_LEVEL, etc.,
+      # will be loaded by the C++ app from the mounted .env file.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: task_redis
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.backend
-    container_name: task_backend
-    environment:
-      NODE_ENV: production
-      PORT: 5000
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USERNAME: ${DB_USERNAME:-user}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      DB_DATABASE: ${DB_DATABASE:-task_db}
-      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
-      JWT_EXPIRES_IN: 1h
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      LOG_LEVEL: info
-      CORS_ORIGINS: http://localhost:3000,http://localhost:80
-      CACHE_STORE: redis
-      CACHE_TTL: 60 # seconds
-    ports:
-      - "5000:5000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    restart: unless-stopped
-    # Optional: Command to run migrations and seeds on startup (for demo/development)
-    # In production, migrations should be run as a separate step.
-    command: sh -c "sleep 10 && npm run migration:run && npm run seed && npm start"
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.frontend
-    container_name: task_frontend
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # This targets the backend service
-    ports:
-      - "3000:80" # Map host port 3000 to container's NGINX port 80
-    depends_on:
-      - backend
-    restart: unless-stopped
+      test: ["CMD-SHELL", "curl -f http://localhost:18080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s # Give the app time to start and run migrations
+    restart: always
 
 volumes:
-  pg_data:
+  app_data:
+  app_logs:
 ```
-
-#### `Dockerfile.backend`
-```dockerfile

@@ -1,0 +1,101 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake libsqlite3-dev libspdlog-dev libssl-dev git
+        # Install Crow (header-only, clone to a standard include path)
+        sudo git clone https://github.com/ipkn/crow.git /usr/local/include/crow
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake ..
+
+    - name: Build application
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: Run Unit Tests
+      run: |
+        cd build
+        ./tests/unit/TaskManagementSystem_unit_tests
+        # Or `ctest --output-on-failure` if tests are configured with add_test
+
+    - name: Set up .env for API tests
+      run: |
+        mkdir -p config
+        cp .env.example config/.env
+        # Replace placeholders with secrets for CI/CD
+        sed -i "s|JWT_SECRET_KEY=.*|JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}|g" config/.env
+        sed -i "s|ADMIN_USERNAME=.*|ADMIN_USERNAME=ci_admin|g" config/.env
+        sed -i "s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=ci_admin_pass|g" config/.env
+
+    - name: Start application for API tests
+      run: |
+        cd build
+        # Run migrations and then start the app in background
+        ../db/migrations.sh
+        ./TaskManagementSystem &
+        echo "Waiting for application to start..."
+        sleep 10 # Give app some time to initialize
+
+    - name: Run API Tests
+      run: |
+        ./tests/api/api_tests.sh
+
+  # Uncomment for deployment stage - requires more advanced setup (e.g., container registry, cloud provider)
+  # deploy:
+  #   needs: build-and-test
+  #   if: github.ref == 'refs/heads/main' # Deploy only from main branch
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v3
+  #
+  #   - name: Log in to Docker Hub (or other registry)
+  #     uses: docker/login-action@v2
+  #     with:
+  #       username: ${{ secrets.DOCKER_USERNAME }}
+  #       password: ${{ secrets.DOCKER_PASSWORD }}
+  #
+  #   - name: Build and push Docker image
+  #     uses: docker/build-push-action@v3
+  #     with:
+  #       context: .
+  #       push: true
+  #       tags: your-docker-username/task-management-system:latest
+  #
+  #   - name: Deploy to Production (example with SSH)
+  #     uses: appleboy/ssh-action@master
+  #     with:
+  #       host: ${{ secrets.SSH_HOST }}
+  #       username: ${{ secrets.SSH_USERNAME }}
+  #       key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #       script: |
+  #         cd /path/to/your/deployment
+  #         docker-compose pull
+  #         docker-compose up -d
+  #         docker system prune -f
+```

@@ -1,593 +1,325 @@
 ```markdown
-# Real-time Chat Application - API Documentation
+# Task Management System API Documentation
 
-This document describes the RESTful API endpoints and WebSocket events for the Real-time Chat Application.
+This document describes the RESTful API endpoints for the Task Management System.
 
-**Base URL:** `http://localhost:5000/api` (for local development)
-**WebSocket URL:** `http://localhost:5000` (for local development)
+## Base URL
+
+`http://localhost:18080` (or your configured application host/port)
 
 ## Authentication
 
-All API endpoints, except `/api/auth/register` and `/api/auth/login`, require authentication.
-Authentication is performed using JSON Web Tokens (JWT). The token must be sent in the `Authorization` header as a Bearer token: `Authorization: Bearer <YOUR_JWT_TOKEN>`.
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
 
-### 1. Auth Endpoints
+**Header Example:**
+`Authorization: Bearer <YOUR_JWT_TOKEN>`
 
-#### `POST /api/auth/register`
+## Error Responses
 
-Registers a new user.
+All error responses follow a consistent JSON structure:
 
+```json
+{
+  "status": "error",
+  "message": "Descriptive error message",
+  "code": 400, // HTTP Status Code
+  "details": "Optional details about the error"
+}
+```
+
+## Endpoints
+
+---
+
+### 1. Health Check
+
+**`GET /health`**
+
+*   **Description:** Checks the API's operational status.
+*   **Authentication:** None required.
+*   **Response (200 OK):**
+    ```json
+    {
+      "status": "success",
+      "message": "API is healthy"
+    }
+    ```
+
+---
+
+### 2. User Authentication
+
+#### `POST /auth/register`
+
+*   **Description:** Registers a new user.
+*   **Authentication:** None required.
 *   **Request Body:**
     ```json
     {
-        "username": "string",
-        "email": "string (email format)",
-        "password": "string (min 6 characters)"
+      "username": "newuser",
+      "password": "strongpassword123",
+      "email": "newuser@example.com"
     }
     ```
 *   **Response (201 Created):**
     ```json
     {
-        "status": "success",
-        "message": "User registered successfully",
-        "data": {
-            "user": {
-                "id": "string (UUID)",
-                "username": "string",
-                "email": "string"
-            },
-            "token": "string (JWT)"
-        }
+      "status": "success",
+      "message": "User registered successfully",
+      "user_id": 1
     }
     ```
 *   **Error Responses:**
-    *   `400 Bad Request`: Validation error (e.g., invalid email, short password, existing username/email).
+    *   `400 Bad Request`: Missing/invalid fields, username/email already taken.
 
-#### `POST /api/auth/login`
+#### `POST /auth/login`
 
-Logs in an existing user.
-
+*   **Description:** Authenticates a user and returns a JWT.
+*   **Authentication:** None required.
 *   **Request Body:**
     ```json
     {
-        "email": "string (email format)",
-        "password": "string"
+      "username": "existinguser",
+      "password": "strongpassword123"
     }
     ```
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "message": "Logged in successfully",
-        "data": {
-            "user": {
-                "id": "string (UUID)",
-                "username": "string",
-                "email": "string"
-            },
-            "token": "string (JWT)"
-        }
+      "status": "success",
+      "message": "Login successful",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "user": {
+        "id": 1,
+        "username": "existinguser",
+        "email": "existinguser@example.com",
+        "role": "user"
+      }
     }
     ```
 *   **Error Responses:**
-    *   `400 Bad Request`: Validation error.
     *   `401 Unauthorized`: Invalid credentials.
 
-#### `POST /api/auth/logout`
+---
 
-Logs out the authenticated user. Invalidates the JWT token server-side (optional: can be implemented to blacklist or remove from cache).
+### 3. User Management
 
-*   **Authentication:** Required
-*   **Request Body:** None
+#### `GET /api/v1/users/me`
+
+*   **Description:** Retrieves the profile of the authenticated user.
+*   **Authentication:** Required (User or Admin role).
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "message": "Logged out successfully"
+      "status": "success",
+      "user": {
+        "id": 1,
+        "username": "currentuser",
+        "email": "currentuser@example.com",
+        "role": "user",
+        "created_at": "2023-10-27 10:00:00",
+        "updated_at": "2023-10-27 10:00:00"
+      }
     }
     ```
 *   **Error Responses:**
-    *   `401 Unauthorized`: If token is missing or invalid.
+    *   `401 Unauthorized`: No/invalid token.
 
-### 2. User Endpoints
+#### `PUT /api/v1/users/me`
 
-All user endpoints require authentication.
-
-#### `GET /api/users/me`
-
-Retrieves the profile of the authenticated user.
-
-*   **Authentication:** Required
+*   **Description:** Updates the profile of the authenticated user.
+*   **Authentication:** Required (User or Admin role).
+*   **Request Body (Partial update allowed):**
+    ```json
+    {
+      "email": "updated@example.com",
+      "password": "newstrongpassword"
+    }
+    ```
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "data": {
-            "user": {
-                "id": "string (UUID)",
-                "username": "string",
-                "email": "string",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)"
-            }
-        }
+      "status": "success",
+      "message": "User profile updated successfully"
     }
     ```
+*   **Error Responses:**
+    *   `400 Bad Request`: Invalid fields.
+    *   `401 Unauthorized`: No/invalid token.
 
-#### `PATCH /api/users/me`
+#### `DELETE /api/v1/users/me`
 
-Updates the profile of the authenticated user.
+*   **Description:** Deletes the authenticated user's account. This will also delete all associated tasks.
+*   **Authentication:** Required (User or Admin role).
+*   **Response (200 OK):**
+    ```json
+    {
+      "status": "success",
+      "message": "User account deleted successfully"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No/invalid token.
 
-*   **Authentication:** Required
+#### `GET /api/v1/users` (Admin Only)
+
+*   **Description:** Retrieves a list of all users.
+*   **Authentication:** Required (Admin role only).
+*   **Response (200 OK):**
+    ```json
+    {
+      "status": "success",
+      "users": [
+        {
+          "id": 1,
+          "username": "admin",
+          "email": "admin@example.com",
+          "role": "admin"
+        },
+        {
+          "id": 2,
+          "username": "user1",
+          "email": "user1@example.com",
+          "role": "user"
+        }
+      ]
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No/invalid token.
+    *   `403 Forbidden`: User is not an admin.
+
+---
+
+### 4. Task Management
+
+#### `POST /api/v1/tasks`
+
+*   **Description:** Creates a new task for the authenticated user.
+*   **Authentication:** Required (User or Admin role).
 *   **Request Body:**
     ```json
     {
-        "username": "string (optional)",
-        "email": "string (email format, optional)"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-        "status": "success",
-        "message": "Profile updated successfully",
-        "data": {
-            "user": {
-                "id": "string (UUID)",
-                "username": "string",
-                "email": "string",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)"
-            }
-        }
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Validation error.
-    *   `409 Conflict`: If username or email already exists.
-
-#### `GET /api/users/:id`
-
-Retrieves the profile of a user by ID.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: The UUID of the user.
-*   **Response (200 OK):**
-    ```json
-    {
-        "status": "success",
-        "data": {
-            "user": {
-                "id": "string (UUID)",
-                "username": "string",
-                "email": "string",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)"
-            }
-        }
-    }
-    ```
-*   **Error Responses:**
-    *   `404 Not Found`: User not found.
-
-#### `GET /api/users`
-
-Retrieves a list of all registered users.
-
-*   **Authentication:** Required
-*   **Response (200 OK):**
-    ```json
-    {
-        "status": "success",
-        "data": {
-            "users": [
-                {
-                    "id": "string (UUID)",
-                    "username": "string",
-                    "email": "string",
-                    "createdAt": "string (ISO Date)",
-                    "updatedAt": "string (ISO Date)"
-                }
-                // ... more users
-            ]
-        }
-    }
-    ```
-
-### 3. Chat Endpoints
-
-All chat endpoints require authentication.
-
-#### `POST /api/chats`
-
-Creates a new chat room. The authenticated user is automatically added as a participant.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-        "name": "string (min 3 characters)",
-        "description": "string (optional, max 255 characters)"
+      "title": "Buy groceries",
+      "description": "Milk, eggs, bread",
+      "status": "pending"
     }
     ```
 *   **Response (201 Created):**
     ```json
     {
-        "status": "success",
-        "data": {
-            "chatRoom": {
-                "id": "string (UUID)",
-                "name": "string",
-                "description": "string | null",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)",
-                "participants": [
-                  {
-                    "userId": "string (UUID)",
-                    "chatRoomId": "string (UUID)",
-                    "user": { "id": "string", "username": "string", "email": "string" }
-                  }
-                ]
-            }
-        }
+      "status": "success",
+      "message": "Task created successfully",
+      "task_id": 1
     }
     ```
 *   **Error Responses:**
-    *   `400 Bad Request`: Validation error.
+    *   `400 Bad Request`: Missing/invalid fields.
+    *   `401 Unauthorized`: No/invalid token.
 
-#### `GET /api/chats`
+#### `GET /api/v1/tasks`
 
-Retrieves a list of all chat rooms the authenticated user is a participant of. Includes the last message for each room.
-
-*   **Authentication:** Required
+*   **Description:** Retrieves all tasks for the authenticated user. Admin users can optionally view all tasks by providing `?all=true`.
+*   **Authentication:** Required (User or Admin role).
+*   **Query Parameters (for Admin):**
+    *   `all`: `true` to retrieve all tasks across all users (Admin only).
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "data": {
-            "chatRooms": [
-                {
-                    "id": "string (UUID)",
-                    "name": "string",
-                    "description": "string | null",
-                    "createdAt": "string (ISO Date)",
-                    "updatedAt": "string (ISO Date)",
-                    "participants": [
-                        {
-                            "userId": "string",
-                            "chatRoomId": "string",
-                            "user": { "id": "string", "username": "string", "email": "string" }
-                        }
-                    ],
-                    "messages": [ // Contains only the latest message for preview
-                        {
-                            "id": "string",
-                            "content": "string",
-                            "senderId": "string",
-                            "sender": { "id": "string", "username": "string" },
-                            "chatRoomId": "string",
-                            "createdAt": "string (ISO Date)"
-                        }
-                    ]
-                }
-                // ... more chat rooms
-            ]
+      "status": "success",
+      "tasks": [
+        {
+          "id": 1,
+          "user_id": 1,
+          "title": "Buy groceries",
+          "description": "Milk, eggs, bread",
+          "status": "pending",
+          "created_at": "2023-10-27 11:00:00",
+          "updated_at": "2023-10-27 11:00:00"
+        },
+        {
+          "id": 2,
+          "user_id": 1,
+          "title": "Finish report",
+          "description": null,
+          "status": "in_progress",
+          "created_at": "2023-10-27 11:30:00",
+          "updated_at": "2023-10-27 11:30:00"
         }
+      ]
     }
     ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No/invalid token.
+    *   `403 Forbidden`: Non-admin trying to access `?all=true`.
 
-#### `GET /api/chats/:id`
+#### `GET /api/v1/tasks/{task_id}`
 
-Retrieves details of a specific chat room, including its participants.
-
-*   **Authentication:** Required
+*   **Description:** Retrieves a specific task by ID.
+*   **Authentication:** Required (User or Admin role). Only task owner or Admin can access.
 *   **Path Parameters:**
-    *   `id`: The UUID of the chat room.
+    *   `task_id`: The ID of the task.
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "data": {
-            "chatRoom": {
-                "id": "string (UUID)",
-                "name": "string",
-                "description": "string | null",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)",
-                "participants": [
-                    {
-                        "userId": "string",
-                        "chatRoomId": "string",
-                        "user": { "id": "string", "username": "string", "email": "string" }
-                    }
-                ],
-                "messages": [ // Array of messages (initial 50 by default)
-                    {
-                        "id": "string",
-                        "content": "string",
-                        "senderId": "string",
-                        "chatRoomId": "string",
-                        "createdAt": "string (ISO Date)",
-                        "sender": { "id": "string", "username": "string", "email": "string" }
-                    }
-                ]
-            }
-        }
+      "status": "success",
+      "task": {
+        "id": 1,
+        "user_id": 1,
+        "title": "Buy groceries",
+        "description": "Milk, eggs, bread",
+        "status": "pending",
+        "created_at": "2023-10-27 11:00:00",
+        "updated_at": "2023-10-27 11:00:00"
+      }
     }
     ```
 *   **Error Responses:**
-    *   `404 Not Found`: Chat room not found.
+    *   `401 Unauthorized`: No/invalid token.
+    *   `403 Forbidden`: User not authorized to view this task.
+    *   `404 Not Found`: Task with `task_id` not found.
 
-#### `POST /api/chats/join`
+#### `PUT /api/v1/tasks/{task_id}`
 
-Adds the authenticated user as a participant to an existing chat room.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-        "chatRoomId": "string (UUID)"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-        "status": "success",
-        "message": "Joined chat room successfully",
-        "data": {
-            "chatRoom": {
-                "id": "string (UUID)",
-                "name": "string",
-                "description": "string | null",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)",
-                "participants": [
-                  {
-                    "userId": "string",
-                    "chatRoomId": "string",
-                    "user": { "id": "string", "username": "string", "email": "string" }
-                  }
-                ]
-            }
-        }
-    }
-    ```
-*   **Error Responses:**
-    *   `400 Bad Request`: Validation error.
-    *   `404 Not Found`: Chat room not found.
-
-#### `GET /api/chats/:id/messages`
-
-Retrieves message history for a specific chat room.
-
-*   **Authentication:** Required (User must be a participant of the room)
+*   **Description:** Updates a specific task by ID.
+*   **Authentication:** Required (User or Admin role). Only task owner or Admin can modify.
 *   **Path Parameters:**
-    *   `id`: The UUID of the chat room.
-*   **Query Parameters:**
-    *   `limit`: `number` (optional, default 50). Maximum number of messages to return.
-    *   `offset`: `number` (optional, default 0). Number of messages to skip (for pagination).
+    *   `task_id`: The ID of the task.
+*   **Request Body (Partial update allowed):**
+    ```json
+    {
+      "title": "Buy organic groceries",
+      "status": "completed"
+    }
+    ```
 *   **Response (200 OK):**
     ```json
     {
-        "status": "success",
-        "data": {
-            "messages": [
-                {
-                    "id": "string (UUID)",
-                    "content": "string",
-                    "createdAt": "string (ISO Date)",
-                    "updatedAt": "string (ISO Date)",
-                    "senderId": "string (UUID)",
-                    "chatRoomId": "string (UUID)",
-                    "sender": {
-                        "id": "string",
-                        "username": "string",
-                        "email": "string"
-                    }
-                }
-                // ... more messages, ordered from oldest to newest
-            ]
-        }
+      "status": "success",
+      "message": "Task updated successfully"
     }
     ```
 *   **Error Responses:**
-    *   `403 Forbidden`: User is not a participant of the chat room.
-    *   `404 Not Found`: Chat room not found.
+    *   `400 Bad Request`: Invalid fields.
+    *   `401 Unauthorized`: No/invalid token.
+    *   `403 Forbidden`: User not authorized to modify this task.
+    *   `404 Not Found`: Task with `task_id` not found.
 
-#### `POST /api/chats/:id/messages`
+#### `DELETE /api/v1/tasks/{task_id}`
 
-Sends a message to a specific chat room. This endpoint primarily persists the message. Real-time broadcast is handled via WebSocket.
-
-*   **Authentication:** Required (User must be a participant of the room)
+*   **Description:** Deletes a specific task by ID.
+*   **Authentication:** Required (User or Admin role). Only task owner or Admin can delete.
 *   **Path Parameters:**
-    *   `id`: The UUID of the chat room.
-*   **Request Body:**
+    *   `task_id`: The ID of the task.
+*   **Response (200 OK):**
     ```json
     {
-        "content": "string (min 1 character, max 1000 characters)"
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-        "status": "success",
-        "message": "Message sent and saved",
-        "data": {
-            "message": {
-                "id": "string (UUID)",
-                "content": "string",
-                "createdAt": "string (ISO Date)",
-                "updatedAt": "string (ISO Date)",
-                "senderId": "string (UUID)",
-                "chatRoomId": "string (UUID)",
-                "sender": {
-                    "id": "string",
-                    "username": "string",
-                    "email": "string"
-                }
-            }
-        }
+      "status": "success",
+      "message": "Task deleted successfully"
     }
     ```
 *   **Error Responses:**
-    *   `400 Bad Request`: Validation error.
-    *   `403 Forbidden`: User is not a participant of the chat room.
-
-## WebSocket Events
-
-WebSocket connections are established at `ws://localhost:5000` (or `wss://your-domain.com`).
-The client must send the JWT token in the `auth` object during connection:
-`io(WS_URL, { auth: { token: 'YOUR_JWT_TOKEN' } });`
-
-### Client Emits (Outgoing Events)
-
-#### `joinRoom`
-
-Informs the server that the client wants to join a specific chat room.
-
-*   **Payload:** `string` (chatRoomId)
-*   **Callback:** `(status: 'success' | 'error', message?: string) => void`
-*   **Example:**
-    ```javascript
-    socket.emit('joinRoom', 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d', (status, message) => {
-      if (status === 'success') console.log('Joined room!');
-      else console.error('Failed to join:', message);
-    });
-    ```
-
-#### `leaveRoom`
-
-Informs the server that the client is leaving a chat room.
-
-*   **Payload:** `string` (chatRoomId)
-*   **Callback:** `(status: 'success' | 'error', message?: string) => void`
-*   **Example:**
-    ```javascript
-    socket.emit('leaveRoom', 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d');
-    ```
-
-#### `chatMessage`
-
-Sends a new message to a chat room.
-
-*   **Payload:**
-    ```typescript
-    interface SocketMessage {
-        chatRoomId: string;
-        senderId: string;
-        content: string;
-    }
-    ```
-*   **Callback:** `(status: 'success' | 'error', data?: any) => void`
-*   **Example:**
-    ```javascript
-    socket.emit('chatMessage', {
-        chatRoomId: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-        senderId: 'user-uuid-1',
-        content: 'Hello everyone!'
-    }, (status, response) => {
-        if (status === 'success') console.log('Message sent:', response);
-        else console.error('Message failed:', response);
-    });
-    ```
-
-#### `typing`
-
-Informs other users in a room that the current user is typing.
-
-*   **Payload:** `string` (chatRoomId)
-*   **Example:**
-    ```javascript
-    socket.emit('typing', 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d');
-    ```
-
-#### `stopTyping`
-
-Informs other users in a room that the current user has stopped typing.
-
-*   **Payload:** `string` (chatRoomId)
-*   **Example:**
-    ```javascript
-    socket.emit('stopTyping', 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d');
-    ```
-
-### Server Emits (Incoming Events)
-
-#### `message`
-
-Broadcasted to all clients in a chat room when a new message is sent.
-
-*   **Payload:**
-    ```typescript
-    interface Message {
-        id: string;
-        chatRoomId: string;
-        senderId: string;
-        senderUsername: string; // Included for display
-        content: string;
-        createdAt: string; // ISO string
-    }
-    ```
-*   **Example (Client-side listener):**
-    ```javascript
-    socket.on('message', (msg) => {
-        console.log(`New message in ${msg.chatRoomId} from ${msg.senderUsername}: ${msg.content}`);
-    });
-    ```
-
-#### `userJoined`
-
-Broadcasted to all clients in a chat room when a new user joins.
-
-*   **Payload:**
-    ```typescript
-    interface SocketJoinRoomEvent {
-        userId: string;
-        username: string;
-        chatRoomId: string;
-    }
-    ```
-*   **Example:**
-    ```javascript
-    socket.on('userJoined', ({ username }) => {
-        console.log(`${username} has joined the chat.`);
-    });
-    ```
-
-#### `userLeft`
-
-Broadcasted to all clients in a chat room when a user leaves.
-
-*   **Payload:** (Same as `userJoined`)
-*   **Example:**
-    ```javascript
-    socket.on('userLeft', ({ username }) => {
-        console.log(`${username} has left the chat.`);
-    });
-    ```
-
-#### `typing`
-
-Broadcasted to all clients in a chat room when a user starts typing.
-
-*   **Payload:** (Same as `userJoined`)
-*   **Example:**
-    ```javascript
-    socket.on('typing', ({ username }) => {
-        console.log(`${username} is typing...`);
-    });
-    ```
-
-#### `stopTyping`
-
-Broadcasted to all clients in a chat room when a user stops typing.
-
-*   **Payload:** (Same as `userJoined`)
-*   **Example:**
-    ```javascript
-    socket.on('stopTyping', ({ username }) => {
-        console.log(`${username} stopped typing.`);
-    });
-    ```
+    *   `401 Unauthorized`: No/invalid token.
+    *   `403 Forbidden`: User not authorized to delete this task.
+    *   `404 Not Found`: Task with `task_id` not found.
 ```

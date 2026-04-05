@@ -1,0 +1,33 @@
+```
+# C++ specific
+*.o
+*.a
+*.so
+*.lo
+*.la
+*.dylib
+*.dll
+*.exe
+*.obj
+*.lib
+*.exp
+*.ilk
+*.pch
+*.pdb
+*.pgm
+*.prof
+*.ipch
+
+# CMake specific
+/build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Logs
+*.log
+
+# Environment variables
+.env
+```

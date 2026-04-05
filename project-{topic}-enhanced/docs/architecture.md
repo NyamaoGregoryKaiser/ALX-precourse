@@ -1,156 +1,140 @@
 ```markdown
-# Real-time Chat Application - Architecture Documentation
+# Task Management System - Architecture Document
 
-## 1. Introduction
+This document outlines the architecture of the Task Management System, a secure C++ backend API.
 
-This document outlines the architectural design of the Real-time Chat Application. The goal is to create a robust, scalable, and maintainable system capable of handling real-time communication for multiple users and chat rooms. The design prioritizes modularity, security, and developer experience using modern tools and practices.
+## 1. High-Level Architecture
 
-## 2. High-Level Architecture Diagram
+The system follows a typical layered architecture pattern, designed for maintainability, scalability, and security. It is a monolithic application deployed within a Docker container, providing a RESTful API interface.
 
-```mermaid
-graph TD
-    UserClient[Web Browser/Mobile App] -->|HTTP/HTTPS (REST)| BackendAPI
-    UserClient -->|WebSocket (Socket.IO)| BackendWebSocket
-    UserClient -- Auth Tokens --> BackendAPI & BackendWebSocket
-
-    subgraph Backend (Node.js/Express/TypeScript)
-        BackendAPI[REST API Server] -->|CRUD Operations| Database(PostgreSQL)
-        BackendAPI -->|Cache Operations| Cache(Redis)
-        BackendAPI -- Auth Validation --> AuthLayer(Authentication Layer)
-        BackendAPI -- Rate Limiting --> RateLimiter(Rate Limiting Middleware)
-        BackendAPI -- Error Handling --> ErrorHandler(Error Handling Middleware)
-        BackendAPI -- Logging --> Logger(Winston Logger)
-
-        BackendWebSocket[Socket.IO Server] -->|Real-time Events| Database
-        BackendWebSocket -->|Cache Operations| Cache
-        BackendWebSocket -- Auth Validation --> AuthLayer
-        BackendWebSocket -- Logging --> Logger
-        BackendWebSocket --> OtherBackendServices(Other Backend Services/Pub-Sub)
-    end
-
-    Database -- ORM (Prisma) --> BackendAPI & BackendWebSocket
-    Cache -- Session/Data Store --> BackendAPI & BackendWebSocket
-
-    subgraph Infrastructure
-        PostgreSQL[Persistent Data Storage]
-        Redis[In-Memory Cache & Pub/Sub]
-        Docker[Containerization]
-        DockerCompose[Local Orchestration]
-        GitHubActions[CI/CD Pipeline]
-    end
-
-    BackendAPI --- PostgreSQL
-    BackendWebSocket --- PostgreSQL
-    BackendAPI --- Redis
-    BackendWebSocket --- Redis
-
-    AuthLayer -- JWT Validation --> BackendAPI & BackendWebSocket
-    RateLimiter -- Limits requests --> BackendAPI
-    ErrorHandler -- Catches exceptions --> BackendAPI
-    Logger -- Records events --> BackendAPI & BackendWebSocket
-
-    GitHubActions -- Build, Test, Deploy --> Docker
-    Docker --> CloudProvider[Cloud Hosting (e.g., AWS, GCP, Azure)]
+```
++-------------------+      +-----------------+
+|     Clients       |----->|   Load Balancer | (Optional, for scaling)
+| (Web UI, Mobile,  |<-----| / Reverse Proxy |
+|     CLI, etc.)    |      +--------+--------+
++-------------------+               |
+                                    v
++-----------------------------------+-----------------------------------+
+|               API Gateway / Backend Service (C++ Crow)                |
+|                                                                       |
+|  +---------------------+                                              |
+|  | Request Flow        |                                              |
+|  |                     |                                              |
+|  | 1. HTTP Request     |                                              |
+|  | 2. Rate Limiting    |                                              |
+|  | 3. Authentication   |                                              |
+|  | 4. Authorization    |                                              |
+|  | 5. Endpoint Routing |                                              |
+|  | 6. Input Validation |                                              |
+|  | 7. Business Logic   |                                              |
+|  | 8. Database Access  |<----------------+----------------+           |
+|  | 9. Response         |                 |                |           |
+|  |                     |        +--------+-------+  +-----+------+   |
+|  | 10. Error Handling  |        |  Caching Service |  |  Logging   |   |
+|  +---------------------+        +------------------+  +------------+   |
+|                                         ^                       ^        |
+|                                         |                       |        |
+|  +--------------------------------------+-----------------------+----+  |
+|  |                         Internal Services / Layers                 |  |
+|  |                                                                    |  |
+|  |  +------------+  +--------------+  +-----------+  +-------------+ |  |
+|  |  | Controllers|->|   Services   |->|  Models   |->|  Database   | |  |
+|  |  | (API Endpoints)|  (Business Logic)|  (Data Access)| (SQLite3)   | |  |
+|  |  +------------+  +--------------+  +-----------+  +-------------+ |  |
+|  |          ^                                                        |  |
+|  |          |                                                        |  |
+|  |  +-------+---------+                                              |  |
+|  |  |   Middleware    | (Auth, Rate Limit, Error Handler)            |  |
+|  |  +-----------------+                                              |  |
+|  +--------------------------------------------------------------------+  |
++---------------------------------------------------------------------------+
 ```
 
-## 3. Component Breakdown
+## 2. Core Components
 
-### 3.1. Frontend (Client Application)
+### 2.1. C++ Backend (Crow Framework)
 
-*   **Technology:** React.js, TypeScript, Styled Components.
-*   **Purpose:** Provides the user interface for interacting with the chat application.
-*   **Key Responsibilities:**
-    *   User authentication (login, registration).
-    *   Displaying chat rooms and messages.
-    *   Sending messages in real-time.
-    *   Managing local state (e.g., currently active chat room, typing status).
-    *   Handling API calls for non-real-time operations (e.g., fetching chat history, creating rooms).
-    *   Establishing and managing WebSocket connections for real-time updates.
+The heart of the system, implementing all business logic and API endpoints.
 
-### 3.2. Backend (API & WebSocket Server)
+*   **`main.cpp`:** The application entry point. Initializes the Crow app, loads configuration, sets up logging, registers middleware, and defines routes.
+*   **`config/`:** Manages environment-based configuration using `Config.hpp/.cpp`. It reads `.env` variables to configure the application's runtime behavior.
+*   **`logger/`:** Provides a centralized logging utility using `spdlog`, allowing structured and configurable logging to console and file.
+*   **`middleware/`:** A crucial layer for security and cross-cutting concerns.
+    *   **`ErrorHandlerMiddleware`:** Catches exceptions from controllers and services, converting them into standardized JSON error responses. Prevents sensitive information leakage.
+    *   **`RateLimitMiddleware`:** Protects endpoints from abuse by limiting the number of requests per IP address within a given time window.
+    *   **`AuthMiddleware`:** Validates JWTs, extracts user information (ID, role), and attaches it to the request context. Also performs basic role-based access checks.
+*   **`controllers/`:** Defines the API endpoints (`/auth`, `/api/v1/users`, `/api/v1/tasks`). Each controller handles parsing request data, delegating to services for business logic, and formatting responses.
+*   **`services/`:** Contains the core business logic.
+    *   **`AuthService`:** Handles user registration, login, password validation, and interaction with `JwtManager`.
+    *   **`UserService`:** Manages CRUD operations for users, including password updates.
+    *   **`TaskService`:** Manages CRUD operations for tasks, including ownership and status updates.
+    *   **`CacheService`:** An in-memory cache for frequently accessed data with TTL.
+*   **`models/`:** Represents data structures (User, Task) and provides direct interaction with the database. These are essentially repositories or DAOs (Data Access Objects).
+*   **`auth/JwtManager.hpp/.cpp`:** Encapsulates JWT creation, parsing, and validation logic, including token signing and verification using HMAC-SHA256.
+*   **`utils/CryptoUtils.hpp/.cpp`:** Provides cryptographic utilities, primarily for password hashing (SHA256 with salt) and random salt generation.
 
-*   **Technology:** Node.js, Express.js, Socket.IO, TypeScript.
-*   **Purpose:** The central server that handles all application logic, API requests, and real-time communication.
-*   **Modules:**
-    *   **Auth Module:** Handles user registration, login, and JWT generation/validation.
-    *   **Users Module:** Manages user profiles (e.g., fetching user details).
-    *   **Chats Module:** Manages chat rooms (creation, joining, fetching details) and message persistence.
-    *   **WebSocket Handler:** Manages Socket.IO events for real-time message exchange, typing indicators, and user presence.
-*   **Key Responsibilities:**
-    *   **RESTful API:** For CRUD operations related to users and chat rooms.
-    *   **Authentication & Authorization:** Validates JWTs, protects routes.
-    *   **Real-time Messaging:** Broadcasts messages to relevant chat room participants via WebSockets.
-    *   **Data Persistence:** Interacts with the database via Prisma ORM.
-    *   **Caching:** Uses Redis for session tokens, and potentially other frequently accessed data.
-    *   **Error Handling:** Catches and standardizes error responses.
-    *   **Logging:** Records application events and errors.
-    *   **Rate Limiting:** Protects API endpoints from abuse.
+### 2.2. Database Layer (SQLite3)
 
-### 3.3. Database (PostgreSQL)
+*   **`database/Database.hpp/.cpp`:** A wrapper around the SQLite3 C API, providing a simplified interface for executing SQL queries and managing connections. Uses parameterized queries to prevent SQL injection.
+*   **`db/schema.sql`:** Defines the table structures (`users`, `tasks`) and indexes.
+*   **`db/seed.sql`:** Contains initial data to populate the database (e.g., default admin user).
+*   **`db/migrations.sh`:** A shell script to apply `schema.sql` and `seed.sql`, ensuring the database is initialized correctly on startup or deployment.
 
-*   **Technology:** PostgreSQL
-*   **Purpose:** Stores all persistent application data.
-*   **Schema (Prisma):**
-    *   `User`: Stores user credentials (hashed password), username, email.
-    *   `ChatRoom`: Stores chat room metadata (name, description).
-    *   `Message`: Stores individual chat messages (content, sender, room, timestamp).
-    *   `ChatRoomParticipant`: A junction table for the many-to-many relationship between `User` and `ChatRoom`, tracking which users are in which rooms.
-*   **ORM:** Prisma is used for type-safe database interactions, schema migrations, and seeding.
+## 3. Data Flow Example: User Login
 
-### 3.4. Cache (Redis)
+1.  **Client Request:** A client sends a `POST /auth/login` request with `username` and `password`.
+2.  **Crow App:** The Crow framework receives the request.
+3.  **Rate Limiting Middleware:** `RateLimitMiddleware` checks the client's IP against rate limits. If exceeded, returns `429 Too Many Requests`.
+4.  **Endpoint Routing:** The request is routed to `AuthController::login`.
+5.  **Input Validation:** `AuthController` validates the JSON payload (presence of username/password).
+6.  **Auth Service:** `AuthController` calls `AuthService::loginUser`.
+7.  **User Model:** `AuthService` queries `User::findByUsername` to retrieve the user's stored hash and salt.
+8.  **Crypto Utils:** `AuthService` uses `CryptoUtils::verifyPassword` to compare the provided password with the stored hash.
+9.  **JWT Manager:** If credentials are valid, `AuthService` calls `JwtManager::createToken` to generate a new JWT with user ID and role.
+10. **Response:** `AuthController` sends back a `200 OK` response containing the JWT and user details.
 
-*   **Technology:** Redis
-*   **Purpose:** An in-memory data store for high-speed data access.
-*   **Key Responsibilities:**
-    *   **JWT Session Management:** Stores and validates active JWT tokens (e.g., for logout, preventing replay attacks).
-    *   **User Caching:** Caches frequently requested user profiles to reduce database load.
-    *   **(Future/Scalability) WebSocket Pub/Sub:** In a horizontally scaled backend, Redis can act as a Pub/Sub backbone to enable all Socket.IO instances to communicate and broadcast messages across instances.
+## 4. Data Flow Example: Accessing a Protected Endpoint (`GET /api/v1/tasks`)
 
-## 4. Design Principles & Considerations
+1.  **Client Request:** A client sends a `GET /api/v1/tasks` request with `Authorization: Bearer <JWT>`.
+2.  **Crow App:** The Crow framework receives the request.
+3.  **Rate Limiting Middleware:** `RateLimitMiddleware` checks the client's IP.
+4.  **Auth Middleware:** `AuthMiddleware` intercepts the request:
+    *   Extracts the JWT from the `Authorization` header.
+    *   Calls `JwtManager::verifyToken` to validate the token's signature, expiry, and integrity.
+    *   If valid, it extracts `user_id` and `role` from the token and attaches them to the request context.
+    *   If invalid/missing, it returns `401 Unauthorized`.
+5.  **Authorization Check (Middleware/Controller):** The `AuthMiddleware` (or the `TaskController` itself for finer-grained checks) then checks if the user's role permits access to this endpoint. For `GET /api/v1/tasks?all=true`, it specifically checks for `admin` role.
+6.  **Endpoint Routing:** The request is routed to `TaskController::getTasks`.
+7.  **Task Service:** `TaskController` calls `TaskService::getTasks` (passing the authenticated `user_id` and `role`).
+8.  **Task Model:** `TaskService` queries the `tasks` table using `Task::findByUserId` or `Task::findAll` based on authorization.
+9.  **Response:** `TaskController` returns `200 OK` with the list of tasks.
+10. **Error Handling Middleware:** If any error occurs during this flow (e.g., database error, invalid task ID), the `ErrorHandlerMiddleware` catches it and returns a structured error response.
 
-*   **Modularity:** The backend is divided into logical modules (auth, users, chats) with clear separation of concerns (routes, controllers, services). This improves maintainability and testability.
-*   **Scalability:**
-    *   **Stateless Backend (mostly):** JWT-based authentication keeps the API stateless, making horizontal scaling of backend instances easier.
-    *   **Redis for Sessions/Caching:** Centralizing session management and caching in Redis allows multiple backend instances to share this state.
-    *   **Database Indexing:** Optimized database queries (e.g., `@@index([chatRoomId, createdAt])` for messages) ensure performance under load.
-    *   **WebSocket Scalability:** While a single Socket.IO server is used for simplicity, it's designed to be extendable with Redis Adapter for multi-node deployments.
-*   **Security:**
-    *   **JWT:** Secure authentication.
-    *   **Password Hashing:** `bcrypt.js` for storing passwords securely.
-    *   **Helmet:** Sets various HTTP headers for enhanced security.
-    *   **CORS:** Properly configured to allow requests from the frontend origin.
-    *   **Rate Limiting:** Protects against brute-force attacks and API abuse.
-    *   **Input Validation:** `Zod` is used for robust API request validation.
-*   **Maintainability:**
-    *   **TypeScript:** Provides static type checking, reducing runtime errors and improving code readability.
-    *   **Prisma ORM:** Offers a type-safe and intuitive way to interact with the database.
-    *   **Comprehensive Documentation:** README, API docs, and architecture docs.
-    *   **Consistent Code Style:** ESLint and Prettier for code quality.
-*   **Observability:**
-    *   **Logging:** Winston provides flexible and structured logging.
-    *   **Error Handling:** Centralized error handling for consistent error responses.
-*   **Real-time Performance:** Socket.IO is chosen for its efficiency and widespread adoption in real-time web applications.
+## 5. Security Considerations in Architecture
 
-## 5. Data Flow (Example: Sending a Message)
+*   **Layered Security:** Security measures are applied at multiple layers:
+    *   **Network (Conceptual):** External reverse proxy/load balancer for HTTPS termination, WAF.
+    *   **API Gateway/Framework:** Rate limiting, authentication, authorization.
+    *   **Business Logic:** Input validation, access control checks.
+    *   **Data Layer:** Parameterized queries, secure password storage.
+*   **Principle of Least Privilege:** Users are granted only the necessary permissions (e.g., `user` vs. `admin` roles). Database connections use minimal privileges where possible (conceptual for SQLite, more relevant for external DBs).
+*   **Secure Defaults:** Configuration uses environment variables, avoiding hardcoded secrets. Log levels are configurable.
+*   **Failure Modes:** Centralized error handling prevents information leakage on errors.
+*   **Modularity:** Separating concerns (AuthService, JwtManager, CryptoUtils) makes security components easier to audit and maintain.
 
-1.  **Frontend:** User types a message and clicks 'Send'.
-2.  **Frontend:** `MessageInput` component calls `onSendMessage` prop.
-3.  **Frontend:** `ChatRoom` component invokes `socket.emit('chatMessage', payload)`.
-4.  **Backend (WebSocket):** The `socket.handler.ts` receives the `chatMessage` event.
-5.  **Backend (Middleware):** The socket connection is authenticated via JWT middleware (`io.use`).
-6.  **Backend (Validation):** The message content is validated using `Zod`.
-7.  **Backend (Service):** `chatService.sendMessage` is called to persist the message in PostgreSQL. This also updates the `updatedAt` field of the `ChatRoom`.
-8.  **Backend (WebSocket):** After successful persistence, the Socket.IO server `io.to(chatRoomId).emit('message', newMessage)` broadcasts the message to all connected clients in that specific `chatRoomId`.
-9.  **Frontend:** `ChatRoom` component's `socket.on('message')` listener receives the new message.
-10. **Frontend:** The new message is added to the component's state, causing the message list to re-render and scroll to the bottom.
+## 6. Deployment Architecture
 
-## 6. Scalability Considerations for Production
+The application is designed for containerized deployment using Docker.
 
-*   **Horizontal Scaling of Backend:** Use a load balancer to distribute traffic across multiple Node.js backend instances. For Socket.IO, a Redis Adapter would be essential to allow all instances to broadcast messages to all connected clients, regardless of which instance they are connected to.
-*   **Database Scaling:** Implement read replicas for PostgreSQL, sharding, or consider a managed database service.
-*   **Redis Cluster:** For high availability and performance, deploy Redis in a cluster.
-*   **CDN for Frontend:** Serve static frontend assets via a Content Delivery Network for faster global access.
-*   **Monitoring & Alerting:** Integrate with monitoring tools (e.g., Prometheus, Grafana, Datadog) to track application health, performance, and errors.
-*   **Logging Aggregation:** Send logs to a centralized logging system (e.g., ELK Stack, Splunk, Loki) for easier analysis.
-*   **Managed Services:** Utilize cloud provider managed services for database (RDS), cache (Elasticache), and Kubernetes (EKS, GKE, AKS) for orchestration.
+*   **Docker Container:** The C++ application runs inside a lightweight Docker container.
+*   **Docker Compose:** Used for local development and managing the application container, including persistent volumes for database and logs, and environment variable injection.
+*   **Reverse Proxy (Production):** In production, it's recommended to place a reverse proxy (e.g., Nginx, Envoy) in front of the C++ application. This handles:
+    *   SSL/TLS termination (HTTPS).
+    *   Load balancing across multiple instances of the C++ app.
+    *   Advanced rate limiting and WAF capabilities.
+    *   Request logging.
+*   **External Database (Scaling):** While SQLite is used for simplicity, for production scale, an external database like PostgreSQL or MySQL would be used, managed separately from the application containers.
+*   **CI/CD:** Automated build, test, and deployment using tools like GitHub Actions ensures consistent and reliable releases.
+
+This architectural overview provides a solid foundation for understanding the system's design and how its components work together to deliver a secure and robust Task Management API.
 ```

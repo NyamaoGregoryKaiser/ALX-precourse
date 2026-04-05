@@ -1,109 +1,117 @@
 ```cmake
 cmake_minimum_required(VERSION 3.10)
-project(PerformanceMonitoringSystem CXX)
+project(TaskManagementSystem CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Required for shared libraries on some systems
 
-# Enable sanitizers for debugging/quality (optional)
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -fno-omit-frame-pointer")
-# set(CMAKE_LINK_FLAGS "${CMAKE_LINK_FLAGS} -fsanitize=address,undefined")
+# Add Crow framework (Assuming it's available or downloaded, typically it's header-only)
+# For simplicity, we'll assume Crow is in a 'lib/crow' directory or globally installed.
+# If using vcpkg or similar, this would be:
+# find_package(crow CONFIG REQUIRED)
+# target_link_libraries(${PROJECT_NAME} PRIVATE crow::crow)
+# For manual install, you might just need to include the headers:
+# If you download crow and put it in `lib/crow`
+# include_directories(lib/crow)
 
-# Define build type if not set (e.g., Release for optimal performance)
-if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
+# For this example, we'll assume Crow headers are available via system path or manually linked.
+# A common way to get Crow is to clone its repo and include its headers.
+# For simplicity in this comprehensive example, we'll assume standard installation or direct inclusion.
+# If you place Crow's header files directly into a 'include' directory:
+# include_directories(include)
 
-# Dependencies
-# Crow (header-only, clone or add as submodule)
-# Find Crow library (assuming it's in a 'lib' directory or accessible via path)
-# If Crow is cloned into a `libs/crow` directory:
-add_subdirectory(libs/crow) # Use the subdirectory to include Crow directly
-# If you prefer to download it as header-only and put it in includes:
-# find_path(CROW_INCLUDE_DIR crow.h PATHS libs/crow/include NO_DEFAULT_PATH)
-# if (NOT CROW_INCLUDE_DIR)
-#     message(FATAL_ERROR "Crow not found. Please place it in libs/crow or specify its path.")
-# endif()
+# Find SQLite3
+find_package(SQLite3 REQUIRED)
 
-# nlohmann/json (header-only)
-# Assuming nlohmann/json is in libs/nlohmann_json/include
-find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp PATHS libs/nlohmann_json/include NO_DEFAULT_PATH)
-if (NOT NLOHMANN_JSON_INCLUDE_DIR)
-    message(FATAL_ERROR "nlohmann/json not found. Please place it in libs/nlohmann_json/include or specify its path.")
-endif()
+# Find spdlog
+# For spdlog, if installed via system package manager (e.g., apt, brew)
+find_package(spdlog CONFIG REQUIRED)
+# If using vcpkg:
+# find_package(spdlog CONFIG REQUIRED)
 
-# spdlog
-find_package(spdlog CONFIG REQUIRED) # Assumes spdlog is installed or found by CMake
-
-# pqxx
-find_package(pqxx CONFIG REQUIRED) # Assumes libpqxx is installed or found by CMake
-
-# jwt-cpp
-# If jwt-cpp is installed via system package manager:
-find_package(jwt-cpp CONFIG REQUIRED)
-# If jwt-cpp is cloned as a submodule into libs/jwt-cpp:
-# add_subdirectory(libs/jwt-cpp)
-# Or manually include headers and link to libcrypto/libssl:
-# find_path(JWT_CPP_INCLUDE_DIR jwt-cpp/jwt.h PATHS libs/jwt-cpp/include NO_DEFAULT_PATH)
-# if (NOT JWT_CPP_INCLUDE_DIR)
-#     message(FATAL_ERROR "jwt-cpp not found.")
-# endif()
-# find_library(OPENSSL_SSL_LIBRARY NAMES ssl)
-# find_library(OPENSSL_CRYPTO_LIBRARY NAMES crypto)
-# if (NOT OPENSSL_SSL_LIBRARY OR NOT OPENSSL_CRYPTO_LIBRARY)
-#     message(FATAL_ERROR "OpenSSL libraries not found.")
-# endif()
-
-# cpp-bcrypt (or another bcrypt library)
-# Assuming cpp-bcrypt is cloned into libs/cpp-bcrypt
-add_subdirectory(libs/cpp-bcrypt)
-
-# --- Define Source Files ---
-file(GLOB_RECURSE APP_SOURCES "src/*.cpp")
-file(GLOB_RECURSE APP_HEADERS "src/*.h")
-
-# Create the executable
-add_executable(performance_monitor ${APP_SOURCES} ${APP_HEADERS})
-
-# Link libraries
-target_link_libraries(performance_monitor
-    PRIVATE
-    Crow
-    spdlog::spdlog
-    pqxx::pqxx
-    jwt-cpp::jwt-cpp # Or manual linkage: ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY}
-    bcrypt
+# Source files
+set(APP_SRCS
+    src/main.cpp
+    src/auth/AuthService.cpp
+    src/auth/JwtManager.cpp
+    src/config/Config.cpp
+    src/controllers/AuthController.cpp
+    src/controllers/TaskController.cpp
+    src/controllers/UserController.cpp
+    src/database/Database.cpp
+    src/logger/Logger.cpp
+    src/middleware/AuthMiddleware.cpp
+    src/middleware/ErrorHandlerMiddleware.cpp
+    src/middleware/RateLimitMiddleware.cpp
+    src/models/Task.cpp
+    src/models/User.cpp
+    src/services/CacheService.cpp
+    src/services/TaskService.cpp
+    src/services/UserService.cpp
+    src/utils/CryptoUtils.cpp
 )
 
 # Include directories
-target_include_directories(performance_monitor
-    PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${NLOHMANN_JSON_INCLUDE_DIR}
-    ${CROW_INCLUDE_DIR} # If not using add_subdirectory for Crow
+include_directories(
+    src/
+    src/auth
+    src/config
+    src/controllers
+    src/database
+    src/logger
+    src/middleware
+    src/models
+    src/services
+    src/utils
 )
 
-# --- Testing ---
+# Add executable
+add_executable(${PROJECT_NAME} ${APP_SRCS})
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    SQLite3::SQLite3
+    spdlog::spdlog
+    # Crow might not need explicit linking if header-only and path is included
+    # If Crow is compiled as a library, uncomment and link it.
+    # For many Crow setups, simply having the headers in an included path is enough.
+)
+
+# Set common compiler flags for security and warnings
+if (CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror # Treat warnings as errors
+        -Wshadow # Warn about shadowed variables
+        -Wformat=2 # More format string checks
+        -fstack-protector-strong # Enable stack smashing protection
+        -fPIC # Position-independent code
+        # -D_FORTIFY_SOURCE=2 # Runtime checks for buffer overflows
+        # -O2 # Optimization level
+        -D_GLIBCXX_DEBUG # Enable libstdc++ debug mode for extra checks (dev only)
+    )
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        /W4 # Enable level 4 warnings
+        /WX # Treat warnings as errors
+        /GS # Buffer security check
+        /sdl # Enable SDL (Security Development Lifecycle) checks
+        /INCREMENTAL:NO # Disable incremental linking for more robust linking
+        /OPT:REF # Remove unreferenced functions/data
+        /OPT:ICF # Fold identical COMDATs
+        /Zi # Debug information (PDB)
+        /O2 # Optimization level
+    )
+endif()
+
+# --- Testing Setup ---
 enable_testing()
-add_subdirectory(tests)
+add_subdirectory(tests/unit)
 
-# Install rules (optional, for system-wide installation)
-install(TARGETS performance_monitor DESTINATION bin)
-install(FILES ${APP_HEADERS} DESTINATION include/performance_monitor)
-
+# Example to add a custom target for running API tests (shell script)
+add_custom_target(run_api_tests COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_SOURCE_DIR}/tests/api ./api_tests.sh
+                  COMMENT "Running API integration tests")
 ```
-
-**Dependencies (Crow, nlohmann/json, spdlog, pqxx, jwt-cpp, cpp-bcrypt)**:
-The `CMakeLists.txt` assumes these are either installed system-wide (like `spdlog`, `pqxx`, `jwt-cpp`) or placed in a `libs/` directory relative to the project root. For `Crow` and `nlohmann/json`, they are header-only and included directly. `cpp-bcrypt` is added as a subdirectory.
-
-**To set up `libs`**:
-```bash
-mkdir libs
-cd libs
-git clone https://github.com/nlohmann/json.git nlohmann_json # For nlohmann/json
-git clone https://github.com/CrowCpp/Crow.git crow # For Crow
-git clone https://github.com/mariuself/jwt-cpp.git jwt-cpp # For jwt-cpp if not using system installed
-git clone https://github.com/mariuself/cpp-bcrypt.git cpp-bcrypt # For cpp-bcrypt
-```
-**Note**: `jwt-cpp` requires OpenSSL dev libraries. Make sure `libssl-dev` and `libcrypto-dev` (or equivalent) are installed. `cpp-bcrypt` might require additional build tools or setup depending on your system, but it's often simpler.
