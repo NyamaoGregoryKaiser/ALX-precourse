@@ -1,181 +1,143 @@
-# E-commerce Solutions System: Architecture Document
+```markdown
+# PerformancePulse - Architecture Documentation
 
-## 1. Introduction
+This document outlines the high-level architecture, design principles, and technology stack used in the PerformancePulse system.
 
-This document outlines the architectural design of the ALX E-commerce Solutions System. The goal is to provide a clear understanding of the system's structure, components, data flow, and key design decisions, emphasizing scalability, maintainability, and reliability.
+## 1. System Overview
 
-## 2. High-Level Overview
+PerformancePulse is a distributed performance monitoring system designed to actively check external web services/URLs, collect performance metrics, store them, and provide a user interface for visualization and alert management.
 
-The system employs a **monorepo** structure for managing both frontend and backend codebases within a single repository. Architecturally, it's a **modularized monolith** for the backend, providing a robust API layer, and a **Single Page Application (SPA)** built with Next.js for the frontend.
+## 2. High-Level Architecture Diagram
 
-**Key Components:**
-*   **Frontend (Next.js/React):** User interface for customers and administrators.
-*   **Backend (Node.js/Express):** RESTful API providing business logic and data access.
-*   **Database (PostgreSQL):** Primary data store for persistent data.
-*   **Cache (Redis - conceptual):** For improving API response times and reducing database load.
-*   **Containerization (Docker):** For consistent development, testing, and deployment environments.
+```mermaid
+graph TD
+    A[Client - Browser/Frontend App] -- HTTP/HTTPS --> B[Load Balancer / NGINX Proxy]
+    B --> C[Backend API (Node.js/Express)]
+    C -- Reads/Writes --> D[PostgreSQL Database]
+    C -- Caches/Stores Sessions --> E[Redis Cache]
+    C -- Publishes Metrics --> F[Prometheus Exporter (Prom-client)]
+    C -- Schedules Jobs --> G[Node-cron Scheduler]
+    G -- Triggers Checks --> H[Monitoring Worker]
+    H -- HTTP Requests --> I[External Monitored Service]
 
-## 3. Detailed Component Architecture
+    F -- Scrapes Metrics --> J[Prometheus Server]
+    J -- Queries Metrics --> K[Grafana Dashboard]
 
-### 3.1. Frontend (Next.js Application)
+    subgraph Core System
+        C
+        D
+        E
+        F
+        G
+    end
 
-*   **Framework:** Next.js (React)
-*   **Styling:** Tailwind CSS
-*   **State Management:** React Context API for global states like authentication and shopping cart.
-*   **API Client:** `axios` for making HTTP requests to the backend API.
-*   **Structure:**
-    *   `src/app/`: Next.js App Router for routing and layout.
-    *   `src/components/`: Reusable UI components (e.g., `Navbar`, `ProductList`, `ProductDetail`).
-    *   `src/context/`: React Context providers (e.g., `AuthContext`, `CartContext`).
-    *   `src/lib/api.ts`: Centralized API client with interceptors for authentication and error handling.
-    *   `src/types/`: TypeScript type definitions matching backend DTOs.
-
-**Data Flow (Frontend):**
-1.  User interacts with the UI (e.g., clicks "Add to Cart", "Login").
-2.  UI component calls a function from a context (e.g., `useCart().addToCart`) or `api.ts` directly (e.g., `loginUser`).
-3.  Context updates local state or `api.ts` makes an HTTP request to the Backend API.
-4.  Backend processes the request and sends a response.
-5.  Frontend receives the response, updates its state, and re-renders the UI.
-
-### 3.2. Backend (Node.js/Express.js API)
-
-The backend is built with a layered architecture, promoting separation of concerns and testability.
-
-*   **Language:** TypeScript
-*   **Framework:** Express.js
-*   **ORM:** Prisma
-*   **Database:** PostgreSQL
-*   **Authentication:** JWT
-*   **Logging:** Winston
-
-**Layers:**
-
-1.  **`server.ts`:** Entry point, initializes the Express app, connects to DB, and starts the server.
-2.  **`app.ts`:** Express application setup, applies global middleware (security, logging, rate limiting, error handling) and registers routes.
-3.  **`routes/`:** Defines API endpoints and maps them to controller methods.
-    *   Example: `auth.routes.ts`, `product.routes.ts`.
-4.  **`middleware/`:** Functions that process requests before they reach the route handler or after (e.g., `auth.middleware.ts` for JWT verification and role-based access, `error.middleware.ts` for global error handling, `validation.middleware.ts` for Joi schema validation, `rateLimit.middleware.ts`, `logger.middleware.ts`).
-5.  **`controllers/`:** Handle incoming HTTP requests. They parse request data, validate it (delegating to `validation.middleware`), call appropriate methods in `services`, and send HTTP responses. They should be thin.
-    *   Example: `auth.controller.ts`, `product.controller.ts`.
-6.  **`services/`:** Contain the core business logic of the application. They orchestrate interactions between different repositories, apply domain rules, and ensure data integrity. Services are responsible for transactions, complex calculations, and coordinating multiple data operations.
-    *   Example: `auth.service.ts`, `product.service.ts`.
-7.  **`repositories/` (Conceptual, implemented via Prisma Client directly):** Abstracts database interactions. In this setup, `PrismaClient` directly serves as the repository layer, with service methods making direct calls to `prisma.modelName.findMany()`, `create()`, etc. This keeps the data access logic encapsulated within the service and reduces boilerplate for explicit repository classes.
-8.  **`utils/`:** Helper functions (e.g., `jwt.util.ts` for token generation/verification, `password.util.ts` for hashing, `errors.util.ts` for custom errors, `cache.util.ts` for caching).
-9.  **`config/`:** Environment variables, application constants, and Swagger configuration.
-10. **`validation/`:** Joi schemas for request body validation.
-11. **`types/`:** Shared TypeScript interfaces and types.
-
-**Data Flow (Backend):**
-1.  Request arrives at `server.ts` -> `app.ts`.
-2.  Global middleware (`helmet`, `cors`, `rateLimiter`, `requestLogger`) process the request.
-3.  Request is routed by `routes/index.ts` to a specific route handler (e.g., `auth.routes.ts`).
-4.  Route-specific middleware (e.g., `protect`, `authorize`, `validate`) execute.
-5.  The request reaches a `controller` method (e.g., `authController.login`).
-6.  Controller calls a `service` method (e.g., `authService.login`).
-7.  Service interacts with `PrismaClient` (acting as the repository) to perform database operations. It may also use `utils` like `cache.util` or `password.util`.
-8.  Service returns data to the Controller.
-9.  Controller sends an HTTP response to the client.
-10. If an error occurs at any stage, `error.middleware.ts` catches it and sends a standardized error response.
-
-### 3.3. Database (PostgreSQL with Prisma)
-
-*   **Database:** PostgreSQL (relational database, ACID compliant).
-*   **ORM:** Prisma.
-*   **`prisma/schema.prisma`:** Defines the database schema, including models (User, Product, Category, Order, OrderItem), enums (UserRole, OrderStatus), relations, and indexes.
-*   **Migrations:** Prisma Migrate manages schema changes, ensuring database evolution is tracked and reproducible.
-*   **Seeding:** `prisma/seed.ts` provides initial data for development and testing.
-
-**Query Optimization:**
-*   **Indexing:** Explicit indexes are defined in `schema.prisma` on frequently queried columns (e.g., `Product.categoryId`, `Product.name`, `Order.userId`, `Order.status`) to speed up read operations.
-*   **Prisma's Efficiency:** Prisma generates optimized SQL queries and includes features like batching and connection pooling.
-*   **Caching:** Integrating Redis (as demonstrated conceptually) can reduce database load for frequently accessed, less volatile data.
-
-### 3.4. Caching (Redis - Conceptual)
-
-*   **Purpose:** Improve performance by storing frequently accessed data in memory, reducing database round trips.
-*   **Integration:** The `cache.util.ts` demonstrates a simple in-memory cache, with comments showing how to integrate with Redis (`ioredis`).
-*   **Strategies:**
-    *   **Read-Through/Cache-Aside:** Data is fetched from the cache. If a cache miss, it's fetched from the database, stored in cache, and then returned.
-    *   **Write-Through/Write-Back:** Data updates are written directly to the database and then the cache is invalidated or updated.
-
-### 3.5. Authentication & Authorization (JWT)
-
-*   **Authentication:** Users log in with email/password, receive a JSON Web Token (JWT). This token is then sent with subsequent requests.
-*   **`protect` Middleware:** Verifies the JWT, extracts user ID, fetches user details, and attaches them to `req.user`.
-*   **Authorization:**
-    *   **`authorize` Middleware:** Checks `req.user.role` against a list of allowed roles for a specific route.
-    *   `UserRole` enum (`CUSTOMER`, `ADMIN`) for clear role definition.
-
-## 4. Deployment Architecture (Conceptual)
-
-For production deployment, a scalable and resilient setup is crucial.
-
-*   **Container Orchestration:** Kubernetes or Docker Swarm for managing containerized applications (backend, frontend, database, Redis).
-*   **Load Balancer:** Distributes incoming traffic across multiple instances of the frontend and backend services.
-*   **Reverse Proxy (Nginx):** Serves static assets, forwards API requests to the backend, and handles SSL termination.
-*   **Database Management:** Managed PostgreSQL service (AWS RDS, GCP Cloud SQL) for high availability, backups, and scaling.
-*   **Monitoring & Logging:** Centralized logging (ELK stack, Grafana Loki) and monitoring (Prometheus, Grafana) for operational insights.
-*   **CI/CD Pipeline:** Automates testing, building, and deployment (e.g., GitHub Actions).
-
-```
-+----------------+       +-------------------+       +--------------------+
-|                |       |                   |       |                    |
-|    Browser     | <---> |   Load Balancer   | <---> |    Nginx Reverse   |
-|     / User     |       |   (e.g., AWS ALB) |       |       Proxy        |
-|                |       |                   |       |                    |
-+----------------+       +-------------------+       +---------+----------+
-                                                               |
-                                                 +-------------+-------------+
-                                                 |                           |
-                                                 v                           v
-+------------------+                    +---------------------+   +---------------------+
-|                  |                    |                     |   |                     |
-|  Frontend Service| <------------------|    Backend Service  |---|    Redis Cache    |
-|  (Next.js)       | (API Calls)        |    (Node/Express)   |   |     (for session,   |
-|  (Multiple Instances)                  |    (Multiple Instances) |     product cache)  |
-+------------------+                    +---------------------+   +---------------------+
-                                                 |
-                                                 | (Database Queries)
-                                                 v
-                                        +---------------------+
-                                        |                     |
-                                        |    PostgreSQL DB    |
-                                        |  (Managed Service)  |
-                                        +---------------------+
-
-Centralized Logging & Monitoring (Prometheus, Grafana, ELK)
-                               ^
-                               |
-                               +-----------------------------+
-                               |                             |
-                       Backend Service             Frontend Service
-                       (Application Logs)          (Browser Logs/Metrics)
+    subgraph Observability Stack
+        J
+        K
+    end
 ```
 
-## 5. Security Considerations
+## 3. Component Breakdown
 
-*   **HTTPS:** All communication should be over SSL/TLS.
-*   **Input Validation:** Joi schemas are used on the backend.
-*   **Authentication:** JWT with secure secret and appropriate expiry. Password hashing with bcrypt.
-*   **Authorization:** Role-based access control.
-*   **CORS:** Explicitly configured to allow requests only from the frontend domain.
-*   **Helmet:** Express middleware for setting various HTTP headers to protect against common web vulnerabilities.
-*   **Rate Limiting:** Prevents brute-force attacks and API abuse.
-*   **Environment Variables:** Sensitive information stored in `.env` and not committed to source control.
-*   **Database Security:** Least privilege principle for database users, network isolation.
+### 3.1. Frontend Application
 
-## 6. Future Enhancements
+*   **Technology:** React (with TypeScript), React Router, ApexCharts for visualization.
+*   **Purpose:** Provides a user-friendly interface for:
+    *   User authentication (login, registration).
+    *   Project management (create, view, update, delete projects).
+    *   Monitor configuration (add, edit, delete URLs/services to monitor).
+    *   Real-time and historical metric visualization (response times, status codes, uptime).
+    *   Alert management (configure thresholds, view active alerts).
+*   **Communication:** Interacts with the Backend API exclusively via RESTful HTTP requests.
 
-*   Payment Gateway Integration (Stripe, PayPal).
-*   Full-text search with dedicated search engine (Elasticsearch, Algolia).
-*   Image upload/CDN integration (AWS S3, Cloudinary).
-*   Webhooks for external service integration.
-*   Microservices architecture for larger scale.
-*   GraphQL API.
-*   Real-time features (e.g., stock updates) with WebSockets.
-*   Internationalization (i18n).
-*   Email notifications for orders, password resets.
-*   More sophisticated monitoring and alerting.
+### 3.2. Backend API
 
-This architecture provides a solid foundation for building a scalable and maintainable e-commerce platform, adhering to modern software engineering principles.
+*   **Technology:** Node.js, Express.js (with TypeScript), TypeORM.
+*   **Purpose:** The central nervous system of PerformancePulse, handling all business logic and data persistence.
+*   **Key Responsibilities:**
+    *   **Authentication & Authorization:** JWT-based user authentication, role-based access control (admin/user).
+    *   **CRUD Operations:** Manages users, projects, monitors, metrics, and alerts.
+    *   **Monitor Scheduling:** Integrates a background job scheduler (`node-cron`) to periodically trigger monitoring tasks.
+    *   **Metric Storage:** Persists collected performance metrics in the PostgreSQL database.
+    *   **Caching:** Utilizes Redis for caching frequently accessed data (e.g., monitor lists, recent metrics) to reduce database load and improve response times.
+    *   **Rate Limiting:** Protects API endpoints against abuse.
+    *   **Logging:** Structured logging using Winston for traceability and debugging.
+    *   **Error Handling:** Centralized middleware for consistent error responses.
+    *   **Prometheus Metrics:** Exposes its own operational metrics (e.g., request count, response duration) to a Prometheus server.
+
+### 3.3. Database (PostgreSQL)
+
+*   **Technology:** PostgreSQL.
+*   **Purpose:** Relational database for persistent storage of all application data.
+*   **Key Entities:**
+    *   `User`: Stores user credentials and roles.
+    *   `Project`: Organizes monitors into logical groups.
+    *   `Monitor`: Defines a specific URL/service to be monitored, including configuration (interval, method).
+    *   `Metric`: Stores individual performance data points (response time, status, timestamp) for each monitor check.
+    *   `Alert`: Stores alert configurations (thresholds, conditions) and their current status.
+*   **ORM:** TypeORM is used for interacting with the database, providing a robust and type-safe abstraction layer.
+
+### 3.4. Cache (Redis)
+
+*   **Technology:** Redis.
+*   **Purpose:** In-memory data store used for:
+    *   **API Response Caching:** Caching responses from read-heavy API endpoints (e.g., fetching a monitor's historical metrics) to reduce database queries and improve API latency.
+    *   (Potential future use: Session storage, distributed locks, real-time data streams).
+
+### 3.5. Monitoring Worker (within Backend)
+
+*   **Mechanism:** Implemented as a background job within the Node.js backend using `node-cron`.
+*   **Purpose:** Responsible for executing the actual monitoring checks.
+*   **Process:**
+    1.  Scheduled by `node-cron` to run periodically.
+    2.  Fetches active monitors from the database.
+    3.  For each monitor, it makes an HTTP request to the target URL.
+    4.  Records the response time, HTTP status, and any errors.
+    5.  Persists the collected `Metric` data to the PostgreSQL database.
+    6.  Evaluates `Alert` conditions based on new metrics and triggers alerts if thresholds are breached.
+
+### 3.6. External Monitored Services
+
+*   These are the web applications, APIs, or URLs that PerformancePulse is configured to monitor. The system makes HTTP requests to these services to gather performance data.
+
+## 4. Observability Stack
+
+### 4.1. Prometheus
+
+*   **Technology:** Prometheus.
+*   **Purpose:** Time-series database and monitoring system.
+*   **Role:** Scrapes operational metrics exposed by the PerformancePulse Backend API (via `prom-client`) at regular intervals. This allows monitoring the health and performance of the monitoring system itself.
+
+### 4.2. Grafana
+
+*   **Technology:** Grafana.
+*   **Purpose:** Data visualization and dashboarding tool.
+*   **Role:** Connects to Prometheus as a data source and displays interactive dashboards for visualizing the operational metrics of the PerformancePulse backend. This helps in understanding the performance and resource utilization of PerformancePulse itself.
+
+## 5. Design Principles
+
+*   **Modularity:** Code is organized into distinct modules (services, controllers, repositories, middleware) to promote separation of concerns and maintainability.
+*   **Scalability:** Stateless backend services (except for the database and cache), allowing for easy horizontal scaling. Utilizes efficient asynchronous operations.
+*   **Security:** JWT-based authentication, role-based authorization, secure password hashing, rate limiting.
+*   **Reliability:** Robust error handling, comprehensive testing, and a resilient database.
+*   **Observability:** Integrated logging, custom application metrics exposed via Prometheus, and clear dashboards in Grafana.
+*   **Maintainability:** Consistent coding standards (ESLint, Prettier), TypeScript for type safety, and thorough documentation.
+*   **Performance:** Caching layer, optimized database queries (via TypeORM), efficient background jobs.
+
+## 6. Data Flow Example: Monitoring a URL
+
+1.  A user logs into the **Frontend App**.
+2.  The user navigates to a **Project** and creates a new **Monitor** (e.g., `https://example.com`, check every 60 seconds).
+3.  The **Frontend App** sends a `POST /api/monitors` request to the **Backend API**.
+4.  The **Backend API** validates the request, creates a `Monitor` entity in **PostgreSQL**, and returns a success response.
+5.  The **Node-cron Scheduler** in the **Backend API** is periodically triggered.
+6.  The **Monitoring Worker** fetches active monitors from **PostgreSQL**.
+7.  For each active monitor, the **Monitoring Worker** makes an HTTP request to `https://example.com`.
+8.  It measures the **response time** and records the **HTTP status code**.
+9.  A new `Metric` entity is created and saved to **PostgreSQL**.
+10. The **Monitoring Worker** checks for any **Alerts** associated with this monitor whose conditions are now met (e.g., response time > 500ms). If so, it updates the alert status.
+11. The user views the **Monitor Detail** page in the **Frontend App**.
+12. The **Frontend App** fetches historical metrics via `GET /api/monitors/:id/metrics` from the **Backend API**.
+13. The **Backend API** might serve this data from **Redis Cache** if recently accessed, or query **PostgreSQL** if not.
+14. The **Frontend App** displays the metrics using **ApexCharts**.
 ```

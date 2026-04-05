@@ -1,31 +1,41 @@
-# Stage 1: Build the Next.js application
-FROM node:20-alpine AS builder
+```dockerfile
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Copy package.json and yarn.lock (or package-lock.json)
 COPY package*.json ./
-COPY .env.local ./.env.local # Copy .env.local for build time env vars (NEXT_PUBLIC_...)
 
+# Install dependencies
 RUN npm install
 
+# Copy the rest of the application code
 COPY . .
+
+# Build the React app
+ARG REACT_APP_BACKEND_URL
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+ARG REACT_APP_ENVIRONMENT
+ENV REACT_APP_ENVIRONMENT=$REACT_APP_ENVIRONMENT
 
 RUN npm run build
 
-# Stage 2: Run the Next.js application
-FROM node:20-alpine AS runner
+# Stage 2: Serve the application with Nginx
+FROM nginx:alpine
 
-WORKDIR /app
+# Copy Nginx configuration
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
-# The Next.js app is pre-built, only production dependencies are needed
-COPY --from=builder /app/package*.json ./
-RUN npm install --only=production
+# Remove default Nginx HTML files
+RUN rm -rf /usr/share/nginx/html/*
 
-# Copy the Next.js build output from the builder stage
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.env.local ./.env.local # .env.local for runtime env vars
+# Copy the build output from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
 
-EXPOSE 3000
+# Expose port 80
+EXPOSE 80
 
-CMD ["npm", "start"]
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+```

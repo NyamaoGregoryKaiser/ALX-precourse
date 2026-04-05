@@ -1,70 +1,67 @@
-import { PrismaClient, User, UserRole } from '@prisma/client';
-import { hashPassword, comparePassword } from '../utils/password.util';
-import { generateToken } from '../utils/jwt.util';
-import { CustomError } from '../utils/errors.util';
-import { logger } from '../utils/logger.util';
+```typescript
+import { AppDataSource } from '../database/data-source';
+import { User, UserRole } from '../entities/User.entity';
+import { UserRepository } from '../repositories/User.repository';
+import { hashPassword, comparePasswords } from '../utils/password.utils';
+import { generateJwtToken } from '../auth/jwt.utils';
+import { ApiError } from '../utils/api-error';
+import { StatusCodes } from 'http-status-codes';
 
-const prisma = new PrismaClient();
+class AuthService {
+  private userRepository: UserRepository;
 
-export class AuthService {
-  async register(userData: Pick<User, 'name' | 'email' | 'password'>): Promise<{ user: User, token: string }> {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: userData.email },
-    });
-
-    if (existingUser) {
-      logger.warn('Registration failed: User with email already exists', { email: userData.email });
-      throw new CustomError('User with this email already exists', 409);
-    }
-
-    const hashedPassword = await hashPassword(userData.password);
-
-    const newUser = await prisma.user.create({
-      data: {
-        name: userData.name,
-        email: userData.email,
-        password: hashedPassword,
-        role: UserRole.CUSTOMER, // Default role for new registrations
-      },
-    });
-
-    const token = generateToken(newUser.id);
-    return { user: newUser, token };
+  constructor(userRepository: UserRepository) {
+    this.userRepository = userRepository;
   }
 
-  async login(email: string, password: string): Promise<{ user: User, token: string }> {
-    const user = await prisma.user.findUnique({
-      where: { email },
+  async registerUser(username: string, email: string, passwordPlain: string): Promise<User> {
+    const existingUserByEmail = await this.userRepository.findByEmail(email);
+    if (existingUserByEmail) {
+      throw new ApiError(StatusCodes.CONFLICT, 'User with this email already exists.');
+    }
+
+    const existingUserByUsername = await this.userRepository.findByUsername(username);
+    if (existingUserByUsername) {
+      throw new ApiError(StatusCodes.CONFLICT, 'User with this username already exists.');
+    }
+
+    const hashedPassword = await hashPassword(passwordPlain);
+
+    const newUser = this.userRepository.create({
+      username,
+      email,
+      password: hashedPassword,
+      role: UserRole.USER, // Default role
     });
+
+    await this.userRepository.save(newUser);
+    return newUser;
+  }
+
+  async loginUser(email: string, passwordPlain: string): Promise<{ user: User; token: string }> {
+    const user = await this.userRepository.createQueryBuilder('user')
+      .addSelect('user.password') // Select password explicitly
+      .where('user.email = :email', { email })
+      .getOne();
 
     if (!user) {
-      logger.warn('Login failed: User not found', { email });
-      throw new CustomError('Invalid credentials', 401);
+      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.');
     }
 
-    const isMatch = await comparePassword(password, user.password);
-
-    if (!isMatch) {
-      logger.warn('Login failed: Invalid password', { email });
-      throw new CustomError('Invalid credentials', 401);
+    const isPasswordValid = await comparePasswords(passwordPlain, user.password);
+    if (!isPasswordValid) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.');
     }
 
-    const token = generateToken(user.id);
+    const token = generateJwtToken(user.id, user.role);
+
+    // Remove password from user object before returning
+    delete user.password;
+
     return { user, token };
   }
-
-  async getProfile(userId: string): Promise<User | null> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    return user;
-  }
 }
+
+// Instantiate the service with its repository
+export const authService = new AuthService(new UserRepository(AppDataSource.getRepository(User)));
+```

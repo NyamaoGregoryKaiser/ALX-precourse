@@ -1,107 +1,118 @@
-```tsx
-import React, { useState } from 'react';
-import { TextField, Button, Box, Typography, Link, Alert } from '@mui/material';
-import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+```typescript
+import React from 'react';
+import LoadingSpinner from './LoadingSpinner';
 
 interface AuthFormProps {
-  type: 'login' | 'register';
+  isRegister?: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  username?: string;
+  setUsername?: (username: string) => void;
+  email: string;
+  setEmail: (email: string) => void;
+  password: string;
+  setPassword: (password: string) => void;
+  confirmPassword?: string;
+  setConfirmPassword?: (confirmPassword: string) => void;
+  error?: string | null;
+  loading: boolean;
 }
 
-const AuthForm: React.FC<AuthFormProps> = ({ type }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const { login, register, loading } = useAuth();
-  const navigate = useNavigate();
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    try {
-      if (type === 'login') {
-        await login({ email, password });
-      } else {
-        await register({ email, password });
-      }
-      // Redirection handled by AuthContext on success
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'An unexpected error occurred.';
-      setError(errorMessage);
-    }
-  };
-
+const AuthForm: React.FC<AuthFormProps> = ({
+  isRegister = false,
+  onSubmit,
+  username,
+  setUsername,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  confirmPassword,
+  setConfirmPassword,
+  error,
+  loading,
+}) => {
   return (
-    <Box
-      component="form"
-      onSubmit={handleSubmit}
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-        maxWidth: 400,
-        margin: 'auto',
-        p: 3,
-        border: '1px solid #ccc',
-        borderRadius: '8px',
-        mt: 5,
-        bgcolor: 'background.paper',
-      }}
-    >
-      <Typography variant="h5" component="h1" gutterBottom textAlign="center">
-        {type === 'login' ? 'Login to SQLInsight Pro' : 'Register for SQLInsight Pro'}
-      </Typography>
-      {error && <Alert severity="error">{error}</Alert>}
-      <TextField
-        label="Email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-        fullWidth
-        variant="outlined"
-      />
-      <TextField
-        label="Password"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-        fullWidth
-        variant="outlined"
-      />
-      <Button
-        type="submit"
-        variant="contained"
-        color="primary"
-        fullWidth
-        disabled={loading}
-        sx={{ py: 1.5 }}
-      >
-        {loading ? 'Loading...' : (type === 'login' ? 'Login' : 'Register')}
-      </Button>
-      <Typography variant="body2" textAlign="center" sx={{ mt: 2 }}>
-        {type === 'login' ? (
-          <>
-            Don't have an account?{' '}
-            <Link component="button" onClick={() => navigate('/register')}>
-              Register
-            </Link>
-          </>
-        ) : (
-          <>
-            Already have an account?{' '}
-            <Link component="button" onClick={() => navigate('/login')}>
-              Login
-            </Link>
-          </>
-        )}
-      </Typography>
-    </Box>
+    <form onSubmit={onSubmit} className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
+      <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">
+        {isRegister ? 'Register' : 'Login'}
+      </h2>
+      {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+      {isRegister && (
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
+            Username
+          </label>
+          <input
+            type="text"
+            id="username"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            placeholder="Your username"
+            value={username || ''}
+            onChange={(e) => setUsername && setUsername(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+      )}
+      <div className="mb-4">
+        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+          Email
+        </label>
+        <input
+          type="email"
+          id="email"
+          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          placeholder="Your email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={loading}
+        />
+      </div>
+      <div className="mb-6">
+        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
+          Password
+        </label>
+        <input
+          type="password"
+          id="password"
+          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          placeholder="********"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={loading}
+        />
+      </div>
+      {isRegister && (
+        <div className="mb-6">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
+            Confirm Password
+          </label>
+          <input
+            type="password"
+            id="confirmPassword"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            placeholder="********"
+            value={confirmPassword || ''}
+            onChange={(e) => setConfirmPassword && setConfirmPassword(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <button
+          type="submit"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full flex items-center justify-center"
+          disabled={loading}
+        >
+          {loading ? <LoadingSpinner /> : (isRegister ? 'Register' : 'Login')}
+        </button>
+      </div>
+    </form>
   );
 };
 
 export default AuthForm;
 ```
-
-#### `frontend/src/components/Navbar.tsx`

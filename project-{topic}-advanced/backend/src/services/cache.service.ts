@@ -1,131 +1,157 @@
 ```typescript
-import { createClient, RedisClientType } from 'redis';
-import config from '../config';
-import logger from './logger.service';
+import Redis from 'ioredis';
+import { env } from '../config';
+import logger from '../utils/logger';
 
 class CacheService {
-  private client: RedisClientType | null = null;
+  private redis: Redis;
   private isConnected: boolean = false;
+  private defaultTTL: number = env.CACHE_TTL_SECONDS; // Default TTL from config
 
   constructor() {
-    this.connect();
+    this.redis = new Redis({
+      host: env.REDIS_HOST,
+      port: env.REDIS_PORT,
+      lazyConnect: true, // Don't connect until a command is issued
+      maxRetriesPerRequest: 5, // Retry up to 5 times
+      retryStrategy: (times) => {
+        const delay = Math.min(times * 50, 2000); // Exponential backoff, max 2 seconds
+        logger.warn(`Redis: Retrying connection attempt ${times}. Delaying ${delay}ms...`);
+        return delay;
+      }
+    });
+
+    this.redis.on('connect', () => {
+      this.isConnected = true;
+      logger.info('Redis cache connected successfully!');
+    });
+
+    this.redis.on('error', (err) => {
+      this.isConnected = false;
+      logger.error('Redis cache connection error:', err);
+    });
+
+    this.redis.on('ready', () => {
+      logger.info('Redis client is ready to use.');
+    });
+
+    this.redis.on('close', () => {
+      this.isConnected = false;
+      logger.warn('Redis connection closed.');
+    });
   }
 
-  private async connect() {
+  /**
+   * Get a value from the cache.
+   * @param key The key to retrieve.
+   * @returns The cached value or null if not found or Redis is not connected.
+   */
+  async get<T>(key: string): Promise<T | null> {
+    if (!this.isConnected) {
+      logger.debug(`Redis not connected. Skipping cache get for key: ${key}`);
+      return null;
+    }
     try {
-      this.client = createClient({
-        url: `redis://${config.redis.host}:${config.redis.port}`,
-      });
-
-      this.client.on('error', (err) => logger.error('Redis Client Error', err));
-      this.client.on('connect', () => {
-        this.isConnected = true;
-        logger.info('Redis client connected.');
-      });
-      this.client.on('end', () => {
-        this.isConnected = false;
-        logger.warn('Redis client disconnected.');
-      });
-
-      await this.client.connect();
+      const data = await this.redis.get(key);
+      if (data) {
+        logger.debug(`Cache HIT for key: ${key}`);
+        return JSON.parse(data) as T;
+      }
+      logger.debug(`Cache MISS for key: ${key}`);
+      return null;
     } catch (error) {
-      logger.error('Could not connect to Redis', error);
-      this.isConnected = false;
+      logger.error(`Error getting from Redis for key ${key}:`, error);
+      return null;
     }
   }
 
   /**
-   * Sets a value in the cache.
-   * @param key The cache key.
-   * @param value The value to store. Can be an object, will be stringified.
-   * @param ttlSeconds Time to live in seconds (optional).
+   * Set a value in the cache.
+   * @param key The key to store.
+   * @param value The value to store.
+   * @param ttlSeconds Time-to-live in seconds. Defaults to `env.CACHE_TTL_SECONDS`.
    */
-  async set(key: string, value: any, ttlSeconds?: number): Promise<void> {
-    if (!this.isConnected || !this.client) {
-      logger.warn('Redis not connected. Skipping cache set operation.');
+  async set(key: string, value: any, ttlSeconds: number = this.defaultTTL): Promise<void> {
+    if (!this.isConnected) {
+      logger.debug(`Redis not connected. Skipping cache set for key: ${key}`);
       return;
     }
-    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
     try {
-      if (ttlSeconds) {
-        await this.client.setEx(key, ttlSeconds, stringValue);
-      } else {
-        await this.client.set(key, stringValue);
-      }
-      logger.debug(`Cache SET: ${key}`);
+      await this.redis.setex(key, ttlSeconds, JSON.stringify(value));
+      logger.debug(`Cache SET for key: ${key} with TTL: ${ttlSeconds}s`);
     } catch (error) {
-      logger.error(`Error setting cache key ${key}:`, error);
+      logger.error(`Error setting to Redis for key ${key}:`, error);
     }
   }
 
   /**
-   * Gets a value from the cache.
-   * @param key The cache key.
-   * @returns {Promise<any | null>} The cached value (parsed if JSON) or null if not found/error.
-   */
-  async get(key: string): Promise<any | null> {
-    if (!this.isConnected || !this.client) {
-      logger.warn('Redis not connected. Skipping cache get operation.');
-      return null;
-    }
-    try {
-      const value = await this.client.get(key);
-      if (value) {
-        logger.debug(`Cache GET: ${key}`);
-        try {
-          return JSON.parse(value); // Try parsing if it was an object
-        } catch {
-          return value; // Return as string if not JSON
-        }
-      }
-      return null;
-    } catch (error) {
-      logger.error(`Error getting cache key ${key}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Deletes a key from the cache.
-   * @param key The cache key to delete.
+   * Delete a key from the cache.
+   * @param key The key to delete.
    */
   async del(key: string): Promise<void> {
-    if (!this.isConnected || !this.client) {
-      logger.warn('Redis not connected. Skipping cache del operation.');
+    if (!this.isConnected) {
+      logger.debug(`Redis not connected. Skipping cache del for key: ${key}`);
       return;
     }
     try {
-      await this.client.del(key);
-      logger.debug(`Cache DEL: ${key}`);
+      await this.redis.del(key);
+      logger.debug(`Cache DEL for key: ${key}`);
     } catch (error) {
-      logger.error(`Error deleting cache key ${key}:`, error);
+      logger.error(`Error deleting from Redis for key ${key}:`, error);
     }
   }
 
   /**
-   * Checks if the cache is connected.
+   * Clear all keys in the current Redis database. Use with caution in production.
    */
-  getIsConnected(): boolean {
-    return this.isConnected;
+  async flushAll(): Promise<void> {
+    if (!this.isConnected) {
+      logger.debug('Redis not connected. Skipping cache flush.');
+      return;
+    }
+    try {
+      await this.redis.flushall();
+      logger.info('Redis cache flushed.');
+    } catch (error) {
+      logger.error('Error flushing Redis cache:', error);
+    }
   }
 
   /**
-   * Closes the Redis connection.
+   * Middleware to cache responses for GET requests.
+   * @param keyPrefix Prefix for the cache key, often related to the resource (e.g., 'users', 'products').
+   * @param ttlSeconds Optional custom TTL for this specific middleware usage.
    */
-  async close(): Promise<void> {
-    if (this.client && this.isConnected) {
-      try {
-        await this.client.quit();
-        logger.info('Redis client disconnected gracefully.');
-      } catch (error) {
-        logger.error('Error closing Redis client:', error);
+  cacheMiddleware = (keyPrefix: string, ttlSeconds: number = this.defaultTTL) => {
+    return async (req: any, res: any, next: any) => {
+      if (req.method !== 'GET') {
+        return next();
       }
-    }
-  }
+
+      const originalSend = res.send;
+      const cacheKey = `${keyPrefix}:${req.user?.id}:${req.originalUrl}`; // Include user ID for user-specific data
+
+      try {
+        const cachedResponse = await this.get(cacheKey);
+        if (cachedResponse) {
+          res.status(200).json(cachedResponse);
+          return;
+        }
+
+        res.send = (body: any) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            this.set(cacheKey, JSON.parse(body), ttlSeconds);
+          }
+          originalSend.call(res, body);
+        };
+        next();
+      } catch (error) {
+        logger.error(`Cache middleware error for key ${cacheKey}:`, error);
+        next(); // Proceed without caching if there's a cache error
+      }
+    };
+  };
 }
 
-const cacheService = new CacheService();
-export default cacheService;
+export const cacheService = new CacheService();
 ```
-
-#### `backend/src/services/logger.service.ts`

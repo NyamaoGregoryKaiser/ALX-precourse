@@ -1,574 +1,212 @@
 ```markdown
-# ALX Project Management API (C++ Edition)
+# PerformancePulse - Enterprise-Grade Performance Monitoring System
 
-A comprehensive, production-ready API for managing projects, tasks, and users. This project demonstrates a full-scale C++ backend application with modern software engineering practices, including database management, authentication, authorization, logging, caching, rate limiting, Dockerization, and CI/CD.
+PerformancePulse is a comprehensive, production-ready system for monitoring the performance and availability of web services and URLs. It features a robust backend built with Node.js/Express and TypeScript, a dynamic frontend with React, a PostgreSQL database, and integrated tools for caching, logging, authentication, and performance testing.
 
 ## Table of Contents
 
-- [Project Overview](#project-overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Technology Stack](#technology-stack)
-- [Setup & Installation](#setup--installation)
-    - [Prerequisites](#prerequisites)
-    - [Local Development Setup](#local-development-setup)
-    - [Docker Setup](#docker-setup)
-- [Running the Application](#running-the-application)
-- [Database Management](#database-management)
-- [API Documentation](#api-documentation)
-    - [Authentication](#authentication)
-    - [Users](#users)
-    - [Projects](#projects)
-    - [Tasks](#tasks)
-- [Testing](#testing)
-- [Deployment Guide](#deployment-guide)
-- [CI/CD Pipeline](#cicd-pipeline)
-- [Additional Features](#additional-features)
-- [License](#license)
-
----
-
-## Project Overview
-
-This API provides a robust backend for a Project Management system. It allows users to:
-- Register and authenticate (JWT-based).
-- Manage their profile.
-- Create, view, update, and delete projects.
-- Create, assign, update, and delete tasks within projects.
-- Admins have elevated privileges to manage all users and projects.
-
-## Architecture
-
-The application follows a layered architecture pattern (Controller-Service-Repository/DatabaseManager) to ensure separation of concerns, maintainability, and testability.
-
-```
-+------------------+
-|    Client Apps   |
-+--------+---------+
-         | HTTP/JSON
-+--------v---------+
-|     Crow App     |
-| (Web Framework)  |
-+------------------+
-|  RateLimitMW     |
-|  AuthMiddleware  |
-+------------------+
-|  Controllers     | <-------- HTTP Requests
-|  (Auth, User,    |          (Routing, Input Validation, AuthZ)
-|   Project, Task) |
-+--------+---------+
-         |
-+--------v---------+
-|     Services     | <-------- Business Logic, Data Orchestration
-|  (Auth, User,    |
-|   Project, Task) |
-+--------+---------+
-         |
-+--------v---------+
-|  Database Layer  | <-------- Data Access (CRUD)
-|  (SQLiteManager) |
-+--------+---------+
-         | SQLite
-+--------v---------+
-|   SQLite DB      |
-+------------------+
-
-[Utils/Shared]
-- Logger
-- JWTManager
-- CachingManager
-- PasswordUtils
-- JSONConverter
-- ErrorHandler
-- CustomExceptions
-- AppConfig
-```
-
-**Key Architectural Decisions:**
--   **C++ for Backend:** Chosen for performance, memory control, and to demonstrate proficiency in system-level programming.
--   **Crow Microframework:** Lightweight and efficient for building RESTful APIs in C++.
--   **SQLite:** Chosen for its simplicity and file-based nature, making setup easy for development and testing without requiring an external database server. For production, a more robust database like PostgreSQL or MySQL would be recommended.
--   **Dependency Injection (Manual):** Services and managers are explicitly passed to controllers and other services, promoting loose coupling and testability.
--   **Middleware Pattern:** Authentication and Rate Limiting are implemented as Crow middleware to apply cross-cutting concerns cleanly.
--   **Nlohmann/json:** A modern C++ library for JSON serialization/deserialization.
+1.  [Features](#features)
+2.  [Architecture](#architecture)
+3.  [Getting Started](#getting-started)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Setup with Docker Compose](#local-setup-with-docker-compose)
+    *   [Manual Local Setup (Backend)](#manual-local-setup-backend)
+    *   [Manual Local Setup (Frontend)](#manual-local-setup-frontend)
+4.  [API Endpoints](#api-endpoints)
+5.  [Running Tests](#running-tests)
+6.  [CI/CD](#ci-cd)
+7.  [Deployment](#deployment)
+8.  [Documentation](#documentation)
+9.  [Contributing](#contributing)
+10. [License](#license)
 
 ## Features
 
--   **User Management:**
-    -   Registration, Login (JWT-based authentication).
-    -   User profile retrieval, update, deletion (admin-only for others).
-    -   Role-based access control (User, Admin).
--   **Project Management:**
-    -   CRUD operations for projects.
-    -   Project ownership tracking.
--   **Task Management:**
-    -   CRUD operations for tasks.
-    -   Assign tasks to projects and users.
-    -   Task status tracking (TODO, IN_PROGRESS, DONE).
--   **Security:**
-    -   JWT-based Authentication.
-    -   Role-based Authorization.
-    -   Basic password hashing (placeholder for Argon2/Bcrypt).
--   **API Utilities:**
-    -   Structured Logging.
-    -   Centralized Error Handling.
-    -   In-memory Caching.
-    -   Request Rate Limiting.
--   **Database:**
-    -   SQLite database.
-    -   Schema definitions.
-    -   Migration scripts (`db/migrations`).
-    -   Seed data (`db/seed`).
--   **Deployment:**
-    -   Dockerized application.
-    -   `Dockerfile` and `docker-compose.yml` for easy setup.
--   **Quality:**
-    -   Unit and Integration tests using Google Test.
-    -   CI/CD pipeline configuration (GitHub Actions).
+*   **Service Monitoring:** Define URLs/services to monitor.
+*   **Metric Collection:** Automatically collects response time, HTTP status, and error details.
+*   **Data Visualization:** Interactive charts on the frontend to display performance trends.
+*   **Alerting:** Configure alerts based on metric thresholds (e.g., high response time, status code failures).
+*   **User Management:** Secure user registration, login, and role-based authorization.
+*   **Project Organization:** Group monitors under projects for better management.
+*   **Scalable Backend:** Node.js, Express, TypeScript, TypeORM with PostgreSQL.
+*   **Interactive Frontend:** React, TypeScript, React Router, ApexCharts for data visualization.
+*   **Authentication & Authorization:** JWT-based authentication, role-based access control.
+*   **Caching:** Redis integration for API response caching to improve performance.
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **Structured Logging:** Winston for consistent and searchable logs.
+*   **Error Handling:** Centralized, robust error handling middleware.
+*   **Observability:** Exposes Prometheus metrics for the PerformancePulse backend itself.
+*   **Containerization:** Docker support for easy setup and deployment.
+*   **Comprehensive Testing:** Unit, Integration, API, and Performance tests.
+*   **Detailed Documentation:** README, API docs, Architecture, Deployment guides.
 
-## Technology Stack
+## Architecture
 
--   **Backend:** C++17
--   **Web Framework:** [Crow](https://github.com/ipkn/crow)
--   **JSON Library:** [nlohmann/json](https://github.com/nlohmann/json)
--   **JWT Library:** [jwt-cpp](https://github.com/Thalhammer/jwt-cpp)
--   **Database:** [SQLite3](https://www.sqlite.org/index.html)
--   **Build System:** CMake
--   **Testing Framework:** [Google Test](https://github.com/google/googletest)
--   **Containerization:** Docker
--   **CI/CD:** GitHub Actions
+For a detailed explanation of the system's architecture, please refer to [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Setup & Installation
+## Getting Started
 
 ### Prerequisites
 
-*   A C++17 compatible compiler (e.g., GCC 9+ or Clang 9+).
-*   CMake (version 3.10 or higher).
-*   Git.
-*   `libsqlite3-dev` (or equivalent for your OS).
-*   Docker and Docker Compose (if using containerized setup).
+*   Node.js (v18+)
+*   npm or yarn
+*   Docker & Docker Compose (recommended for local setup)
+*   PostgreSQL (if not using Docker)
+*   Redis (if not using Docker)
 
-**Install SQLite3 development files (Ubuntu/Debian):**
-```bash
-sudo apt-get update
-sudo apt-get install libsqlite3-dev
-```
+### Local Setup with Docker Compose (Recommended)
 
-### Local Development Setup
+This is the fastest way to get all services (backend, frontend, PostgreSQL, Redis, Prometheus, Grafana) up and running.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/alx-project-management-api.git
-    cd alx-project-management-api
+    git clone https://github.com/your-username/performance-pulse.git
+    cd performance-pulse
     ```
 
-2.  **Install Crow Framework:**
-    Crow is fetched by CMake using `FetchContent` in some cases (like nlohmann/json and jwt-cpp), but for Crow itself, it's often easiest to clone it into a known location or install it system-wide.
-    For this setup, the `CMakeLists.txt` and `Dockerfile` assume it's available at `/usr/local/include/crow` or similar.
+2.  **Create `.env` files:**
+    *   Copy `.env.example` to `.env` in both the `backend/` and `frontend/` directories.
+        ```bash
+        cp backend/.env.example backend/.env
+        cp frontend/.env.example frontend/.env
+        ```
+    *   Review and adjust variables in both `.env` files if necessary. Default values should work for local development.
+
+3.  **Build and run services:**
     ```bash
-    sudo git clone https://github.com/ipkn/crow.git /usr/local/include/crow
-    # Alternatively, you might just build it from source and install.
+    docker-compose up --build -d
     ```
+    This command will:
+    *   Build Docker images for the backend and frontend.
+    *   Start PostgreSQL, Redis, Prometheus, Grafana containers.
+    *   Run database migrations and seed data for the backend.
 
-3.  **Create `.env` file:**
-    Copy the example environment file and adjust as needed.
+4.  **Access the applications:**
+    *   **Frontend:** `http://localhost:3000`
+    *   **Backend API:** `http://localhost:5000`
+    *   **Grafana:** `http://localhost:3001` (default user/pass: admin/admin)
+    *   **Prometheus:** `http://localhost:9090`
+
+5.  **Stop services:**
     ```bash
-    cp .env.example ./.env
-    # Open ./.env and modify values if necessary, especially `JWT_SECRET`
+    docker-compose down
     ```
 
-4.  **Build the application:**
+### Manual Local Setup (Backend)
+
+1.  **Navigate to the backend directory:**
     ```bash
-    mkdir build
-    cd build
-    cmake .. -DCROW_INCLUDE_DIR=/usr/local/include/crow -DJSON_EXTERNAL_BUILD=ON -DJWT_CPP_EXTERNAL_BUILD=ON
-    make
+    cd performance-pulse/backend
     ```
-    *(Note: `DCROW_INCLUDE_DIR` might be adjusted based on where you cloned Crow. If it's system-installed, you might not need this flag.)*
 
-5.  **Initialize the Database:**
-    The `init_db` executable will create tables and seed initial data.
+2.  **Install dependencies:**
     ```bash
-    ./init_db
+    npm install
+    # or yarn install
     ```
 
-### Docker Setup
-
-1.  **Build the Docker image:**
+3.  **Create and configure `.env`:**
     ```bash
-    docker-compose build
+    cp .env.example .env
     ```
+    Ensure your database (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE`) and Redis (`REDIS_HOST`, `REDIS_PORT`) configurations are correct for your local setup.
 
-2.  **Run the application with Docker Compose:**
+4.  **Start PostgreSQL and Redis servers:**
+    Ensure you have PostgreSQL and Redis running locally and accessible via the configured credentials.
+
+5.  **Run database migrations:**
     ```bash
-    docker-compose up -d
+    npm run typeorm migration:run -d src/database/data-source.ts
     ```
-    This will start the API container, create a persistent volume for the database (`./data/db`) and logs (`./data/logs`), and expose port `18080`. The database will be initialized automatically on container startup (check logs for confirmation).
 
-## Running the Application
-
-**Locally (after building):**
-```bash
-cd build
-./ALXProjectManagementAPI
-```
-The API will start on the port specified in your `.env` file (default: `18080`).
-
-**With Docker (after `docker-compose up -d`):**
-The API will be running in the background. You can check its logs:
-```bash
-docker-compose logs -f api
-```
-Access the API at `http://localhost:18080`.
-
-## Database Management
-
-The database is SQLite, stored at `db/alx_project_management.db` (or `data/db/alx_project_management.db` when using Docker Compose).
-
--   **Migrations:** SQL scripts in `db/migrations/`.
--   **Seed Data:** SQL script in `db/seed/`.
--   **Initialization:** The `scripts/init_db.cpp` utility handles applying migrations and seed data. It's run automatically by Docker Compose `ENTRYPOINT`. If running locally, you must run `./init_db` from the `build` directory before running the API.
-
-**Query Optimization:**
--   Indexes are defined on common lookup fields (`username`, `email`, `owner_id`, `project_id`, `assigned_user_id`, `status`).
--   Foreign key constraints are enabled (`PRAGMA foreign_keys = ON;`) to ensure data integrity.
--   `ON DELETE CASCADE` and `ON DELETE SET NULL` rules are used for relationships.
--   Triggers are added to automatically update `updated_at` timestamps.
-
-## API Documentation
-
-The API adheres to RESTful principles and returns JSON responses.
-
-**Base URL:** `http://localhost:18080/api/v1`
-
-### Authentication
-
-**1. Register User**
--   **URL:** `/api/v1/auth/register`
--   **Method:** `POST`
--   **Body:**
-    ```json
-    {
-        "username": "newuser",
-        "email": "newuser@example.com",
-        "password": "securepassword123"
-    }
-    ```
--   **Response (201 Created):**
-    ```json
-    {
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        "user": {
-            "id": 1,
-            "username": "newuser",
-            "email": "newuser@example.com",
-            "role": "USER"
-        }
-    }
-    ```
--   **Example `curl`:**
+6.  **Seed initial data (optional):**
     ```bash
-    curl -X POST http://localhost:18080/api/v1/auth/register \
-         -H "Content-Type: application/json" \
-         -d '{"username": "testuser", "email": "test@example.com", "password": "password123"}'
+    npm run seed
     ```
 
-**2. Login User**
--   **URL:** `/api/v1/auth/login`
--   **Method:** `POST`
--   **Body:**
-    ```json
-    {
-        "username": "testuser",
-        "password": "password123"
-    }
-    ```
--   **Response (200 OK):** (Same as register response, including JWT token)
--   **Example `curl`:**
+7.  **Start the backend server:**
     ```bash
-    curl -X POST http://localhost:18080/api/v1/auth/login \
-         -H "Content-Type: application/json" \
-         -d '{"username": "testuser", "password": "password123"}'
+    npm run start:dev
     ```
-    *Save the `token` from the response to use in subsequent authenticated requests via `Authorization: Bearer <token>` header.*
+    The backend API will be available at `http://localhost:5000`.
 
-### Users
+### Manual Local Setup (Frontend)
 
-**Authentication Required**
-
-**1. Get All Users (Admin Only)**
--   **URL:** `/api/v1/users`
--   **Method:** `GET`
--   **Response (200 OK):**
-    ```json
-    [
-        { "id": 1, "username": "admin", "email": "admin@example.com", "role": "ADMIN" },
-        { "id": 2, "username": "john.doe", "email": "john.doe@example.com", "role": "USER" }
-    ]
-    ```
--   **Example `curl`:**
+1.  **Navigate to the frontend directory:**
     ```bash
-    # Replace <ADMIN_TOKEN> with a valid JWT token for an admin user
-    curl -X GET http://localhost:18080/api/v1/users \
-         -H "Authorization: Bearer <ADMIN_TOKEN>"
+    cd performance-pulse/frontend
     ```
 
-**2. Create User (Admin Only)**
--   **URL:** `/api/v1/users`
--   **Method:** `POST`
--   **Body:** (Same as register, optionally include `"role": "ADMIN"|"USER"`)
-    ```json
-    {
-        "username": "newadmin",
-        "email": "newadmin@example.com",
-        "password": "adminpassword",
-        "role": "ADMIN"
-    }
-    ```
--   **Response (201 Created):** (User object)
-
-**3. Get User by ID (Admin or Self)**
--   **URL:** `/api/v1/users/:id`
--   **Method:** `GET`
--   **Response (200 OK):** (Single User object)
--   **Example `curl`:**
+2.  **Install dependencies:**
     ```bash
-    # Replace <USER_TOKEN> with a valid JWT token (can be admin or the user themselves)
-    curl -X GET http://localhost:18080/api/v1/users/1 \
-         -H "Authorization: Bearer <USER_TOKEN>"
+    npm install
+    # or yarn install
     ```
 
-**4. Update User by ID (Admin or Self)**
--   **URL:** `/api/v1/users/:id`
--   **Method:** `PUT`
--   **Body:** (Any combination of `username`, `email`, `password`, `role`. Non-admin users cannot change `role`.)
-    ```json
-    {
-        "username": "updated_username",
-        "email": "updated@example.com"
-        // "password": "newpassword",
-        // "role": "ADMIN" (Admin only)
-    }
-    ```
--   **Response (200 OK):** (Updated User object)
-
-**5. Delete User by ID (Admin Only)**
--   **URL:** `/api/v1/users/:id`
--   **Method:** `DELETE`
--   **Response (204 No Content)**
-
-### Projects
-
-**Authentication Required**
-
-**1. Get All Projects**
--   **URL:** `/api/v1/projects`
--   **Method:** `GET`
--   **Response (200 OK):** Array of Project objects.
--   **Example `curl`:**
+3.  **Create and configure `.env`:**
     ```bash
-    # Replace <USER_TOKEN> with a valid JWT token
-    curl -X GET http://localhost:18080/api/v1/projects \
-         -H "Authorization: Bearer <USER_TOKEN>"
+    cp .env.example .env
     ```
+    Ensure `REACT_APP_BACKEND_URL` points to your backend API (e.g., `http://localhost:5000`).
 
-**2. Create Project**
--   **URL:** `/api/v1/projects`
--   **Method:** `POST`
--   **Body:**
-    ```json
-    {
-        "name": "New Project Name",
-        "description": "A detailed description of the new project.",
-        "owner_id": 1 // Optional. If omitted, authenticated user is owner. Admin can specify any owner.
-    }
-    ```
--   **Response (201 Created):** (New Project object)
-
-**3. Get Project by ID**
--   **URL:** `/api/v1/projects/:id`
--   **Method:** `GET`
--   **Response (200 OK):** (Single Project object)
-
-**4. Update Project by ID (Owner or Admin Only)**
--   **URL:** `/api/v1/projects/:id`
--   **Method:** `PUT`
--   **Body:** (Any combination of `name`, `description`, `owner_id`. Admin only to change `owner_id` or set to `null`.)
-    ```json
-    {
-        "name": "Updated Project Name",
-        "description": "The description has been changed.",
-        "owner_id": 2 // Admin only, or set to null with admin privileges
-    }
-    ```
--   **Response (200 OK):** (Updated Project object)
-
-**5. Delete Project by ID (Owner or Admin Only)**
--   **URL:** `/api/v1/projects/:id`
--   **Method:** `DELETE`
--   **Response (204 No Content)**
-
-### Tasks
-
-**Authentication Required**
-
-**1. Get All Tasks**
--   **URL:** `/api/v1/tasks`
--   **Method:** `GET`
--   **Response (200 OK):** Array of Task objects.
-
-**2. Get Tasks by Project ID**
--   **URL:** `/api/v1/projects/:projectId/tasks`
--   **Method:** `GET`
--   **Response (200 OK):** Array of Task objects belonging to the specified project.
-
-**3. Create Task for a Project (Project Owner or Admin Only)**
--   **URL:** `/api/v1/projects/:projectId/tasks`
--   **Method:** `POST`
--   **Body:**
-    ```json
-    {
-        "title": "Implement Feature X",
-        "description": "Details about implementing feature X.",
-        "status": "TODO", // Optional, defaults to "TODO". Can be "IN_PROGRESS", "DONE".
-        "assigned_user_id": 2 // Optional. User must exist. Set to null to unassign.
-    }
-    ```
--   **Response (201 Created):** (New Task object)
-
-**4. Get Task by ID**
--   **URL:** `/api/v1/tasks/:id`
--   **Method:** `GET`
--   **Response (200 OK):** (Single Task object)
-
-**5. Update Task by ID (Project Owner or Admin Only)**
--   **URL:** `/api/v1/tasks/:id`
--   **Method:** `PUT`
--   **Body:** (Any combination of `title`, `description`, `status`, `assigned_user_id`, `project_id`. `project_id` update requires privileges on both old and new projects.)
-    ```json
-    {
-        "title": "Revised Task Title",
-        "status": "IN_PROGRESS",
-        "assigned_user_id": 3 // Or set to null to unassign
-    }
-    ```
--   **Response (200 OK):** (Updated Task object)
-
-**6. Delete Task by ID (Project Owner or Admin Only)**
--   **URL:** `/api/v1/tasks/:id`
--   **Method:** `DELETE`
--   **Response (204 No Content)**
-
----
-
-## Testing
-
-The project uses [Google Test](https://github.com/google/googletest) for unit and integration testing.
-
-**Running Tests Locally:**
-
-1.  **Build the project** (if you haven't already from [Local Development Setup](#local-development-setup)).
-2.  Navigate to the `build` directory:
+4.  **Start the frontend development server:**
     ```bash
-    cd build
+    npm start
     ```
-3.  **Run the tests:**
+    The frontend application will open in your browser at `http://localhost:3000`.
+
+## API Endpoints
+
+For a detailed list of all backend API endpoints, their methods, request/response bodies, and authentication requirements, please refer to [API.md](API.md).
+
+## Running Tests
+
+### Backend Tests
+
+Navigate to `backend/` and run:
+
+*   **All tests:** `npm test`
+*   **Unit tests:** `npm test -- tests/unit`
+*   **Integration tests:** `npm test -- tests/integration`
+*   **API tests:** `npm test -- tests/api`
+*   **Coverage report:** `npm test -- --coverage`
+
+### Frontend Tests
+
+Navigate to `frontend/` and run:
+
+*   **All tests:** `npm test` (this will run tests in watch mode, press `a` to run all)
+
+### Performance Tests (K6)
+
+These tests simulate load on the backend API. Ensure your backend is running.
+
+1.  **Install K6:** Follow instructions on [k6.io](https://k6.io/docs/getting-started/installation/).
+2.  **Run the script:**
     ```bash
-    ./run_tests
-    ```
-    This will execute all unit and integration tests. Test coverage is aimed for 80%+, focusing on core logic, database interactions, and utility functions.
-
-**Test Coverage:**
--   **AuthService:** Registration, login, duplicate checks, password verification.
--   **JWTManager:** Token generation, validation, expiry.
--   **SQLiteDatabaseManager:** Full CRUD operations for Users, Projects, Tasks; foreign key constraints; migration execution.
--   **CachingManager:** Set, get, remove, expiry logic.
--   **UserService, ProjectService, TaskService:** Business logic, validation, error handling.
--   **Integration Tests:** User registration -> Project creation -> Task assignment, Admin management.
-
-## Deployment Guide
-
-This guide assumes you have a server with Docker installed.
-
-1.  **Prepare your server:**
-    Ensure your server has Docker and Docker Compose installed.
-
-2.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/alx-project-management-api.git
-    cd alx-project-management-api
+    cd performance-pulse/k6
+    k6 run script.js
     ```
 
-3.  **Configure `.env` for production:**
-    Edit the `.env` file for production environment. **Crucially, change `JWT_SECRET` to a very strong, unique secret.** Adjust `LOG_LEVEL` to `INFO` or `WARNING` for production, `DATABASE_PATH` might point to a specific persistent volume.
+## CI/CD
 
-4.  **Create persistent data directories:**
-    Ensure the directories for your database and logs exist and have proper permissions. The `docker-compose.yml` maps `./data/db` and `./data/logs` to `/app/db` and `/app/logs` inside the container.
-    ```bash
-    mkdir -p data/db data/logs
-    ```
+A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided for linting, building, and testing the backend and frontend on push. Refer to the file for details.
 
-5.  **Build and Run with Docker Compose:**
-    ```bash
-    docker-compose -f docker-compose.yml up -d --build
-    ```
-    -   `-f docker-compose.yml`: Specifies the Compose file.
-    -   `up`: Creates and starts containers.
-    -   `-d`: Runs containers in detached mode (in the background).
-    -   `--build`: Rebuilds images even if they already exist, ensuring you have the latest code.
+## Deployment
 
-6.  **Verify Deployment:**
-    Check if the container is running:
-    ```bash
-    docker ps
-    ```
-    View logs:
-    ```bash
-    docker-compose logs -f api
-    ```
-    Access the health endpoint: `http://your_server_ip:18080/health`
+For instructions on deploying PerformancePulse to a production environment using Docker and Docker Compose, including considerations for NGINX proxy, SSL, and scaling, please refer to [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## CI/CD Pipeline
+## Documentation
 
-The project includes a GitHub Actions workflow (`.github/workflows/ci-cd.yml`) that defines a Continuous Integration/Continuous Deployment pipeline.
+*   **[ARCHITECTURE.md](ARCHITECTURE.md):** High-level design and architectural decisions.
+*   **[API.md](API.md):** Detailed API documentation.
+*   **[DEPLOYMENT.md](DEPLOYMENT.md):** Guide for deploying the application.
 
-**Pipeline Steps:**
+## Contributing
 
-1.  **`build-and-test` Job:**
-    -   Triggered on `push` to `main` or `develop` and `pull_request` to `main` or `develop`.
-    -   Checks out code.
-    -   Installs system dependencies (SQLite, CMake, Git).
-    -   Clones Crow framework.
-    -   Configures and builds the C++ application using CMake.
-    -   **Runs Unit and Integration Tests** using `run_tests` executable, configuring a temporary database for testing.
-    -   Uploads test results as an artifact.
-
-2.  **`build-docker-image` Job:**
-    -   **Depends on `build-and-test`** (only runs if tests pass).
-    -   Logs into Docker Hub using secrets.
-    -   Builds the Docker image for the application.
-    -   Verifies the image build.
-    -   *(Note: This job does not `push` to Docker Hub directly; the `deploy` job handles that.)*
-
-3.  **`deploy` Job:**
-    -   **Depends on `build-docker-image`** (only runs if the image builds successfully).
-    -   **Conditional:** Only runs on `push` to the `main` branch.
-    -   Logs into Docker Hub.
-    -   Builds and **pushes** the Docker image to Docker Hub (e.g., `your_docker_username/alx-project-management-api:latest`).
-    -   **Deploys to a remote server via SSH:** (This is an example placeholder). It pulls the latest image, stops and removes the old container, and starts a new one with persistent volumes and environment variables.
-    -   **Secrets Used:** `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY`, `PROD_JWT_SECRET`. These must be configured in your GitHub repository's `Settings -> Secrets -> Actions`.
-
-## Additional Features
-
--   **Authentication/Authorization:** JWT-based authentication for secure API access. Role-based authorization (`USER`, `ADMIN`) restricts access to certain endpoints and operations. Implemented via `AuthMiddleware`.
--   **Logging and Monitoring:** Integrated `Logger` utility provides structured logging to console and file, with configurable log levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
--   **Error Handling Middleware:** Custom exception hierarchy (`CustomExceptions.hpp`) and a generic `try_catch_handler` (within `ErrorHandler.hpp`) catch exceptions in controllers and return standardized JSON error responses with appropriate HTTP status codes.
--   **Caching Layer:** An in-memory `CachingManager` (using `std::unordered_map`) is provided for fast retrieval of frequently accessed data (e.g., user profiles or configuration settings). Configurable TTL for cached items.
--   **Rate Limiting:** Implemented with `RateLimiter` and `RateLimitMiddleware` to prevent abuse by limiting the number of requests a single client (identified by IP address) can make within a specified time window.
-
----
+Contributions are welcome! Please feel free to open issues or submit pull requests.
 
 ## License
 
-This project is open-source and available under the [MIT License](LICENSE).
+This project is licensed under the MIT License - see the `LICENSE` file for details (not included in this single file response, but would be present in a real project).
 ```

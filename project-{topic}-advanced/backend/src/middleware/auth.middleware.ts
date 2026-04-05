@@ -1,68 +1,51 @@
+```typescript
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { PrismaClient, UserRole } from '@prisma/client';
-import { CustomError } from '../utils/errors.util';
-import { config } from '../config/env.config';
+import { verifyJwtToken } from '../auth/jwt.utils';
+import { AppDataSource } from '../database/data-source';
+import { User, UserRole } from '../entities/User.entity';
+import { ApiError } from '../utils/api-error';
+import { StatusCodes } from 'http-status-codes';
 
-const prisma = new PrismaClient();
-
-// Extend the Request type to include user information
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        email: string;
-        role: UserRole;
-      };
-    }
-  }
+export interface AuthRequest extends Request {
+  user?: User; // Add user property to Request object
 }
 
-export const protect = async (req: Request, res: Response, next: NextFunction) => {
-  let token: string | undefined;
-
-  // Check for token in headers
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (!token) {
-    return next(new CustomError('Not authorized, no token', 401));
-  }
-
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // Verify token
-    const decoded = jwt.verify(token, config.jwtSecret) as { id: string };
+    const authHeader = req.headers.authorization;
 
-    // Find user by ID
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, email: true, role: true } // Select only necessary fields
-    });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Authentication token required');
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decodedToken = verifyJwtToken(token);
+
+    const userRepository = AppDataSource.getRepository(User);
+    const user = await userRepository.findOne({ where: { id: decodedToken.userId } });
 
     if (!user) {
-      return next(new CustomError('User not found for this token', 401));
+      throw new ApiError(StatusCodes.UNAUTHORIZED, 'User not found');
     }
 
     req.user = user; // Attach user to the request object
     next();
   } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      return next(new CustomError('Token has expired', 401));
-    }
-    return next(new CustomError('Not authorized, token failed', 401));
+    next(ApiError.fromError(error, StatusCodes.UNAUTHORIZED, 'Invalid or expired token'));
   }
 };
 
-export const authorize = (...roles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+export const authorize = (roles: UserRole[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(new CustomError('No user attached to request, authentication required', 401));
+      return next(new ApiError(StatusCodes.FORBIDDEN, 'Authorization failed: User not authenticated.'));
     }
+
     if (!roles.includes(req.user.role)) {
-      return next(new CustomError(`User role ${req.user.role} is not authorized to access this route`, 403));
+      return next(new ApiError(StatusCodes.FORBIDDEN, 'Authorization failed: Insufficient permissions.'));
     }
+
     next();
   };
 };
+```

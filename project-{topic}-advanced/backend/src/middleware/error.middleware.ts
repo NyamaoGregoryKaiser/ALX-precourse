@@ -1,46 +1,32 @@
+```typescript
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger.util';
-import { CustomError } from '../utils/errors.util';
+import { ApiError } from '../utils/api-error';
+import logger from '../utils/logger';
+import { StatusCodes } from 'http-status-codes';
+import { env } from '../config';
 
 export const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
-  logger.error(`Error in ${req.method} ${req.originalUrl}: ${err.message}`, err);
-
-  // Default to 500 Internal Server Error
-  let statusCode = 500;
-  let message = 'Internal Server Error';
-
-  if (err instanceof CustomError) {
-    statusCode = err.statusCode;
-    message = err.message;
-  } else if (err.name === 'ValidationError') {
-    // Joi validation errors
-    statusCode = 400;
-    message = err.message;
-  } else if (err.name === 'JsonWebTokenError') {
-    statusCode = 401;
-    message = 'Not authorized, token failed';
-  } else if (err.name === 'TokenExpiredError') {
-    statusCode = 401;
-    message = 'Not authorized, token expired';
-  } else if (err.name === 'PrismaClientKnownRequestError') {
-    // Handle Prisma specific errors (e.g., unique constraint violation, record not found)
-    if ((err as any).code === 'P2002') {
-      statusCode = 409; // Conflict
-      message = `Duplicate field value: ${(err as any).meta?.target || 'unknown field'}`;
-    } else if ((err as any).code === 'P2025') {
-      statusCode = 404; // Not Found
-      message = `Record not found: ${(err as any).meta?.cause || err.message}`;
-    }
-    // Add more Prisma error codes as needed
+  if (res.headersSent) {
+    return next(err); // If headers already sent, let Express handle it or log it
   }
 
-  // If in development mode, include stack trace
-  const errorResponse = {
-    message,
-    ...(config.nodeEnv === 'development' && { stack: err.stack }),
-  };
+  const apiError = ApiError.fromError(err);
 
-  res.status(statusCode).json(errorResponse);
+  // Log the error
+  logger.error(`[${req.method}] ${req.originalUrl} - Status: ${apiError.statusCode} - ${apiError.message}`, {
+    error: apiError.message,
+    statusCode: apiError.statusCode,
+    stack: apiError.stack,
+    timestamp: new Date().toISOString(),
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
+
+  // Send error response
+  res.status(apiError.statusCode).json({
+    message: apiError.message,
+    // Only send stack trace in development or if specifically requested (e.g., via config)
+    ...(env.NODE_ENV === 'development' && { stack: apiError.stack }),
+  });
 };
-
-import { config } from '../config/env.config';
+```

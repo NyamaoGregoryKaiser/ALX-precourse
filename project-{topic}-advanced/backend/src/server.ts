@@ -1,41 +1,37 @@
-import app from './app';
-import { config } from './config/env.config';
-import { logger } from './utils/logger.util';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+```typescript
+import 'reflect-metadata'; // Must be imported before TypeORM
+import { AppDataSource } from './database/data-source';
+import { app } from './app';
+import { env } from './config';
+import logger from './utils/logger';
+import { startMonitorScheduler } from './jobs/monitor-scheduler';
+import { collectDefaultMetrics } from './utils/prometheus.utils';
 
 const startServer = async () => {
   try {
-    await prisma.$connect();
-    logger.info('Database connected successfully.');
+    // Initialize Database Connection
+    await AppDataSource.initialize();
+    logger.info('Database connected successfully!');
 
-    app.listen(config.port, () => {
-      logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode.`);
-      logger.info(`API documentation available at http://localhost:${config.port}${config.apiVersion}/docs`);
+    // Start Express Server
+    const port = env.PORT;
+    app.listen(port, () => {
+      logger.info(`Server running on port ${port} (http://localhost:${port})`);
+      logger.info(`Environment: ${env.NODE_ENV}`);
+      logger.info(`API Version: ${env.API_VERSION}`);
     });
+
+    // Start Monitor Scheduler
+    startMonitorScheduler();
+
+    // Collect default Prometheus metrics for the application itself
+    collectDefaultMetrics();
+
   } catch (error) {
-    logger.error('Failed to connect to the database or start server:', error);
+    logger.error('Failed to connect to database or start server:', error);
     process.exit(1);
   }
 };
 
 startServer();
-
-// Handle unhandled rejections
-process.on('unhandledRejection', (err: Error) => {
-  logger.error(`Unhandled Rejection: ${err.message}`, err);
-  // Close server & exit process
-  prisma.$disconnect().then(() => {
-    process.exit(1);
-  });
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err: Error) => {
-  logger.error(`Uncaught Exception: ${err.message}`, err);
-  // Close server & exit process
-  prisma.$disconnect().then(() => {
-    process.exit(1);
-  });
-});
+```

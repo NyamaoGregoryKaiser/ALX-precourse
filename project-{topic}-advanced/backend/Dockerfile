@@ -1,25 +1,50 @@
-# Use a Node.js 20 LTS Alpine image for a small footprint
-FROM node:20-alpine
+```dockerfile
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS builder
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy the entire backend source code
+# Copy source code
 COPY . .
 
-# Build the TypeScript project
+# Build the TypeScript code
 RUN npm run build
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Stage 2: Run the production application
+FROM node:18-alpine
 
-# Command to run the application
-# This command will apply migrations and then start the server.
-# In a real production CI/CD, migrations might be applied as a separate step.
-CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma generate && node dist/server.js"]
+# Set working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json from builder stage
+COPY --from=builder /app/package*.json ./
+
+# Install production dependencies only
+RUN npm install --only=production
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/.env.example ./.env.example
+
+# Expose port
+EXPOSE 5000
+EXPOSE 9999 # For Prometheus metrics
+
+# Define the command to run migrations, seeds, and then start the server
+# This will run migrations and seeds only once on first boot if the DB is empty.
+# In a real production scenario, migrations should be run as a separate step.
+# For simplicity in this demo, it's combined.
+CMD sh -c "if [ ! -f ./.env ]; then cp ./.env.example ./.env; fi && \
+  npm run typeorm migration:run -d dist/database/data-source.js && \
+  if [ $(ls -A dist/database/seeds/*.js 2>/dev/null | wc -l) -gt 0 ] && [ $(npm run typeorm query \"SELECT COUNT(*) FROM users\" -d dist/database/data-source.js | grep -o '\"count\": \"0\"' | wc -l) -eq 1 ]; then \
+    npm run seed; \
+  fi && \
+  npm start"
+```

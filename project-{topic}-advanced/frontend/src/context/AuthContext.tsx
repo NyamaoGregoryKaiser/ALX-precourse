@@ -1,111 +1,99 @@
-"use client";
+```typescript
+import React, { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import Cookies from 'js-cookie';
+import api from '../api/axios';
+import { jwtDecode } from 'jwt-decode';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { loginUser, registerUser } from '@/lib/api';
-import { LoginPayload, RegisterPayload, User } from '@/types/auth'; // Assuming types defined
+interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+}
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (credentials: LoginPayload) => Promise<void>;
-  register: (userData: RegisterPayload) => Promise<void>;
+  isAuthenticated: boolean;
+  loading: boolean;
+  login: (token: string, userData: User) => void;
   logout: () => void;
-  isLoading: boolean;
-  error: string | null;
+  refetchUser: () => Promise<void>; // Optional: if you need to re-fetch user details from backend
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true); // For initial loading check
 
-  useEffect(() => {
-    // Attempt to load user from localStorage on mount
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
+  const loadUserFromCookies = useCallback(() => {
+    const token = Cookies.get('jwtToken');
+    if (token) {
       try {
-        const parsedUser: User = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setToken(storedToken);
-      } catch (err) {
-        console.error('Failed to parse user from localStorage', err);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        const decoded: { userId: string; role: 'user' | 'admin'; username?: string; email?: string; exp: number } = jwtDecode(token);
+        // Check if token is expired
+        if (decoded.exp * 1000 < Date.now()) {
+          console.warn("JWT token expired, logging out.");
+          Cookies.remove('jwtToken');
+          setUser(null);
+          setIsAuthenticated(false);
+        } else {
+          // In a real app, you might want to fetch full user details from the backend
+          // using decoded.userId, but for simplicity, we'll use a basic structure.
+          // Note: The `login` function now passes user data, so this will only be for initial load.
+          // We can't reliably get username/email from JWT without backend passing it.
+          // For now, if no username/email in JWT (which generateJwtToken doesn't include), leave it null or generic.
+          setUser({ id: decoded.userId, username: decoded.username || 'User', email: decoded.email || '', role: decoded.role });
+          setIsAuthenticated(true);
+        }
+      } catch (error) {
+        console.error("Failed to decode JWT token:", error);
+        Cookies.remove('jwtToken');
+        setUser(null);
+        setIsAuthenticated(false);
       }
+    } else {
+      setUser(null);
+      setIsAuthenticated(false);
     }
-    setIsLoading(false);
+    setLoading(false);
   }, []);
 
-  const handleLogin = async (credentials: LoginPayload) => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      const { token: newToken, user: userData } = await loginUser(credentials);
-      setUser(userData);
-      setToken(newToken);
-      localStorage.setItem('token', newToken);
-      localStorage.setItem('user', JSON.stringify(userData));
-      // Optionally fetch user profile to ensure it's up-to-date
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
-      throw err; // Re-throw to allow component to catch and display specific error
-    } finally {
-      setIsLoading(false);
-    }
+  useEffect(() => {
+    loadUserFromCookies();
+  }, [loadUserFromCookies]);
+
+  const login = (token: string, userData: User) => {
+    Cookies.set('jwtToken', token, { expires: 7 }); // Token expires in 7 days for cookie
+    setUser(userData);
+    setIsAuthenticated(true);
   };
 
-  const handleRegister = async (userData: RegisterPayload) => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      const { token: newToken, user: newUser } = await registerUser(userData);
-      setUser(newUser);
-      setToken(newToken);
-      localStorage.setItem('token', newToken);
-      localStorage.setItem('user', JSON.stringify(newUser));
-    } catch (err: any) {
-      setError(err.message || 'Registration failed');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
+  const logout = () => {
+    Cookies.remove('jwtToken');
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setError(null);
-    setIsLoading(false);
+    setIsAuthenticated(false);
   };
 
-  const value = {
-    user,
-    token,
-    login: handleLogin,
-    register: handleRegister,
-    logout: handleLogout,
-    isLoading,
-    error,
+  const refetchUser = async () => {
+    // This is a placeholder. In a real app, you'd hit an /api/v1/users/me endpoint
+    // to get the latest user data based on the current JWT.
+    // For this project, we assume the JWT (and associated user data) is sufficient
+    // upon login or initial load.
+    console.log("Refetching user data (placeholder)...");
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+export default AuthContext;
+```

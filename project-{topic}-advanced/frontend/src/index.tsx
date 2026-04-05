@@ -1,79 +1,22 @@
-```tsx
+```typescript
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
+import './styles/main.css'; // Global styles
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import { CssBaseline } from '@mui/material'; // For consistent styling
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-
-// Define a custom theme (optional)
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#2c3e50', // Dark blue-grey
-    },
-    secondary: {
-      main: '#3f51b5', // Indigo
-    },
-    error: {
-      main: '#e74c3c',
-    },
-    warning: {
-      main: '#f39c12',
-    },
-    info: {
-      main: '#3498db',
-    },
-    success: {
-      main: '#2ecc71',
-    },
-  },
-  typography: {
-    fontFamily: 'Roboto, sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
-    h5: {
-      fontWeight: 500,
-    }
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 8,
-          textTransform: 'none',
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-        },
-      },
-    },
-  }
-});
-
+import { AuthProvider } from './context/AuthContext';
+import { BrowserRouter } from 'react-router-dom';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
 root.render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline /> {/* Apply global CSS reset */}
-      <App />
-    </ThemeProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );
 
@@ -82,5 +25,3 @@ root.render(
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
 ```
-
-#### `frontend/src/index.css`

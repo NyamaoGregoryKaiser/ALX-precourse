@@ -1,32 +1,28 @@
-```tsx
+```typescript
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import Layout from './components/Layout';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './hooks/useAuth';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Queries from './pages/Queries';
-import QueryView from './pages/QueryView';
-import Databases from './pages/Databases';
-import AdminUsers from './pages/AdminUsers'; // Admin-only page
-import { UserRole } from './types';
-import { Box, CircularProgress } from '@mui/material';
+import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
+import MonitorDetail from './pages/MonitorDetail';
+import AlertConfig from './pages/AlertConfig';
+import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 
-// ProtectedRoute component
-interface ProtectedRouteProps {
-  children: JSX.Element;
-  adminOnly?: boolean;
-}
-
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+// ProtectedRoute component to guard routes
+const ProtectedRoute: React.FC<{ children: JSX.Element }> = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full text-blue-500" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
     );
   }
 
@@ -34,39 +30,36 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = f
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && user?.role !== UserRole.ADMIN) {
-    return <Navigate to="/dashboard" replace />; // Redirect non-admins from admin routes
-  }
-
   return children;
 };
 
 const App: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+
   return (
-    <Router>
-      <AuthProvider>
-        <Layout>
+    <div className="flex min-h-screen bg-gray-100">
+      {isAuthenticated && <Sidebar />}
+      <div className="flex-1 flex flex-col">
+        {isAuthenticated && <Header />}
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            <Route path="/" element={<ProtectedRoute><Navigate to="/dashboard" replace /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/queries" element={<ProtectedRoute><Queries /></ProtectedRoute>} />
-            <Route path="/queries/:id" element={<ProtectedRoute><QueryView /></ProtectedRoute>} />
-            <Route path="/databases" element={<ProtectedRoute><Databases /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+            <Route path="/monitors/:monitorId" element={<ProtectedRoute><MonitorDetail /></ProtectedRoute>} />
+            <Route path="/monitors/:monitorId/alerts" element={<ProtectedRoute><AlertConfig /></ProtectedRoute>} />
 
-            {/* Catch-all route for unmatched paths */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {/* Redirect to dashboard if logged in and trying to access auth pages */}
+            <Route path="*" element={isAuthenticated ? <Navigate to="/" /> : <Navigate to="/login" />} />
           </Routes>
-        </Layout>
-      </AuthProvider>
-    </Router>
+        </main>
+      </div>
+    </div>
   );
 };
 
 export default App;
 ```
-
-#### `frontend/src/index.tsx`
