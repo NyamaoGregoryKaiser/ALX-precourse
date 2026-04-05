@@ -1,0 +1,37 @@
+```json
+{
+    "app": {
+        "thread_num": 8,
+        "log": {
+            "log_path": "./logs",
+            "log_file_base_name": "task_manager.log",
+            "log_size_limit": 50000000,
+            "log_level": "DEBUG",
+            "log_to_stdout": true
+        },
+        "db_client": [
+            {
+                "type": "postgresql",
+                "host": "${DATABASE_HOST}",
+                "port": "${DATABASE_PORT}",
+                "user": "${DATABASE_USER}",
+                "passwd": "${DATABASE_PASSWORD}",
+                "dbname": "${DATABASE_NAME}",
+                "number_of_connections": 8,
+                "is_thread_safe": true
+            }
+        ],
+        "listeners": [
+            {
+                "address": "0.0.0.0",
+                "port": "${SERVER_PORT}",
+                "https": false,
+                "cert": "",
+                "key": "",
+                "use_ssl_compression": true,
+                "idle_timeout": 60
+            }
+        ]
+    }
+}
+```

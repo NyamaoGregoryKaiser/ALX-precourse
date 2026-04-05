@@ -1,9 +1,3 @@
----
+#### `cli-client/src/TaskClient.h`
 
-### **6. Additional Features (Templating/Frontend - HTMX)**
-
-Let's include some basic Django templates to make the web interface functional and demonstrate HTMX usage for dynamic comments.
-
-#### **`templates/base.html`**
-*(Base template for all pages)*
-```html
+This class encapsulates the API interactions and state (like JWT token).
