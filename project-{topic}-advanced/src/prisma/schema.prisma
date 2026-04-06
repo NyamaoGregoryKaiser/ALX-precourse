@@ -1,0 +1,162 @@
+```prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Roles
+enum UserRole {
+  USER
+  ADMIN
+  AUDITOR
+}
+
+// Transaction Types
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER // Internal transfer
+  PAYMENT  // Linked to a Payment record
+  FEE
+  REFUND
+}
+
+// Transaction Statuses
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+}
+
+// Payment Statuses (for tracking payment intent, potentially external)
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole  @default(USER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]  // For tracking active sessions/refresh tokens
+}
+
+model Account {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  accountNumber   String         @unique @db.VarChar(10) // e.g., 10-digit unique number
+  balance         Decimal        @default(0) @db.Decimal(10, 2) // Precision for currency
+  currency        String         @db.VarChar(3) // e.g., "USD", "EUR"
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  sourceTransactions      Transaction[] @relation("SourceTransactions")
+  destinationTransactions Transaction[] @relation("DestinationTransactions")
+  sourcePayments          Payment[]     @relation("SourcePayments")
+  destinationPayments     Payment[]     @relation("DestinationPayments")
+
+  @@index([userId])
+  @@index([accountNumber]) // Index for faster lookup by account number
+}
+
+model Transaction {
+  id                  String            @id @default(uuid())
+  sourceAccountId     String?
+  sourceAccount       Account?          @relation("SourceTransactions", fields: [sourceAccountId], references: [id])
+  destinationAccountId String?
+  destinationAccount  Account?          @relation("DestinationTransactions", fields: [destinationAccountId], references: [id])
+  amount              Decimal           @db.Decimal(10, 2)
+  currency            String            @db.VarChar(3)
+  type                TransactionType
+  status              TransactionStatus @default(PENDING)
+  description         String?           @db.VarChar(255)
+  reference           String?           @unique // Optional: External reference ID
+  idempotencyKey      String?           @unique // Key to prevent duplicate transactions
+  metadata            Json?             // Flexible field for additional data
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  payment             Payment?          @relation(fields: [paymentId], references: [id])
+  paymentId           String?           @unique // Link to a Payment record if this transaction is part of one
+
+  @@index([sourceAccountId])
+  @@index([destinationAccountId])
+  @@index([status])
+  @@index([idempotencyKey])
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  sourceAccountId       String
+  sourceAccount         Account       @relation("SourcePayments", fields: [sourceAccountId], references: [id])
+  destinationAccountId  String
+  destinationAccount    Account       @relation("DestinationPayments", fields: [destinationAccountId], references: [id])
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @db.VarChar(3)
+  description           String?       @db.VarChar(255)
+  status                PaymentStatus @default(PENDING)
+  idempotencyKey        String?       @unique // Key to prevent duplicate payment requests
+  externalPaymentId     String?       @unique // For integrating with external payment gateways
+  provider              String?       // e.g., "STRIPE", "PAYPAL", "INTERNAL"
+  providerTransactionId String?       // ID from external provider
+  metadata              Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  transaction           Transaction? // Related internal transaction record
+
+  @@index([sourceAccountId])
+  @@index([destinationAccountId])
+  @@index([status])
+  @@index([idempotencyKey])
+}
+
+model WebhookEvent {
+  id            String    @id @default(uuid())
+  eventType     String    // e.g., 'payment.succeeded', 'transaction.failed'
+  payload       Json      // The actual event data
+  resourceId    String?   // ID of the resource associated with the event (e.g., paymentId, transactionId)
+  status        String    @default("PENDING") // PENDING, SENT, FAILED, RETRYING
+  deliveryAttempts Int    @default(0)
+  lastAttemptAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([eventType])
+  @@index([resourceId])
+  @@index([status])
+}
+
+// Optional: Session management for refresh tokens
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+```

@@ -1,33 +1,40 @@
 ```typescript
-import 'reflect-metadata'; // Must be imported once at the top of the entry point
+import 'dotenv/config'; // Load environment variables first
 import app from './app';
-import config from './config';
-import logger from './config/logger';
-import { initializeDatabase } from './database';
+import { PORT } from './config';
+import { logger } from './utils/logger';
+import { prisma } from './utils/prisma';
 
 const startServer = async () => {
-  await initializeDatabase();
+  try {
+    // Connect to database
+    await prisma.$connect();
+    logger.info('Connected to PostgreSQL database');
 
-  const server = app.listen(config.PORT, () => {
-    logger.info(`Server running on port ${config.PORT} in ${config.NODE_ENV} mode.`);
-  });
-
-  // Handle unhandled promise rejections
-  process.on('unhandledRejection', (err: Error) => {
-    logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    logger.error(err.name, err.message);
-    server.close(() => {
-      process.exit(1);
+    // Start Express server
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Access API at http://localhost:${PORT}/api/v1`);
+      logger.info(`Access Frontend at http://localhost:3000`); // Assuming frontend runs on 3000
     });
-  });
-
-  // Handle uncaught exceptions
-  process.on('uncaughtException', (err: Error) => {
-    logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-    logger.error(err.name, err.message, err.stack);
+  } catch (error) {
+    logger.error('Failed to start server:', error);
     process.exit(1);
-  });
+  }
 };
 
 startServer();
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM signal received: Closing HTTP server');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT signal received: Closing HTTP server');
+  await prisma.$disconnect();
+  process.exit(0);
+});
 ```

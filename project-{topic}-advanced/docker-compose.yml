@@ -2,26 +2,71 @@
 version: '3.8'
 
 services:
-  api:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: alx-project-api
+    restart: always
     ports:
-      - "18080:18080" # Map host port 18080 to container port 18080
+      - "5000:5000"
     environment:
-      # These environment variables will override values in the .env file inside the container
-      # Make sure to update these with your sensitive information in production
-      - APP_PORT=18080
-      - DATABASE_PATH=/app/db/alx_project_management.db
-      - LOG_LEVEL=0 # DEBUG
-      - JWT_SECRET=alx_super_secret_jwt_key_for_compose_testing_123!
-      - JWT_EXPIRY_MINUTES=120
-      - RATE_LIMIT_WINDOW_SECONDS=60
-      - RATE_LIMIT_MAX_REQUESTS=100
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://user:password@db:5432/payment_db?schema=public
+      JWT_SECRET: your_strong_jwt_secret_key_change_this_in_production
+      JWT_EXPIRES_IN: 1d
+      # REDIS_URL: redis://redis:6379 # Uncomment if using Redis
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      # Persist database and logs
-      - ./data/db:/app/db
-      - ./data/logs:/app/logs
-    restart: unless-stopped
+      - ./src:/app/src # Mount source code for live-reloading in dev
+      - ./dist:/app/dist # Sync build output
+      - /app/node_modules # Keep node_modules inside container
+    command: sh -c "npx prisma migrate deploy && npm run dev" # Run migrations and start dev server
+
+  # Uncomment if you want to include Redis for caching/rate-limiting
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: always
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redisdata:/data
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      VITE_API_BASE_URL: http://localhost:5000/api/v1
+    volumes:
+      - ./client/src:/app/src # Mount source code for live-reloading in dev
+      - /app/node_modules # Keep node_modules inside container
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  pgdata:
+  # redisdata: # Uncomment if using Redis
 ```

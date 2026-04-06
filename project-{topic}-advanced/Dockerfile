@@ -1,72 +1,47 @@
 ```dockerfile
-# Stage 1: Build C++ application
-FROM gcc:12.2.0 as builder
+# Stage 1: Build the TypeScript application
+FROM node:20-alpine AS build
 
-# Set working directory
 WORKDIR /app
 
-# Install dependencies for building
-# Crow itself (assuming it's either in /app/crow or installed globally like this)
-# For more robustness, crow would be added as a submodule or installed via vcpkg
-RUN apt-get update && apt-get install -y \
-    libsqlite3-dev \
-    cmake \
-    git \
-    build-essential \
-    # Needed for jwt-cpp and nlohmann/json if not fetched via FetchContent
-    # No direct apt packages for these, FetchContent handles them.
-    # We still need general build tools.
-    && rm -rf /var/lib/apt/lists/*
+# Copy package.json and install dependencies
+COPY package*.json ./
+RUN npm install
 
-# Clone Crow framework - A common way if not using system-wide installation or vcpkg
-# For actual production, consider vcpkg or direct source integration.
-# Here we'll just clone it to a known path.
-RUN git clone https://github.com/ipkn/crow.git /usr/local/include/crow
+# Copy source code
+COPY . .
 
-# Copy source code and CMakeLists.txt
-COPY CMakeLists.txt ./
-COPY src ./src
-COPY db ./db
-COPY tests ./tests
-COPY scripts ./scripts
-COPY .env.example ./.env # Copy example as default, overwritten by docker-compose
+# Build the TypeScript code
+RUN npm run build
 
-# Configure and build
-RUN cmake -B build -DCROW_INCLUDE_DIR=/usr/local/include/crow -DJSON_EXTERNAL_BUILD=ON -DJWT_CPP_EXTERNAL_BUILD=ON
-RUN cmake --build build
+# Stage 2: Run the application
+FROM node:20-alpine
 
-# Stage 2: Create a minimal runtime image
-FROM debian:bookworm-slim
-
-# Set working directory
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libsqlite3-0 \
-    # Add any other runtime libs if needed (e.g., specific C++ stdlibs)
-    # Most standard C++ libs are usually present in debian-slim.
-    && rm -rf /var/lib/apt/lists/*
+# Copy package.json and production dependencies
+COPY package*.json ./
+RUN npm install --only=production
 
-# Copy the built executable and its dependencies from the builder stage
-COPY --from=builder /app/build/ALXProjectManagementAPI ./ALXProjectManagementAPI
-COPY --from=builder /app/build/init_db ./init_db
-COPY --from=builder /app/.env ./
-COPY --from=builder /app/db ./db
-COPY --from=builder /app/scripts ./scripts
+# Copy built application from the build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/.env.example ./.env.example
+# Copy .env file if it exists, otherwise rely on env vars from docker-compose
+# For production, env vars should be passed directly or via secrets
+COPY --from=build /app/.env ./.env || true
 
-# Create necessary directories
-RUN mkdir -p /app/db /app/logs
 
-# Expose the port (as defined in .env.example)
-EXPOSE 18080
+# Expose the port the app runs on
+EXPOSE 5000
 
-# Initialize the database (run migrations and seed data)
-# This will be run every time the container starts, which is okay for SQLite
-# but for persistent DBs, migrations should be external or run once.
-# In production, you'd usually run init_db as a separate step/command.
-# Here we put it in entrypoint for simple demonstration.
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["/app/init_db && /app/ALXProjectManagementAPI"]
+# Set environment variables for Prisma at runtime
+ENV DATABASE_URL=${DATABASE_URL}
+ENV NODE_ENV=production
 
+# Run database migrations (only on initial deployment or when schema changes)
+# In production, this might be run as a separate step or a dedicated migration container
+# Ensure your entrypoint script handles this carefully for zero-downtime deployments
+# ENTRYPOINT ["/usr/local/bin/node", "dist/server.js"]
+CMD npx prisma migrate deploy && npm start
 ```
