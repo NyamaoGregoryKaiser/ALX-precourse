@@ -2,84 +2,73 @@
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: payment_processor_app
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - redis
-    # For development, use the command below (comment out gunicorn in Dockerfile)
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    # For production, use the gunicorn command from Dockerfile
-
-  db:
-    image: postgres:15-alpine
-    container_name: payment_processor_db
+  db-optiflow-postgres:
+    image: postgres:16-alpine
+    container_name: db-optiflow-postgres
+    restart: always
     environment:
-      POSTGRES_DB: payment_db
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
+  db-optiflow-redis:
     image: redis:7-alpine
-    container_name: payment_processor_redis
+    container_name: db-optiflow-redis
+    restart: always
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --requirepass your_redis_password_here # IMPORTANT: Use a strong password
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "your_redis_password_here", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Optional: A mock external payment gateway
-  mock-gateway:
+  db-optiflow-backend:
     build:
-      context: ./mock_gateway # Assuming you have a mock_gateway folder with its Dockerfile/app
-    container_name: mock_payment_gateway
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: db-optiflow-backend
+    restart: always
     ports:
-      - "8001:8001"
+      - "${SERVER_PORT}:${SERVER_PORT}"
     env_file:
-      - .env # Can share some settings or have its own
-    # Example command for a simple Python mock gateway app:
-    command: python -m uvicorn mock_gateway.main:app --host 0.0.0.0 --port 8001
+      - ./.env # Make sure .env is correctly setup with DB_USER etc.
+    depends_on:
+      db-optiflow-postgres:
+        condition: service_healthy
+      db-optiflow-redis:
+        condition: service_healthy
+    # Ensure migrations run on startup
+    command: sh -c "npm run migration:run && npm start"
+
+  db-optiflow-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: db-optiflow-frontend
+    restart: always
+    ports:
+      - "3000:80" # Map host port 3000 to container's port 80 (nginx default)
+    env_file:
+      - ./.env
+    environment:
+      VITE_API_BASE_URL: http://localhost:${SERVER_PORT}/api # Ensure this matches backend service URL
+    depends_on:
+      - db-optiflow-backend
 
 volumes:
-  db_data:
+  postgres_data:
   redis_data:
-
-# Create a mock_gateway folder with a simple FastAPI app (e.g., main.py)
-# mock_gateway/main.py:
-# from fastapi import FastAPI, Request
-# app = FastAPI()
-# @app.post("/mock-gateway/payments")
-# async def create_mock_payment(request: Request):
-#     payload = await request.json()
-#     # Simulate payment processing
-#     import uuid
-#     return {"gateway_payment_id": str(uuid.uuid4()), "status": "pending", "message": "Payment initiated"}
-# @app.post("/mock-gateway/webhooks")
-# async def receive_mock_webhook(request: Request):
-#     payload = await request.json()
-#     print(f"Mock Gateway received webhook: {payload}")
-#     return {"status": "received"}
 ```

@@ -1,212 +1,184 @@
-# Task Management System: Architecture Overview
-
-This document outlines the architectural design of the Task Management System, focusing on its layered structure, components, and interactions.
-
-## 1. High-Level Architecture
-
-The system follows a typical **Client-Server Architecture** with a clear separation between the frontend and backend, communicating via a RESTful API. It leverages containerization for consistency across environments.
-
-```
-+----------------+                   +------------------+                   +---------------+
-|    Frontend    |  (HTTP/HTTPS)     |      Backend     | (TCP/IP)           |   Database    |
-| (React, Nginx) |------------------>| (Node.js/Express)|------------------->|  PostgreSQL   |
-+----------------+                   +------------------+                   +---------------+
-                                          |                                    ^
-                                          | (TCP/IP)                           |
-                                          +----------------------------------->+---------------+
-                                          |                                    |    Cache      |
-                                          |                                    |    (Redis)    |
-                                          |                                    +---------------+
-```
-
-## 2. Backend Architecture (Node.js/Express/TypeScript)
-
-The backend is structured to promote **separation of concerns**, maintainability, and scalability. It largely follows a **Layered Architecture** or **Onion Architecture** pattern, though simplified.
-
-```
-+-------------------+
-|      Client       |
-+---------+---------+
-          |
-          | HTTP/HTTPS (REST API)
-          v
-+-------------------+
-|   Express App     |
-| (app.ts, server.ts)|
-+---------+---------+
-          |
-          | 1. Middleware Chain
-          v (helmet, cors, logging, rate limiting, auth, cache, validation, error handling)
-+-------------------+
-|     Router (v1)   |
-| (routes/v1/*.ts)  |
-+---------+---------+
-          |
-          | 2. Controller Layer (request/response handling, input parsing)
-          v
-+-------------------+
-|    Controllers    |
-| (controllers/*.ts)|
-+---------+---------+
-          |
-          | 3. Service Layer (business logic, orchestration)
-          v
-+-------------------+
-|      Services     |
-|  (services/*.ts)  |
-+---------+---------+
-          |
-          | 4. Repository Layer (data access logic, TypeORM)
-          v
-+-------------------+
-|    Repositories   |
-| (repositories/*.ts)|
-+---------+---------+
-          |
-          | 5. Entity Layer (ORM models, database schema definition)
-          v
-+-------------------+
-|      Entities     |
-|   (entities/*.ts) |
-+---------+---------+
-          |
-          | Database interaction (TypeORM)
-          v
-+-------------------+   +-------------------+
-|    PostgreSQL     |   |       Redis       |
-|    (Data Source)  |   |    (Cache Store)  |
-+-------------------+   +-------------------+
-```
-
-### Key Components & Their Responsibilities:
-
-*   **`server.ts`**: The application's entry point. Initializes the database connection, cache, and starts the Express server. Handles graceful shutdown.
-*   **`app.ts`**: Configures the Express application, applies global middleware (security, CORS, body parsing, logging, rate limiting), and mounts API routes.
-*   **`config/`**: Contains environment-specific configurations (database, JWT, Redis, logging, etc.). Centralized for easy management.
-*   **`middleware/`**:
-    *   **Authentication (`auth.ts`):** JWT token verification, setting `req.user`.
-    *   **Authorization (`auth.ts`):** Role-based access control.
-    *   **Error Handling (`errorHandler.ts`):** Catches errors, formats them, and sends appropriate HTTP responses. Integrates `ApiError` for operational errors.
-    *   **Logging (`logging.ts`):** Logs incoming requests and their responses.
-    *   **Rate Limiting (`rateLimiter.ts`):** Protects routes from brute-force attacks and excessive requests.
-    *   **Caching (`cache.ts`):** Middleware to cache API responses and clear cache on data mutations.
-    *   **Validation (`validate.ts`):** Joi-based request body validation.
-*   **`routes/v1/`**: Defines API routes for different resources (auth, users, projects, tasks). Each route file groups related endpoints.
-*   **`controllers/`**: Handle incoming HTTP requests. They parse request bodies/parameters, call the appropriate service methods, and send HTTP responses. They should be thin and focus on HTTP concerns.
-*   **`services/`**: Contain the core business logic. They orchestrate interactions between repositories and other services. They are responsible for implementing rules, validations (beyond basic input parsing), and complex operations. They should be agnostic of HTTP context.
-*   **`repositories/`**: Abstract database interactions. They provide methods to perform CRUD operations on entities, interacting directly with TypeORM's `EntityManager` or `Repository`. They focus on data persistence.
-*   **`entities/`**: Define the database schema using TypeORM decorators. They represent tables in the database and their relationships. Includes base entity for common fields like `id`, `createdAt`, `updatedAt`.
-*   **`migrations/`**: Version-controlled scripts to evolve the database schema.
-*   **`seeds/`**: Scripts to populate the database with initial or sample data.
-*   **`utils/`**: Utility functions like `ApiError` for standardized error handling, `catchAsync` for wrapping async Express handlers, and JWT token generation.
-*   **`subscribers/`**: TypeORM event subscribers for reacting to entity lifecycle events (e.g., auditing, logging changes).
-*   **Database (PostgreSQL):** Primary data store for relational data. Configured via TypeORM `DataSource`.
-*   **Cache (Redis):** Used for storing frequently accessed data or API responses to reduce database load and improve response times.
-
-## 3. Frontend Architecture (React/TypeScript)
-
-The frontend is a Single-Page Application (SPA) built with React, focusing on a **Component-Based Architecture**.
-
-```
-+-----------------------+
-|        Browser        |
-+-----------+-----------+
-            | HTTP/HTTPS (serving static files, API requests)
-            v
-+-----------------------+
-|      Nginx (Docker)   |
-|   (Static File Server)|
-+-----------+-----------+
-            |
-            | JavaScript, HTML, CSS (React Application)
-            v
-+-----------------------+
-|      React App        |
-|  (index.tsx, App.tsx) |
-+-----------+-----------+
-            |
-            | 1. Routing (React Router DOM)
-            v
-+-----------------------+
-|         Pages         |
-|   (pages/*/*.tsx)     |
-| (Login, Dashboard, Projects, Tasks, Admin)
-+-----------+-----------+
-            |
-            | 2. Contexts (Global State Management - e.g., Auth)
-            v
-+-----------------------+
-|       Components      |
-|  (components/*/*.tsx) |
-| (Navbar, Forms, Tables, Modals, Loading spinners)
-+-----------+-----------+
-            |
-            | 3. API Services (Axios)
-            v
-+-----------------------+
-|     Backend API       |
-+-----------------------+
-```
-
-### Key Components & Their Responsibilities:
-
-*   **`index.tsx`**: Entry point for the React application, renders the root `App` component.
-*   **`App.tsx`**: Sets up the main application structure, including routing (`react-router-dom`), global providers (e.g., `AuthProvider`), and global UI elements (e.g., `Navbar`, `ToastContainer`).
-*   **`contexts/AuthContext.tsx`**: Manages global authentication state (user info, token, login/logout functions). Uses `localStorage` for persistence.
-*   **`components/`**: Reusable UI components (e.g., `Navbar`, `LoadingSpinner`, `ProjectForm`, `TaskForm`). They receive props and emit events.
-*   **`pages/`**: Top-level components that represent different views or routes of the application (e.g., `Login`, `Dashboard`, `ProjectList`, `TaskDetail`, `AdminDashboard`). They fetch data, manage local state, and orchestrate component interactions.
-*   **`services/api.ts`**: An Axios-based API client for interacting with the backend. It centralizes API calls, adds JWT tokens to requests, and handles global error responses (e.g., redirecting on token expiry).
-*   **`types.ts`**: Defines shared TypeScript interfaces for data structures (User, Project, Task, etc.) used throughout the frontend.
-*   **`ProtectedRoute.tsx`**: A component that wraps routes requiring authentication or specific roles, redirecting unauthenticated/unauthorized users.
-*   **Styling:** Tailwind CSS is used for utility-first styling, making it easy to build responsive and modern UIs.
-
-## 4. DevOps & Infrastructure
-
-*   **Docker & Docker Compose:**
-    *   Each service (PostgreSQL, Redis, Backend, Frontend) runs in its own Docker container.
-    *   `docker-compose.yml` orchestrates these containers, defines their relationships, environment variables, and volumes.
-    *   `Dockerfile.backend` and `Dockerfile.frontend` specify how to build the Docker images for the respective services.
-*   **GitHub Actions (CI/CD):**
-    *   Automated workflows trigger on `push` and `pull_request` to the `main` branch.
-    *   **Test Jobs:** Separate jobs for backend and frontend tests, ensuring code quality. Includes database/cache setup for backend integration tests.
-    *   **Build & Push Job:** On successful tests on the `main` branch, Docker images are built and pushed to DockerHub (or another registry). This creates deployable artifacts.
-    *   Further steps could extend this to deploy to a cloud provider (e.g., AWS, Azure, GCP).
-
-## 5. Data Flow Example: Creating a Task
-
-1.  **Frontend:**
-    *   User navigates to a `ProjectDetail` page.
-    *   User clicks "Add New Task" button, which displays `TaskForm`.
-    *   User fills in task details in `TaskForm` and submits.
-    *   `TaskForm` calls `handleCreateTask` in `ProjectDetail`.
-    *   `ProjectDetail` dispatches an action (or directly calls) `taskApi.createTask` with task data and the project ID.
-    *   `api.ts` adds the JWT token from `localStorage` to the request header.
-
-2.  **Backend:**
-    *   Express receives `POST /api/v1/projects/:projectId/tasks`.
-    *   `requestLogger` logs the incoming request.
-    *   `apiRateLimiter` checks rate limits.
-    *   `auth` middleware verifies the JWT token, populating `req.user`.
-    *   `validate` middleware (with `taskValidation.createTask`) validates the request body.
-    *   The request is routed to `taskController.createTask`.
-    *   `taskController.createTask` calls `taskService.createTask`, passing validated data and `req.user.id`.
-    *   `taskService.createTask`:
-        *   Retrieves `Project` from `ProjectRepository` and validates user permissions (owner or admin).
-        *   Optionally retrieves `User` (assignedTo) from `UserRepository`.
-        *   Creates a `Task` entity using `TaskRepository.create()`.
-        *   Persists the new task to the database using `TaskRepository.save()`.
-        *   Calls `clearCache()` to invalidate relevant cache keys (e.g., `project-tasks:projectId`, `user-assigned-tasks:assignedToId`).
-    *   `taskController.createTask` sends a `201 Created` HTTP response with the new task data.
-    *   `errorHandler` catches any exceptions along the way.
-
-3.  **Frontend:**
-    *   `taskApi.createTask` receives the successful response.
-    *   `ProjectDetail` updates its local state (adds the new task to the `tasks` array).
-    *   `toast.success` displays a success notification.
-    *   The new task is rendered in the `ProjectDetail` UI.
-
-This architecture ensures a clear flow of data and responsibilities, making the system robust, scalable, and easy to debug and extend.
-```
-
-#### `DEPLOYMENT.md`
 ```markdown
+# DBOptiFlow Architecture Document
+
+This document describes the high-level architecture and design principles of the DBOptiFlow system.
+
+## Table of Contents
+
+1.  [Overview](#1-overview)
+2.  [Design Principles](#2-design-principles)
+3.  [Component Breakdown](#3-component-breakdown)
+    *   [Frontend](#31-frontend-reacttypescript)
+    *   [Backend](#32-backend-nodejs-typescript-express)
+    *   [Database Layer](#33-database-layer-postgresql-typeorm)
+    *   [Caching Layer](#34-caching-layer-redis)
+    *   [External/Target Databases](#35-externaltarget-databases-conceptual)
+4.  [Data Flow](#4-data-flow)
+    *   [User Interaction Flow](#41-user-interaction-flow)
+    *   [Monitoring & Recommendation Flow](#42-monitoring--recommendation-flow)
+5.  [Key Technologies](#5-key-technologies)
+6.  [Scalability & Resilience Considerations](#6-scalability--resilience-considerations)
+7.  [Security Considerations](#7-security-considerations)
+8.  [Observability](#8-observability)
+
+---
+
+## 1. Overview
+
+DBOptiFlow is a full-stack database optimization system designed to provide insights into database performance, identify potential issues, and suggest actionable improvements. It is built as a cloud-native, containerized application with a focus on modularity, scalability, and maintainability.
+
+The system's primary goals are:
+*   To offer a user-friendly interface for managing database connections.
+*   To simulate monitoring of database performance metrics and slow queries.
+*   To automatically generate optimization recommendations (e.g., index suggestions, query rewrites).
+*   To provide robust authentication, authorization, and operational features.
+
+## 2. Design Principles
+
+The design of DBOptiFlow adheres to several core principles:
+
+*   **Modularity:** The system is broken down into independent, cohesive modules (e.g., Auth, DB Connection, Monitoring, Recommendation) to improve maintainability, testability, and facilitate future scaling or microservices migration.
+*   **Layered Architecture:** Clear separation of concerns between presentation, application logic, and data layers for both frontend and backend.
+*   **API-First Approach:** All frontend-backend communication happens via a well-defined RESTful API, enabling easy integration with other clients or services.
+*   **Security by Design:** Authentication, authorization, input validation, and secure handling of sensitive data (like DB credentials) are built-in from the ground up.
+*   **Observability:** Integrated logging, error handling, and potential for monitoring metrics to understand system behavior in production.
+*   **Testability:** Each component is designed to be easily testable (unit, integration, API, E2E).
+*   **Containerization:** Utilizes Docker for consistent development, testing, and deployment environments.
+*   **Asynchronous Processing (for monitoring/recommendations):** Background tasks handle continuous monitoring and analysis, preventing blocking of the main API threads.
+
+## 3. Component Breakdown
+
+### 3.1. Frontend (React/TypeScript)
+
+*   **Technology Stack:** React, TypeScript, React Router, `@tanstack/react-query`, Axios, Tailwind CSS (or similar styling).
+*   **Purpose:** Provides an interactive Single-Page Application (SPA) for users to interact with DBOptiFlow.
+*   **Key Responsibilities:**
+    *   User authentication (Login, Register).
+    *   Dashboard for aggregated insights.
+    *   CRUD interface for managing `DbConnection`s.
+    *   Viewing and managing `Recommendation`s.
+    *   Displaying `SlowQueryLog`s and other simulated metrics.
+*   **Structure:** Follows a standard React project structure with `pages`, `components`, `contexts`, `hooks`, and `api` client layers.
+
+### 3.2. Backend (Node.js/TypeScript/Express)
+
+*   **Technology Stack:** Node.js, Express.js, TypeScript, TypeORM, Winston (logging), JWT (authentication), bcrypt (password hashing), Redis (caching), Zod (validation).
+*   **Purpose:** Serves as the API gateway, handles business logic, and orchestrates interactions with the database and cache. It also contains the core "intelligence" for monitoring simulation and recommendation generation.
+*   **Key Modules/Responsibilities:**
+    *   **Auth Module:** Manages user authentication (registration, login, JWT token generation/refresh).
+    *   **User Module:** CRUD for user profiles.
+    *   **DbConnection Module:** CRUD for target database connection configurations (stored securely).
+    *   **Monitoring Module (Simulated):**
+        *   Contains a scheduler (`monitoring.service`) that periodically generates synthetic `SlowQueryLog` entries and other metrics for active `DbConnection`s.
+        *   In a real system, this would integrate with actual database performance APIs or agents.
+    *   **Recommendation Module:**
+        *   Analyzes `SlowQueryLog` data to identify patterns (e.g., frequent slow queries on unindexed columns).
+        *   Generates `Recommendation` entities (e.g., `INDEX_SUGGESTION`, `QUERY_REWRITE`).
+        *   Provides API for users to view, update status (apply/dismiss) of recommendations.
+    *   **Dashboard Module:** Aggregates and summarizes data from other modules for the dashboard view.
+    *   **Middleware:** Centralized handlers for authentication, authorization, error handling, rate limiting, and request logging.
+    *   **Shared Utilities:** Logging (`winston`), Redis client, validation schemas (`zod`).
+*   **Structure:** Organized by feature modules, each containing its `controller` (API endpoints), `service` (business logic), and `repository` (DB interaction via TypeORM).
+
+### 3.3. Database Layer (PostgreSQL with TypeORM)
+
+*   **Technology Stack:** PostgreSQL, TypeORM.
+*   **Purpose:** This is the *DBOptiFlow system's own database*. It stores all persistent data required for the system's operation.
+*   **Key Entities (Schema Definitions):**
+    *   `User`: Stores user credentials, roles, and refresh tokens.
+    *   `DbConnection`: Stores configuration details for target databases that DBOptiFlow monitors (e.g., host, port, credentials). **Note: Credentials are stored, so robust encryption/secrets management is critical in production.**
+    *   `SlowQueryLog`: Stores simulated slow query events from target databases, including query text, duration, hash, and metadata.
+    *   `Recommendation`: Stores generated optimization recommendations, their type, severity, status, and suggested actions.
+*   **Features:**
+    *   **Migrations:** Managed using TypeORM migrations for schema evolution and version control.
+    *   **Indexing:** Appropriate indexes are defined on frequently queried columns within DBOptiFlow's own database to ensure its performance.
+
+### 3.4. Caching Layer (Redis)
+
+*   **Technology Stack:** Redis.
+*   **Purpose:** Improves performance by storing frequently accessed or computationally expensive data in memory.
+*   **Usage:**
+    *   Storing JWT refresh tokens.
+    *   Potentially caching aggregated dashboard metrics.
+    *   Rate limiting counters.
+
+### 3.5. External/Target Databases (Conceptual)
+
+*   **Purpose:** These are the actual databases (e.g., a production PostgreSQL or MySQL server) that DBOptiFlow is intended to monitor and optimize.
+*   **Note:** In this implementation, the interaction with external databases for *actual monitoring* is **simulated**. The `DbConnection` entity stores the configuration, and the `MonitoringModule` generates `SlowQueryLog` entries synthetically. A real-world DBOptiFlow would require:
+    *   Database agents to collect metrics.
+    *   Integration with cloud provider APIs (e.g., AWS RDS Performance Insights, Azure Database for PostgreSQL monitoring).
+    *   Parsing of slow query logs or `EXPLAIN` plan outputs.
+
+## 4. Data Flow
+
+### 4.1. User Interaction Flow
+
+1.  **Frontend Request:** A user interacts with the React frontend, which sends an HTTP request to the DBOptiFlow Backend API (e.g., `GET /api/dashboard/summary`).
+2.  **Authentication Middleware:** The request first hits the `authMiddleware` in the backend. It extracts the JWT access token from the `Authorization` header, verifies its signature and expiration.
+3.  **Authorization:** If authentication is successful, the user's `userId` and `role` are attached to the request object. Subsequent route handlers or services can then perform authorization checks (e.g., only `ADMIN` can delete `DbConnection`s).
+4.  **Rate Limiting:** `rateLimiter` middleware ensures a single client doesn't overwhelm the API.
+5.  **Controller:** The appropriate Express controller receives the request, extracts parameters, and delegates business logic to a service.
+6.  **Service:** The service layer executes the core business logic. It interacts with TypeORM repositories to fetch or store data in the PostgreSQL database. It might also interact with the Redis client for caching or token management.
+7.  **Response:** The service returns data to the controller, which formats it as a JSON response and sends it back to the frontend.
+8.  **Frontend Render:** The frontend receives the JSON data and updates the UI accordingly.
+
+### 4.2. Monitoring & Recommendation Flow (Asynchronous, Background)
+
+1.  **Scheduler Initialization:** On backend startup, the `monitoring.service` initializes a background scheduler (e.g., using `setInterval` or a cron library).
+2.  **Periodic Data Generation:** At configured intervals (e.g., every 5 minutes), the scheduler:
+    *   Fetches all `active` `DbConnection`s from DBOptiFlow's PostgreSQL database.
+    *   For each active connection, it *simulates* a slow query by randomly generating `SlowQueryLog` entries (query string, duration, hash, etc.).
+    *   These `SlowQueryLog` entries are persisted to DBOptiFlow's PostgreSQL database.
+3.  **Recommendation Trigger:** After generating new slow query logs, the `monitoring.service` (or a separate linked service) can trigger the `recommendation.service`.
+4.  **Recommendation Logic:** The `recommendation.service`:
+    *   Queries recent `SlowQueryLog` entries from DBOptiFlow's PostgreSQL.
+    *   Applies simple heuristics (e.g., identifying frequently occurring queries on specific columns that might benefit from an index, or queries exceeding a duration threshold).
+    *   Generates new `Recommendation` entities (e.g., `INDEX_SUGGESTION`, `QUERY_REWRITE`) with a suggested action, description, and severity.
+    *   Checks for existing open recommendations to avoid duplicates.
+    *   Persists these `Recommendation`s to DBOptiFlow's PostgreSQL database.
+5.  **User Notification/Interaction:** Users can view these new recommendations via the frontend dashboard or recommendation list pages. They can then mark them as `APPLIED` or `DISMISSED`.
+
+## 5. Key Technologies
+
+*   **Backend:** Node.js, Express.js, TypeScript
+*   **Frontend:** React, TypeScript, React Router, `@tanstack/react-query`, Axios
+*   **Database:** PostgreSQL (for DBOptiFlow's data)
+*   **ORM:** TypeORM
+*   **Caching:** Redis
+*   **Authentication:** JSON Web Tokens (JWT), `bcrypt`
+*   **Validation:** Zod
+*   **Logging:** Winston
+*   **API Documentation:** Swagger/OpenAPI (via `swagger-jsdoc` and `swagger-ui-express`)
+*   **Containerization:** Docker, Docker Compose
+*   **Testing:** Jest, Supertest (backend), React Testing Library (frontend), k6 (performance)
+*   **CI/CD:** GitHub Actions
+
+## 6. Scalability & Resilience Considerations
+
+*   **Stateless Backend:** The backend is designed to be stateless (session information stored in Redis/JWT), allowing for easy horizontal scaling by adding more instances behind a load balancer.
+*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally using read replicas for read-heavy workloads. Partitioning of large tables (like `slow_query_logs`) can be considered for very high data volumes.
+*   **Redis Scaling:** Redis can be clustered for high availability and throughput.
+*   **Asynchronous Processing:** Background tasks for monitoring and recommendations offload heavy computations from the main request-response cycle, improving API responsiveness. Message queues (e.g., Kafka, RabbitMQ) could be introduced for more robust asynchronous processing in a larger system.
+*   **Docker & Orchestration:** Docker Compose is used for local development. In production, Kubernetes or similar orchestration tools would manage container deployment, scaling, and self-healing.
+
+## 7. Security Considerations
+
+*   **Authentication & Authorization:** JWTs are used for secure authentication. Role-based access control (RBAC) ensures users only access resources they are permitted to.
+*   **Password Hashing:** `bcrypt` is used to securely hash user passwords.
+*   **Sensitive Data Encryption:** Database connection passwords in `DbConnection` are stored as plain text in this example for simplicity. In a production environment, these should be:
+    *   Strongly encrypted at rest.
+    *   Stored in a dedicated secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault) and retrieved at runtime.
+    *   Access to these secrets should be strictly controlled using IAM roles.
+*   **Input Validation:** `zod` is used for robust schema validation on all API inputs to prevent common vulnerabilities like SQL injection and XSS.
+*   **HTTPS:** All communication should be over HTTPS in production. Docker Compose includes an Nginx proxy that can be configured with SSL certificates.
+*   **CORS, Helmet, Rate Limiting:** Standard Express middlewares (`cors`, `helmet`, `express-rate-limit`) are employed for common web security practices.
+*   **Dependency Security:** Regular scanning of dependencies for known vulnerabilities.
+
+## 8. Observability
+
+*   **Structured Logging (Winston):** The backend uses Winston for structured, customizable logging, making it easier to parse, filter, and analyze logs in centralized logging systems (e.g., ELK stack, Grafana Loki).
+*   **Error Handling Middleware:** A centralized error handler provides consistent error responses and logs detailed error information without exposing sensitive details to the client.
+*   **Health Checks:** Docker Compose includes health checks for all services to ensure they are running correctly.
+*   **Metrics (Future Enhancement):** Integration with Prometheus and Grafana for collecting and visualizing application and system metrics would be a natural next step for comprehensive monitoring.
+```

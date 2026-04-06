@@ -1,71 +1,36 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+```typescript
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { AuthPage } from './pages/Auth';
+import { DashboardPage } from './pages/Dashboard';
+import { DbConnectionsPage } from './pages/DbConnections';
+import { RecommendationListPage } from './pages/RecommendationList';
+import { RecommendationDetailPage } from './pages/RecommendationDetail';
+import { SettingsPage } from './pages/Settings';
+import { NotFoundPage } from './pages/NotFound';
+import { PrivateRoute } from './components/common/PrivateRoute';
+import { Layout } from './components/layout/Layout';
+import { Toaster } from 'react-hot-toast'; // For notifications
 
-import Navbar from './components/Navbar';
-import ProtectedRoute from './components/ProtectedRoute';
-
-// Auth Pages
-import Login from './pages/Auth/Login';
-import Register from './pages/Auth/Register';
-
-// Main Application Pages
-import Dashboard from './pages/Dashboard';
-import ProjectList from './pages/Project/ProjectList';
-import ProjectDetail from './pages/Project/ProjectDetail';
-import AssignedTasks from './pages/Task/AssignedTasks';
-import TaskDetail from './pages/Task/TaskDetail';
-
-// Admin Pages
-import AdminDashboard from './pages/Admin/AdminDashboard';
-import { UserRole } from './types';
-
-// Utility/Error Pages
-import NotFound from './pages/NotFound';
-import Unauthorized from './pages/Unauthorized';
-import Profile from './pages/Profile'; // Simple profile page
-
-const App: React.FC = () => {
-  return (
-    <Router>
-      <AuthProvider>
-        <Navbar />
-        <main className="flex-grow">
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/unauthorized" element={<Unauthorized />} />
-
-            {/* Protected Routes */}
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-
-            {/* Project Routes */}
-            <Route path="/projects" element={<ProtectedRoute><ProjectList /></ProtectedRoute>} />
-            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
-            <Route path="/projects/:projectId/tasks/:taskId" element={<ProtectedRoute><TaskDetail /></ProtectedRoute>} />
-
-            {/* Task Routes */}
-            <Route path="/tasks/assigned" element={<ProtectedRoute><AssignedTasks /></ProtectedRoute>} />
-
-            {/* Admin Routes */}
-            <Route path="/admin" element={<ProtectedRoute allowedRoles={[UserRole.ADMIN]}><AdminDashboard /></ProtectedRoute>} />
-
-            {/* Catch-all for 404 */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </main>
-        <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
-      </AuthProvider>
-    </Router>
-  );
-};
+function App() {
+    return (
+        <AuthProvider>
+            <Toaster position="top-right" reverseOrder={false} />
+            <Routes>
+                <Route path="/auth" element={<AuthPage />} />
+                <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+                    <Route index element={<Navigate to="/dashboard" replace />} />
+                    <Route path="dashboard" element={<DashboardPage />} />
+                    <Route path="db-connections" element={<DbConnectionsPage />} />
+                    <Route path="recommendations" element={<RecommendationListPage />} />
+                    <Route path="recommendations/:id" element={<RecommendationDetailPage />} />
+                    <Route path="settings" element={<SettingsPage />} />
+                </Route>
+                <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+        </AuthProvider>
+    );
+}
 
 export default App;
 ```
-
-#### `frontend/src/pages/Profile.tsx`
-```typescript

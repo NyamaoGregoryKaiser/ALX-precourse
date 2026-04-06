@@ -1,22 +1,20 @@
 ```yaml
-name: CI/CD Pipeline for Chat App
+name: DBOptiFlow CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   build-and-test-backend:
-    name: Build and Test Backend
+    name: Build & Test Backend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,68 +22,49 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './backend/package-lock.json'
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Install Backend dependencies
         run: npm install
+        working-directory: ./backend
 
-      - name: Lint backend code
-        run: npm run lint
-
-      - name: Build backend
+      - name: Build Backend
         run: npm run build
+        working-directory: ./backend
 
-      - name: Setup PostgreSQL for Tests
-        uses: Harmonizer/setup-postgres@v1
-        with:
-          postgres-version: '15'
-          host-port: 5432
-          database: chat_app_test
-          username: user
-          password: password
-
-      - name: Wait for PostgreSQL to be ready
-        # Using a simple shell loop to wait for postgres to be ready
+      - name: Start PostgreSQL for Backend Tests
+        run: docker run --name test-postgres -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -e POSTGRES_DB=test_db -d -p 5433:5432 postgres:16-alpine
+      - name: Wait for PostgreSQL
         run: |
           for i in `seq 1 10`; do
-            nc -z localhost 5432 && echo "PostgreSQL is ready!" && break
-            echo "Waiting for PostgreSQL to start..."
-            sleep 5
+            nc -z localhost 5433 && echo Success && break
+            echo -n .
+            sleep 1
           done
-
-      - name: Setup Prisma for Test Database
-        run: |
-          npx prisma generate
-          # Apply migrations to the test database
-          # Ensure DATABASE_URL is set for the test environment
-          export DATABASE_URL="postgresql://user:password@localhost:5432/chat_app_test?schema=public"
-          npx prisma migrate dev --name init --skip-seed
+      - name: Run Backend Tests
+        run: npm test
+        working-directory: ./backend
         env:
-          DATABASE_URL: "postgresql://user:password@localhost:5432/chat_app_test?schema=public"
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_NAME: test_db
+          JWT_ACCESS_SECRET: test_access_secret
+          JWT_REFRESH_SECRET: test_refresh_secret
+          REDIS_HOST: localhost # Not strictly needed for unit tests, but good for consistency
+          REDIS_PORT: 6379
 
-      - name: Run backend tests
-        run: npm test -- --coverage --testPathPattern="src/tests"
-        env:
-          DATABASE_URL: "postgresql://user:password@localhost:5432/chat_app_test?schema=public"
-          # Set a dummy JWT secret for tests
-          JWT_SECRET: "test_jwt_secret"
-          REDIS_URL: "redis://localhost:6379" # Redis isn't strictly needed for these specific tests but common in .env
-
-      - name: Upload backend coverage report
+      - name: Upload Backend Coverage Report
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage-report
-          path: ./backend/coverage/
+          path: backend/coverage/lcov.info
 
   build-and-test-frontend:
-    name: Build and Test Frontend
+    name: Build & Test Frontend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -93,69 +72,109 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package-lock.json'
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Install Frontend dependencies
         run: npm install
+        working-directory: ./frontend
 
-      - name: Lint frontend code
-        run: npm run lint
-
-      - name: Build frontend
+      - name: Build Frontend
         run: npm run build
+        working-directory: ./frontend
 
-      - name: Run frontend tests
-        run: npm test -- --watchAll=false --coverage
+      - name: Run Frontend Tests
+        run: npm test
+        working-directory: ./frontend
 
-      - name: Upload frontend coverage report
+      - name: Upload Frontend Coverage Report
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage-report
-          path: ./frontend/coverage/
+          path: frontend/coverage/lcov.info
 
-  # Example of a conceptual deployment job
-  # This job will only run if both build-and-test jobs pass and it's a push to 'main'
-  # Real deployment steps would be highly dependent on your cloud provider and infrastructure.
-  deploy:
-    name: Deploy to Production (Conceptual)
-    runs-on: ubuntu-latest
+  docker-build-and-push:
+    name: Build & Push Docker Images
     needs: [build-and-test-backend, build-and-test-frontend]
-    if: github.ref == 'refs/heads/main' && success()
-
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only push on main/develop
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Log in to your Docker Registry (e.g., Docker Hub, AWS ECR, GCP GCR)
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKER_USERNAME }}
-      #     password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Build and push Backend Docker image
-      # - name: Build and Push Backend Docker Image
-      #   run: |
-      #     docker build -t your-dockerhub-username/chat-app-backend:latest ./backend
-      #     docker push your-dockerhub-username/chat-app-backend:latest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # Build and push Frontend Docker image
-      # - name: Build and Push Frontend Docker Image
-      #   run: |
-      #     docker build -t your-dockerhub-username/chat-app-frontend:latest ./frontend
-      #     docker push your-dockerhub-username/chat-app-frontend:latest
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/db-optiflow-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Deployment steps (e.g., to Kubernetes, AWS ECS, Heroku)
-      - name: Simulate Deployment
-        run: |
-          echo "Deployment to production environment initiated..."
-          echo "This is where you would call your deployment scripts for Kubernetes, ECS, App Runner, etc."
-          echo "Using environmental variables from GitHub Secrets (e.g., KUBE_CONFIG, AWS_ACCESS_KEY_ID)"
-          echo "Deployment successful for frontend and backend images to production."
-          # Example:
-          # kubectl apply -f kubernetes/backend-deployment.yaml
-          # kubectl apply -f kubernetes/frontend-deployment.yaml
-          # heroku container:release web --app your-heroku-app
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/db-optiflow-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} # Pass frontend env var
+
+  deploy:
+    name: Deploy to Production/Staging
+    needs: [docker-build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
+    environment: production # Use GitHub Environments for protected deployments
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server (e.g., via SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/your/db-optiflow-deployment
+            docker compose pull
+            docker compose down
+            docker compose up -d
+            echo "Deployment complete for main branch!"
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [docker-build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' # Deploy develop branch to staging
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging Server (e.g., via SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/your/db-optiflow-staging-deployment
+            docker compose pull
+            docker compose down
+            docker compose up -d
+            echo "Deployment complete for develop branch!"
 ```

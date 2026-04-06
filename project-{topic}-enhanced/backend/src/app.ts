@@ -1,49 +1,54 @@
+```typescript
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import bodyParser from 'body-parser';
-import config from './config';
-import routesV1 from './routes/v1';
-import errorHandler from './middleware/errorHandler';
-import { ApiError } from './utils/ApiError';
-import httpStatus from 'http-status';
-import requestLogger from './middleware/logging';
-import { apiRateLimiter } from './middleware/rateLimiter';
+import morgan from 'morgan';
+import { env } from './config';
+import { errorHandler } from './middlewares/error-handler';
+import { authRoutes } from './auth/auth.routes';
+import { userRoutes } from './modules/user/user.routes';
+import { dbConnectionRoutes } from './modules/db-connection/db-connection.routes';
+import { monitoringRoutes } from './modules/monitoring/monitoring.routes';
+import { recommendationRoutes } from './modules/recommendation/recommendation.routes';
+import { dashboardRoutes } from './modules/dashboard/dashboard.routes';
+import { requestLoggerMiddleware } from './shared/middlewares/request-logger';
+import { rateLimiter } from './shared/middlewares/rate-limiter';
 
 const app = express();
 
-// Set security HTTP headers
-app.use(helmet());
+// Security Middlewares
+app.use(helmet()); // Sets various HTTP headers for security
+app.use(cors({
+    origin: env.CLIENT_URL, // Allow requests from frontend origin
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    credentials: true,
+}));
 
-// Enable CORS
-app.use(cors({ origin: config.cors.origins }));
-app.options('*', cors()); // Enable pre-flight across all routes
+// Request Logging
+app.use(morgan('dev')); // Console logging for requests
+app.use(requestLoggerMiddleware); // Custom logger for detailed request info
 
-// Parse json request body
-app.use(bodyParser.json());
+// Rate Limiting
+app.use(rateLimiter);
 
-// Parse urlencoded request body
-app.use(bodyParser.urlencoded({ extended: true }));
+// Body Parsers
+app.use(express.json()); // Parses incoming requests with JSON payloads
+app.use(express.urlencoded({ extended: true })); // Parses URL-encoded bodies
 
-// Request logging
-app.use(requestLogger);
-
-// API rate limiting
-app.use('/api/v1', apiRateLimiter); // Apply to all /api/v1 routes except auth which has its own
-
-// v1 api routes
-app.use('/api/v1', routesV1);
-
-// Send 404 for any unknown API request
-app.use((req, res, next) => {
-  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
+// API Routes
+app.get('/', (req, res) => {
+    res.status(200).json({ message: 'DBOptiFlow API is running!' });
 });
 
-// Global error handler
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/db-connections', dbConnectionRoutes);
+app.use('/api/monitoring', monitoringRoutes);
+app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+
+// Centralized Error Handling Middleware (must be last)
 app.use(errorHandler);
 
 export default app;
 ```
-
-#### `backend/src/server.ts` (Entry point)
-```typescript
