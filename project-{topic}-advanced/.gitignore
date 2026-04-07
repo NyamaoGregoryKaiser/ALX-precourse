@@ -1,48 +1,21 @@
-```
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-release-pom.xml
-# For project specific
-.project
-.settings
-.vs/
-.classpath
-.factorypath
-.apt_generated
-.springBeans
-
-# Eclipse
-.metadata
-!.metadata/.plugins/org.eclipse.core.resources/.projects/*/
-!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.markers
-!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.externalToolBuilders/
-!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.buildspec
-!.metadata/.plugins/org.eclipse.core.resources/.projects/*/.settings/
-!.metadata/.plugins/org.eclipse.jdt.core/
-
-# Intellij
-.idea/
-*.iws
-*.iml
-*.ipr
-.gradle/
-build/
-
-# Log files
-*.log
-logs/
-*.json
-*.txt
-*.yaml
-
-# Environment variables
+# Node
+node_modules/
 .env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# Logs
+*.log
+# Test coverage
+coverage/
+# Production builds
+build/
+dist/
+# IDEs
+.idea/
+.vscode/
+# OS
+.DS_Store
 # Docker
-*.env # for local development secrets
 .dockerignore
 ```

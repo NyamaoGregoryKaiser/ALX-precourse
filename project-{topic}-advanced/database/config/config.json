@@ -1,0 +1,27 @@
+```json
+{
+  "development": {
+    "url": "postgresql://postgres:postgres@localhost:5432/enterprise_dev",
+    "dialect": "postgres",
+    "seederStorage": "sequelize"
+  },
+  "test": {
+    "url": "postgresql://postgres:postgres@localhost:5432/enterprise_test",
+    "dialect": "postgres",
+    "logging": false,
+    "seederStorage": "sequelize"
+  },
+  "production": {
+    "url": "postgresql://postgres:postgres@localhost:5432/enterprise_prod",
+    "dialect": "postgres",
+    "logging": false,
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    },
+    "seederStorage": "sequelize"
+  }
+}
+```

@@ -1,64 +1,57 @@
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const logger = require('./utils/logger');
-const { errorHandler } = require('./middleware/errorMiddleware');
-
-// Import routes
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const projectRoutes = require('./routes/projectRoutes');
-const taskRoutes = require('./routes/taskRoutes');
+const xss = require('xss-clean');
+const compression = require('compression');
+const cors = require('cors');
+const httpStatus = require('http-status');
+const config = require('./config/config');
+const { errorConverter, errorHandler } = require('./middleware/error.middleware');
+const { apiLogger } = require('./middleware/logger.middleware');
+const { limiter } = require('./middleware/rateLimit.middleware');
+const ApiError = require('./utils/ApiError');
+const routes = require('./routes');
 
 const app = express();
 
-// Security Middleware
+// Set security HTTP headers
 app.use(helmet());
 
-// CORS Configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-// JSON Body Parser
+// Parse incoming requests with JSON payloads
 app.use(express.json());
 
-// Request logging middleware
+// Parse URL-encoded bodies (for form data)
+app.use(express.urlencoded({ extended: true }));
+
+// Sanitize request data
+app.use(xss());
+
+// Gzip compression
+app.use(compression());
+
+// Enable CORS
+app.use(cors());
+app.options('*', cors());
+
+// API request logging
+app.use(apiLogger);
+
+// Limit repeated failed requests to auth endpoints
+if (config.env === 'production') {
+  app.use(limiter);
+}
+
+// API routes
+app.use('/api/v1', routes);
+
+// Send back a 404 error for any unknown API request
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.originalUrl} from ${req.ip}`);
-  next();
+  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
 });
 
-// Rate Limiting
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // max 100 requests per 15 minutes per IP
-  message: 'Too many requests from this IP, please try again after 15 minutes',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-});
-app.use('/api/', apiLimiter); // Apply to all API routes
+// Convert error to ApiError, if needed
+app.use(errorConverter);
 
-// API Routes
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'UP', message: 'Service is healthy!' });
-});
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/tasks', taskRoutes);
-
-// Catch-all for undefined routes
-app.use('*', (req, res, next) => {
-  const error = new Error(`Not Found - ${req.originalUrl}`);
-  error.statusCode = 404;
-  next(error);
-});
-
-// Centralized Error Handling Middleware (must be last)
+// Handle errors
 app.use(errorHandler);
 
 module.exports = app;

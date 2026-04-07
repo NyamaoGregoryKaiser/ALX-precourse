@@ -1,0 +1,10 @@
+```json
+[
+  { "email": "user1.order@example.com", "password": "User1Password1" },
+  { "email": "user2.order@example.com", "password": "User2Password1" }
+  // Add more users here, ensure they are registered in the test database
+  // Example for more:
+  // { "email": "user3.order@example.com", "password": "User3Password1" },
+  // { "email": "user4.order@example.com", "password": "User4Password1" }
+]
+```
