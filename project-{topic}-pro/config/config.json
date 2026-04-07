@@ -1,0 +1,37 @@
+```json
+{
+  "server": {
+    "port": 9080,
+    "threads": 4
+  },
+  "database": {
+    "host": "db",
+    "port": 5432,
+    "user": "scraper_user",
+    "password": "scraper_password",
+    "dbname": "scraper_db"
+  },
+  "jwt": {
+    "secret": "your_super_secret_jwt_key_please_change_this_in_production_really_long_string_for_security",
+    "expiry_hours": 24
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/webscraper.log",
+    "max_size_mb": 5,
+    "max_files": 3
+  },
+  "rate_limit": {
+    "requests_per_minute": 60,
+    "burst": 10
+  },
+  "cache": {
+    "max_items": 100,
+    "ttl_seconds": 300
+  },
+  "scraper": {
+    "max_retries": 3,
+    "retry_delay_ms": 1000
+  }
+}
+```

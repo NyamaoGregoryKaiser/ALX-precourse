@@ -1,0 +1,47 @@
+```yaml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: scraper_db
+      POSTGRES_USER: scraper_user
+      POSTGRES_PASSWORD: scraper_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ../db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../db/migrations:/docker-entrypoint-initdb.d/migrations
+      - ../db/seed:/docker-entrypoint-initdb.d/seed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraper_user -d scraper_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    restart: always
+    ports:
+      - "9080:9080"
+    volumes:
+      - ./logs:/app/logs # Mount host logs directory to container
+    environment:
+      # Override config values with environment variables if desired
+      DATABASE_HOST: db
+      DATABASE_USER: scraper_user
+      DATABASE_PASSWORD: scraper_password
+      DATABASE_DBNAME: scraper_db
+      JWT_SECRET: your_super_secret_jwt_key_please_change_this_in_production_really_long_string_for_security
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
+```

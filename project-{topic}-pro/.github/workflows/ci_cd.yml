@@ -1,0 +1,134 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies (Pistache, pqxx, libcurl, libgumbo, spdlog)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          libpqxx-dev \
+          libcurl4-openssl-dev \
+          libgumbo-dev \
+          libssl-dev \
+          uuid-dev \
+          pkg-config \
+          libgtest-dev \
+          googletest
+        # Manually install spdlog and Pistache from source as they might not be in apt
+        # Install Pistache
+        git clone https://github.com/pistacheio/pistache.git /tmp/pistache
+        cd /tmp/pistache
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        sudo make install
+        sudo ldconfig
+
+        # Install spdlog
+        git clone https://github.com/gabime/spdlog.git /tmp/spdlog
+        cd /tmp/spdlog
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        sudo make install
+        sudo ldconfig
+        
+        # Link gtest if not automatically found
+        sudo ln -s /usr/src/googletest/googletest/libgtest.a /usr/local/lib/libgtest.a
+        sudo ln -s /usr/src/googletest/googletest/libgtest_main.a /usr/local/lib/libgtest_main.a
+        sudo ln -s /usr/src/googletest/googlemock/libgmock.a /usr/local/lib/libgmock.a
+        sudo ln -s /usr/src/googletest/googlemock/libgmock_main.a /usr/local/lib/libgmock_main.a
+
+
+    - name: Copy nlohmann/json header (if not using vcpkg/conan)
+      run: |
+        mkdir -p src/common/nlohmann
+        wget -O src/common/nlohmann/json.hpp https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
+
+
+    - name: Configure CMake
+      run: cmake -B build
+
+    - name: Build application
+      run: cmake --build build -j$(nproc)
+
+    - name: Run unit and integration tests
+      # Start database for integration tests
+      run: |
+        docker-compose -f docker/docker-compose.yml up -d db
+        sleep 10 # Give DB time to start
+        cd build
+        ./tests/unit_tests
+        ./tests/integration_tests
+      working-directory: ${{ github.workspace }}
+
+    - name: Build Docker image
+      run: docker build -t webscraper-app:latest -f docker/Dockerfile .
+      working-directory: ${{ github.workspace }}
+
+    - name: Run API tests (with Docker Compose)
+      run: |
+        docker-compose -f docker/docker-compose.yml up -d
+        sleep 20 # Give app time to start and connect to DB
+        chmod +x tests/api/api_test_script.sh
+        ./tests/api/api_test_script.sh
+      working-directory: ${{ github.workspace }}
+      env:
+        JWT_SECRET: your_super_secret_jwt_key_please_change_this_in_production_really_long_string_for_security
+        TEST_USER: ci_test_user
+        TEST_PASSWORD: ci_password123
+        TEST_EMAIL: ci_test@example.com
+
+    - name: Stop Docker Compose
+      if: always()
+      run: docker-compose -f docker/docker-compose.yml down -v
+      working-directory: ${{ github.workspace }}
+
+  # deploy:
+  #   needs: build_and_test
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   environment: production # Use GitHub environments for secrets
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v3
+  #
+  #   - name: Login to DockerHub
+  #     uses: docker/login-action@v2
+  #     with:
+  #       username: ${{ secrets.DOCKER_USERNAME }}
+  #       password: ${{ secrets.DOCKER_TOKEN }}
+  #
+  #   - name: Build and push Docker image
+  #     run: |
+  #       docker build -t your-dockerhub-username/webscraper-app:${{ github.sha }} -f docker/Dockerfile .
+  #       docker push your-dockerhub-username/webscraper-app:${{ github.sha }}
+  #       docker tag your-dockerhub-username/webscraper-app:${{ github.sha }} your-dockerhub-username/webscraper-app:latest
+  #       docker push your-dockerhub-username/webscraper-app:latest
+  #
+  #   - name: Deploy to Server (e.g., SSH into EC2 and run docker-compose pull/up)
+  #     uses: appleboy/ssh-action@master
+  #     with:
+  #       host: ${{ secrets.SSH_HOST }}
+  #       username: ${{ secrets.SSH_USERNAME }}
+  #       key: ${{ secrets.SSH_KEY }}
+  #       script: |
+  #         cd /path/to/your/app
+  #         docker-compose pull app
+  #         docker-compose up -d --remove-orphans
+  #         docker image prune -f
+```

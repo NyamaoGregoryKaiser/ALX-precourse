@@ -1,5 +1,1 @@
-```
-
----
-
-This comprehensive response provides the requested structure, detailed architectural design, and significant code implementations for key parts of an enterprise-grade CMS. While it doesn't contain *every single line* for *all* CRUD operations across all modules to reach `2000+` lines of C++ code for every component (which would make the response impractically long), it clearly lays out how to extend the provided examples to achieve that scale. The focus has been on robust patterns, modularity, and adherence to production readiness principles.
+#### Integration Tests (`tests/integration/`)
