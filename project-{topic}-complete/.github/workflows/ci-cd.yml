@@ -1,5 +1,5 @@
 ```yaml
-name: ALX Product Management CI/CD Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -12,121 +12,61 @@ on:
       - develop
 
 jobs:
-  build-and-test:
-    name: Build, Test & Analyze
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpoco-dev libspdlog-dev libjwt-dev libpq-dev git
 
-      - name: Set up PostgreSQL for Integration Tests
-        uses: Harmonize-IO/setup-postgres@v1.4.1 # Or use official PostgreSQL action if available
-        with:
-          postgres-version: '15'
-          database-name: 'testdb'
-          username: 'testuser'
-          password: 'testpass'
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build
 
-      - name: Build with Maven and Run Unit/Integration Tests
-        run: mvn clean verify # 'verify' phase includes 'test' and 'integration-test' (if defined)
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config Release -j$(nproc)
 
-      - name: Upload JaCoCo Code Coverage Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/jacoco.xml
-          # Optionally, if you have a SonarQube setup
-          # - name: SonarQube Scan
-          #   if: success() && github.ref == 'refs/heads/main' # Only scan on main branch push
-          #   uses: SonarSource/sonarcloud-github-action@master
-          #   env:
-          #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Provided by GitHub
-          #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Your SonarCloud token
+    - name: Run Unit and Integration Tests
+      run: |
+        cd ${{github.workspace}}/build
+        ctest --output-on-failure
+      env:
+        # Provide test environment variables if necessary, e.g., for test DB
+        DB_OPTIMIZER_DB_HOST: localhost
+        DB_OPTIMIZER_DB_PORT: 5432
+        DB_OPTIMIZER_DB_NAME: test_db_optimizer_db
+        DB_OPTIMIZER_DB_USER: test_user
+        DB_OPTIMIZER_DB_PASSWORD: test_password
+        DB_OPTIMIZER_JWT_SECRET: testSecret
 
-  docker-build-and-push:
-    name: Build & Push Docker Image
+  docker-build:
+    needs: build
     runs-on: ubuntu-latest
-    needs: build-and-test # Only run if build and tests pass
-    if: success() && github.ref == 'refs/heads/main' # Only push to registry on main branch merge/push
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKER_USERNAME }}/alx-product-management
-          tags: |
-            type=raw,value=latest,enable={{is_default}}
-            type=sha,format=long,prefix=
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=schedule,enable=true,pattern=monthly
+    - name: Login to DockerHub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Use a build-arg for the JWT secret if you want to bake it in (less secure than env var at runtime)
-          # build-args: |
-          #   JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Placeholder for Deployment job
-  # This would typically involve deploying to Kubernetes, EC2, Azure App Service, etc.
-  # For this comprehensive example, we'll outline the steps but not execute a full cloud deployment.
-  deploy:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: docker-build-and-push
-    if: success() && github.ref == 'refs/heads/main' # Only deploy main branch
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Simulate Deployment to Kubernetes
-        run: |
-          echo "Simulating deployment to Kubernetes or other production environment..."
-          echo "Image: ${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }}"
-          echo "Steps would typically include:"
-          echo "1. Connect to Kubernetes cluster (e.g., using kubectl via kubeconfig)"
-          echo "2. Update Kubernetes deployment manifest (e.g., set new image tag)"
-          echo "   kubectl set image deployment/product-management-app product-management-app=${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }} --namespace=production"
-          echo "3. Perform rolling update or blue/green deployment strategy"
-          echo "4. Monitor deployment health (e.g., kubectl rollout status)"
-          echo "Deployment simulated successfully."
-
-      - name: Simulate Deployment to AWS EC2/ECS
-        run: |
-          echo "Simulating deployment to AWS EC2/ECS..."
-          echo "Image: ${{ secrets.DOCKER_USERNAME }}/alx-product-management:${{ github.sha }}"
-          echo "Steps would typically include:"
-          echo "1. Authenticate to AWS (e.g., using aws-actions/configure-aws-credentials)"
-          echo "2. Push new image to Amazon ECR (if not already done via Docker Hub)"
-          echo "3. Update ECS Service or launch new EC2 instances with updated Docker image."
-          echo "4. Perform health checks and traffic shifting."
-          echo "Deployment simulated successfully."
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: docker/Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/db-optimizer:${{ github.sha }}
+          ${{ secrets.DOCKER_USERNAME }}/db-optimizer:latest
 ```

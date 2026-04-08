@@ -1,0 +1,38 @@
+```json
+{
+    "server": {
+        "port": 8080,
+        "max_queued_connections": 100,
+        "max_threads": 4
+    },
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "db_optimizer_db",
+        "user": "db_optimizer_user",
+        "password": "db_optimizer_password",
+        "pool_size": 10
+    },
+    "jwt": {
+        "secret": "superSecretKey123!@#",
+        "issuer": "db-optimizer.com",
+        "audience": "db-optimizer-users",
+        "access_token_expiry_minutes": 60,
+        "refresh_token_expiry_minutes": 1440
+    },
+    "logging": {
+        "level": "info",
+        "file": "db_optimizer.log",
+        "console_enabled": true
+    },
+    "cache": {
+        "max_size": 1000,
+        "ttl_seconds": 300
+    },
+    "rate_limiter": {
+        "capacity": 100,
+        "refill_rate_per_sec": 5
+    },
+    "monitor_interval_seconds": 300
+}
+```

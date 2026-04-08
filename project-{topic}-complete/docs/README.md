@@ -1,198 +1,182 @@
 ```markdown
-# Payment Processing System
+# DB-Optimizer: Production-Ready Database Optimization System
 
-A comprehensive, production-ready Payment Processing System built with C++ (Crow framework) backend, SQLite database, and supporting infrastructure.
+## Overview
+DB-Optimizer is a comprehensive, enterprise-grade database optimization system designed to monitor, analyze, and recommend performance improvements for PostgreSQL databases. Built with C++, it provides a robust backend API for managing monitored databases, users, and optimization reports.
 
-## Table of Contents
+**Key Features:**
+*   **Database Monitoring:** Connects to external PostgreSQL databases to collect query statistics (via `pg_stat_statements`) and execution plans (`EXPLAIN ANALYZE`).
+*   **Query Analysis:** Parses SQL queries to identify tables, columns, and clauses involved in filtering, sorting, grouping, and joining.
+*   **Index Recommendation:** Suggests optimal B-tree indexes based on workload analysis, slow queries, and sequential scan detection.
+*   **RESTful API:** Provides full CRUD operations for users, monitored databases, query logs, and optimization reports.
+*   **Authentication & Authorization:** Secure user management with JWT-based authentication and role-based access control.
+*   **Logging & Monitoring:** Integrates `spdlog` for comprehensive logging and basic internal monitoring.
+*   **Error Handling:** Centralized error handling middleware for API requests.
+*   **Caching:** Simple in-memory caching layer for frequently accessed data.
+*   **Rate Limiting:** Basic rate-limiting mechanism to protect API endpoints.
+*   **Containerization:** Full Docker support for easy deployment and scalability.
+*   **CI/CD Integration:** GitHub Actions workflow for automated testing and Docker image building.
+*   **Comprehensive Testing:** Unit, integration, and API tests to ensure high quality and reliability.
 
-1.  [Introduction](#1-introduction)
-2.  [Features](#2-features)
-3.  [Architecture](#3-architecture)
-4.  [Prerequisites](#4-prerequisites)
-5.  [Setup and Installation](#5-setup-and-installation)
-    *   [Local Development (without Docker)](#local-development-without-docker)
-    *   [Docker Compose (Recommended)](#docker-compose-recommended)
-6.  [Configuration](#6-configuration)
-7.  [Running the Application](#7-running-the-application)
-8.  [API Endpoints](#8-api-endpoints)
-9.  [Testing](#9-testing)
-10. [Deployment](#10-deployment)
-11. [Contribution](#11-contribution)
-12. [License](#12-license)
+## Architecture
+(See `docs/ARCHITECTURE.md` for a detailed breakdown)
 
----
+## Getting Started
 
-### 1. Introduction
+### Prerequisites
+*   Git
+*   Docker & Docker Compose (recommended for local development)
+*   CMake (if building natively)
+*   C++ Compiler (GCC/Clang supporting C++17)
+*   Poco C++ Libraries (dev packages)
+*   spdlog (dev package)
+*   jwt-cpp (dev package)
+*   libpq-dev (PostgreSQL client library)
 
-This project implements a full-scale payment processing backend system, demonstrating robust C++ development practices, modular design, and essential features required for enterprise-grade applications. It includes user authentication, merchant account management, and transaction processing.
-
-### 2. Features
-
-*   **User Management:**
-    *   User registration and login.
-    *   Role-based access control (Admin, Merchant, Viewer).
-*   **Account Management:**
-    *   Create, view, update, delete merchant accounts.
-    *   Manage account balances and statuses.
-*   **Transaction Processing:**
-    *   Process various transaction types: Payments, Refunds, Withdrawals, Deposits.
-    *   Track transaction status (Pending, Completed, Failed, Refunded, Cancelled).
-    *   Support for external transaction IDs.
-*   **Security:**
-    *   JWT-based authentication.
-    *   Password hashing (conceptual, integrate bcrypt/Argon2).
-    *   Authorization checks for resource access.
-*   **Observability:**
-    *   Structured logging (`spdlog`).
-    *   Comprehensive error handling middleware.
-*   **Performance & Scalability:**
-    *   Lightweight C++ web framework (`Crow`).
-    *   Database connection pooling (if using a more robust DB, not explicit for SQLite).
-    *   Rate limiting (conceptual).
-    *   Caching layer (conceptual).
-*   **Development Workflow:**
-    *   `CMake` build system.
-    *   `Docker` and `docker-compose` for containerization.
-    *   CI/CD pipeline configuration (`GitHub Actions`).
-    *   Unit, Integration, and API testing frameworks.
-    *   Detailed documentation.
-
-### 3. Architecture
-
-Refer to `docs/ARCHITECTURE.md` for a detailed architectural overview, component breakdown, and data flow diagrams.
-
-### 4. Prerequisites
-
-*   **Git**
-*   **C++ Compiler:** GCC/Clang (C++17 or newer)
-*   **CMake:** Version 3.10 or higher
-*   **SQLite3 Development Libraries:** `libsqlite3-dev` (Debian/Ubuntu) or equivalent.
-*   **Docker & Docker Compose:** (Recommended for easier setup)
-*   **`curl` or `Postman`:** For API testing.
-*   **`python3` and `pip`:** For running integration test scripts (optional).
-
-### 5. Setup and Installation
-
-#### Local Development (without Docker)
+### Setup with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/payment-processor.git
-    cd payment-processor
+    git clone https://github.com/yourusername/db-optimizer.git
+    cd db_optimizer
     ```
 
-2.  **Install system dependencies:**
+2.  **Create `.env` file:**
+    Copy the example environment variables:
     ```bash
-    # For Debian/Ubuntu
-    sudo apt-get update
-    sudo apt-get install -y build-essential cmake git libsqlite3-dev
-
-    # For macOS (using Homebrew)
-    brew install cmake git sqlite3
+    cp .env.example .env
+    # You can edit .env to customize ports, passwords, etc.
     ```
 
-3.  **Build the application:**
-    ```bash
-    mkdir build
-    cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
-    make
-    # Or, if you want debug symbols and tests:
-    # cmake .. -DCMAKE_BUILD_TYPE=Debug
-    # make
-    ```
-
-4.  **Run migrations and seed data (optional, `DatabaseManager` handles initial tables):**
-    The `DatabaseManager` automatically creates tables if they don't exist. For seeding, you can manually run the SQL.
-    ```bash
-    # Example: Manually run seed data
-    # sqlite3 ../payment_processor.db < ../seed_data/seed.sql
-    # Note: `payment_processor.db` is created when the app runs for the first time.
-    # To run seed, you might need to run the app once to create the DB, then shut down, then seed.
-    ```
-
-#### Docker Compose (Recommended)
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/payment-processor.git
-    cd payment-processor
-    ```
-
-2.  **Build and run the containers:**
+3.  **Build and run the services:**
+    This will start:
+    *   `db_optimizer_postgres`: The PostgreSQL database for the DB-Optimizer itself.
+    *   `db_optimizer_app`: The C++ DB-Optimizer application.
+    *   `target_postgres_db`: A mock PostgreSQL database (on port 5433) that the DB-Optimizer can monitor. This database has `pg_stat_statements` enabled and some sample tables/data.
     ```bash
     docker-compose up --build -d
     ```
-    This will:
-    *   Build the `payment_app` image using `docker/Dockerfile.app`.
-    *   Start the `payment_app` container.
-    *   Map port `8080` from the container to `8080` on your host.
-    *   Create Docker volumes for persistent database (`payment_data`) and logs (`payment_logs`).
+    Wait for all services to become healthy. You can check their status with `docker-compose ps`. The `db_optimizer_app` container's logs will show migration and seeding progress, and then `Application running. Press CTRL+C to exit.` once ready.
 
-3.  **Verify containers are running:**
+4.  **Verify services:**
+    Open your browser or use `curl`:
     ```bash
-    docker-compose ps
-    ```
-    You should see `payment_app` in a healthy state.
-
-### 6. Configuration
-
-The application reads its configuration from `config/app.config.json`.
-You can override the path to this file using the `PAYMENT_CONFIG_PATH` environment variable.
-
-Key configurable parameters:
-*   `database_path`: Path to the SQLite database file (e.g., `payment_processor.db`).
-*   `server_port`: The port the HTTP server listens on (default: `8080`).
-*   `server_host`: The host address the HTTP server binds to (default: `0.0.0.0`).
-*   `jwt_secret`: A strong, secret key for signing JWT tokens. **CRITICAL: Change this in production.**
-*   `jwt_expiry_hours`: Duration for which JWT tokens are valid (default: 24 hours).
-*   `default_currency`: Default currency for operations (e.g., "USD").
-
-### 7. Running the Application
-
-*   **Local (after building):**
-    ```bash
-    ./build/payment_processor [path/to/app.config.json]
-    ```
-    (If `path/to/app.config.json` is not provided, it defaults to `config/app.config.json`)
-
-*   **Docker Compose:**
-    ```bash
-    docker-compose up -d
-    # To view logs:
-    docker-compose logs -f payment_app
+    curl http://localhost:8080/health
+    # Expected output: {"status":"UP"}
     ```
 
-The API will be available at `http://localhost:8080/api/v1`.
+### Native Build & Run (Alternative)
 
-### 8. API Endpoints
+1.  **Install system dependencies:**
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y build-essential cmake libpoco-dev libspdlog-dev libjwt-dev libpq-dev
+    ```
 
-Refer to `docs/API_REFERENCE.md` for detailed API documentation including endpoints, request/response formats, and authentication requirements.
+2.  **Set up PostgreSQL:**
+    You'll need a running PostgreSQL instance for the DB-Optimizer's own data.
+    Create a database (`db_optimizer_db`) and a user (`db_optimizer_user`) with a password (`db_optimizer_password`).
+    You can use the `db_optimizer_postgres` service from `docker-compose.yml` by just running that one, or a local installation.
 
-### 9. Testing
+3.  **Apply Migrations and Seed Data:**
+    Ensure your `.env` file (or exported environment variables) has the correct DB credentials.
+    ```bash
+    ./scripts/migrate.sh
+    ./scripts/seed.sh
+    ```
 
-The project includes various types of tests:
+4.  **Build the application:**
+    ```bash
+    mkdir build
+    cd build
+    cmake ..
+    make -j$(nproc)
+    ```
 
-*   **Unit Tests:** Located in `tests/unit/`. Implemented using Google Test.
-    *   To run: `cd build && ctest --output-on-failure` (if configured in CMake).
-*   **Integration Tests:** Located in `tests/integration/`. Basic API tests using `curl` script.
-    *   To run: Ensure the app is running (e.g., via Docker Compose), then `./tests/integration/test_api.sh`.
-*   **API Tests:** Can be conducted using `Postman` with the provided `API_REFERENCE.md` or by extending the integration test scripts.
-*   **Performance Tests:** Conceptual. Tools like `JMeter`, `ApacheBench (ab)`, or `wrk` can be used.
+5.  **Run the application:**
+    ```bash
+    ./db_optimizer
+    ```
 
-### 10. Deployment
+## Usage (API)
+(See `docs/API.md` for detailed API documentation)
 
-Refer to `docs/DEPLOYMENT.md` for detailed instructions on deploying the application to a production environment. This includes considerations for:
-*   Container orchestration (Kubernetes, Docker Swarm).
-*   Database management (managed services like AWS RDS).
-*   Monitoring and alerting.
-*   Security best practices.
+**Example interactions using `curl` (after running with Docker Compose):**
 
-### 11. Contribution
+1.  **Register a new user:**
+    ```bash
+    curl -X POST http://localhost:8080/auth/register -H "Content-Type: application/json" -d '{"username":"devuser","email":"dev@example.com","password":"devpassword","role":"user"}'
+    # Expected: {"message":"User registered successfully"}
+    ```
 
-Contributions are welcome! Please refer to the `CONTRIBUTING.md` (not provided, but would be standard) for guidelines.
+2.  **Login to get a JWT token:**
+    ```bash
+    LOGIN_RESPONSE=$(curl -X POST http://localhost:8080/auth/login -H "Content-Type: application/json" -d '{"email":"dev@example.com","password":"devpassword"}')
+    JWT_TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r .token)
+    echo $JWT_TOKEN # Save this token for subsequent authenticated requests
+    ```
 
-### 12. License
+3.  **Add a Monitored Database (using the `target_postgres_db` from Docker Compose):**
+    ```bash
+    curl -X POST http://localhost:8080/monitored-dbs -H "Content-Type: application/json" -H "Authorization: Bearer $JWT_TOKEN" -d '{
+        "name": "My Sample App DB",
+        "db_type": "PostgreSQL",
+        "host": "target_postgres_db",
+        "port": 5432,
+        "db_name": "target_db",
+        "db_user": "target_user",
+        "db_password": "target_password"
+    }'
+    # Expected: {"id":1,"message":"Monitored database added successfully"} (ID will vary)
+    ```
 
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+4.  **Simulate some activity on the `target_postgres_db`:**
+    (You'll need `psql` installed locally, or exec into `target_postgres_db` container)
+    ```bash
+    PGPASSWORD=target_password psql -h localhost -p 5433 -U target_user -d target_db -c "SELECT * FROM products WHERE category_id = 1;"
+    PGPASSWORD=target_password psql -h localhost -p 5433 -U target_user -d target_db -c "SELECT o.id, p.name FROM orders o JOIN order_items oi ON o.id = oi.order_id JOIN products p ON oi.product_id = p.id WHERE o.user_id = 1;"
+    sleep 5 # Give pg_stat_statements time to update
+    ```
+
+5.  **Trigger analysis for the monitored DB (replace `1` with the actual DB ID):**
+    ```bash
+    curl -X POST http://localhost:8080/monitored-dbs/1/analyze -H "Authorization: Bearer $JWT_TOKEN"
+    # Expected: {"message":"Analysis triggered successfully for database ID 1"}
+    ```
+
+6.  **Retrieve Optimization Reports:**
+    ```bash
+    curl -X GET http://localhost:8080/monitored-dbs/1/optimization-reports -H "Authorization: Bearer $JWT_TOKEN"
+    # Expected: A JSON array of reports
+    ```
+
+## Testing
+To run tests, ensure your `docker-compose` environment is up and running, especially the `db_optimizer_postgres` and `target_postgres_db` services.
+
+1.  **Run all tests (unit, integration, API):**
+    ```bash
+    docker-compose exec db_optimizer_app /bin/bash -c "cd build && ctest --output-on-failure && ../scripts/api_tests.sh"
+    ```
+    Or, if running natively after building:
+    ```bash
+    cd build
+    ./unit_tests
+    ./integration_tests
+    cd .. # Go back to project root
+    ./scripts/api_tests.sh
+    ```
+
+2.  **Performance Tests:**
+    ```bash
+    ./scripts/run_performance_test.sh 1000 100
+    ```
+    (This will run 1000 requests with 100 concurrency against `/health` and some authenticated endpoints.)
+
+## Contributing
+(Standard contribution guidelines - fork, branch, pull request)
+
+## License
+MIT License (or appropriate open-source license)
+
+---
 ```

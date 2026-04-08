@@ -2,46 +2,67 @@
 version: '3.8'
 
 services:
-  payment_app:
+  db_optimizer_postgres:
+    image: postgres:14-alpine
+    container_name: db_optimizer_postgres
+    environment:
+      POSTGRES_DB: ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}
+      POSTGRES_USER: ${DB_OPTIMIZER_DB_USER:-db_optimizer_user}
+      POSTGRES_PASSWORD: ${DB_OPTIMIZER_DB_PASSWORD:-db_optimizer_password}
+    volumes:
+      - db_optimizer_data:/var/lib/postgresql/data
+      - ./docker/pg_init.sql:/docker-entrypoint-initdb.d/init_pg_stat_statements.sql # To enable pg_stat_statements for test target DBs
+    ports:
+      - "5432:5432" # Expose for local access if needed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_OPTIMIZER_DB_USER:-db_optimizer_user} -d ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  db_optimizer_app:
     build:
       context: .
-      dockerfile: docker/Dockerfile.app
+      dockerfile: docker/Dockerfile
+    container_name: db_optimizer_app
     ports:
       - "8080:8080"
-    volumes:
-      # Persist the SQLite database file and logs
-      - payment_data:/app/payment_processor.db
-      - payment_logs:/app/logs
-      # Mount configuration for easy local changes (optional for production)
-      - ./config/app.config.json:/app/config/app.config.json
     environment:
-      # You can override config values via environment variables if AppConfig supports it
-      # For example: DB_PATH=/app/payment_processor.db, JWT_SECRET=env_secret
-      # Or, ensure app.config.json is correctly mounted/copied.
-      PAYMENT_CONFIG_PATH: /app/config/app.config.json # Tell the app where its config is
-    # For a real DB, uncomment and link:
-    # depends_on:
-    #   - payment_db
+      # Pass through environment variables defined in .env
+      DB_OPTIMIZER_SERVER_PORT: ${DB_OPTIMIZER_SERVER_PORT:-8080}
+      DB_OPTIMIZER_DB_HOST: db_optimizer_postgres # Link to the PostgreSQL service by its name
+      DB_OPTIMIZER_DB_PORT: ${DB_OPTIMIZER_DB_PORT:-5432}
+      DB_OPTIMIZER_DB_NAME: ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}
+      DB_OPTIMIZER_DB_USER: ${DB_OPTIMIZER_DB_USER:-db_optimizer_user}
+      DB_OPTIMIZER_DB_PASSWORD: ${DB_OPTIMIZER_DB_PASSWORD:-db_optimizer_password}
+      DB_OPTIMIZER_JWT_SECRET: ${DB_OPTIMIZER_JWT_SECRET:-superSecretKey123!@#}
+      DB_OPTIMIZER_LOG_LEVEL: ${DB_OPTIMIZER_LOG_LEVEL:-info}
+      DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS: ${DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS:-300}
+    depends_on:
+      db_optimizer_postgres:
+        condition: service_healthy # Ensure DB is healthy before starting app
 
-  # Example if using a separate PostgreSQL database container
-  # payment_db:
-  #   image: postgres:14-alpine
-  #   environment:
-  #     POSTGRES_DB: payment_processor_db
-  #     POSTGRES_USER: user
-  #     POSTGRES_PASSWORD: password
-  #   volumes:
-  #     - db_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432" # Expose for local development/tools, remove in production
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U user -d payment_processor_db"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
+  # A mock target PostgreSQL database for testing the optimizer's functionality
+  target_postgres_db:
+    image: postgres:14-alpine
+    container_name: target_postgres_db
+    environment:
+      POSTGRES_DB: target_db
+      POSTGRES_USER: target_user
+      POSTGRES_PASSWORD: target_password
+    volumes:
+      - target_db_data:/var/lib/postgresql/data
+      - ./docker/pg_init.sql:/docker-entrypoint-initdb.d/init_pg_stat_statements.sql
+      - ./docker/target_db_setup.sql:/docker-entrypoint-initdb.d/setup.sql # Setup some tables/data
+    ports:
+      - "5433:5432" # Map to a different port to avoid conflict with db_optimizer_postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U target_user -d target_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  payment_data: # For SQLite DB persistence
-  payment_logs: # For application logs
-  # db_data: # For PostgreSQL/MySQL data persistence
+  db_optimizer_data:
+  target_db_data:
 ```

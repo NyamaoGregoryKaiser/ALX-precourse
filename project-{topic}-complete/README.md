@@ -1,110 +1,93 @@
-├── .github/workflows/maven.yml
-├── Dockerfile
-├── docker-compose.yml
-├── pom.xml
-├── README.md
-├── src
-│   ├── main
-│   │   ├── java
-│   │   │   └── com
-│   │   │       └── ml_utils_system
-│   │   │           ├── MlUtilsSystemApplication.java
-│   │   │           ├── config
-│   │   │           │   ├── AppConfig.java
-│   │   │           │   ├── CacheConfig.java
-│   │   │           │   ├── FlywayConfig.java
-│   │   │           │   ├── JwtAuthEntryPoint.java
-│   │   │           │   ├── JwtAuthTokenFilter.java
-│   │   │           │   ├── JwtUtils.java
-│   │   │           │   ├── SecurityConfig.java
-│   │   │           │   └── WebConfig.java
-│   │   │           ├── controller
-│   │   │           │   ├── AuthController.java
-│   │   │           │   ├── DatasetController.java
-│   │   │           │   ├── FeatureDefinitionController.java
-│   │   │           │   ├── ModelController.java
-│   │   │           │   └── UserController.java
-│   │   │           ├── dto
-│   │   │           │   ├── AuthResponseDto.java
-│   │   │           │   ├── DatasetDto.java
-│   │   │           │   ├── FeatureDefinitionDto.java
-│   │   │           │   ├── LoginRequestDto.java
-│   │   │           │   ├── ModelDto.java
-│   │   │           │   ├── ModelVersionDto.java
-│   │   │           │   ├── PredictionRequestDto.java
-│   │   │           │   ├── PredictionResponseDto.java
-│   │   │           │   ├── RegisterRequestDto.java
-│   │   │           │   └── UserDto.java
-│   │   │           ├── exception
-│   │   │           │   ├── GlobalExceptionHandler.java
-│   │   │           │   ├── ResourceNotFoundException.java
-│   │   │           │   └── ValidationException.java
-│   │   │           ├── filter
-│   │   │           │   └── RateLimitFilter.java
-│   │   │           ├── model
-│   │   │           │   ├── Dataset.java
-│   │   │           │   ├── FeatureDefinition.java
-│   │   │           │   ├── Model.java
-│   │   │           │   ├── ModelVersion.java
-│   │   │           │   ├── Role.java
-│   │   │           │   └── User.java
-│   │   │           ├── repository
-│   │   │           │   ├── DatasetRepository.java
-│   │   │           │   ├── FeatureDefinitionRepository.java
-│   │   │           │   ├── ModelRepository.java
-│   │   │           │   ├── ModelVersionRepository.java
-│   │   │           │   ├── RoleRepository.java
-│   │   │           │   └── UserRepository.java
-│   │   │           ├── service
-│   │   │           │   ├── AuthService.java
-│   │   │           │   ├── DatasetService.java
-│   │   │           │   ├── FeatureDefinitionService.java
-│   │   │           │   ├── ModelService.java
-│   │   │           │   ├── PredictionService.java
-│   │   │           │   ├── UserDetailsServiceImpl.java
-│   │   │           │   └── UserService.java
-│   │   │           └── util
-│   │   │               └── CustomLogger.java
-│   │   └── resources
-│   │       ├── application.yml
-│   │       ├── db
-│   │       │   └── migration
-│   │       │       ├── V1__Initial_schema.sql
-│   │       │       ├── V2__Add_sample_data.sql
-│   │       │       └── V3__Add_feature_table.sql
-│   │       └── logback-spring.xml
-│   └── test
-│       └── java
-│           └── com
-│               └── ml_utils_system
-│                   ├── MlUtilsSystemApplicationTests.java
-│                   ├── config
-│                   │   └── TestSecurityConfig.java
-│                   ├── controller
-│                   │   ├── AuthControllerTest.java
-│                   │   ├── DatasetControllerTest.java
-│                   │   └── ModelControllerTest.java
-│                   ├── repository
-│                   │   ├── DatasetRepositoryTest.java
-│                   │   └── UserRepositoryTest.java
-│                   └── service
-│                       ├── AuthServiceTest.java
-│                       └── DatasetServiceTest.java
-└── frontend
-    ├── README.md
-    ├── package.json
-    ├── public/index.html
-    └── src
-        ├── App.js
-        ├── api.js
-        ├── auth.js
-        ├── components
-        │   ├── Datasets.js
-        │   ├── Features.js
-        │   ├── Home.js
-        │   ├── Login.js
-        │   ├── Models.js
-        │   ├── Navbar.js
-        │   └── Register.js
-        ├── index.js
-        └── style.css
+db_optimizer/
+├── CMakeLists.txt
+├── app/
+│   ├── main.cpp
+│   ├── config/
+│   │   ├── ConfigManager.hpp
+│   │   └── ConfigManager.cpp
+│   ├── core/
+│   │   ├── Application.hpp
+│   │   └── Application.cpp
+│   ├── db/
+│   │   ├── DBConnectionPool.hpp
+│   │   ├── DBConnectionPool.cpp
+│   │   ├── PostgreSQLAdapter.hpp
+│   │   ├── PostgreSQLAdapter.cpp
+│   │   └── migrations/
+│   │       └── 001_initial_schema.sql
+│   ├── http/
+│   │   ├── HTTPServer.hpp
+│   │   ├── HTTPServer.cpp
+│   │   ├── Router.hpp
+│   │   ├── Router.cpp
+│   │   ├── RequestHandler.hpp
+│   │   ├── RequestHandler.cpp
+│   │   ├── middleware/
+│   │   │   ├── AuthMiddleware.hpp
+│   │   │   ├── AuthMiddleware.cpp
+│   │   │   ├── ErrorMiddleware.hpp
+│   │   │   └── ErrorMiddleware.cpp
+│   │   └── responses/
+│   │       └── APIResponses.hpp
+│   ├── models/
+│   │   ├── User.hpp
+│   │   ├── MonitoredDB.hpp
+│   │   ├── QueryLog.hpp
+│   │   └── OptimizationReport.hpp
+│   ├── services/
+│   │   ├── AuthService.hpp
+│   │   ├── AuthService.cpp
+│   │   ├── DBMonitorService.hpp
+│   │   ├── DBMonitorService.cpp
+│   │   ├── QueryAnalyzer.hpp
+│   │   ├── QueryAnalyzer.cpp
+│   │   ├── IndexRecommender.hpp
+│   │   └── IndexRecommender.cpp
+│   ├── utils/
+│   │   ├── Logger.hpp
+│   │   ├── Logger.cpp
+│   │   ├── JSONUtils.hpp
+│   │   ├── JWTUtils.hpp
+│   │   ├── JWTUtils.cpp
+│   │   ├── Cache.hpp
+│   │   └── RateLimiter.hpp
+│   └── controllers/
+│       ├── AuthController.hpp
+│       ├── AuthController.cpp
+│       ├── UserController.hpp
+│       ├── UserController.cpp
+│       ├── MonitoredDBController.hpp
+│       ├── MonitoredDBController.cpp
+│       ├── OptimizationController.hpp
+│       └── OptimizationController.cpp
+├── tests/
+│   ├── CMakeLists.txt
+│   ├── unit/
+│   │   ├── TestConfigManager.cpp
+│   │   ├── TestQueryAnalyzer.cpp
+│   │   ├── TestIndexRecommender.cpp
+│   │   ├── TestAuthService.cpp
+│   ├── integration/
+│   │   ├── TestDBMonitorService.cpp
+│   │   └── TestAPI.cpp
+│   ├── api/
+│   │   └── api_tests.sh
+├── scripts/
+│   ├── migrate.sh
+│   ├── seed.sh
+│   └── run_performance_test.sh
+├── docs/
+│   ├── README.md
+│   ├── ARCHITECTURE.md
+│   ├── API.md
+│   ├── DEPLOYMENT.md
+├── docker/
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── pg_init.sql
+├── .env.example
+├── .gitignore
+├── config.json.example
+└── .github/
+    └── workflows/
+        └── ci-cd.yml

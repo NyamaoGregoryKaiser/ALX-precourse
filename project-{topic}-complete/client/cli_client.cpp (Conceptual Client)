@@ -1,0 +1,198 @@
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+#include <stdexcept>
+#include "Poco/Net/HTTPRequest.h"
+#include "Poco/Net/HTTPResponse.h"
+#include "Poco/Net/HTTPClientSession.h"
+#include "Poco/URI.h"
+#include "Poco/JSON/Parser.h"
+#include "Poco/JSON/Object.h"
+#include "Poco/StreamCopier.h"
+#include "Poco/String.h"
+
+// In a real scenario, this would be a separate executable with its own build system.
+// For demonstration, it shows how to interact with the API.
+
+std::string SERVER_HOST = "localhost";
+int SERVER_PORT = 8080;
+std::string JWT_TOKEN = ""; // Store JWT token after login
+
+Poco::JSON::Object::Ptr sendRequest(const std::string& method, const std::string& path, Poco::JSON::Object::Ptr requestBody = nullptr) {
+    try {
+        Poco::URI uri("http://" + SERVER_HOST + ":" + std::to_string(SERVER_PORT) + path);
+        Poco::Net::HTTPClientSession session(uri.getHost(), uri.getPort());
+        Poco::Net::HTTPRequest request(method, uri.getPathAndQuery(), Poco::Net::HTTPRequest::HTTP_1_1);
+
+        if (!JWT_TOKEN.empty()) {
+            request.set("Authorization", "Bearer " + JWT_TOKEN);
+        }
+
+        std::stringstream ss;
+        if (requestBody) {
+            request.setContentType("application/json");
+            requestBody->stringify(ss);
+            request.setContentLength(ss.str().length());
+            std::ostream& os = session.sendRequest(request);
+            os << ss.str();
+        } else {
+            session.sendRequest(request);
+        }
+
+        Poco::Net::HTTPResponse response;
+        std::istream& rs = session.receiveResponse(response);
+
+        std::string responseBody;
+        Poco::StreamCopier::copyToString(rs, responseBody);
+
+        if (response.getStatus() >= 400) {
+            std::cerr << "Error " << response.getStatus() << ": " << response.getReason() << std::endl;
+            std::cerr << "Response body: " << responseBody << std::endl;
+            throw std::runtime_error("API Error");
+        }
+
+        Poco::JSON::Parser parser;
+        Poco::Dynamic::Var result = parser.parse(responseBody);
+        return result.extract<Poco::JSON::Object::Ptr>();
+
+    } catch (const Poco::Exception& e) {
+        std::cerr << "Poco Exception: " << e.displayText() << std::endl;
+        throw;
+    } catch (const std::exception& e) {
+        std::cerr << "Standard Exception: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+void login() {
+    std::string email, password;
+    std::cout << "Enter email: ";
+    std::cin >> email;
+    std::cout << "Enter password: ";
+    std::cin >> password;
+
+    Poco::JSON::Object::Ptr body = new Poco::JSON::Object();
+    body->set("email", email);
+    body->set("password", password);
+
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_POST, "/auth/login", body);
+        JWT_TOKEN = response->getValue<std::string>("token");
+        std::cout << "Login successful! Token: " << JWT_TOKEN.substr(0, 30) << "..." << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Login failed: " << e.what() << std::endl;
+    }
+}
+
+void registerUser() {
+    std::string email, password, username, role;
+    std::cout << "Enter email: ";
+    std::cin >> email;
+    std::cout << "Enter password: ";
+    std::cin >> password;
+    std::cout << "Enter username: ";
+    std::cin >> username;
+    std::cout << "Enter role (user/admin): ";
+    std::cin >> role;
+
+    Poco::JSON::Object::Ptr body = new Poco::JSON::Object();
+    body->set("email", email);
+    body->set("password", password);
+    body->set("username", username);
+    body->set("role", role);
+
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_POST, "/auth/register", body);
+        std::cout << "User registered: " << response->getValue<std::string>("message") << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Registration failed: " << e.what() << std::endl;
+    }
+}
+
+void listUsers() {
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_GET, "/users");
+        std::cout << "Users: " << response->stringify() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to list users: " << e.what() << std::endl;
+    }
+}
+
+void addMonitoredDB() {
+    std::string name, host, dbName, user, password;
+    int port;
+    std::cout << "Enter DB Name (friendly): "; std::cin >> name;
+    std::cout << "Enter DB Host: "; std::cin >> host;
+    std::cout << "Enter DB Port: "; std::cin >> port;
+    std::cout << "Enter Database Name (on target): "; std::cin >> dbName;
+    std::cout << "Enter DB User: "; std::cin >> user;
+    std::cout << "Enter DB Password: "; std::cin >> password;
+
+    Poco::JSON::Object::Ptr body = new Poco::JSON::Object();
+    body->set("name", name);
+    body->set("host", host);
+    body->set("port", port);
+    body->set("db_name", dbName);
+    body->set("user", user);
+    body->set("password", password); // In production, never send plain text passwords like this. Encrypt or use secrets.
+
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_POST, "/monitored-dbs", body);
+        std::cout << "Monitored DB added: " << response->stringify() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to add monitored DB: " << e.what() << std::endl;
+    }
+}
+
+void listMonitoredDBs() {
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_GET, "/monitored-dbs");
+        std::cout << "Monitored DBs: " << response->stringify() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to list monitored DBs: " << e.what() << std::endl;
+    }
+}
+
+void getOptimizationReports() {
+    int db_id;
+    std::cout << "Enter Monitored DB ID: ";
+    std::cin >> db_id;
+    try {
+        Poco::JSON::Object::Ptr response = sendRequest(Poco::Net::HTTPRequest::HTTP_GET, "/monitored-dbs/" + std::to_string(db_id) + "/optimization-reports");
+        std::cout << "Optimization Reports for DB " << db_id << ": " << response->stringify() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to get optimization reports: " << e.what() << std::endl;
+    }
+}
+
+int main() {
+    std::cout << "DB-Optimizer CLI Client" << std::endl;
+    int choice;
+    do {
+        std::cout << "\nMenu:" << std::endl;
+        std::cout << "1. Register User" << std::endl;
+        std::cout << "2. Login" << std::endl;
+        std::cout << "3. List Users (requires admin)" << std::endl;
+        std::cout << "4. Add Monitored Database" << std::endl;
+        std::cout << "5. List Monitored Databases" << std::endl;
+        std::cout << "6. Get Optimization Reports" << std::endl;
+        std::cout << "0. Exit" << std::endl;
+        std::cout << "Enter your choice: ";
+        std::cin >> choice;
+
+        switch (choice) {
+            case 1: registerUser(); break;
+            case 2: login(); break;
+            case 3: listUsers(); break;
+            case 4: addMonitoredDB(); break;
+            case 5: listMonitoredDBs(); break;
+            case 6: getOptimizationReports(); break;
+            case 0: std::cout << "Exiting." << std::endl; break;
+            default: std::cout << "Invalid choice. Please try again." << std::endl; break;
+        }
+    } while (choice != 0);
+
+    return 0;
+}
+```

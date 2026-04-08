@@ -1,156 +1,157 @@
 ```markdown
-# Payment Processing System - Deployment Guide
+# DB-Optimizer: Deployment Guide
 
-This document outlines the steps and considerations for deploying the Payment Processing System to a production environment.
+This guide outlines the steps to deploy the DB-Optimizer system to a production environment using Docker and Docker Compose. For more complex production setups (e.g., Kubernetes), this serves as a foundation.
 
-## Table of Contents
+## 1. Production Environment Setup
 
-1.  [Overview](#1-overview)
-2.  [Prerequisites](#2-prerequisites)
-3.  [Build and Package](#3-build-and-package)
-4.  [Deployment Strategy](#4-deployment-strategy)
-    *   [Docker Compose on a Single Host](#docker-compose-on-a-single-host)
-    *   [Container Orchestration (Kubernetes/ECS/Swarm)](#container-orchestration-kubernetesecsswarm)
-5.  [Database Considerations](#5-database-considerations)
-6.  [Configuration Management](#6-configuration-management)
-7.  [Networking and Load Balancing](#7-networking-and-load-balancing)
-8.  [Monitoring and Logging](#8-monitoring-and-logging)
-9.  [Security Best Practices](#9-security-best-practices)
-10. [CI/CD Integration](#10-ci-cd-integration)
-11. [Rollback Strategy](#11-rollback-strategy)
+### 1.1. Server Requirements
+*   **Operating System:** Linux (e.g., Ubuntu, Debian, CentOS).
+*   **Resources:**
+    *   **CPU:** At least 2 cores (more for higher traffic/monitoring load).
+    *   **RAM:** Minimum 4GB (8GB recommended for concurrent monitoring and API traffic).
+    *   **Disk:** Sufficient space for Docker images, containers, and PostgreSQL data (consider persistent storage).
+*   **Software:**
+    *   Docker Engine (latest stable version)
+    *   Docker Compose (latest stable version)
+    *   Git
 
----
+### 1.2. Firewall Configuration
+Ensure the following ports are open on your server's firewall:
+*   `8080` (or your configured `DB_OPTIMIZER_SERVER_PORT`): For the DB-Optimizer API.
+*   `5432` (or your configured `DB_OPTIMIZER_DB_PORT`): For the DB-Optimizer's internal PostgreSQL database (if accessed externally, though often restricted to `localhost` or Docker network).
+*   **For Monitored Databases:** Ensure the DB-Optimizer server can reach the host:port of your external databases.
 
-### 1. Overview
+## 2. Deployment Steps
 
-Deploying a production-ready application involves more than just running the code. It requires careful planning for reliability, scalability, security, and maintainability. This guide covers these aspects for the C++ Payment Processing System.
+### 2.1. Clone the Repository
+On your deployment server, clone the DB-Optimizer repository:
+```bash
+git clone https://github.com/yourusername/db-optimizer.git
+cd db_optimizer
+```
 
-### 2. Prerequisites
+### 2.2. Configure Environment Variables
+Create a `.env` file in the project root directory. This file will override default settings in `config.json.example` and will be used by Docker Compose.
 
-*   **Production Server(s):** Linux-based VMs or instances (e.g., AWS EC2, Google Cloud Compute Engine, Azure VM).
-*   **Docker Engine:** Installed on all deployment hosts.
-*   **Docker Compose:** (For single-host deployment).
-*   **Kubernetes Cluster Access:** (If using Kubernetes).
-*   **Cloud Provider Account:** (AWS, GCP, Azure, etc.) if deploying to cloud services.
-*   **Domain Name & SSL/TLS Certificate:** For secure HTTPS communication.
-*   **SSH Access:** To your production servers.
-*   **Secrets Management System:** (e.g., AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets).
+**Strongly Recommended:**
+*   **Generate Strong Secrets:**
+    *   `DB_OPTIMIZER_JWT_SECRET`: Generate a long, random string (e.g., using `openssl rand -base64 32`). **NEVER commit this secret to source control.**
+    *   `DB_OPTIMIZER_DB_PASSWORD`: Use a strong, unique password for the DB-Optimizer's internal database.
 
-### 3. Build and Package
+*   **Review `docker-compose.yml` and `config.json.example`:**
+    *   Adjust ports if `8080` or `5432` are already in use.
+    *   Customize `DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS` based on your monitoring frequency needs.
 
-The application should be built as a Docker image for production.
+Example `.env` (adjust values for your production environment):
+```
+# Application Server Configuration
+DB_OPTIMIZER_SERVER_PORT=8080
 
-1.  **Ensure Release Build:** Compile with `CMAKE_BUILD_TYPE=Release` to enable optimizations and disable debug features.
-2.  **Build Docker Image:**
+# DB-Optimizer's Internal Database Configuration
+DB_OPTIMIZER_DB_HOST=db_optimizer_postgres # Internal Docker Compose service name
+DB_OPTIMIZER_DB_PORT=5432
+DB_OPTIMIZER_DB_NAME=db_optimizer_db
+DB_OPTIMIZER_DB_USER=db_optimizer_user
+DB_OPTIMIZER_DB_PASSWORD=YOUR_STRONG_DB_PASSWORD
+
+# JWT Authentication
+DB_OPTIMIZER_JWT_SECRET=YOUR_VERY_LONG_AND_RANDOM_JWT_SECRET
+
+# Logging
+DB_OPTIMIZER_LOG_LEVEL=info # Set to 'warn' or 'error' for less verbosity in production
+
+# Monitoring Interval (in seconds)
+DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS=300 # Monitor every 5 minutes
+```
+
+### 2.3. Persistent Data Storage
+For the DB-Optimizer's internal PostgreSQL database, it's crucial to use Docker volumes for persistent storage. The `docker-compose.yml` already defines a named volume `db_optimizer_data`.
+
+```yaml
+volumes:
+  db_optimizer_data:
+  target_db_data: # For the example target DB
+```
+This ensures your database data persists even if the `db_optimizer_postgres` container is removed or recreated.
+
+### 2.4. Build and Deploy
+From the project root directory, build and start the services using Docker Compose:
+```bash
+docker-compose up --build -d
+```
+*   `--build`: Forces Docker to rebuild the images. Useful for ensuring the latest code changes are included. In production, you might pull pre-built images from a registry.
+*   `-d`: Runs the containers in detached mode (in the background).
+
+### 2.5. Verify Deployment
+*   **Check container status:**
     ```bash
-    docker build -f docker/Dockerfile.app -t your_docker_registry/payment-processor:latest .
-    # For versioning, use Git SHA or a semantic version tag
-    # docker build -f docker/Dockerfile.app -t your_docker_registry/payment-processor:v1.0.0 .
+    docker-compose ps
     ```
-3.  **Push to Container Registry:** Store your built image in a private Docker registry (e.g., Docker Hub, AWS ECR, GCP Container Registry) for easy access from your deployment environment.
+    Ensure all containers (e.g., `db_optimizer_postgres`, `db_optimizer_app`) are `Up` and `healthy`.
+
+*   **View application logs:**
     ```bash
-    docker push your_docker_registry/payment-processor:latest
+    docker-compose logs db_optimizer_app
     ```
+    Look for messages indicating successful startup, migrations, seeding, and that the "Application running."
 
-### 4. Deployment Strategy
-
-#### Docker Compose on a Single Host
-
-Suitable for smaller deployments or testing environments.
-
-1.  **SSH into your server.**
-2.  **Pull the latest Docker image:**
+*   **Test API endpoint:**
     ```bash
-    docker pull your_docker_registry/payment-processor:latest
+    curl http://localhost:8080/health
+    # Expected: {"status":"UP"}
     ```
-3.  **Transfer `docker-compose.yml`:** Copy your `docker-compose.yml` (and any necessary `app.config.json`, `jwt_secret.key` if not using environment variables) to the server.
-    *   **Important:** Modify `docker-compose.yml` for production:
-        *   Remove `ports` mapping (e.g., `- "8080:8080"`) if using an external load balancer or reverse proxy.
-        *   Ensure correct image tag (`image: your_docker_registry/payment-processor:latest`).
-        *   Point to a persistent volume for the SQLite database or switch to an external RDBMS.
-        *   Use environment variables or mounted secrets for sensitive configurations.
-4.  **Deploy using Docker Compose:**
-    ```bash
-    docker-compose -f /path/to/your/docker-compose.yml up -d --build --remove-orphans
+    Replace `localhost` with your server's public IP or domain name if accessing remotely.
+
+### 2.6. PostgreSQL `pg_stat_statements` for Monitored DBs
+For the DB-Optimizer to effectively monitor your external PostgreSQL databases, `pg_stat_statements` *must* be enabled on those target databases.
+
+**Steps for External PostgreSQL Databases:**
+1.  **Edit `postgresql.conf`:**
+    *   Find the `shared_preload_libraries` setting.
+    *   Add `pg_stat_statements` to it. It should look like:
+        ```
+        shared_preload_libraries = 'pg_stat_statements'
+        ```
+    *   (Optional but recommended for detailed stats) Adjust `pg_stat_statements.max` and `pg_stat_statements.track`.
+        ```
+        pg_stat_statements.max = 10000 # Max number of statements to track
+        pg_stat_statements.track = all # Track all statements (top-level + nested)
+        ```
+2.  **Restart PostgreSQL Server:** Changes to `shared_preload_libraries` require a server restart.
+3.  **Create Extension:**
+    Connect to each database you want to monitor (e.g., `ecommerce_db`) as a superuser and run:
+    ```sql
+    CREATE EXTENSION pg_stat_statements;
     ```
-5.  **Configure Reverse Proxy:** Set up Nginx or Apache as a reverse proxy to handle SSL/TLS termination, request routing, and potentially caching/rate limiting.
+    The `db_optimizer_app` can then connect using a user with `SELECT` permissions on `pg_stat_statements` view and potentially `pg_settings` for configuration info.
 
-#### Container Orchestration (Kubernetes/ECS/Swarm)
+## 3. Operations and Maintenance
 
-Recommended for high availability, scalability, and complex deployments.
+### 3.1. Updating the Application
+1.  Pull latest changes: `git pull origin main`
+2.  Stop and remove old containers: `docker-compose down`
+3.  Rebuild and restart: `docker-compose up --build -d`
 
-1.  **Define Kubernetes Manifests (or equivalent for ECS/Swarm):**
-    *   `Deployment.yaml`: For the `payment-processor` application (e.g., 3 replicas for high availability).
-    *   `Service.yaml`: To expose the application within the cluster.
-    *   `Ingress.yaml` (or Load Balancer config): To expose the service to external traffic, configure SSL/TLS.
-    *   `Secret.yaml`: For sensitive data (JWT secret, DB credentials). **Do not commit to Git.** Use a secrets management tool.
-    *   `PersistentVolumeClaim.yaml`: For database data (if running DB in-cluster) or external volume claims.
-2.  **Deploy to Kubernetes:**
-    ```bash
-    kubectl apply -f deployment.yaml
-    kubectl apply -f service.yaml
-    kubectl apply -f ingress.yaml
-    # ... and any other manifests
-    ```
-3.  **Managed Database Services:** Strongly recommend using managed database services (e.g., AWS RDS, Azure SQL Database, GCP Cloud SQL) instead of running a database inside the Kubernetes cluster for production.
+### 3.2. Backups
+Regularly back up the `db_optimizer_data` volume and your external monitored databases.
+*   **For Docker volumes:** Use `docker cp` to copy data out, or integrate with a volume backup solution.
+*   **For PostgreSQL:** Use `pg_dump` or `pg_basebackup`.
 
-### 5. Database Considerations
+### 3.3. Monitoring and Logging
+*   **Application Logs:** `docker-compose logs db_optimizer_app`
+*   **Container Metrics:** Use Docker's built-in `docker stats` or integrate with a monitoring system like Prometheus/Grafana.
+*   **Alerting:** Set up alerts for critical errors in application logs or for API endpoint health checks.
 
-*   **For Production:** SQLite is generally not recommended for high-concurrency production environments due to its file-based nature and lack of robust client-server architecture.
-*   **Recommended:** PostgreSQL or MySQL via a managed cloud service (AWS RDS, GCP Cloud SQL).
-    *   Update `DatabaseManager.cpp` to use a `pqxx` (for PostgreSQL) or `mysql-connector-cpp` (for MySQL) library.
-    *   Update `CMakeLists.txt` to link against the correct database client libraries.
-    *   Modify `docker-compose.yml` (if using) or Kubernetes manifests to connect to the external database.
-*   **Backups:** Implement regular database backups.
-*   **Replication & High Availability:** Configure master-replica setup for disaster recovery and read scaling.
+### 3.4. Scaling
+*   **Database:** Scale the `db_optimizer_postgres` independently (vertical scaling, or consider a managed PostgreSQL service).
+*   **Application:** For high availability and load, you can run multiple instances of `db_optimizer_app` behind a load balancer. Ensure your `DBConnectionPool` and `DBMonitorService` are designed for distributed execution if running multiple instances of the optimizer (e.g., using a distributed lock for `DBMonitorService` to avoid redundant monitoring tasks). For this project, a single instance is assumed.
 
-### 6. Configuration Management
+### 3.5. Security Best Practices
+*   **Secrets Management:** Never hardcode sensitive credentials. Use environment variables (as in `.env`), and for robust production, integrate with a secrets management service (e.g., HashiCorp Vault, AWS Secrets Manager, Azure Key Vault).
+*   **Network Security:** Restrict network access to the DB-Optimizer API and its internal database.
+*   **Regular Updates:** Keep Docker, Docker Compose, and base images updated. Regularly rebuild your application image to include security patches.
+*   **Least Privilege:** Configure database users for monitored systems with only the necessary `SELECT` permissions.
 
-*   **Environment Variables:** Best practice for injecting runtime configuration. Docker and orchestration platforms support this well.
-*   **Secrets Management:**
-    *   **NEVER hardcode secrets.**
-    *   Use Docker Secrets, Kubernetes Secrets, AWS Secrets Manager, HashiCorp Vault, or similar.
-    *   Modify `AppConfig` to read from environment variables first, then from a file.
-*   **`app.config.json`:** Use for non-sensitive, static configurations.
-
-### 7. Networking and Load Balancing
-
-*   **HTTPS Everywhere:** Always use SSL/TLS for all external communication. Configure this at your load balancer or reverse proxy.
-*   **Load Balancer:** Distribute incoming traffic across multiple instances of your C++ application.
-*   **Firewall Rules:** Restrict incoming traffic to only necessary ports (e.g., 443 for HTTPS, 22 for SSH management).
-*   **Private Network for DB:** Ensure your database is not directly exposed to the internet. Access it only from your application's private network.
-
-### 8. Monitoring and Logging
-
-*   **Centralized Logging:** Aggregate logs from all application instances (e.g., ELK Stack, Splunk, Datadog, CloudWatch Logs). The `spdlog` library can output to files which can then be collected.
-*   **Metrics & Alerting:**
-    *   Collect application metrics (request rates, latency, error rates, resource usage).
-    *   Use tools like Prometheus/Grafana or cloud-native monitoring services.
-    *   Set up alerts for critical issues (e.g., high error rates, low disk space, unresponsive instances).
-*   **Health Checks:** Configure `/health` endpoints for load balancers/orchestrators to check application health.
-
-### 9. Security Best Practices
-
-*   **Principle of Least Privilege:** Grant only the necessary permissions to users, services, and containers.
-*   **Regular Security Audits:** Scan container images for vulnerabilities. Perform penetration testing.
-*   **Input Validation:** Essential to prevent injection attacks and ensure data integrity.
-*   **Up-to-date Dependencies:** Regularly update base images, libraries, and frameworks to patch known vulnerabilities.
-*   **Strict CORS Policy:** Configure CORS headers correctly to prevent unauthorized cross-origin requests.
-*   **HTTP Security Headers:** Implement headers like `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`.
-
-### 10. CI/CD Integration
-
-The provided `ci-cd.yml` demonstrates a basic GitHub Actions pipeline.
-
-*   **Automated Builds:** Trigger builds on `push` to `main`/`develop`.
-*   **Automated Testing:** Run unit, integration, and API tests automatically.
-*   **Automated Image Builds & Pushes:** Build and push Docker images to a registry upon successful tests.
-*   **Automated Deployments:** Deploy to staging/production environments upon successful image builds and approvals.
-
-### 11. Rollback Strategy
-
-*   **Immutable Infrastructure:** Deploy new versions of images rather than updating existing containers.
-*   **Versioned Images:** Tag Docker images with unique versions (e.g., Git SHA) to easily revert to a previous working version.
-*   **Orchestration Rollbacks:** Kubernetes deployments can easily be rolled back to a previous state using `kubectl rollout undo`.
-*   **Database Rollbacks:** Plan for database schema rollbacks if necessary, though careful migration planning should minimize this need. Always back up before migrations.
+By following this guide, you can successfully deploy the DB-Optimizer system in a production-ready manner, enabling you to gain valuable insights into your database performance.
 ```
