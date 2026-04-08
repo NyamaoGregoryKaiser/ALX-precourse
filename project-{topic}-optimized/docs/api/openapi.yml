@@ -1,0 +1,590 @@
+openapi: 3.0.0
+info:
+  title: Enterprise-Grade API System
+  description: Comprehensive production-ready API for managing users and products.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Development server
+  - url: https://api.yourdomain.com/api/v1
+    description: Production server
+tags:
+  - name: Auth
+    description: User authentication and authorization operations
+  - name: Users
+    description: User management operations (Admin only)
+  - name: Products
+    description: Product catalog management operations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          minLength: 5
+          maxLength: 100
+        password:
+          type: string
+          writeOnly: true
+          minLength: 6
+          maxLength: 128
+        role:
+          type: string
+          enum: [user, admin]
+          default: user
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - username
+        - email
+        - password
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 10
+        price:
+          type: number
+          format: float
+          minimum: 0
+        stock:
+          type: integer
+          minimum: 0
+        userId:
+          type: integer
+          description: ID of the user who created the product
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - name
+        - description
+        - price
+        - stock
+
+    ProductResponse:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            User:
+              $ref: '#/components/schemas/UserResponse'
+
+    Error:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      tags: [Health]
+      responses:
+        200:
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+              properties:
+                role:
+                  type: string
+                  enum: [user, admin]
+                  default: user
+                  description: Role for the new user (admin can only be set by an existing admin)
+                  readOnly: false # Allow setting role for register, but backend logic will restrict
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User registered successfully
+                  user:
+                    $ref: '#/components/schemas/UserResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        409:
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: Log in a user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+              required:
+                - email
+                - password
+      responses:
+        200:
+          description: User logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Login successful
+                  token:
+                    type: string
+                    description: JWT access token
+                  user:
+                    $ref: '#/components/schemas/UserResponse'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        400:
+          $ref: '#/components/responses/BadRequest'
+
+  /users:
+    get:
+      summary: Get all users (Admin only)
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page
+      responses:
+        200:
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/{id}:
+    get:
+      summary: Get user by ID (Admin only)
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the user to retrieve
+      responses:
+        200:
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Update user by ID (Admin only)
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the user to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+              properties:
+                password:
+                  writeOnly: false # Allow password update
+                role:
+                  type: string
+                  enum: [user, admin]
+                  default: user
+                  description: Role for the user
+                  readOnly: false
+              required: [] # All fields are optional for update
+      responses:
+        200:
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete user by ID (Admin only)
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the user to delete
+      responses:
+        204:
+          description: User deleted successfully (No content)
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  /products:
+    get:
+      summary: Get all products
+      tags: [Products]
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of items per page
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search term for product names
+      responses:
+        200:
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductResponse'
+        500:
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new product (Authenticated User or Admin)
+      tags: [Products]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+              required:
+                - name
+                - description
+                - price
+                - stock
+              properties:
+                userId:
+                  readOnly: true # userId is automatically set by the backend
+      responses:
+        201:
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+
+  /products/{id}:
+    get:
+      summary: Get product by ID
+      tags: [Products]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the product to retrieve
+      responses:
+        200:
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Update product by ID (Admin or product owner)
+      tags: [Products]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the product to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+              required: [] # All fields are optional for update
+      responses:
+        200:
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete product by ID (Admin or product owner)
+      tags: [Products]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID of the product to delete
+      responses:
+        204:
+          description: Product deleted successfully (No content)
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  responses:
+    BadRequest:
+      description: Bad Request - Invalid input data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example:
+              statusCode: 400
+              message: "Validation Error"
+              errors:
+                - field: "email"
+                  message: "Email must be a valid email"
+                - field: "password"
+                  message: "Password must be at least 6 characters"
+    Unauthorized:
+      description: Unauthorized - Authentication required or failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example:
+              statusCode: 401
+              message: "Authentication required"
+    Forbidden:
+      description: Forbidden - User does not have necessary permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example:
+              statusCode: 403
+              message: "Access forbidden"
+    NotFound:
+      description: Not Found - Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example:
+              statusCode: 404
+              message: "Resource not found"
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example:
+              statusCode: 500
+              message: "Internal Server Error"
+```

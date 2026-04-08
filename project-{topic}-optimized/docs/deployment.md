@@ -1,202 +1,333 @@
 # Deployment Guide
 
-This document provides instructions for deploying the Mobile Backend system, focusing on containerized deployments using Docker.
+This document provides a step-by-step guide for deploying the Enterprise-Grade API Development System to a production environment. The recommended deployment strategy involves Docker for containerization and a reverse proxy for traffic management and SSL.
 
-## 1. Local Deployment with Docker Compose (Development/Testing)
+## 1. Prerequisites for Production Server
 
-For local development and testing, `docker-compose.yml` is the simplest way to get all services (backend, PostgreSQL, Redis) running.
+Before you begin, ensure your production server (e.g., a cloud VM, dedicated server) has:
 
-1.  **Ensure Docker and Docker Compose are installed** on your machine.
-2.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/your-username/mobile-backend.git
-    cd mobile-backend
+*   **Docker & Docker Compose:** Installed and configured.
+*   **Git:** For cloning the repository.
+*   **Open Ports:** Ensure ports 80 (HTTP) and 443 (HTTPS) are open if you're using a reverse proxy, and any other specific ports your services might need (e.g., 5000 if directly exposing backend, though not recommended).
+*   **DNS Configuration:** A domain name pointing to your server's IP address (e.g., `api.yourdomain.com`, `app.yourdomain.com`).
+
+## 2. Environment Variables
+
+**CRITICAL:** Never hardcode sensitive information in your application code. Use environment variables.
+
+1.  **Create `.env` files for production:**
+    *   `backend/.env`: For the backend application.
+    *   `frontend/.env`: For the frontend application (if serving via backend or Nginx).
+
+2.  **Populate `.env` files with production values:**
+
+    **`backend/.env` (Example Production Configuration):**
+    ```env
+    PORT=5000
+    NODE_ENV=production
+
+    # Database Configuration (Use a managed database service like AWS RDS, GCP Cloud SQL)
+    DB_DIALECT=postgres
+    DB_HOST=your_production_db_host.com # e.g., an RDS endpoint
+    DB_PORT=5432
+    DB_USER=your_db_user
+    DB_PASSWORD=your_strong_db_password
+    DB_NAME=your_prod_database_name
+
+    # Redis Configuration (Use a managed Redis service like AWS ElastiCache, GCP Memorystore)
+    REDIS_HOST=your_production_redis_host.com # e.g., an ElastiCache endpoint
+    REDIS_PORT=6379
+    REDIS_PASSWORD=your_strong_redis_password # if applicable
+
+    # JWT Configuration - **CHANGE THESE SECRETS!** Generate strong, long random strings.
+    JWT_SECRET=SUPER_SECRET_PRODUCTION_KEY_THAT_IS_LONG_AND_RANDOM
+    JWT_EXPIRES_IN=1h
+    REFRESH_TOKEN_SECRET=ANOTHER_SUPER_SECRET_KEY_FOR_REFRESH_TOKENS
+    REFRESH_TOKEN_EXPIRES_IN=7d
+
+    # Logging
+    LOG_LEVEL=info # or error, warn
+
+    # Rate Limiting
+    RATE_LIMIT_WINDOW_MS=60000 # 1 minute
+    RATE_LIMIT_MAX_REQUESTS=100
+
+    # CORS Origin
+    CORS_ORIGIN=https://app.yourdomain.com # Your frontend domain
     ```
-3.  **Review Configuration**:
-    *   Check `config/app_config.json` for environment-specific settings (database name, user, password, JWT secret, Redis host/port).
-    *   Ensure the `db_host` and `redis_host` in `app_config.json` match the service names in `docker-compose.yml` (`db` and `redis` respectively).
-4.  **Build and Run**:
-    ```bash
-    docker-compose up --build -d
+
+    **`frontend/.env` (Example Production Configuration):**
+    ```env
+    REACT_APP_API_BASE_URL=https://api.yourdomain.com/api/v1
+    # Other frontend specific variables if any
     ```
-    *   `--build`: Forces rebuilding of the backend image, useful if you've made code changes.
-    *   `-d`: Runs containers in detached mode (in the background).
-5.  **Verify Services**:
-    *   Check container status: `docker-compose ps`
-    *   View backend logs: `docker-compose logs -f backend`
-    *   Access the API: The backend should be available at `http://localhost:8080`.
-6.  **Stop Services**:
-    ```bash
-    docker-compose down
-    ```
-    This stops and removes the containers and networks. Use `docker-compose down -v` to also remove Docker volumes (PostgreSQL data, Redis data), which is useful for a clean slate.
+    Ensure these files are securely managed and *not* committed to your Git repository. Consider using tools like HashiCorp Vault, AWS Secrets Manager, or Kubernetes Secrets for managing production secrets.
 
-## 2. Production Deployment Considerations
+## 3. Production `docker-compose.yml`
 
-For production environments, while Docker Compose can work for simple single-server deployments, it's generally recommended to use a more robust container orchestration platform.
+A separate `docker-compose.prod.yml` can be beneficial to manage production-specific settings that differ from development.
 
-### 2.1. Recommended Production Architecture (Container Orchestration)
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
 
-*   **Container Orchestrator**: Kubernetes (EKS, GKE, AKS), Amazon ECS, Docker Swarm.
-*   **Load Balancer**: External load balancer (e.g., AWS ALB, Nginx, HAProxy) to distribute traffic across multiple backend instances.
-*   **Database**: Managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for high availability, backups, and scalability. Avoid running databases directly in containers on the same host for critical production data unless you have strong persistence and HA strategies.
-*   **Cache**: Managed Redis service (e.g., AWS ElastiCache, Azure Cache for Redis).
-*   **Secrets Management**: Use a dedicated secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets with proper encryption) for sensitive information like database passwords and JWT secrets.
-*   **Monitoring & Logging**: Centralized logging (ELK stack, Splunk, CloudWatch, Logz.io) and monitoring (Prometheus/Grafana, Datadog) for all services.
-*   **CI/CD Pipeline**: Automate building, testing, pushing images to a registry, and deploying to the orchestration platform.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: your-docker-registry/backend-api:latest # Use your own image name and tag
+    container_name: backend-api
+    restart: always
+    env_file:
+      - ./backend/.env # Point to your production .env file
+    # Expose port 5000 only to the internal network (if using Nginx reverse proxy)
+    # ports:
+    #   - "5000:5000" # Only if you want to expose directly, not recommended with Nginx
+    networks:
+      - app-network
 
-### 2.2. Steps for Kubernetes Deployment (Conceptual)
+  # Nginx Reverse Proxy (Example)
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf # Your production Nginx config
+      - ./nginx/certbot/conf:/etc/nginx/ssl # SSL certificates (from Certbot)
+      - ./nginx/certbot/www:/var/www/certbot # For Certbot challenges
+      - ./frontend/build:/var/www/frontend # Serve frontend static files
+    depends_on:
+      - backend
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $!; nginx -s reload; done & nginx -g \"daemon off;\"'" # Auto-reload Nginx for certs
+    networks:
+      - app-network
 
-1.  **Container Registry**: Push your backend Docker image to a container registry (e.g., Docker Hub, Google Container Registry, Amazon ECR).
-    ```bash
-    docker build -t your-registry/mobile-backend:latest .
-    docker push your-registry/mobile-backend:latest
-    ```
-2.  **Kubernetes Manifests**: Create Kubernetes YAML files:
-    *   `deployment.yaml`: Defines the backend application (Docker image, replica count, resource limits, readiness/liveness probes).
-    *   `service.yaml`: Defines how to access the backend application within the cluster.
-    *   `ingress.yaml` (Optional): Configures external access via an Ingress controller for HTTP/HTTPS routing.
-    *   `secret.yaml`: Securely store sensitive configuration (DB credentials, JWT secret).
-    *   `configmap.yaml`: Store non-sensitive configuration (server port, thread count).
-    *   **Example `deployment.yaml` snippet:**
-        ```yaml
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: backend-deployment
-          labels:
-            app: mobile-backend
-        spec:
-          replicas: 3 # Scale to 3 instances
-          selector:
-            matchLabels:
-              app: mobile-backend
-          template:
-            metadata:
-              labels:
-                app: mobile-backend
-            spec:
-              containers:
-              - name: backend
-                image: your-registry/mobile-backend:latest
-                ports:
-                - containerPort: 8080
-                envFrom:
-                - configMapRef:
-                    name: backend-config # For non-sensitive configs
-                - secretRef:
-                    name: backend-secrets # For sensitive configs
-                volumeMounts:
-                - name: app-config-volume
-                  mountPath: /app/app_config.json # Mount config as file
-                  subPath: app_config.json
-                - name: logs-volume
-                  mountPath: /app/logs
-                readinessProbe: # Check if app is ready to serve traffic
-                  httpGet:
-                    path: /health # Implement a health check endpoint in Drogon
-                    port: 8080
-                  initialDelaySeconds: 10
-                  periodSeconds: 5
-                livenessProbe: # Check if app is alive
-                  httpGet:
-                    path: /health
-                    port: 8080
-                  initialDelaySeconds: 30
-                  periodSeconds: 10
-                resources:
-                  requests:
-                    memory: "128Mi"
-                    cpu: "100m"
-                  limits:
-                    memory: "512Mi"
-                    cpu: "500m"
-              volumes:
-              - name: app-config-volume
-                configMap:
-                  name: backend-config-file # Use a ConfigMap to hold app_config.json
-              - name: logs-volume
-                emptyDir: {} # For ephemeral logs, or use a persistent volume/log aggregation
-        ```
-3.  **Apply Manifests**:
-    ```bash
-    kubectl apply -f .
-    ```
-4.  **Database and Cache Connectivity**:
-    *   Configure your managed PostgreSQL and Redis services.
-    *   Update your Kubernetes secrets/config maps with the correct connection strings/credentials. Ensure the backend application's `app_config.json` (or environment variables in Kubernetes) points to these external services.
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $!; done;'" # Auto-renew SSL
+    networks:
+      - app-network
 
-### 2.3. Health Checks
+networks:
+  app-network:
+    driver: bridge
+```
 
-*   For `liveness` and `readiness` probes in Kubernetes, implement a simple `/health` endpoint in Drogon that returns a `200 OK` if the application is running and can connect to its critical dependencies (e.g., database, Redis).
+### Nginx Configuration (`./nginx/nginx.prod.conf`)
 
-    **Example `HealthController.h`**:
-    ```cpp
-    // src/controllers/HealthController.h
-    #pragma once
-    #include <drogon/HttpController.h>
-    class HealthController : public drogon::HttpController<HealthController> {
-    public:
-        METHOD_LIST_BEGIN
-        METHOD_ADD(HealthController::checkHealth, "/health", {drogon::HttpMethod::Get});
-        METHOD_LIST_END
-        void checkHealth(const drogon::HttpRequestPtr &req, std::function<void (const drogon::HttpResponsePtr &)> &&callback);
-    };
-    ```
-    **Example `HealthController.cc`**:
-    ```cpp
-    // src/controllers/HealthController.cc
-    #include "HealthController.h"
-    #include "utils/AppConfig.h" // For DB connection name
-    #include "utils/RedisManager.h" // For Redis health check
-    #include <drogon/HttpAppFramework.h>
-    #include <drogon/orm/DbClient.h>
-    #include <spdlog/spdlog.h>
-    void HealthController::checkHealth(const drogon::HttpRequestPtr &req, std::function<void (const drogon::HttpResponsePtr &)> &&callback) {
-        Json::Value status;
-        status["status"] = "UP";
+This Nginx configuration serves two purposes:
+1.  Serves the React frontend static files.
+2.  Acts as a reverse proxy for the backend API.
+3.  Handles SSL termination (via Certbot/Let's Encrypt).
 
-        // Check DB connection
-        auto dbClient = drogon::app().getDbClient(AppConfig::getInstance().getString("db_connection_name"));
-        if (dbClient) {
-            try {
-                // Perform a simple query (e.g., SELECT 1) to check connection health
-                dbClient->execSqlSync("SELECT 1");
-                status["database"] = "UP";
-            } catch (const std::exception& e) {
-                spdlog::error("Health check failed: Database connection error: {}", e.what());
-                status["database"] = "DOWN";
-                status["status"] = "DOWN";
-            }
-        } else {
-            status["database"] = "UNAVAILABLE";
-            status["status"] = "DOWN";
-        }
+```nginx
+# ./nginx/nginx.prod.conf
+server {
+    listen 80;
+    server_name api.yourdomain.com app.yourdomain.com; # Your domains
 
-        // Check Redis connection
-        if (RedisManager::getInstance().get("health_check_key")) { // Simple get attempt
-             status["redis"] = "UP";
-        } else {
-             spdlog::error("Health check failed: Redis connection or ping error.");
-             status["redis"] = "DOWN";
-             status["status"] = "DOWN";
-        }
-
-        auto resp = drogon::HttpResponse::newHttpJsonResponse(status);
-        if (status["status"].asString() == "DOWN") {
-            resp->setStatusCode(drogon::k500InternalServerError);
-        } else {
-            resp->setStatusCode(drogon::k200OK);
-        }
-        callback(resp);
+    # Redirect HTTP to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
     }
+
+    # For Certbot ACME challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name api.yourdomain.com; # Backend API domain
+
+    ssl_certificate /etc/nginx/ssl/live/api.yourdomain.com/fullchain.pem; # Managed by Certbot
+    ssl_certificate_key /etc/nginx/ssl/live/api.yourdomain.com/privkey.pem; # Managed by Certbot
+    include /etc/nginx/ssl/options-ssl-nginx.conf; # Recommended SSL settings
+    ssl_dhparam /etc/nginx/ssl/ssl-dhparams.pem; # Generated DH params
+
+    location /api/ {
+        proxy_pass http://backend-api:5000; # Points to the backend service name in docker-compose
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Deny access to other paths on API domain
+    location / {
+        return 404;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name app.yourdomain.com; # Frontend application domain
+
+    ssl_certificate /etc/nginx/ssl/live/app.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/app.yourdomain.com/privkey.pem;
+    include /etc/nginx/ssl/options-ssl-nginx.conf;
+    ssl_dhparam /etc/nginx/ssl/ssl-dhparams.pem;
+
+    root /var/www/frontend; # Path to your built React app
+    index index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ /index.html; # Serve React app, handle client-side routing
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+```
+
+**SSL Configuration (`./nginx/ssl/options-ssl-nginx.conf` and `ssl-dhparams.pem`)**
+These files enhance SSL security. You can generate them:
+
+*   **`options-ssl-nginx.conf`**: Download from [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/#server=nginx&version=1.17.7&config=intermediate&guideline=5.6)
+*   **`ssl-dhparams.pem`**: Generate on your server:
+    ```bash
+    sudo openssl dhparam -out ./nginx/ssl/ssl-dhparams.pem 2048 # Or 4096 for stronger security
     ```
 
-### 2.4. Environment Variables
+## 4. Deployment Steps
 
-In production, it's common practice to override configuration values using environment variables rather than static config files. Drogon can be configured to read values from environment variables. Your Dockerfile and Kubernetes manifests should facilitate this.
+1.  **SSH into your production server.**
 
-*   Update `app_config.json` to potentially use environment variable placeholders if a tool processes it.
-*   Or, directly pass environment variables to the Docker container, which Drogon can then be configured to pick up (e.g., `drogon::app().loadConfigFile(nullptr);` and then set parameters using `drogon::app().setPort(getenv("PORT"));`).
+2.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/enterprise-api-system.git
+    cd enterprise-api-system
+    ```
 
-This guide covers the essential steps for deploying your C++ backend. Always tailor your deployment strategy to your specific cloud provider and organizational requirements.
+3.  **Create `.env` files:**
+    Create the `backend/.env` and `frontend/.env` files with your production configurations as described in Section 2.
+
+4.  **Prepare Nginx configuration:**
+    Create the `nginx` directory and the configuration files:
+    ```bash
+    mkdir -p nginx/certbot/conf nginx/certbot/www nginx/ssl
+    # Copy/create nginx.prod.conf, options-ssl-nginx.conf, ssl-dhparams.pem as described above
+    # Example:
+    # cp ./nginx.prod.conf.example ./nginx/nginx.prod.conf
+    # curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/resources/options-ssl-nginx.conf > ./nginx/ssl/options-ssl-nginx.conf
+    # sudo openssl dhparam -out ./nginx/ssl/ssl-dhparams.pem 2048
+    ```
+    **Important:** Replace `api.yourdomain.com` and `app.yourdomain.com` in `nginx/nginx.prod.conf` with your actual domain names.
+
+5.  **Build Frontend for Production:**
+    ```bash
+    cd frontend
+    npm install
+    npm run build # This creates the 'build' folder
+    cd ..
+    ```
+    This `build` folder will be mounted into the Nginx container.
+
+6.  **Initial Nginx & Certbot setup (without SSL for first run):**
+    Initially, run Nginx to respond to HTTP requests for Certbot challenges. Modify `nginx.prod.conf` temporarily or run Nginx only for port 80.
+    For the first `certbot` run, you might need to comment out the `ssl_certificate` and `ssl_certificate_key` lines in `nginx.prod.conf` or use a simplified Nginx config for HTTP only.
+
+    A common approach is to initially run `nginx` and `certbot` services from `docker-compose.prod.yml` but without the SSL directives enabled in Nginx. This allows Certbot to acquire certificates, then you re-enable SSL in Nginx and reload.
+
+    **Start services for initial cert acquisition:**
+    ```bash
+    # Temporarily remove SSL config from nginx.prod.conf or use a simpler config for HTTP
+    # (Or remove 'certbot' service and manually acquire outside compose initially)
+    docker-compose -f docker-compose.prod.yml up -d nginx certbot
+    ```
+
+    **Acquire initial SSL Certificates (run this manually if certbot service doesn't work out of the box):**
+    ```bash
+    docker-compose -f docker-compose.prod.yml run --rm certbot certonly --webroot -w /var/www/certbot \
+        -d api.yourdomain.com -d app.yourdomain.com \
+        --email your-email@example.com --no-eff-email --agree-tos
+    ```
+    *   **NOTE:** Ensure your DNS records (`A` records) are correctly pointing to your server's IP address *before* running Certbot.
+
+7.  **Run full production services:**
+    After certificates are acquired, update your `nginx.prod.conf` (if you temporarily changed it) to include the SSL configurations.
+
+    Then, build and run all services:
+    ```bash
+    docker-compose -f docker-compose.prod.yml build
+    docker-compose -f docker-compose.prod.yml up -d
+    ```
+
+8.  **Run Database Migrations and Seeders:**
+    This should be done *after* the backend container is up and connected to the database.
+    ```bash
+    docker-compose -f docker-compose.prod.yml exec backend npm run migrate
+    docker-compose -f docker-compose.prod.yml exec backend npm run seed # Only if you need seed data in production
+    ```
+    *   **Important**: Only run `npm run seed` if you genuinely need initial data in your production database. Do not run it on subsequent deployments if you already have live data.
+
+## 5. Post-Deployment Checks
+
+*   **Access Frontend:** Navigate to `https://app.yourdomain.com` in your browser. Verify the UI loads correctly.
+*   **Test API:** Use a tool like Postman or your browser's developer console to make requests to `https://api.yourdomain.com/api/v1/health` (or similar public endpoint) to ensure the API is responding.
+*   **Check Logs:** Use `docker-compose logs -f backend` and `docker-compose logs -f nginx` to monitor application and proxy logs for errors.
+*   **SSL Certificate:** Verify your SSL certificate is valid by checking the padlock icon in your browser.
+*   **Functionality:** Test user registration, login, product creation, etc., to ensure all core features work.
+
+## 6. Updates and Rollbacks
+
+### Updating the Application
+
+1.  **Push new changes to Git.**
+2.  **Pull changes on the server:**
+    ```bash
+    cd enterprise-api-system
+    git pull origin main # or your main branch
+    ```
+3.  **Rebuild frontend (if frontend changes):**
+    ```bash
+    cd frontend
+    npm run build
+    cd ..
+    ```
+4.  **Rebuild and restart services:**
+    ```bash
+    docker-compose -f docker-compose.prod.yml build backend # Only rebuild backend if code changed
+    docker-compose -f docker-compose.prod.yml up -d --no-deps backend # Restart backend without rebuilding other services
+    # Or, for all services (if Nginx/Certbot also updated):
+    # docker-compose -f docker-compose.prod.yml up -d --build
+    ```
+5.  **Run new migrations (if database schema changed):**
+    ```bash
+    docker-compose -f docker-compose.prod.yml exec backend npm run migrate
+    ```
+
+### Rollbacks
+
+In case of a critical issue after deployment:
+
+1.  **Rollback Git:** Revert to a previous stable commit on your production branch.
+2.  **Rebuild and restart:** Follow the update steps to deploy the older, stable version.
+3.  **Database Rollback:** If a migration introduced breaking changes, you might need to run `docker-compose -f docker-compose.prod.yml exec backend npm run migrate:undo` to revert the last migration. **Exercise extreme caution with database rollbacks on production with live data!** Always have backups.
+
+## 7. Further Enhancements for Production
+
+*   **Monitoring and Alerting:** Integrate with Prometheus/Grafana or cloud-specific monitoring solutions.
+*   **Log Aggregation:** Send logs to a centralized system (e.g., ELK Stack, Splunk, Datadog).
+*   **Load Balancing:** Use a cloud load balancer (AWS ALB, GCP Load Balancer) for high availability and distributing traffic across multiple instances.
+*   **Managed Services:** Utilize managed database (AWS RDS, GCP Cloud SQL) and caching (AWS ElastiCache, GCP Memorystore) services for easier maintenance and scalability.
+*   **Secrets Management:** Use AWS Secrets Manager, HashiCorp Vault, or Kubernetes Secrets to manage sensitive environment variables.
+*   **Blue/Green or Canary Deployments:** For zero-downtime deployments and safer rollouts.
+*   **Container Orchestration:** For larger deployments, consider Kubernetes, AWS ECS, or similar.
+*   **Backup Strategy:** Implement regular database and Redis backups.
+```

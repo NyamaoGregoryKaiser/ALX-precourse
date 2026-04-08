@@ -1,163 +1,140 @@
-# Mobile Backend Architecture
+# Architecture Documentation
 
-This document outlines the high-level architecture of the mobile backend system, focusing on its components, interactions, and design principles.
+This document outlines the high-level architecture of the Enterprise-Grade API Development System.
 
 ## 1. System Overview
 
-The system is designed as a microservice (or a monolithic application with clear logical separation) exposed via a RESTful API. It serves as the backend for a mobile e-commerce application, managing users, products, and orders.
-
-**Key Design Principles:**
-
-*   **Layered Architecture**: Separation of concerns into distinct layers (Controller, Service, Repository, Utility) to improve maintainability and testability.
-*   **Statelessness**: The backend itself is largely stateless, relying on JWT for session management and external data stores (PostgreSQL, Redis) for state.
-*   **Scalability**: Designed with horizontal scaling in mind, leveraging Docker for easy deployment and load balancing.
-*   **Security**: Authentication (JWT), authorization (role-based), password hashing, and secure communication (implicitly TLS/SSL in production setup).
-*   **Observability**: Comprehensive logging and readiness for monitoring integration.
-*   **Robustness**: Error handling, input validation, and transactional integrity (where applicable).
+The system is designed as a distributed application consisting of a React-based frontend client, an Express.js-based backend API, a PostgreSQL database for persistent storage, and a Redis instance for caching. These components communicate primarily over HTTP/HTTPS, forming a robust and scalable architecture suitable for enterprise applications.
 
 ## 2. Component Diagram
 
-```
-+-------------------+     +-----------------+     +-----------------+
-| Mobile Frontend   | <-> |   Load Balancer | <-> |   Backend (C++) |
-| (iOS/Android)     |     |  (Nginx/ALB)    |     |   (Drogon App)  |
-+-------------------+     +-----------------+     +-----------------+
-                                   ^     ^
-                                   |     |
-                           (API Requests) (Responses)
-                                   |     |
-                                   v     v
-                  +-----------------------------------+
-                  |      Backend Instances (Containerized) |
-                  |                                   |
-                  |  +-----------------------------+  |
-                  |  |  1. Controllers           |  |
-                  |  |     (Auth, User, Product, Order) |  |
-                  |  |                           |  |
-                  |  |  2. Middleware            |  |
-                  |  |     (Auth, Error Handler) |  |
-                  |  |                           |  |
-                  |  |  3. Services              |  |
-                  |  |     (Auth, User, Product, Order) |  |
-                  |  |                           |  |
-                  |  |  4. Repositories          |  |
-                  |  |     (User, Product, Order) |  |
-                  |  |                           |  |
-                  |  |  5. Utilities             |  |
-                  |  |     (AppConfig, JWT, Crypto, Redis) |  |
-                  |  +-----------------------------+  |
-                  +-----------------------------------+
-                                   ^     ^
-                                   |     |
-                           (DB Queries) (Cache Ops)
-                                   |     |
-                                   v     v
-                         +-----------------+    +-----------------+
-                         |   PostgreSQL    |    |      Redis      |
-                         |   (Database)    |    |    (Cache)      |
-                         +-----------------+    +-----------------+
+```mermaid
+graph TD
+    User --(1. Access UI)--> FrontendApp
+    FrontendApp --(2. API Requests)--> API_Gateway
+    API_Gateway --(3. Route Requests)--> BackendAPI
+    BackendAPI --(4. Read/Write Data)--> PostgreSQLDB
+    BackendAPI --(5. Cache Data)--> RedisCache
+    BackendAPI --(6. Log Events)--> Logger
+    CI_CD[CI/CD Pipeline] --(7. Test & Deploy)--> DockerRegistry
+    DockerRegistry --(8. Pull Images)--> ProductionServer
+
+    subgraph User Interaction
+        FrontendApp[React Frontend]
+    end
+
+    subgraph Backend Services
+        BackendAPI[Express.js Backend API]
+        Logger[Winston Logging]
+    end
+
+    subgraph Data Stores
+        PostgreSQLDB[PostgreSQL Database]
+        RedisCache[Redis Cache]
+    end
+
+    subgraph Infrastructure
+        API_Gateway[Nginx/Load Balancer (Optional in Dev)]
+        ProductionServer[Docker Host / Kubernetes]
+    end
+
+    style FrontendApp fill:#f9f,stroke:#333,stroke-width:2px
+    style BackendAPI fill:#bbf,stroke:#333,stroke-width:2px
+    style PostgreSQLDB fill:#bfb,stroke:#333,stroke-width:2px
+    style RedisCache fill:#ffb,stroke:#333,stroke-width:2px
+    style API_Gateway fill:#ccf,stroke:#333,stroke-width:2px
+    style Logger fill:#ddf,stroke:#333,stroke-width:2px
 ```
 
-## 3. Layered Architecture
+**Flow Description:**
+1.  **User Access UI:** Users interact with the application through the React-based frontend.
+2.  **API Requests:** The frontend makes asynchronous HTTP requests to the backend API.
+3.  **Route Requests (Optional):** In a production environment, an API Gateway or Load Balancer (e.g., Nginx) would route requests to the appropriate backend service. For development, the frontend directly calls the backend.
+4.  **Backend API Processing:** The Express.js backend processes requests, applies business logic (via services), performs validation, authentication, and authorization.
+5.  **Database Interaction:** For data persistence, the backend interacts with the PostgreSQL database via Sequelize ORM.
+6.  **Caching:** Frequently accessed data or heavy query results are cached in Redis to improve response times and reduce database load.
+7.  **Logging:** All significant events (requests, errors, critical operations) are logged using Winston.
+8.  **CI/CD Pipeline:** Changes are pushed to a Git repository, triggering a CI/CD pipeline (e.g., GitHub Actions) for automated testing, building Docker images, and (conceptually) deploying to a production server or Docker Registry.
 
-The C++ backend follows a classical layered architecture:
+## 3. Core Modules and Components
 
-### 3.1. Controllers Layer
+### Frontend (React)
+*   **Components:** Reusable UI elements (e.g., buttons, forms, cards).
+*   **Pages:** Top-level components representing distinct views (e.g., HomePage, ProductList, LoginPage).
+*   **Services:** Abstractions for making API calls using `axios`.
+*   **Contexts/Redux (Not fully implemented):** For global state management (e.g., user authentication state).
 
-*   **Responsibilities**:
-    *   Receive HTTP requests from the client.
-    *   Parse request parameters, body, and headers.
-    *   Delegate business logic execution to the Services layer.
-    *   Format responses (JSON) and set appropriate HTTP status codes.
-    *   Handle route definitions and integrate middleware.
-*   **Technology**: Drogon `HttpController`.
-*   **Interactions**: Interacts with Middleware for request pre-processing and Service layer for core logic.
+### Backend (Node.js/Express)
+*   **`server.js`**: Application entry point. Initializes Express app and starts the server.
+*   **`app.js`**: Configures the Express application, applies middleware, and defines base routes.
+*   **`config/`**: Contains environment-specific configurations for database, JWT, Redis, logger, etc.
+*   **`middleware/`**:
+    *   `authJwt.js`: Authenticates JWT tokens and authorizes based on user roles.
+    *   `errorHandler.js`: Centralized error handling for consistent error responses.
+    *   `loggerMiddleware.js`: Logs incoming requests and responses.
+    *   `cacheMiddleware.js`: Handles caching responses in Redis.
+    *   `rateLimitMiddleware.js`: Protects routes from excessive requests.
+    *   `validate.js`: Middleware for request body/query validation using Joi.
+*   **`models/`**:
+    *   Sequelize model definitions (`User`, `Product`) defining schema, associations, and validation.
+*   **`migrations/`**: Sequelize migration scripts for evolving the database schema.
+*   **`seeders/`**: Sequelize seeder scripts for populating the database with initial data.
+*   **`services/`**:
+    *   Encapsulate business logic. For example, `userService.js` handles user registration, login, and retrieval; `productService.js` handles product creation, update, deletion, and retrieval.
+    *   Interact with `models` for data persistence.
+*   **`controllers/`**:
+    *   Handle incoming HTTP requests.
+    *   Validate request data (often using `middleware/validate.js`).
+    *   Call appropriate `services` to perform business operations.
+    *   Format and send HTTP responses.
+*   **`routes/`**:
+    *   Define API endpoints and map them to `controllers` functions.
+    *   Apply `middleware` for authentication, authorization, validation, caching, and rate limiting.
+*   **`utils/`**:
+    *   `jwt.js`: Helper for JWT token generation and verification.
+    *   `helpers.js`: General utility functions.
+    *   `errors.js`: Custom error classes for structured error handling.
 
-### 3.2. Middleware Layer
+### Database (PostgreSQL)
+*   Relational database storing user accounts, product information, and other structured data.
+*   Managed via Sequelize ORM, abstracting SQL queries.
+*   Indexed columns for performance (`users.email`, `products.name`).
 
-*   **Responsibilities**:
-    *   **Authentication**: Verify JWT tokens, extract user identity and roles, attach user info to request context.
-    *   **Authorization**: Check if the authenticated user has the necessary permissions for the requested action/resource.
-    *   **Error Handling**: Catch exceptions thrown by controllers or services, format consistent JSON error responses, and log errors.
-    *   **Logging**: Log incoming requests and outgoing responses.
-    *   **Rate Limiting** (not fully implemented, but conceptually here): Limit request frequency.
-*   **Technology**: Drogon `HttpFilter`.
-*   **Interactions**: Operates before and after Controllers process the request.
+### Caching (Redis)
+*   In-memory data store used for fast retrieval of frequently requested data.
+*   Reduces load on the primary database.
+*   Implemented with `ioredis` client.
 
-### 3.3. Services Layer (Business Logic)
+## 4. Security Considerations
 
-*   **Responsibilities**:
-    *   Implement the core business rules and workflows (e.g., user registration, order placement, stock management).
-    *   Orchestrate interactions between multiple repositories.
-    *   Perform complex data validation and transformations beyond basic input parsing.
-    *   Manage transactional boundaries (though explicit C++ transaction management is simplified in this example).
-    *   Handle specific business exceptions.
-*   **Technology**: Plain C++ classes, injected with Repository dependencies.
-*   **Interactions**: Interacts with the Repositories layer.
+*   **Authentication**: JWTs are used for stateless authentication.
+*   **Authorization**: Role-based access control implemented via middleware.
+*   **Password Hashing**: `bcrypt.js` is used to hash passwords securely.
+*   **Input Validation**: Joi is used to validate all incoming request data.
+*   **Rate Limiting**: Protects against brute-force attacks and denial-of-service attempts.
+*   **CORS**: `cors` middleware is configured to allow requests only from trusted origins.
+*   **Environment Variables**: Sensitive information (database credentials, JWT secrets) is stored in environment variables, not committed to source control.
 
-### 3.4. Repositories Layer (Data Access)
+## 5. Scalability and Performance
 
-*   **Responsibilities**:
-    *   Provide an abstraction layer over the database.
-    *   Perform CRUD operations for specific entities (User, Product, Order).
-    *   Translate application-level models into database-specific queries (SQL).
-    *   Handle database-specific exceptions and map them to generic API errors.
-    *   Manage database connections (handled by Drogon's DbClient).
-*   **Technology**: Plain C++ classes, injected with Drogon `DbClientPtr`.
-*   **Interactions**: Interacts directly with the PostgreSQL database.
+*   **Stateless Backend**: Express.js application is designed to be stateless, facilitating horizontal scaling.
+*   **Caching with Redis**: Reduces database load and improves response times for read-heavy operations.
+*   **Database Indexing**: Improves query performance for frequently accessed columns.
+*   **Containerization (Docker)**: Enables easy deployment and scaling of individual services.
+*   **Rate Limiting**: Prevents resource exhaustion from malicious or accidental overuse.
+*   **Asynchronous Operations**: Node.js's non-blocking I/O model inherently supports handling many concurrent connections.
 
-### 3.5. Models Layer (Data Structures)
+## 6. Observability
 
-*   **Responsibilities**:
-    *   Define the structure of data objects used across different layers (e.g., `User`, `Product`, `Order`, `OrderItem`).
-    *   Provide methods for serialization/deserialization to/from JSON.
-*   **Technology**: C++ `struct`s or `class`es.
-*   **Interactions**: Used by all other layers to represent data.
+*   **Structured Logging (Winston)**: Provides detailed logs for debugging, monitoring, and auditing. Logs are structured (JSON) for easy parsing by log aggregation systems.
+*   **Error Monitoring**: Centralized error handling ensures all errors are caught, logged, and returned with consistent formats.
+*   **Performance Monitoring (Conceptual)**: Tools like `k6` are used for performance testing, and in production, metrics gathering (e.g., Prometheus) would be integrated.
 
-### 3.6. Utilities Layer
+## 7. Development and Deployment Workflow
 
-*   **Responsibilities**:
-    *   Provide common helper functionalities (e.g., configuration loading, JWT token management, cryptographic utilities for password hashing, Redis client management).
-*   **Technology**: Singleton C++ classes or namespaces with static functions.
-*   **Interactions**: Used by any layer that requires specific utility functions.
+*   **Local Development**: Docker Compose provides a consistent development environment.
+*   **CI/CD**: GitHub Actions workflow automates testing, linting, and building of Docker images.
+*   **Deployment**: Docker images are pushed to a registry and deployed to a production environment (e.g., cloud VMs, Kubernetes, ECS).
 
-## 4. External Services
-
-### 4.1. PostgreSQL Database
-
-*   **Role**: Primary data store for persistent application data (users, products, orders, etc.).
-*   **Features**: Relational data model, ACID compliance, indexing for query optimization.
-*   **Integration**: Drogon's `DbClient` provides a connection pool and ORM-like capabilities for interacting with PostgreSQL.
-
-### 4.2. Redis Cache
-
-*   **Role**: In-memory data store used for caching frequently accessed data, session management, and potentially rate-limiting counters.
-*   **Features**: High-performance key-value store.
-*   **Integration**: `RedisManager` utility using `hiredis` client library.
-
-## 5. Data Flow (Example: Create Order)
-
-1.  **Mobile Frontend**: Sends a `POST /orders` request with order items and `Authorization: Bearer <token>`.
-2.  **Load Balancer**: Routes the request to an available Backend instance.
-3.  **Drogon Controller (`OrderController`)**:
-    *   Receives the HTTP request.
-    *   `AuthMiddleware` verifies the JWT token, extracts `userId` and `role`, attaches to request.
-    *   Parses the JSON request body (order items).
-    *   Calls `OrderService::createOrder(userId, items)`.
-4.  **Service Layer (`OrderService`)**:
-    *   Validates business rules (e.g., items not empty, product IDs valid, quantity > 0).
-    *   Iterates through order items:
-        *   Calls `ProductRepository::findById()` to fetch product details and current stock.
-        *   Performs stock availability check.
-    *   Calculates `totalAmount`.
-    *   Calls `OrderRepository::create()` to insert the new order record (gets new `orderId`).
-    *   Calls `OrderRepository::addOrderItems()` to insert each item associated with `orderId`.
-    *   Calls `ProductRepository::updateStock()` for each ordered product to deduct quantities.
-    *   If any step fails, it throws an `ApiError` (e.g., `NotFoundError`, `BadRequestError`, `InternalServerError`).
-5.  **Repository Layer (`OrderRepository`, `ProductRepository`)**:
-    *   Executes SQL queries against the PostgreSQL database.
-    *   Handles database interactions and potential `DrogonDbException`s.
-6.  **Error Handling (if an exception occurs)**: `ErrorHandler` middleware catches the exception, logs it, and sends a standardized JSON error response (e.g., `400 Bad Request` if `OrderService` found insufficient stock).
-7.  **Successful Response**: If all operations succeed, `OrderController` constructs a `201 Created` JSON response with the new `orderId` and sends it back to the client.
-
-This architecture provides a clear separation of concerns, making the system modular, testable, and easier to scale and maintain.
+This architecture provides a robust, secure, and scalable foundation for building modern web applications.
+```

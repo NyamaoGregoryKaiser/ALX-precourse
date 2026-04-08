@@ -1,34 +1,25 @@
-```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-# Copy package.json and install dependencies
-COPY package*.json ./
-RUN npm install
-
-# Copy source code and build
-COPY . .
-RUN npm run build
-
-# Stage 2: Run the application
+# Use a Node.js LTS image as the base
 FROM node:18-alpine
 
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy only necessary files from builder stage
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules/ ./node_modules/
-COPY --from=builder /app/dist/ ./dist/
-COPY --from=builder /app/.env.example ./.env.example # Copy example, but .env should be mounted
+# Copy package.json and package-lock.json (or yarn.lock) to the working directory
+# This allows Docker to use the cache for npm install if dependencies haven't changed
+COPY backend/package*.json ./
 
-# Expose the port the app runs on
-EXPOSE 3000
+# Install dependencies
+RUN npm install
 
-# Set environment variables (production specific)
-ENV NODE_ENV=production
+# Copy the rest of the application code to the working directory
+COPY backend/src src/
+COPY backend/.sequelizerc .sequelizerc
+COPY backend/.env.example .env.example # For reference
+
+# Expose the port the application runs on
+EXPOSE 5000
 
 # Command to run the application
+# This will be overridden by docker-compose for dev, but good for standalone run
 CMD ["npm", "start"]
 ```

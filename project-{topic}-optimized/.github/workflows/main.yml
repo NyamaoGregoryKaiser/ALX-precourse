@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Product Service
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,93 +11,210 @@ on:
       - develop
 
 jobs:
-  build-and-test:
-    name: Build, Test & Code Coverage
+  lint:
+    name: Lint Code
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+          node-version: '18'
 
-      - name: Start PostgreSQL with Testcontainers
+      - name: Install Backend Dependencies
         run: |
-          docker-compose -f docker-compose.yml up -d db
-          # Wait for PostgreSQL to be ready
-          docker exec db pg_isready -U ${{ secrets.DB_USERNAME }} -d ${{ secrets.DB_NAME }}
-        env:
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        # Wait for PostgreSQL to be ready before running tests
-        timeout-minutes: 5 # Give enough time for DB to start
+          cd backend
+          npm install
 
-      - name: Build with Maven and Run Tests (including integration tests with Testcontainers)
+      - name: Run Backend Lint
         run: |
-          ./mvnw clean install
-          # The above command will run unit and integration tests (which use Testcontainers internally)
-          # and generate JaCoCo reports.
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ secrets.DB_NAME }} # Testcontainers binds to random port, but for explicit integration tests, we can configure
-          SPRING_DATASOURCE_USERNAME: ${{ secrets.DB_USERNAME }}
-          SPRING_DATASOURCE_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          # Provide a dummy JWT secret for tests if not using the real one
-          JWT_SECRET: test_secret_for_ci_cd_environment_only_for_testing
-        timeout-minutes: 10 # Allow sufficient time for tests
+          cd backend
+          npm run lint
 
-      - name: Upload JaCoCo Code Coverage Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-report
-          path: target/site/jacoco/jacoco.xml
-          retention-days: 7
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm install
 
-      - name: Generate full JaCoCo HTML report (optional, for manual inspection)
-        run: ./mvnw jacoco:report
-      - name: Upload JaCoCo HTML Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-html-report
-          path: target/site/jacoco/
-          retention-days: 7
+      - name: Run Frontend Lint
+        run: |
+          cd frontend
+          npm run lint
 
-  docker-build-and-push:
-    name: Build & Push Docker Image
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
-    needs: build-and-test # This job depends on successful build and tests
-    if: github.ref == 'refs/heads/main' # Only build and push for main branch pushes
+    needs: lint
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_DB: api_db_test
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
+          # Wait for PostgreSQL
+          for i in `seq 1 10`; do
+            if pg_isready -h localhost -p 5432 -U testuser; then
+              echo "PostgreSQL is ready."
+              break
+            fi
+            echo "Waiting for PostgreSQL..."
+            sleep 5
+          done
+          # Wait for Redis
+          for i in `seq 1 10`; do
+            if redis-cli ping; then
+              echo "Redis is ready."
+              break
+            fi
+            echo "Waiting for Redis..."
+            sleep 5
+          done
+        env:
+          PGPASSWORD: testpassword
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm install
+        env:
+          # Ensure test environment variables are set for the backend tests
+          DB_DIALECT: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_NAME: api_db_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test_jwt_secret
+          JWT_EXPIRES_IN: 1h
+          REFRESH_TOKEN_SECRET: test_refresh_secret
+          REFRESH_TOKEN_EXPIRES_IN: 7d
+          LOG_LEVEL: error
+          NODE_ENV: test
+
+      - name: Run Backend Migrations & Seeders
+        run: |
+          cd backend
+          npm run migrate
+          npm run seed
+        env:
+          DB_DIALECT: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_NAME: api_db_test
+          NODE_ENV: test
+
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          npm test -- --coverage # Run tests with coverage
+        env:
+          DB_DIALECT: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_NAME: api_db_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test_jwt_secret
+          JWT_EXPIRES_IN: 1h
+          REFRESH_TOKEN_SECRET: test_refresh_secret
+          REFRESH_TOKEN_EXPIRES_IN: 7d
+          LOG_LEVEL: error
+          NODE_ENV: test
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Run Frontend Tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false
+
+  build_and_deploy:
+    name: Build and Deploy Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Get current date for tag
-        id: date
-        run: echo "::set-output name=now::$(date +'%Y%m%d%H%M%S')"
+      - name: Build Backend Docker Image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/enterprise-api-backend:${{ github.sha }} -t ${{ secrets.DOCKER_USERNAME }}/enterprise-api-backend:latest ./backend
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Push Backend Docker Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/enterprise-api-backend --all-tags
+
+      - name: Build Frontend Production Build
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+
+      # Example: Deploy to a remote server using SSH
+      # You would typically have a deployment script on your server or use a more sophisticated orchestrator (K8s, ECS)
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@master
         with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/alx-product-service:latest
-            ${{ secrets.DOCKER_USERNAME }}/alx-product-service:${{ github.sha }}
-            ${{ secrets.DOCKER_USERNAME }}/alx-product-service:$(date +%Y%m%d%H%M%S)
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            JAR_FILE=target/product-service-*.jar # Ensure this matches your actual JAR name
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/your/app/on/server
+            git pull origin main
+            # Stop existing containers
+            docker-compose -f docker-compose.prod.yml down --remove-orphans
+            # Rebuild frontend assets (if Nginx serving)
+            rm -rf frontend/build && mkdir -p frontend/build
+            cp -r /path/to/frontend/build/* frontend/build/ # Copy built frontend from CI artifact or rebuild locally
+            # Pull new backend image
+            docker pull ${{ secrets.DOCKER_USERNAME }}/enterprise-api-backend:latest
+            # Start new containers
+            docker-compose -f docker-compose.prod.yml up -d
+            # Run migrations
+            docker-compose -f docker-compose.prod.yml exec backend npm run migrate
+```
