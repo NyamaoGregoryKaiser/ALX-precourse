@@ -1,21 +1,29 @@
+```typescript
 import { Router } from 'express';
-import { userController } from '../controllers/userController';
-import { authorizeRoles } from '../middleware/authMiddleware';
-import { UserRole } from '../db/entities/User';
+import {
+  getUserProfile,
+  updateMe,
+  getAllUsers,
+  getUserById,
+  updateUserByAdmin,
+  deleteUserByAdmin
+} from '../controllers/userController';
+import { protect, authorize } from '../middleware/authMiddleware';
 
 const router = Router();
 
-// Get current user's profile
-router.get('/me', userController.getUserById); // user id from req.user
-// Update current user's profile
-router.put('/me', userController.updateCurrentUser);
-// Delete current user's profile (requires a separate check to prevent admin self-deletion easily)
-router.delete('/me', userController.deleteCurrentUser);
+// User specific routes (authenticated users)
+router.get('/me', protect, getUserProfile);
+router.patch('/updateMe', protect, updateMe);
 
-// Admin-only routes
-router.get('/', authorizeRoles(UserRole.ADMIN), userController.getAllUsers);
-router.get('/:id', authorizeRoles(UserRole.ADMIN), userController.getUserById);
-router.put('/:id', authorizeRoles(UserRole.ADMIN), userController.updateUserById);
-router.delete('/:id', authorizeRoles(UserRole.ADMIN), userController.deleteUserById);
+// Admin specific routes for user management
+router.route('/')
+  .get(protect, authorize('ADMIN'), getAllUsers); // Admin only
+
+router.route('/:id')
+  .get(protect, authorize('ADMIN'), getUserById) // Admin only
+  .patch(protect, authorize('ADMIN'), updateUserByAdmin) // Admin only
+  .delete(protect, authorize('ADMIN'), deleteUserByAdmin); // Admin only
 
 export default router;
+```

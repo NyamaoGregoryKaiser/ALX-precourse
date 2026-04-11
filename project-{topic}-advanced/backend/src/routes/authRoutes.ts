@@ -1,12 +1,14 @@
+```typescript
 import { Router } from 'express';
-import { authController } from '../controllers/authController';
-import { authenticateToken, authorizeRoles } from '../middleware/authMiddleware';
-import { UserRole } from '../db/entities/User';
+import { register, login, getMe } from '../controllers/authController';
+import { protect, authorize } from '../middleware/authMiddleware';
+import { loginRateLimit } from '../middleware/rateLimitMiddleware';
 
 const router = Router();
 
-router.post('/register', authController.register); // Public registration
-router.post('/login', authController.login);
-router.post('/register-admin', authenticateToken, authorizeRoles(UserRole.ADMIN), authController.register); // Admin-only registration
+router.post('/register', register);
+router.post('/login', loginRateLimit, login); // Apply stricter rate limiting to login
+router.get('/me', protect, getMe);
 
 export default router;
+```

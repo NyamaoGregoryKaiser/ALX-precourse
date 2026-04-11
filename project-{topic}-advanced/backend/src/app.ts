@@ -2,67 +2,47 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import bodyParser from 'body-parser';
-import { env } from './config';
-import { errorHandler } from './middleware/error.middleware';
-import { loggingMiddleware } from './middleware/logging.middleware';
-import { apiLimiter } from './middleware/rate-limit.middleware';
-import { prometheusMiddleware } from './utils/prometheus.utils';
+import morgan from 'morgan';
+import { config } from './config';
+import logger from './utils/logger';
+import { errorHandler } from './middleware/errorMiddleware';
+import apiRoutes from './routes';
+import { rateLimitMiddleware } from './middleware/rateLimitMiddleware';
 
-// Import routes
-import authRoutes from './routes/auth.routes';
-import userRoutes from './routes/user.routes';
-import projectRoutes from './routes/project.routes';
-import monitorRoutes from './routes/monitor.routes';
-import metricRoutes from './routes/metric.routes';
-import alertRoutes from './routes/alert.routes';
+const app = express();
 
-export const app = express();
+// Security Middlewares
+app.use(helmet()); // Sets various HTTP headers for security
+app.use(cors({
+  origin: config.frontendUrl, // Configure CORS based on your frontend URL
+  credentials: true,
+}));
 
-// Security Middleware
-app.use(helmet());
+// Request logging
+app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 
-// CORS Configuration
-app.use(cors({ origin: env.CORS_ORIGIN }));
+// Rate limiting to prevent abuse
+app.use(rateLimitMiddleware);
 
-// Body Parser
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// Logging Middleware
-app.use(loggingMiddleware);
-
-// Rate Limiting
-app.use(apiLimiter);
-
-// Prometheus Metrics Middleware
-app.use(prometheusMiddleware);
+// Body parsers
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // API Routes
-app.use(`/api/${env.API_VERSION}/auth`, authRoutes);
-app.use(`/api/${env.API_VERSION}/users`, userRoutes);
-app.use(`/api/${env.API_VERSION}/projects`, projectRoutes);
-app.use(`/api/${env.API_VERSION}/monitors`, monitorRoutes);
-app.use(`/api/${env.API_VERSION}/metrics`, metricRoutes); // Metrics are typically nested under monitors
-app.use(`/api/${env.API_VERSION}/alerts`, alertRoutes); // Alerts can be globally managed or monitor-specific
+app.use('/api', apiRoutes);
 
-// Health Check Endpoint
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).json({ status: 'UP', timestamp: new Date() });
 });
-
-// Prometheus Metrics Endpoint
-// This should be publicly accessible for Prometheus to scrape
-app.get('/metrics', async (req, res) => {
-  res.set('Content-Type', 'text/plain');
-  res.end(await require('prom-client').register.metrics());
-});
-
-// Global Error Handling Middleware
-app.use(errorHandler);
 
 // Catch-all for undefined routes
-app.use((req, res) => {
-  res.status(404).json({ message: 'Not Found', path: req.originalUrl });
+app.use('*', (req, res) => {
+  res.status(404).json({ message: `Cannot find ${req.originalUrl} on this server!` });
 });
+
+// Centralized error handling middleware (must be last)
+app.use(errorHandler);
+
+export default app;
 ```

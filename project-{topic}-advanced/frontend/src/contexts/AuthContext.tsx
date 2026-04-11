@@ -1,58 +1,79 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import api from '../api/axiosConfig';
+```tsx
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import apiClient from '../api/apiClient';
+import { toast } from 'react-toastify';
 
 interface User {
   id: string;
-  username: string;
   email: string;
-  role: string;
+  name: string;
+  role: 'USER' | 'ADMIN';
+  address?: string;
+  phone?: string;
 }
 
 interface AuthContextType {
-  isAuthenticated: boolean;
   user: User | null;
   token: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
   login: (token: string, userData: User) => void;
   logout: () => void;
+  updateUser: (userData: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return !!localStorage.getItem('token');
-  });
-  const [user, setUser] = useState<User | null>(() => {
-    const storedUser = localStorage.getItem('user');
-    return storedUser ? JSON.parse(storedUser) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('token');
-  });
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('jwtToken'));
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // This effect runs once on mount to ensure initial state is consistent with localStorage
-    // And could be used to validate token with backend if necessary (e.g., on app load)
-  }, []);
+    const loadUser = async () => {
+      if (token) {
+        try {
+          // Verify token validity by fetching user data
+          const response = await apiClient.get('/auth/me');
+          setUser(response.data.data.user);
+        } catch (error) {
+          console.error('Failed to load user from token:', error);
+          localStorage.removeItem('jwtToken');
+          setToken(null);
+          setUser(null);
+          toast.error('Session expired or invalid. Please log in again.');
+        }
+      }
+      setIsLoading(false);
+    };
+
+    loadUser();
+  }, [token]);
 
   const login = (newToken: string, userData: User) => {
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('jwtToken', newToken);
     setToken(newToken);
     setUser(userData);
-    setIsAuthenticated(true);
+    toast.success('Logged in successfully!');
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.removeItem('jwtToken');
     setToken(null);
     setUser(null);
-    setIsAuthenticated(false);
+    toast.info('Logged out.');
+  };
+
+  const updateUser = (userData: Partial<User>) => {
+    setUser((prevUser) => (prevUser ? { ...prevUser, ...userData } : null));
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user, isLoading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -65,3 +86,4 @@ export const useAuth = () => {
   }
   return context;
 };
+```

@@ -1,9 +1,9 @@
+```prisma
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/@prisma/client"
 }
 
 datasource db {
@@ -11,51 +11,109 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  CUSTOMER
+// User Model
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  name      String
+  address   String?   // Optional shipping/billing address
+  phone     String?   // Optional phone number
+  role      Role      @default(USER) // User roles: USER, ADMIN
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relationships
+  carts     Cart[]
+  orders    Order[]
+}
+
+enum Role {
+  USER
   ADMIN
 }
 
-model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String   // Hashed password
-  role      UserRole @default(CUSTOMER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  orders Order[]
-}
-
+// Category Model for Products
 model Category {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  slug      String   @unique // For SEO-friendly URLs
-  description String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  products Product[]
+  id        String    @id @default(uuid())
+  name      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
+// Product Model
 model Product {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   description String
-  price       Decimal   @db.Decimal(10, 2)
-  stock       Int       @default(0)
-  imageUrl    String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
+  price       Float      @db.Decimal(10, 2) // Storing prices as Decimal for precision
+  stock       Int        @default(0)
+  imageUrl    String
   categoryId  String
-  category    Category  @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  orderItems OrderItem[]
+  // Relationships
+  category    Category   @relation(fields: [categoryId], references: [id])
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
 
-  @@index([categoryId]) // Index for faster filtering by category
-  @@index([name])      // Index for faster searching by name
+  @@index([categoryId]) // Index for faster category-based queries
+  @@index([name]) // Index for faster name-based searches
+  @@index([price]) // Index for faster price-based filtering
+}
+
+// Cart Model for Shopping Carts
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique // Each user has one cart
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relationships
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+}
+
+// CartItem Model for items in a Cart
+model CartItem {
+  id        String    @id @default(uuid())
+  cartId    String
+  productId String
+  quantity  Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relationships
+  cart      Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade) // If cart is deleted, items are too
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId]) // A product can only be once in a given cart
+  @@index([cartId])
+  @@index([productId])
+}
+
+// Order Model for Placed Orders
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  orderDate     DateTime    @default(now())
+  totalAmount   Float       @db.Decimal(10, 2)
+  status        OrderStatus @default(PENDING)
+  shippingAddress String?
+  billingAddress  String? // Could be separate model if complex
+  paymentMethod String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relationships
+  user          User        @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+
+  @@index([userId])
+  @@index([orderDate])
+  @@index([status])
 }
 
 enum OrderStatus {
@@ -66,33 +124,22 @@ enum OrderStatus {
   CANCELLED
 }
 
-model Order {
-  id        String      @id @default(uuid())
-  userId    String
-  user      User        @relation(fields: [userId], references: [id])
-  status    OrderStatus @default(PENDING)
-  totalAmount Decimal   @db.Decimal(10, 2)
-  shippingAddress String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  items     OrderItem[]
-
-  @@index([userId]) // Index for faster retrieval of user orders
-  @@index([status]) // Index for faster filtering by status
-}
-
+// OrderItem Model for items within an Order
 model OrderItem {
   id        String    @id @default(uuid())
   orderId   String
-  order     Order     @relation(fields: [orderId], references: [id])
   productId String
-  product   Product   @relation(fields: [productId], references: [id])
   quantity  Int
-  price     Decimal   @db.Decimal(10, 2) // Price at the time of order
+  price     Float     @db.Decimal(10, 2) // Price at the time of order
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  @@unique([orderId, productId]) // An order can only have one entry per product
+  // Relationships
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId]) // A product can only be once in a given order
+  @@index([orderId])
   @@index([productId])
 }
+```

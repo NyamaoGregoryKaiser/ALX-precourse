@@ -1,65 +1,41 @@
-```typescript
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Projects from './pages/Projects';
-import ProjectDetail from './pages/ProjectDetail';
-import MonitorDetail from './pages/MonitorDetail';
-import AlertConfig from './pages/AlertConfig';
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
+```tsx
+import { Routes, Route } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import ProductDetailPage from './pages/ProductDetailPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import CartPage from './pages/CartPage';
+import Header from './components/common/Header';
+import Footer from './components/common/Footer';
+import PrivateRoute from './components/auth/PrivateRoute'; // A simple wrapper for protected routes
+import ProfilePage from './pages/ProfilePage';
+import NotFoundPage from './pages/NotFoundPage';
 
-// ProtectedRoute component to guard routes
-const ProtectedRoute: React.FC<{ children: JSX.Element }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full text-blue-500" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-};
-
-const App: React.FC = () => {
-  const { isAuthenticated } = useAuth();
-
+function App() {
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {isAuthenticated && <Sidebar />}
-      <div className="flex-1 flex flex-col">
-        {isAuthenticated && <Header />}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+    <div className="flex flex-col min-h-screen">
+      <Header />
+      <main className="flex-grow container mx-auto p-4">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/products/:id" element={<ProductDetailPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/cart" element={<CartPage />} />
 
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
-            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
-            <Route path="/monitors/:monitorId" element={<ProtectedRoute><MonitorDetail /></ProtectedRoute>} />
-            <Route path="/monitors/:monitorId/alerts" element={<ProtectedRoute><AlertConfig /></ProtectedRoute>} />
+          {/* Protected routes */}
+          <Route element={<PrivateRoute />}>
+            <Route path="/profile" element={<ProfilePage />} />
+            {/* Add more protected routes here */}
+          </Route>
 
-            {/* Redirect to dashboard if logged in and trying to access auth pages */}
-            <Route path="*" element={isAuthenticated ? <Navigate to="/" /> : <Navigate to="/login" />} />
-          </Routes>
-        </main>
-      </div>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </main>
+      <Footer />
     </div>
   );
-};
+}
 
 export default App;
 ```

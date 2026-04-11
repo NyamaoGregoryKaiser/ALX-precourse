@@ -1,27 +1,24 @@
-import { Application, Request, Response } from 'express';
-import { config } from '../config/env.config';
-import authRoutes from './auth.routes';
-import productRoutes from './product.routes';
-import categoryRoutes from './category.routes';
-import userRoutes from './user.routes';
-import orderRoutes from './order.routes';
-import swaggerUi from 'swagger-ui-express';
-import swaggerSpec from '../config/swagger.config';
+```typescript
+import { Router } from 'express';
+import authRoutes from './authRoutes';
+import productRoutes from './productRoutes';
+import userRoutes from './userRoutes';
+import cartRoutes from './cartRoutes';
+// import orderRoutes from './orderRoutes'; // Future expansion
 
-export const setupRoutes = (app: Application) => {
-  const apiBase = config.apiVersion;
+const router = Router();
 
-  app.use(`${apiBase}/auth`, authRoutes);
-  app.use(`${apiBase}/products`, productRoutes);
-  app.use(`${apiBase}/categories`, categoryRoutes);
-  app.use(`${apiBase}/users`, userRoutes);
-  app.use(`${apiBase}/orders`, orderRoutes);
+router.use('/auth', authRoutes);
+router.use('/products', productRoutes);
+router.use('/users', userRoutes);
+router.use('/cart', cartRoutes);
+// router.use('/orders', orderRoutes); // Add order routes when implemented
 
-  // Swagger Docs Route
-  app.use(`${apiBase}/docs`, swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
+export default router;
+```
 
-  // Fallback for unknown routes
-  app.use((req: Request, res: Response) => {
-    res.status(404).json({ message: `Cannot ${req.method} ${req.originalUrl} - Route Not Found` });
-  });
-};
+---
+
+## 4. Core Application (Frontend)
+
+The frontend is a React application built with TypeScript and styled using Tailwind CSS. It focuses on modular components, context-based state management, and clear API interaction.

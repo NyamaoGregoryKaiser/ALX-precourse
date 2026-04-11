@@ -1,0 +1,80 @@
+```yaml
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Set up PostgreSQL for testing
+      run: |
+        docker compose -f ../docker-compose.test.yml up -d db redis
+        # Wait for PostgreSQL to be ready
+        docker compose -f ../docker-compose.test.yml exec -T db pg_isready -U testuser -d testdb || exit 1
+      env:
+        POSTGRES_USER: testuser
+        POSTGRES_PASSWORD: testpassword
+        POSTGRES_DB: testdb
+      working-directory: ./backend # Ensure this command runs from the root of the backend folder
+
+    - name: Set up .env for testing
+      run: |
+        echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5433/testdb?schema=public" > .env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+        echo "REDIS_HOST=localhost" >> .env
+        echo "REDIS_PORT=6380" >> .env
+        echo "NODE_ENV=test" >> .env
+
+    - name: Run Prisma Migrations
+      run: npx prisma migrate deploy
+
+    - name: Run Prisma Seed (for test data)
+      run: npx prisma db seed
+
+    - name: Build TypeScript
+      run: npm run build
+
+    - name: Run Backend Tests
+      run: npm test -- --coverage # Run tests with coverage
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-coverage-report
+        path: backend/coverage
+
+    - name: Stop test database
+      if: always() # Run even if previous steps failed
+      run: docker compose -f ../docker-compose.test.yml down -v
+      working-directory: ./backend
+```

@@ -1,37 +1,40 @@
 ```typescript
-import 'reflect-metadata'; // Must be imported before TypeORM
-import { AppDataSource } from './database/data-source';
-import { app } from './app';
-import { env } from './config';
+import app from './app';
+import { config } from './config';
 import logger from './utils/logger';
-import { startMonitorScheduler } from './jobs/monitor-scheduler';
-import { collectDefaultMetrics } from './utils/prometheus.utils';
+import { redisClient } from './utils/redisClient';
+
+const PORT = config.port;
 
 const startServer = async () => {
   try {
-    // Initialize Database Connection
-    await AppDataSource.initialize();
-    logger.info('Database connected successfully!');
+    // Connect to Redis
+    await redisClient.connect();
+    logger.info('Connected to Redis');
 
-    // Start Express Server
-    const port = env.PORT;
-    app.listen(port, () => {
-      logger.info(`Server running on port ${port} (http://localhost:${port})`);
-      logger.info(`Environment: ${env.NODE_ENV}`);
-      logger.info(`API Version: ${env.API_VERSION}`);
+    // Start the Express server
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT} in ${config.nodeEnv} mode`);
     });
-
-    // Start Monitor Scheduler
-    startMonitorScheduler();
-
-    // Collect default Prometheus metrics for the application itself
-    collectDefaultMetrics();
-
   } catch (error) {
-    logger.error('Failed to connect to database or start server:', error);
-    process.exit(1);
+    logger.error('Failed to connect to Redis or start server:', error);
+    process.exit(1); // Exit process with failure
   }
 };
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT signal received: closing HTTP server');
+  await redisClient.quit();
+  logger.info('Redis client disconnected');
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  await redisClient.quit();
+  logger.info('Redis client disconnected');
+  process.exit(0);
+});
 
 startServer();
 ```

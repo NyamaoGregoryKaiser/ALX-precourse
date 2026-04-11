@@ -1,0 +1,106 @@
+```yaml
+# For local CI/testing environments. Uses different ports to avoid conflicts.
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: testdb
+    ports:
+      - "5433:5432" # Use a different port for testing
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379" # Use a different port for testing
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+```
+
+---
+
+## 7. Testing & Quality
+
+Testing is critical for production-ready systems. This project includes unit, integration, and API tests, aiming for high coverage.
+
+### Backend Testing (Jest, Supertest)
+
+**`jest.config.js` (at `backend/` root):**
+```javascript
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  testMatch: ['<rootDir>/tests/**/*.test.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  collectCoverage: true,
+  coverageDirectory: 'coverage',
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/src/config/',
+    '/src/utils/logger.ts',
+    '/src/utils/errorHandler.ts',
+    '/src/server.ts',
+    '/src/app.ts',
+    '/src/database/prisma/client.ts', // Usually mocked
+    '/prisma/seed.ts'
+  ],
+  moduleNameMapper: {
+    '^@config/(.*)$': '<rootDir>/src/config/$1',
+    '^@utils/(.*)$': '<rootDir>/src/utils/$1',
+    // Add other aliases as needed
+  }
+};
+```
+
+**`backend/tests/setup.ts`:**
+```typescript
+import { PrismaClient } from '@prisma/client';
+import { redisClient } from '../src/utils/redisClient'; // Make sure this exports your redis client
+
+const prisma = new PrismaClient();
+
+// Ensure Prisma client is initialized for tests (if not already handled by a mock)
+beforeAll(async () => {
+  // Clear test database before all tests
+  await prisma.$connect();
+  await prisma.cartItem.deleteMany({});
+  await prisma.cart.deleteMany({});
+  await prisma.orderItem.deleteMany({});
+  await prisma.order.deleteMany({});
+  await prisma.product.deleteMany({});
+  await prisma.category.deleteMany({});
+  await prisma.user.deleteMany({});
+  console.log('Test database cleared before all tests.');
+
+  // Connect to Redis for tests
+  try {
+    await redisClient.connect();
+    // Clear Redis cache before all tests
+    await redisClient.flushdb();
+    console.log('Redis client connected and flushed for tests.');
+  } catch (err) {
+    console.error('Failed to connect or flush Redis for tests:', err);
+    // Depending on your setup, you might want to skip redis-related tests or mock redis fully
+  }
+});
+
+afterAll(async () => {
+  // Disconnect Prisma client after all tests
+  await prisma.$disconnect();
+  // Disconnect Redis client after all tests
+  await redisClient.quit();
+  console.log('Prisma and Redis disconnected after all tests.');
+});
+```
