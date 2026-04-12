@@ -1,106 +1,161 @@
 cmake_minimum_required(VERSION 3.10)
-project(TaskManagerSystem LANGUAGES CXX)
+project(CppApiSystem LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Required for shared libraries and some deployments
 
-# Build type setup
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build." ON)
-    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+# Define build type if not already set (e.g., from command line -DCMAKE_BUILD_TYPE=Release)
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build."
+        OPTIONS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
-# Find and configure external dependencies
-# We'll use Find modules or FetchContent for these
-# For this example, we assume system-wide installation or manually configure paths
+# Set output directories for executables and libraries
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# Crow (Requires Boost context for older versions, or a newer standalone build)
-# For simplicity, we'll assume Crow is header-only or pre-built and its include path is added.
-# In a real project, you'd use FetchContent or find_package.
-# Example: FetchContent for crow
-# include(FetchContent)
-# FetchContent_Declare(
-#   crow_lib
-#   GIT_REPOSITORY https://github.com/crowcpp/crow.git
-#   GIT_TAG master # Or a specific tag/commit
-#   FIND_PACKAGE_ARGS NAMES Crow
-# )
-# FetchContent_MakeAvailable(crow_lib)
-# find_package(Crow REQUIRED) # If you have Crow installed system-wide
+# --- External Dependencies ---
 
-# For demo purposes, we'll assume Crow and other libraries are available via include paths
-# Or manually include them. For this example, let's simplify and just include directories
-# Assuming crow headers are in a 'vendor/crow' directory relative to project root
-# Or installed system-wide.
-set(CROW_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/crow/include) # Placeholder
-set(JSONCPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/jsoncpp/include) # Placeholder
-set(SQLITE3_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/sqlite3/include) # Placeholder
-set(JWTCPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/jwt-cpp/include) # Placeholder
-set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/spdlog/include) # Placeholder
-set(ARGON2_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/vendor/argon2/include) # Placeholder - if using real Argon2
-# For Argon2, you might need to compile it or find a pre-built lib
-# For this example, our Hasher will be simplified unless Argon2 is readily available.
+# Pistache
+# Option 1: Find system-installed Pistache
+find_package(Pistache REQUIRED)
+if (NOT Pistache_FOUND)
+    message(FATAL_ERROR "Pistache library not found. Please install libpistache-dev or similar.")
+endif()
 
+# SQLiteCpp (Vendored or as a submodule for simplicity in this example)
+# For this example, we'll assume SQLiteCpp is a vendored library or submodule
+# Add SQLiteCpp as a subdirectory if it's a separate project.
+# For simplicity, we will just include its source directly.
+# A more robust solution would be `add_subdirectory(path/to/SQLiteCpp)`
+# and then `target_link_libraries(target SQLiteCpp)`.
+# For this example, we'll manually add its source and link sqlite3.
+add_library(SQLiteCpp STATIC
+    src/database/sqlite_cpp_wrapper.cpp # Assuming a minimal wrapper or direct integration if not using full SQLiteCpp
+)
+# We need to link against the system sqlite3 library
+find_package(SQLite3 REQUIRED)
+if (NOT SQLITE3_FOUND)
+    message(FATAL_ERROR "SQLite3 library not found. Please install libsqlite3-dev or similar.")
+endif()
+target_link_libraries(SQLiteCpp PUBLIC ${SQLITE3_LIBRARIES})
+target_include_directories(SQLiteCpp PUBLIC src/database ${SQLITE3_INCLUDE_DIR})
+
+
+# jsoncpp
+find_package(jsoncpp REQUIRED)
+if (NOT jsoncpp_FOUND)
+    message(FATAL_ERROR "jsoncpp library not found. Please install libjsoncpp-dev or similar.")
+endif()
+
+# jwt-cpp (Requires OpenSSL)
+# We will fetch jwt-cpp as an external project for this example,
+# as it's less commonly a system package.
+include(FetchContent)
+
+FetchContent_Declare(
+  jwt-cpp
+  GIT_REPOSITORY https://github.com/Thalhammer/jwt-cpp.git
+  GIT_TAG        v0.6.0 # Use a specific tag for stability
+)
+FetchContent_MakeAvailable(jwt-cpp)
+
+# OpenSSL (dependency for jwt-cpp)
+find_package(OpenSSL REQUIRED)
+if (NOT OPENSSL_FOUND)
+    message(FATAL_ERROR "OpenSSL library not found. Please install libssl-dev or similar.")
+endif()
+
+# --- Source Files ---
+# Core application source files
+set(APP_SRCS
+    src/main.cpp
+    src/app.cpp
+    src/auth/auth_service.cpp
+    src/controllers/auth_controller.cpp
+    src/controllers/task_controller.cpp
+    src/database/database_manager.cpp
+    src/database/migrations.cpp # Migration executable source
+    src/database/seed.cpp       # Seed executable source
+    src/models/task.cpp
+    src/models/user.cpp
+    src/middleware/error_handler.cpp
+    src/middleware/rate_limiter.cpp
+    src/utils/logger.cpp
+    src/utils/cache.cpp
+    src/server.cpp
+)
+
+# Core application header files (for include directories)
+set(APP_HEADERS
+    src/app.h
+    src/auth/auth_service.h
+    src/auth/jwt_middleware.h
+    src/controllers/auth_controller.h
+    src/controllers/task_controller.h
+    src/database/database_manager.h
+    src/models/task.h
+    src/models/user.h
+    src/middleware/error_handler.h
+    src/middleware/rate_limiter.h
+    src/utils/logger.h
+    src/utils/json_util.h
+    src/utils/exceptions.h
+    src/utils/cache.h
+    src/config/config.h
+    src/server.h
+)
+
+# --- Include Directories ---
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/config
-    ${CMAKE_SOURCE_DIR}/src/auth
-    ${CMAKE_SOURCE_DIR}/src/users
-    ${CMAKE_SOURCE_DIR}/src/tasks
-    ${CMAKE_SOURCE_DIR}/src/models
-    ${CMAKE_SOURCE_DIR}/src/database
-    ${CMAKE_SOURCE_DIR}/src/utils
-    ${CMAKE_SOURCE_DIR}/src/middleware
-    ${CMAKE_SOURCE_DIR}/src/dto
-    ${CROW_INCLUDE_DIR}
+    ${Pistache_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIR}
     ${SQLITE3_INCLUDE_DIR}
-    ${JWTCPP_INCLUDE_DIR}
-    ${SPDLOG_INCLUDE_DIR}
-    ${ARGON2_INCLUDE_DIR} # Include if Argon2 library is used
+    ${OPENSSL_INCLUDE_DIR}
+    ${jwt-cpp_SOURCE_DIR}/include # For jwt-cpp if fetched
 )
 
-# SQLite library linking
-# For embedded SQLite, link directly to the source or a precompiled library
-# We'll assume a `libsqlite3.so` or `sqlite3.lib` is available
-find_library(SQLITE3_LIBRARY NAMES sqlite3 REQUIRED)
+# --- Executables ---
 
-# jwt-cpp might require OpenSSL or other crypto libs
-find_package(OpenSSL REQUIRED)
-
-# List all source files
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-
-add_executable(task_manager_app ${SOURCES})
-
-target_link_libraries(task_manager_app
-    ${SQLITE3_LIBRARY}
-    ${OpenSSL_LIBRARIES}
-    # Link other compiled libraries if they are not header-only
-    # e.g., jsoncpp_static, jwt-cpp, spdlog
+# Main API Server executable
+add_executable(api_server ${APP_SRCS})
+target_link_libraries(api_server
+    Pistache::Pistache
+    jsoncpp::jsoncpp
+    jwt-cpp
+    ${OPENSSL_LIBRARIES}
+    SQLiteCpp # Link against our minimal SQLiteCpp wrapper
 )
 
-# Add a build target for tests
-add_subdirectory(test)
+# Migrations executable
+add_executable(migrations src/database/migrations.cpp src/database/database_manager.cpp src/models/user.cpp src/models/task.cpp src/utils/logger.cpp src/utils/exceptions.h src/config/config.h)
+target_link_libraries(migrations SQLiteCpp)
+target_include_directories(migrations PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/config)
 
-# Install rules (optional, for deployment)
-install(TARGETS task_manager_app DESTINATION bin)
-install(FILES ${CMAKE_SOURCE_DIR}/config.json DESTINATION etc)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/data DESTINATION share)
+# Seed executable
+add_executable(seed src/database/seed.cpp src/database/database_manager.cpp src/models/user.cpp src/models/task.cpp src/utils/logger.cpp src/utils/exceptions.h src/config/config.h src/auth/auth_service.cpp)
+target_link_libraries(seed SQLiteCpp)
+target_include_directories(seed PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/config)
 
-# Set common compiler options
-target_compile_features(task_manager_app PUBLIC cxx_std_17)
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(task_manager_app PUBLIC
-        -Wall -Wextra -Wpedantic
-        $<$<CONFIG:Debug>:-g -O0 -D_GLIBCXX_DEBUG -D_LIBCPP_DEBUG>
-        $<$<CONFIG:Release>:-O3 -DNDEBUG>
-    )
-endif()
 
-# For Crow, enable C++17 filesystem if available (or use experimental if needed)
-# target_compile_definitions(task_manager_app PUBLIC CROW_ENABLE_CPP17_FILESYSTEM)
+# --- Testing Setup ---
+enable_testing()
+add_subdirectory(tests)
 
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Project configured successfully.")
+# --- Build-time Copy Operations ---
+# Ensure 'data' and 'logs' directories exist at runtime
+# This is typically handled by Docker or a deployment script,
+# but for local dev, we can create them.
+add_custom_target(create_dirs ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/data
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/logs
+    COMMENT "Creating data and logs directories"
+)
+add_dependencies(api_server create_dirs)
+add_dependencies(migrations create_dirs)
+add_dependencies(seed create_dirs)
+```

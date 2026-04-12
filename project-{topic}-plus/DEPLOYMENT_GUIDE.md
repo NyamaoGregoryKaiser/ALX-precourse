@@ -1,309 +1,206 @@
-```markdown
-# ALX Data Visualization Tool - Deployment Guide
+# Deployment Guide: Enterprise-Grade C++ API System
 
-This guide outlines the steps to deploy the ALX Data Visualization Tool to various environments. The primary method for deployment is using Docker containers, orchestrated locally with Docker Compose or on a cloud platform like Kubernetes.
-
----
+This guide outlines the steps to deploy the C++ Task Management API system to a production environment using Docker and Docker Compose. It covers prerequisites, build process, and running the application.
 
 ## Table of Contents
+1.  [Deployment Strategy](#1-deployment-strategy)
+2.  [Prerequisites](#2-prerequisites)
+3.  [Building the Docker Image](#3-building-the-docker-image)
+4.  [Setting Up Environment Variables](#4-setting-up-environment-variables)
+5.  [Running with Docker Compose](#5-running-with-docker-compose)
+    *   [Initial Deployment](#initial-deployment)
+    *   [Updating the Deployment](#updating-the-deployment)
+6.  [Health Checks](#6-health-checks)
+7.  [Logging and Monitoring](#7-logging-and-monitoring)
+8.  [Database Persistence and Backup](#8-database-persistence-and-backup)
+9.  [Security Considerations](#9-security-considerations)
+10. [Further Considerations](#10-further-considerations)
 
-1.  [Local Development Deployment](#1-local-development-deployment)
-2.  [Production Deployment Strategy](#2-production-deployment-strategy)
-    *   [Prerequisites](#prerequisites)
-    *   [Building the Docker Image](#building-the-docker-image)
-    *   [Pushing to a Docker Registry](#pushing-to-a-docker-registry)
-    *   [Kubernetes Deployment (Conceptual)](#kubernetes-deployment-conceptual)
-    *   [Environment Variables Management](#environment-variables-management)
-3.  [Monitoring and Logging](#3-monitoring-and-logging)
-4.  [Scaling Considerations](#4-scaling-considerations)
-5.  [Rollback Strategy](#5-rollback-strategy)
+## 1. Deployment Strategy
 
----
+The primary deployment strategy for this application is containerization using Docker. This ensures:
+*   **Consistency**: The application runs in the same environment from development to production.
+*   **Isolation**: The application and its dependencies are isolated from the host system.
+*   **Portability**: Easy to move between different cloud providers or on-premise infrastructure.
 
-## 1. Local Development Deployment
+We will use `docker-compose.yml` for orchestrating the application, which includes the API server container, persistent volumes for data and logs. For production, a more robust orchestration system like Kubernetes would be recommended.
 
-For quick local setup and development, Docker Compose is the recommended approach.
+## 2. Prerequisites
 
-1.  **Prerequisites:**
-    *   Docker and Docker Compose installed and running on your machine.
-    *   Git installed.
+### On your Deployment Server:
+*   **Operating System**: Linux (e.g., Ubuntu, CentOS) is recommended.
+*   **Docker Engine**: Version 19.03 or higher.
+    *   [Install Docker Engine](https://docs.docker.com/engine/install/)
+*   **Docker Compose**: Version 1.25 or higher.
+    *   [Install Docker Compose](https://docs.docker.com/compose/install/)
+*   **Git**: For cloning the repository.
 
-2.  **Clone the repository:**
+## 3. Building the Docker Image
+
+The `Dockerfile` defines how to build the application image. For production, you typically build the image once and push it to a Docker registry.
+
+1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-repo/alx-dataviz-tool.git
-    cd alx-dataviz-tool
+    git clone https://github.com/your-username/cpp-api-system.git
+    cd cpp-api-system
     ```
 
-3.  **Start the application and database:**
-    The `docker-compose.yml` file defines two services: `db` (PostgreSQL) and `app` (Spring Boot backend).
+2.  **Build the Docker image**:
+    This command builds the image using the `Dockerfile` in the current directory. It names the image `cpp-api-system` with the tag `latest`.
     ```bash
-    docker-compose up --build -d
+    docker build -t cpp-api-system:latest .
     ```
-    *   `--build`: This will build the Docker image for the `app` service based on the `Dockerfile` in the root directory. If you've already built the image and made no code changes, you can omit this.
-    *   `-d`: Runs the containers in detached mode (in the background).
+    *   **CI/CD Integration**: In a CI/CD pipeline, this step would typically be automated. After a successful build and test, the image would be tagged with a version (e.g., `v1.0.0`, `commit-sha`) and pushed to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
 
-4.  **Verify deployment:**
-    Check the status of the containers:
+## 4. Setting Up Environment Variables
+
+Sensitive configuration values (e.g., JWT secret, database path, admin credentials) must be provided to the Docker container via environment variables.
+
+The `docker-compose.yml` file already contains an `environment` section. **You MUST replace placeholder values with strong, unique, and secret values for production.**
+
+**Example `.env` file for production (recommended, keep this file secure!):**
+```
+# Create this file in the same directory as docker-compose.yml
+# and make sure it's NOT committed to version control.
+# Environment variables for Production
+APP_PORT=9080
+DATABASE_PATH=/app/data/database.db
+JWT_SECRET=YOUR_PRODUCTION_JWT_SECRET_HERE_REPLACE_ME_WITH_A_LONG_RANDOM_STRING
+JWT_EXPIRATION_SECONDS=7200 # 2 hours
+RATE_LIMIT_WINDOW_SECONDS=60
+RATE_LIMIT_MAX_REQUESTS=100
+DEFAULT_ADMIN_USERNAME=prod_admin
+DEFAULT_ADMIN_PASSWORD=YOUR_STRONG_ADMIN_PASSWORD_HERE # Hashed internally
+LOG_LEVEL=INFO # Recommended for production, or ERROR
+```
+Then, reference this file in `docker-compose.yml`:
+```yaml
+environment:
+  # ... other variables ...
+  - JWT_SECRET=${JWT_SECRET}
+  - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
+  # ... etc.
+```
+Or, more simply, use `env_file`:
+```yaml
+services:
+  app:
+    # ...
+    env_file:
+      - .env
+    # ...
+```
+**Never commit `secrets` or `.env` files with production credentials to your Git repository.**
+
+## 5. Running with Docker Compose
+
+### Initial Deployment
+
+1.  **Ensure Docker Daemon is running**:
+    ```bash
+    sudo systemctl start docker
+    ```
+
+2.  **Navigate to your project directory**:
+    ```bash
+    cd /path/to/your/cpp-api-system
+    ```
+
+3.  **Pull the image (if using a registry) or ensure it's built locally**:
+    If you built it locally: `docker build -t cpp-api-system:latest .`
+    If from a registry: `docker pull your-registry/cpp-api-system:latest` (update `docker-compose.yml` `image` field)
+
+4.  **Start the services**:
+    ```bash
+    docker-compose up -d
+    ```
+    *   The `-d` flag runs the containers in detached mode (in the background).
+    *   The `docker-entrypoint.sh` script will automatically run database migrations and seeders before starting the API server.
+
+5.  **Verify container status**:
     ```bash
     docker-compose ps
     ```
-    You should see both `dataviz_db` and `dataviz_app` with `Up` status.
+    You should see your `cpp-api-system-app` container running.
 
-    Access the backend:
-    *   Application API: `http://localhost:8080`
-    *   Swagger UI: `http://localhost:8080/swagger-ui.html`
-
-    View logs:
+6.  **Check application logs**:
     ```bash
     docker-compose logs -f app
     ```
+    Look for messages indicating successful database initialization, migrations, seeding, and server startup (e.g., "HTTP Rest Server starting...", "Database opened successfully: /app/data/database.db").
 
-5.  **Stop and remove containers:**
+7.  **Access the API**:
+    The API server will be accessible on `http://localhost:9080` (or the IP address of your deployment server on port 9080).
+
+### Updating the Deployment
+
+When you have new code changes and a new Docker image:
+
+1.  **Stop the running services**:
     ```bash
     docker-compose down
     ```
-    This will stop and remove the containers, networks, and volumes created by `docker-compose up`. To keep the database data, remove the `-v` flag when stopping, or specifically remove volumes.
+    This will stop and remove containers, networks, and volumes (unless explicitly defined as external). However, our `app-data` and `app-logs` volumes are persisted, so your data will remain.
 
----
-
-## 2. Production Deployment Strategy
-
-For a production environment, deploying to a robust container orchestration platform like Kubernetes is recommended.
-
-### Prerequisites
-
-*   **Kubernetes Cluster:** Access to a managed Kubernetes service (EKS, GKE, AKS) or a self-managed cluster.
-*   **Docker Registry:** A private or public Docker registry (e.g., Docker Hub, AWS ECR, Google Container Registry) to store your application images.
-*   **`kubectl`:** Configured to interact with your Kubernetes cluster.
-*   **Helm (Optional):** For managing Kubernetes deployments with charts.
-*   **Database:** A managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for production database. **Do not use the `docker-compose.yml` database for production.**
-
-### Building the Docker Image
-
-Build the production-ready Docker image for the Spring Boot application.
-
-```bash
-docker build -t alx-dataviz-tool:latest .
-# Or with a specific version tag
-docker build -t alx-dataviz-tool:v1.0.0 .
-```
-
-### Pushing to a Docker Registry
-
-Tag and push your image to your chosen Docker registry. Replace `your_registry_url` and `your_repo_name` with your actual registry details.
-
-1.  **Log in to your Docker registry:**
+2.  **Build the new Docker image (if not from a registry)**:
     ```bash
-    docker login your_registry_url
+    docker build -t cpp-api-system:latest .
     ```
-    (e.g., `docker login docker.io` for Docker Hub, `aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <aws_account_id>.dkr.ecr.<region>.amazonaws.com`)
+    If pulling from a registry: `docker pull your-registry/cpp-api-system:latest`
 
-2.  **Tag the image:**
+3.  **Start the services with the new image**:
     ```bash
-    docker tag alx-dataviz-tool:latest your_registry_url/your_repo_name/alx-dataviz-tool:latest
-    docker tag alx-dataviz-tool:v1.0.0 your_registry_url/your_repo_name/alx-dataviz-tool:v1.0.0
+    docker-compose up -d
     ```
+    Docker Compose will detect the new image and re-create the `app` container. The entrypoint script will run migrations again (they are idempotent) to ensure any new schema changes are applied.
 
-3.  **Push the image:**
-    ```bash
-    docker push your_registry_url/your_repo_name/alx-dataviz-tool:latest
-    docker push your_registry_url/your_repo_name/alx-dataviz-tool:v1.0.0
+## 6. Health Checks
+
+For production environments, implementing health checks is crucial for automated monitoring and orchestration (e.g., Kubernetes).
+
+*   **HTTP Health Check**: You could implement a simple `GET /health` endpoint in your application that returns `200 OK` if the server is running and can connect to its database.
+*   **Docker Compose Healthcheck**: Add a `healthcheck` section to your `app` service in `docker-compose.yml`:
+    ```yaml
+    services:
+      app:
+        # ...
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:9080/health"] # Requires curl inside container or simpler test
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 20s # Give the app time to start up before checking
     ```
+    (Note: A `/health` endpoint is not implemented in the provided code, but would be a good addition.)
 
-### Kubernetes Deployment (Conceptual)
+## 7. Logging and Monitoring
 
-This section provides a conceptual outline for deploying to Kubernetes. Actual YAML files (`deployment.yml`, `service.yml`, `ingress.yml`, `secret.yml`) would be required.
+*   **Application Logs**: The application logs to `/app/logs/app.log` inside the container. This directory is mounted as a Docker volume (`app-logs:/app/logs`), so logs are persisted on the host.
+*   **Docker Logs**: You can view container logs using `docker-compose logs app`.
+*   **Production Monitoring**: For production, integrate with a centralized log management system (e.g., ELK Stack, Splunk, Datadog) by configuring Docker's logging drivers or by shipping logs from the host volume.
+*   **Metrics**: Consider integrating a metrics library (e.g., Prometheus client library) into your C++ application to expose operational metrics, then use Prometheus to scrape and Grafana to visualize them.
 
-#### 2.2.1. Kubernetes Manifests
+## 8. Database Persistence and Backup
 
-**Example `k8s/deployment.yml`:**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dataviz-app
-  labels:
-    app: dataviz
-spec:
-  replicas: 3 # Adjust based on your scaling needs
-  selector:
-    matchLabels:
-      app: dataviz
-  template:
-    metadata:
-      labels:
-        app: dataviz
-    spec:
-      containers:
-        - name: dataviz-app
-          image: your_registry_url/your_repo_name/alx-dataviz-tool:latest # Use your pushed image
-          ports:
-            - containerPort: 8080
-          env:
-            - name: SPRING_DATASOURCE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: dataviz-db-secrets
-                  key: database_url
-            - name: SPRING_DATASOURCE_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: dataviz-db-secrets
-                  key: database_user
-            - name: SPRING_DATASOURCE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: dataviz-db-secrets
-                  key: database_password
-            - name: APPLICATION_SECURITY_JWT_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: dataviz-app-secrets
-                  key: jwt_secret_key
-            - name: APPLICATION_SECURITY_JWT_EXPIRATION
-              value: "86400000" # 24 hours
-            # Add other environment variables as needed (e.g., Spring profiles)
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
-            limits:
-              memory: "1024Mi"
-              cpu: "500m"
-          livenessProbe: # Checks if the application is running
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
-          readinessProbe: # Checks if the application is ready to serve traffic
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 20
-            periodSeconds: 5
-            failureThreshold: 5
-```
+*   **Persistent Volumes**: The `app-data` volume in `docker-compose.yml` ensures that your `database.db` file (and any other data in `/app/data`) persists even if the container is removed or updated.
+*   **Backups**: Implement a regular backup strategy for your `app-data` volume on the host system. This could involve:
+    *   Scheduled cron jobs to copy the `database.db` file to a secure location (e.g., object storage like S3).
+    *   Using Docker volume backup tools.
+    *   For mission-critical data, consider switching to a managed database service (e.g., AWS RDS, Azure SQL Database, Google Cloud SQL) with built-in backup and replication.
 
-**Example `k8s/service.yml`:**
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: dataviz-app-service
-  labels:
-    app: dataviz
-spec:
-  selector:
-    app: dataviz
-  ports:
-    - protocol: TCP
-      port: 80 # External port
-      targetPort: 8080 # Container port
-  type: ClusterIP # Or LoadBalancer for external access directly
-```
+## 9. Security Considerations
 
-**Example `k8s/ingress.yml` (for external HTTP(S) access with a domain):**
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: dataviz-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx # Or your specific ingress controller
-    cert-manager.io/cluster-issuer: letsencrypt-prod # For HTTPS, if using cert-manager
-spec:
-  tls: # Optional: for HTTPS
-  - hosts:
-    - dataviz.yourdomain.com
-    secretName: dataviz-tls
-  rules:
-  - host: dataviz.yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: dataviz-app-service
-            port:
-              number: 80
-```
+*   **Environment Variables**: As mentioned, keep `JWT_SECRET` and other sensitive variables secure. Do not expose them publicly.
+*   **Non-root User**: The `Dockerfile` creates a non-root `appuser` and runs the application as this user, reducing the blast radius in case of a container compromise.
+*   **Firewall**: Configure your server's firewall (e.g., `ufw` on Linux, AWS Security Groups) to only allow inbound traffic on port `9080` (or your chosen API port) from trusted sources or public internet if intended.
+*   **HTTPS**: **ALWAYS** deploy with HTTPS in a production environment. This typically involves placing a reverse proxy (e.g., Nginx, Apache, Caddy) in front of your Docker container. The reverse proxy handles SSL termination and forwards traffic to your API over HTTP.
+*   **Rate Limiting**: The built-in rate limiter helps mitigate certain types of attacks.
+*   **Image Scanning**: Regularly scan your Docker images for vulnerabilities using tools like Trivy or Clair.
 
-#### 2.2.2. Deploying to Kubernetes
+## 10. Further Considerations
 
-1.  **Create Kubernetes Secrets:**
-    Before deploying the application, create secrets for sensitive environment variables (database credentials, JWT secret key).
-    ```bash
-    kubectl create secret generic dataviz-db-secrets \
-      --from-literal=database_url="jdbc:postgresql://your-managed-db-host:5432/datavizdb" \
-      --from-literal=database_user="datavizuser_prod" \
-      --from-literal=database_password="your_prod_db_password"
-
-    kubectl create secret generic dataviz-app-secrets \
-      --from-literal=jwt_secret_key="your_strong_jwt_secret_key_for_production"
-    ```
-
-2.  **Apply Kubernetes Manifests:**
-    ```bash
-    kubectl apply -f k8s/deployment.yml
-    kubectl apply -f k8s/service.yml
-    kubectl apply -f k8s/ingress.yml # If using Ingress
-    ```
-
-3.  **Monitor Deployment:**
-    ```bash
-    kubectl get deployments
-    kubectl get pods -l app=dataviz
-    kubectl get services
-    kubectl get ingress # If using Ingress
-    kubectl logs -f <pod-name>
-    ```
-
-### Environment Variables Management
-
-*   **Local Development:** `docker-compose.yml` directly defines environment variables. `application.yml` provides defaults.
-*   **Production:** Kubernetes Secrets should be used for sensitive information (database credentials, API keys, JWT secrets). Non-sensitive configurations can be passed via ConfigMaps or directly in `deployment.yml`.
-
----
-
-## 3. Monitoring and Logging
-
-*   **Logging:** The application uses Logback for logging. In Docker, logs are sent to `stdout`/`stderr`, which Docker captures. In Kubernetes, a logging solution (e.g., ELK stack, Grafana Loki, cloud provider's logging service) can collect these logs.
-*   **Monitoring:**
-    *   **Spring Boot Actuator:** Provides `/actuator/health`, `/actuator/metrics`, `/actuator/env`, etc., for basic health checks and metrics.
-    *   **Prometheus:** Configure Prometheus to scrape metrics from the `/actuator/prometheus` endpoint of your application instances.
-    *   **Grafana:** Use Grafana to create dashboards for visualizing metrics collected by Prometheus (CPU, memory, request rates, error rates, custom business metrics).
-    *   **Liveness/Readiness Probes:** Configured in Kubernetes `deployment.yml` to ensure application health and proper traffic routing.
-
----
-
-## 4. Scaling Considerations
-
-*   **Horizontal Pod Autoscaler (HPA):** In Kubernetes, configure HPA to automatically scale the number of `dataviz-app` replicas based on CPU utilization or custom metrics (e.g., requests per second).
-*   **Database Scaling:** For high-traffic applications, consider:
-    *   Managed database services (e.g., AWS RDS PostgreSQL) that handle backups, patching, and offer read replicas.
-    *   Connection pooling (HikariCP is default in Spring Boot) is essential.
-    *   Database query optimization and indexing.
-*   **Caching:** For multi-instance deployments, consider moving from local Caffeine cache to a distributed cache like Redis or Memcached to ensure cache consistency across all instances.
-
----
-
-## 5. Rollback Strategy
-
-In case of issues with a new deployment:
-
-1.  **Kubernetes Rollback:**
-    If you're deploying with Kubernetes, you can easily roll back to a previous healthy version of your deployment:
-    ```bash
-    kubectl rollout undo deployment/dataviz-app
-    ```
-    This will revert to the previous successful deployment image and configuration.
-
-2.  **Docker Compose Rollback:**
-    If deploying with Docker Compose, you might manually rebuild with an older image tag or revert your `docker-compose.yml` to a previous version and re-run `docker-compose up -d`.
-
-3.  **Database Rollback:**
-    Flyway allows rolling back schema changes, but this is often complex and risky in production. It's generally preferred to design migrations to be additive and forward-compatible. If a database change is problematic, a full database restore from a backup might be necessary, which is why robust backup strategies for production databases are critical.
+*   **Reverse Proxy**: Use Nginx or Caddy for SSL termination, load balancing (if multiple instances), caching, and request routing.
+*   **Container Orchestration**: For larger deployments, consider Kubernetes for advanced scaling, self-healing, and management capabilities.
+*   **Configuration Management**: For more complex configurations, tools like Ansible, Chef, or Puppet can manage your deployment servers.
+*   **Continuous Deployment**: Extend the CI/CD pipeline (`.github/workflows/ci.yml`) to automatically deploy new versions to your environment after successful tests.
 ```

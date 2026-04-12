@@ -1,106 +1,87 @@
-name: Django CI
+name: C++ API CI Pipeline
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
   pull_request:
-    branches: [ "main", "develop" ]
+    branches:
+      - main
+      - develop
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
+    - name: Checkout code
+      uses: actions/checkout@v3
       with:
-        python-version: "3.11"
+        submodules: recursive # If using git submodules for dependencies
 
-    - name: Install dependencies
+    - name: Install system dependencies for build and test
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install coverage # For coverage report
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpistache-dev libsqlite3-dev libjsoncpp-dev libssl-dev libgtest-dev
 
-    - name: Wait for PostgreSQL
-      run: |
-        /usr/bin/env python -c "
-import psycopg2
-import time
-import os
-db_ready = False
-for _ in range(10):
-    try:
-        conn = psycopg2.connect(
-            dbname=os.getenv('POSTGRES_DB'),
-            user=os.getenv('POSTGRES_USER'),
-            password=os.getenv('POSTGRES_PASSWORD'),
-            host='localhost',
-            port='5432'
-        )
-        conn.close()
-        db_ready = True
-        break
-    except psycopg2.OperationalError:
-        print('DB not ready yet...')
-        time.sleep(1)
-if not db_ready:
-    raise Exception('Database did not become ready in time.')
-"
+    - name: Create Build Directory
+      run: mkdir build
+
+    - name: Configure CMake
+      working-directory: ./build
+      run: cmake .. -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build Application and Tests
+      working-directory: ./build
+      run: make -j$(nproc)
+
+    - name: Run Unit and Integration Tests
+      working-directory: ./build
       env:
-        POSTGRES_DB: ${{ services.postgres.env.POSTGRES_DB }}
-        POSTGRES_USER: ${{ services.postgres.env.POSTGRES_USER }}
-        POSTGRES_PASSWORD: ${{ services.postgres.env.POSTGRES_PASSWORD }}
-
-    - name: Create .env for CI
+        # Set environment variables for tests.
+        # These override defaults in config.h and must be present for JWT.
+        # Using specific test values to avoid conflicts.
+        APP_PORT: 9081
+        DATABASE_PATH: ./data/test_ci.db
+        JWT_SECRET: ci_test_jwt_secret_12345
+        JWT_EXPIRATION_SECONDS: 10
+        DEFAULT_ADMIN_USERNAME: ciadmin
+        DEFAULT_ADMIN_PASSWORD: ciadminpass
+        LOG_LEVEL: WARN # Keep test logs minimal in CI
       run: |
-        echo "DEBUG=True" >> .env
-        echo "SECRET_KEY=ci-test-secret-key-1234567890abcdefghijklmnopqrstuvwxyz" >> .env
-        echo "DATABASE_URL=postgres://test_user:test_password@localhost:5432/test_db" >> .env
-        echo "CACHE_URL=locmemcache://" >> .env
-        echo "ALLOWED_HOSTS=['*']" >> .env
+        # Ensure test data directory exists for database tests
+        mkdir -p data
+        # Run tests executable
+        ./run_tests
 
-    - name: Run Migrations
-      run: python manage.py migrate
-
-    - name: Run Tests with Coverage
-      run: |
-        coverage run manage.py test
-        coverage report --omit='*/migrations/*,*/tests/*,manage.py,my_enterprise_cms/wsgi.py'
-
-    - name: (Optional) Lint with Flake8
-      run: |
-        pip install flake8
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --max-complexity=10 --max-line-length=120 --statistics
-
-    # Optional: Build Docker Image for CI (useful if you need to push it later)
-    - name: Build Docker Image
-      run: docker build . --file Dockerfile --tag my-enterprise-cms:latest
-
-    # Optional: Deploy to a staging environment (example placeholder)
-    # - name: Deploy to Staging
-    #   if: github.ref == 'refs/heads/main'
+    # Optional: Add static analysis (e.g., clang-tidy, cppcheck)
+    # - name: Run Static Analysis (e.g., Clang-Tidy)
     #   run: |
-    #     echo "Deploying to staging environment..."
-    #     # Add your deployment commands here (e.g., ansible, kubectl, caprover, heroku, etc.)
-    #   env:
-    #     DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+    #     # Example, requires more setup in CMake and potentially installing clang-tools
+    #     # cmake --build build --target clang-tidy
+    #     echo "Static analysis step placeholder"
+
+    # Optional: Build Docker image to ensure Dockerfile is valid
+    - name: Build Docker Image
+      run: docker build -t cpp-api-system:latest .
+
+  # This job could be for deployment if Continuous Deployment is desired
+  # deploy:
+  #   needs: build-and-test
+  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Deploy to Production
+  #     uses: your-deployment-action/provider@v1
+  #     with:
+  #       # Deployment credentials and commands
+  #       host: ${{ secrets.SSH_HOST }}
+  #       username: ${{ secrets.SSH_USERNAME }}
+  #       key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #       script: |
+  #         cd /path/to/app
+  #         docker-compose pull
+  #         docker-compose up -d --remove-orphans
+  #         docker system prune -f
 ```

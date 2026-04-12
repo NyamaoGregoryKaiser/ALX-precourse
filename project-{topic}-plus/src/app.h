@@ -1,42 +1,31 @@
 #pragma once
 
-#include <crow.h>
+#include <string>
+#include <memory> // For std::unique_ptr
 
-// Forward declarations for controllers to avoid circular includes
-namespace tm_api {
-    namespace auth { class AuthController; }
-    namespace users { class UserController; }
-    namespace tasks { class TaskController; }
-}
+#include "src/config/config.h"
+#include "src/utils/logger.h"
+#include "src/database/database_manager.h"
+#include "src/server.h"
 
-// Forward declarations for middlewares
-namespace tm_api {
-    namespace middleware {
-        class AuthMiddleware;
-        class ErrorMiddleware;
-        class LogMiddleware;
-    }
-}
-
-
-class App {
+class Application {
 public:
-    App();
-    void run(int port);
+    Application();
+    ~Application();
+
+    // Initialize all application components
+    void init();
+
+    // Start the HTTP server
+    void start_server();
+
+    // Run database migrations
+    void run_migrations();
+
+    // Seed initial database data
+    void run_seeders();
 
 private:
-    crow::SimpleApp crow_app;
-
-    // Controllers
-    std::unique_ptr<tm_api::auth::AuthController> authController;
-    std::unique_ptr<tm_api::users::UserController> userController;
-    std::unique_ptr<tm_api::tasks::TaskController> taskController;
-
-    // Middlewares
-    std::unique_ptr<tm_api::middleware::AuthMiddleware> authMiddleware;
-    std::unique_ptr<tm_api::middleware::ErrorMiddleware> errorMiddleware;
-    std::unique_ptr<tm_api::middleware::LogMiddleware> logMiddleware;
-
-    void setupRoutes();
-    void setupMiddlewares();
+    std::unique_ptr<HttpRestServer> api_server_;
 };
+```

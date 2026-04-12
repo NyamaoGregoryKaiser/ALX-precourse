@@ -1,36 +1,67 @@
-# Use a slim Python image for a smaller footprint
-FROM python:3.11-slim-buster
+# Use a C++ base image (e.g., Ubuntu with build tools)
+FROM ubuntu:22.04
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+LABEL maintainer="ALX Software Engineering Student"
 
-# Set work directory
-WORKDIR /app
+# Set environment variables for non-interactive installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libpq-dev \
-    && apt-get clean \
+# Update and install necessary packages
+# build-essential for C++ compiler, cmake for build system
+# libpistache-dev, libsqlite3-dev, libjsoncpp-dev for main dependencies
+# libssl-dev for jwt-cpp, gosu for dropping privileges
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libpistache-dev \
+    libsqlite3-dev \
+    libjsoncpp-dev \
+    libssl-dev \
+    git \
+    wget \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file and install python dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# Create app directory
+WORKDIR /app
 
-# Copy project
-COPY . /app/
+# Copy CMakeLists.txt and source code
+# We copy CMakeLists.txt and config first to leverage Docker cache for dependencies
+COPY CMakeLists.txt .
+COPY src ./src
+COPY config ./config
+COPY tests ./tests # Copy tests for CI/CD container
 
-# Create a non-root user
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-RUN chown -R appuser:appgroup /app
+# Build jwt-cpp as an external project via CMake
+# This will be handled by the main CMakeLists.txt, so no direct clone needed here.
+
+# Build the application
+RUN mkdir build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc)
+
+# Create a non-root user for security best practices
+ARG UID=1000
+ARG GID=1000
+RUN groupadd -g $GID appgroup && useradd -u $UID -g $GID -s /bin/bash appuser
+
+# Create directories for data and logs with proper permissions
+RUN mkdir -p /app/data /app/logs && \
+    chown -R appuser:appgroup /app/data /app/logs && \
+    chmod -R 770 /app/data /app/logs
+
+# Expose the port the application listens on
+EXPOSE 9080
+
+# Switch to the non-root user
 USER appuser
 
-# Expose port 8000 for the Gunicorn server
-EXPOSE 8000
+# Define entrypoint script to handle migrations, seeding, and starting the server
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Run migrations and start Gunicorn server
-# CMD ["gunicorn", "--bind", "0.0.0.0:8000", "my_enterprise_cms.wsgi:application"]
-# Use a script for robustness
-CMD ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command to run the server
+CMD ["api_server"]
 ```

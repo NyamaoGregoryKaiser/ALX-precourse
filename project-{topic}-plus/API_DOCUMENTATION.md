@@ -1,471 +1,257 @@
-```markdown
-# Mobile Task Backend API Documentation
+# API Documentation: Task Management System
 
-This document provides a comprehensive overview of the RESTful API endpoints for the Mobile Task Management Backend.
+This document provides a comprehensive overview of the RESTful API for the Task Management System. It describes the available endpoints, request/response formats, authentication requirements, and error handling.
 
-## Base URL
-
-`http://localhost:3000/api/v1` (for local development)
+**Base URL**: `http://localhost:9080` (or `http://your-server-ip:9080` in deployment)
 
 ## Authentication
 
-All protected endpoints require a JSON Web Token (JWT) sent in the `Authorization` header as a Bearer token.
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
 
-**Example:**
+**Header**: `Authorization: Bearer <JWT_TOKEN>`
 
-`Authorization: Bearer <YOUR_JWT_TOKEN>`
+### 1. Register User
+Registers a new user account.
 
-Upon successful login, the JWT token is returned in the response body and also set as an `HttpOnly` cookie named `jwt`. For mobile clients, you should store the token securely (e.g., Secure Storage in React Native, KeyChain in iOS, SharedPreferences in Android) and include it in the `Authorization` header for subsequent requests.
+*   **Endpoint**: `POST /auth/register`
+*   **Description**: Creates a new user with a username, password, and optional role.
+*   **Request Body (JSON)**:
+    ```json
+    {
+        "username": "unique_username",
+        "password": "strong_password",
+        "role": "user"  // Optional, default is "user". Can be "admin" if allowed by system.
+    }
+    ```
+*   **Success Response (201 Created)**:
+    ```json
+    {
+        "status": "success",
+        "message": "User registered successfully.",
+        "user": {
+            "id": 1,
+            "username": "unique_username",
+            "role": "user",
+            "created_at": "2023-11-20T10:30:00+00:00",
+            "updated_at": "2023-11-20T10:30:00+00:00"
+        }
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid JSON or missing required fields (`username`, `password`). E.g., `{"status": "error", "message": "Username and password cannot be empty."}`
+    *   `409 Conflict`: Username already exists. E.g., `{"status": "error", "message": "Username already taken."}`
 
-## Error Responses
+### 2. Login User
+Authenticates a user and returns a JWT token.
 
-The API returns standardized JSON error responses in case of failures:
+*   **Endpoint**: `POST /auth/login`
+*   **Description**: Authenticates user credentials and issues a JWT token for subsequent API requests.
+*   **Request Body (JSON)**:
+    ```json
+    {
+        "username": "existing_username",
+        "password": "user_password"
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+        "status": "success",
+        "message": "Login successful.",
+        "token": "eyJhbGciOiJIUzI1Ni...",
+        "expires_in": 3600 // Token valid for 1 hour (3600 seconds)
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid JSON or missing required fields (`username`, `password`).
+    *   `401 Unauthorized`: Invalid credentials (username or password). E.g., `{"status": "error", "message": "Invalid credentials."}`
+
+---
+
+## Tasks
+
+### 3. Get All Tasks
+Retrieves a list of tasks.
+*   **Endpoint**: `GET /tasks`
+*   **Description**:
+    *   **User**: Returns tasks owned by the authenticated user.
+    *   **Admin**: Returns all tasks in the system.
+*   **Authentication**: Required
+*   **Success Response (200 OK)**:
+    ```json
+    {
+        "status": "success",
+        "data": [
+            {
+                "id": 1,
+                "title": "Buy groceries",
+                "description": "Milk, eggs, bread",
+                "status": "pending",
+                "due_date": "2023-12-31",
+                "user_id": 1,
+                "created_at": "2023-11-20T10:30:00+00:00",
+                "updated_at": "2023-11-20T10:30:00+00:00"
+            },
+            {
+                "id": 2,
+                "title": "Clean house",
+                "description": "Vacuum, mop, dust",
+                "status": "in_progress",
+                "due_date": "2023-11-25",
+                "user_id": 1,
+                "created_at": "2023-11-20T11:00:00+00:00",
+                "updated_at": "2023-11-20T11:00:00+00:00"
+            }
+        ]
+    }
+    ```
+*   **Error Responses**:
+    *   `401 Unauthorized`: Missing or invalid token.
+
+### 4. Get Task by ID
+Retrieves a single task by its ID.
+*   **Endpoint**: `GET /tasks/:id`
+*   **Description**: Returns details for a specific task.
+*   **Authentication**: Required. Only the task owner or an admin can access.
+*   **Path Parameters**:
+    *   `id` (integer, required): The ID of the task to retrieve.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+        "status": "success",
+        "data": {
+            "id": 1,
+            "title": "Buy groceries",
+            "description": "Milk, eggs, bread",
+            "status": "pending",
+            "due_date": "2023-12-31",
+            "user_id": 1,
+            "created_at": "2023-11-20T10:30:00+00:00",
+            "updated_at": "2023-11-20T10:30:00+00:00"
+        }
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid task ID format.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Authenticated user does not own the task and is not an admin.
+    *   `404 Not Found`: Task with the specified ID does not exist.
+
+### 5. Create Task
+Creates a new task.
+*   **Endpoint**: `POST /tasks`
+*   **Description**: Creates a new task associated with the authenticated user.
+*   **Authentication**: Required.
+*   **Request Body (JSON)**:
+    ```json
+    {
+        "title": "New Task Title",
+        "description": "Detailed description of the task.",
+        "status": "pending", // Optional, default is "pending". Can be "in_progress", "completed", "cancelled".
+        "due_date": "2023-12-31" // YYYY-MM-DD format
+    }
+    ```
+*   **Success Response (201 Created)**:
+    ```json
+    {
+        "status": "success",
+        "message": "Task created successfully.",
+        "task": {
+            "id": 3,
+            "title": "New Task Title",
+            "description": "Detailed description of the task.",
+            "status": "pending",
+            "due_date": "2023-12-31",
+            "user_id": 1,
+            "created_at": "2023-11-20T12:00:00+00:00",
+            "updated_at": "2023-11-20T12:00:00+00:00"
+        }
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid JSON or missing required fields (`title`, `description`, `due_date`).
+    *   `401 Unauthorized`: Missing or invalid token.
+
+### 6. Update Task
+Updates an existing task.
+*   **Endpoint**: `PUT /tasks/:id`
+*   **Description**: Modifies an existing task identified by its ID. Only provided fields will be updated.
+*   **Authentication**: Required. Only the task owner or an admin can update.
+*   **Path Parameters**:
+    *   `id` (integer, required): The ID of the task to update.
+*   **Request Body (JSON)**:
+    ```json
+    {
+        "title": "Updated Task Title",       // Optional
+        "description": "New description.",   // Optional
+        "status": "completed",               // Optional
+        "due_date": "2024-01-15"             // Optional
+    }
+    ```
+*   **Success Response (200 OK)**:
+    ```json
+    {
+        "status": "success",
+        "message": "Task updated successfully.",
+        "task": {
+            "id": 1,
+            "title": "Updated Task Title",
+            "description": "New description.",
+            "status": "completed",
+            "due_date": "2024-01-15",
+            "user_id": 1,
+            "created_at": "2023-11-20T10:30:00+00:00",
+            "updated_at": "2023-11-20T13:00:00+00:00"
+        }
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid JSON or invalid task ID format.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Authenticated user does not own the task and is not an admin.
+    *   `404 Not Found`: Task with the specified ID does not exist.
+
+### 7. Delete Task
+Deletes an existing task.
+*   **Endpoint**: `DELETE /tasks/:id`
+*   **Description**: Removes a task from the system.
+*   **Authentication**: Required. Only an **admin** user can delete tasks.
+*   **Path Parameters**:
+    *   `id` (integer, required): The ID of the task to delete.
+*   **Success Response (200 OK)**:
+    ```json
+    {
+        "status": "success",
+        "message": "Task deleted successfully."
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: Invalid task ID format.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Authenticated user is not an admin.
+    *   `404 Not Found`: Task with the specified ID does not exist.
+
+---
+
+## General Error Responses
+
+The API uses a standardized JSON error response format:
 
 ```json
 {
-  "status": "fail" | "error",
-  "message": "Descriptive error message",
-  "error": { /* Optional: detailed error object in development mode */ },
-  "stack": "..." /* Optional: stack trace in development mode */
+    "status": "error",
+    "message": "Descriptive error message."
 }
 ```
 
-**Common Status Codes:**
-
-*   `200 OK`: Request successful.
-*   `201 Created`: Resource successfully created.
-*   `204 No Content`: Request successful, but no content to return (e.g., deletion).
-*   `400 Bad Request`: Invalid input data (e.g., validation error).
-*   `401 Unauthorized`: Authentication required or invalid token.
-*   `403 Forbidden`: Authenticated, but user does not have necessary permissions.
-*   `404 Not Found`: Resource not found.
-*   `409 Conflict`: Resource already exists (e.g., duplicate email/username).
-*   `429 Too Many Requests`: Rate limit exceeded.
-*   `500 Internal Server Error`: Unexpected server error.
-
-## Schemas
-
-### User
-
-Represents a user in the system.
-
-| Field      | Type     | Description                                | Example               |
-| :--------- | :------- | :----------------------------------------- | :-------------------- |
-| `id`       | `string` | Unique identifier for the user (UUID)      | `a1b2c3d4-e5f6-7890-...` |
-| `username` | `string` | Unique username                            | `johndoe`             |
-| `email`    | `string` | Unique email address                       | `john.doe@example.com` |
-| `role`     | `string` | User's role (`USER`, `ADMIN`)              | `USER`                |
-| `createdAt`| `string` | Date and time of user creation (ISO 8601)  | `2024-07-20T10:00:00Z` |
-| `updatedAt`| `string` | Date and time of last update (ISO 8601)    | `2024-07-20T10:30:00Z` |
-| `password` | `string` | **(Hidden)** Hashed password (not returned in API responses) | |
-
-### Category
-
-Represents a user-defined category for tasks.
-
-| Field      | Type     | Description                                | Example               |
-| :--------- | :------- | :----------------------------------------- | :-------------------- |
-| `id`       | `string` | Unique identifier for the category (UUID)  | `cat123-abc-...`      |
-| `name`     | `string` | Name of the category                       | `Work Tasks`          |
-| `userId`   | `string` | ID of the user who owns this category      | `a1b2c3d4-e5f6-7890-...` |
-| `createdAt`| `string` | Date and time of creation (ISO 8601)       | `2024-07-20T11:00:00Z` |
-| `updatedAt`| `string` | Date and time of last update (ISO 8601)    | `2024-07-20T11:05:00Z` |
-
-### Task
-
-Represents a single task.
-
-| Field         | Type     | Description                                | Example               |
-| :------------ | :------- | :----------------------------------------- | :-------------------- |
-| `id`          | `string` | Unique identifier for the task (UUID)      | `task123-xyz-...`     |
-| `title`       | `string` | Title of the task                          | `Buy groceries`       |
-| `description` | `string` | Optional detailed description              | `Milk, eggs, bread.`  |
-| `status`      | `string` | Current status (`PENDING`, `IN_PROGRESS`, `COMPLETED`) | `PENDING`             |
-| `priority`    | `string` | Priority level (`LOW`, `MEDIUM`, `HIGH`)   | `MEDIUM`              |
-| `dueDate`     | `string` | Optional due date and time (ISO 8601)      | `2024-07-25T17:00:00Z` |
-| `userId`      | `string` | ID of the user who owns this task          | `a1b2c3d4-e5f6-7890-...` |
-| `categoryId`  | `string` | Optional ID of the associated category     | `cat123-abc-...`      |
-| `category`    | `object` | **(Optional, populated on `GET` task/tasks)** Nested category object `{ id, name }` | `{ "id": "...", "name": "Work" }` |
-| `createdAt`   | `string` | Date and time of creation (ISO 8601)       | `2024-07-20T12:00:00Z` |
-| `updatedAt`   | `string` | Date and time of last update (ISO 8601)    | `2024-07-20T12:00:00Z` |
-
----
-
-## API Endpoints
-
-### 1. Authentication (`/api/v1/auth`)
-
-#### `POST /register`
-Registers a new user.
-
-*   **Request Body:**
-    ```json
-    {
-      "username": "string",
-      "email": "string (email)",
-      "password": "string (min 8 chars)"
-    }
-    ```
-*   **Response:** `201 Created`
-    ```json
-    {
-      "status": "success",
-      "token": "jwt_token_string",
-      "data": { "user": { /* User object without password */ } }
-    }
-    ```
-
-#### `POST /login`
-Logs in an existing user. Sets an `HttpOnly` JWT cookie.
-
-*   **Request Body:**
-    ```json
-    {
-      "email": "string (email)",
-      "password": "string"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "token": "jwt_token_string",
-      "data": { "user": { /* User object without password */ } }
-    }
-    ```
-
-#### `POST /logout`
-Logs out the authenticated user. Clears the JWT cookie.
-
-*   **Authentication:** Required
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "message": "Logged out successfully"
-    }
-    ```
-
----
-
-### 2. User Management (`/api/v1/users`)
-
-#### `GET /me`
-Retrieves the profile of the currently authenticated user.
-
-*   **Authentication:** Required
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "user": { /* User object */ } }
-    }
-    ```
-
-#### `PATCH /update-me`
-Updates the profile information of the currently authenticated user.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-      "username": "string (optional)",
-      "email": "string (email, optional)"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "user": { /* Updated User object */ } }
-    }
-    ```
-
-#### `PATCH /update-password`
-Updates the password of the currently authenticated user.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-      "currentPassword": "string",
-      "newPassword": "string (min 8 chars)"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "message": "Password updated successfully."
-    }
-    ```
-
-#### `DELETE /deactivate-me`
-Deactivates (deletes) the account of the currently authenticated user.
-
-*   **Authentication:** Required
-*   **Response:** `204 No Content`
-
----
-
-#### Admin-only User Endpoints
-
-Requires `ADMIN` role.
-
-#### `GET /`
-Retrieves a list of all users. Supports filtering, sorting, and pagination.
-
-*   **Authentication:** Required (Admin)
-*   **Query Parameters:**
-    *   `page`: `number` (Default: 1)
-    *   `limit`: `number` (Default: 20, Max: 100)
-    *   `sort`: `string` (e.g., `-createdAt`, `username,-email`)
-    *   `fields`: `string` (e.g., `id,username,email`)
-    *   `email`: `string` (filter by email)
-    *   `username`: `string` (filter by username)
-    *   `role`: `string` (`USER`, `ADMIN`) (filter by role)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "results": "number",
-      "total": "number",
-      "data": { "users": [ { /* User object */ }, ... ] }
-    }
-    ```
-
-#### `GET /:id`
-Retrieves a specific user by ID.
-
-*   **Authentication:** Required (Admin)
-*   **Path Parameters:**
-    *   `id`: `string` (User ID - UUID)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "user": { /* User object */ } }
-    }
-    ```
-
-#### `PATCH /:id/role`
-Updates a user's role.
-
-*   **Authentication:** Required (Admin)
-*   **Path Parameters:**
-    *   `id`: `string` (User ID - UUID)
-*   **Request Body:**
-    ```json
-    {
-      "role": "string (USER or ADMIN)"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "user": { /* Updated User object */ } }
-    }
-    ```
-
-#### `DELETE /:id`
-Deletes a user account.
-
-*   **Authentication:** Required (Admin)
-*   **Path Parameters:**
-    *   `id`: `string` (User ID - UUID)
-*   **Response:** `204 No Content`
-
----
-
-### 3. Category Management (`/api/v1/categories`)
-
-All category endpoints require user authentication.
-
-#### `POST /`
-Creates a new task category for the authenticated user.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-      "name": "string (min 1, max 50 chars)"
-    }
-    ```
-*   **Response:** `201 Created`
-    ```json
-    {
-      "status": "success",
-      "data": { "category": { /* Category object */ } }
-    }
-    ```
-
-#### `GET /`
-Retrieves all task categories for the authenticated user. Supports filtering, sorting, and pagination.
-
-*   **Authentication:** Required
-*   **Query Parameters:**
-    *   `page`: `number` (Default: 1)
-    *   `limit`: `number` (Default: 20, Max: 100)
-    *   `sort`: `string` (e.g., `name`, `-createdAt`)
-    *   `name`: `string` (filter by category name)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "results": "number",
-      "total": "number",
-      "data": { "categories": [ { /* Category object */ }, ... ] }
-    }
-    ```
-
-#### `GET /:id`
-Retrieves a specific task category by ID.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Category ID - UUID)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "category": { /* Category object */ } }
-    }
-    ```
-
-#### `PATCH /:id`
-Updates a task category.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Category ID - UUID)
-*   **Request Body:**
-    ```json
-    {
-      "name": "string (min 1, max 50 chars)"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "category": { /* Updated Category object */ } }
-    }
-    ```
-
-#### `DELETE /:id`
-Deletes a task category. Tasks previously associated with this category will have their `categoryId` set to `null`.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Category ID - UUID)
-*   **Response:** `204 No Content`
-
----
-
-### 4. Task Management (`/api/v1/tasks`)
-
-All task endpoints require user authentication.
-
-#### `POST /`
-Creates a new task for the authenticated user.
-
-*   **Authentication:** Required
-*   **Request Body:**
-    ```json
-    {
-      "title": "string (min 1, max 255 chars)",
-      "description": "string (max 1000 chars, optional, nullable)",
-      "status": "string (PENDING, IN_PROGRESS, COMPLETED, default: PENDING)",
-      "priority": "string (LOW, MEDIUM, HIGH, default: MEDIUM)",
-      "dueDate": "string (ISO 8601 date-time, optional, nullable)",
-      "categoryId": "string (UUID, optional, nullable)"
-    }
-    ```
-*   **Response:** `201 Created`
-    ```json
-    {
-      "status": "success",
-      "data": { "task": { /* Task object */ } }
-    }
-    ```
-
-#### `GET /`
-Retrieves all tasks for the authenticated user. Supports filtering, sorting, and pagination.
-
-*   **Authentication:** Required
-*   **Query Parameters:**
-    *   `page`: `number` (Default: 1)
-    *   `limit`: `number` (Default: 20, Max: 100)
-    *   `sort`: `string` (e.g., `-dueDate`, `status,priority`)
-    *   `fields`: `string` (e.g., `id,title,status`)
-    *   `title`: `string` (filter by task title - partial match)
-    *   `status`: `string` (`PENDING`, `IN_PROGRESS`, `COMPLETED`)
-    *   `priority`: `string` (`LOW`, `MEDIUM`, `HIGH`)
-    *   `dueDate`: `string` (ISO 8601 date-time, filter by exact date)
-    *   `dueDate[gt]`: `string` (ISO 8601 date-time, filter tasks due after this date)
-    *   `dueDate[lt]`: `string` (ISO 8601 date-time, filter tasks due before this date)
-    *   `categoryId`: `string` (UUID, filter by category ID, use `null` string to filter tasks without category)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "results": "number",
-      "total": "number",
-      "data": { "tasks": [ { /* Task object with nested category */ }, ... ] }
-    }
-    ```
-
-#### `GET /:id`
-Retrieves a specific task by ID.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Task ID - UUID)
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "task": { /* Task object with nested category */ } }
-    }
-    ```
-
-#### `PATCH /:id`
-Updates a task.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Task ID - UUID)
-*   **Request Body:**
-    ```json
-    {
-      "title": "string (optional)",
-      "description": "string (optional, nullable)",
-      "status": "string (optional, PENDING, IN_PROGRESS, COMPLETED)",
-      "priority": "string (optional, LOW, MEDIUM, HIGH)",
-      "dueDate": "string (ISO 8601 date-time, optional, nullable)",
-      "categoryId": "string (UUID, optional, nullable)"
-    }
-    ```
-*   **Response:** `200 OK`
-    ```json
-    {
-      "status": "success",
-      "data": { "task": { /* Updated Task object */ } }
-    }
-    ```
-
-#### `DELETE /:id`
-Deletes a task.
-
-*   **Authentication:** Required
-*   **Path Parameters:**
-    *   `id`: `string` (Task ID - UUID)
-*   **Response:** `204 No Content`
-
----
-
-## Conclusion
-
-This API documentation covers all major functionalities of the Mobile Task Backend. For detailed request/response examples and schema definitions, please refer to the OpenAPI/Swagger specification (if generated) or directly to the route definitions within the codebase.
+Common HTTP status codes for errors:
+
+*   **`400 Bad Request`**: The server cannot process the request due to client error (e.g., malformed syntax, invalid request parameters).
+*   **`401 Unauthorized`**: Authentication is required or has failed (e.g., missing or invalid JWT).
+*   **`403 Forbidden`**: The client does not have permission to access the resource (e.g., insufficient role, rate limit exceeded).
+*   **`404 Not Found`**: The requested resource could not be found.
+*   **`405 Method Not Allowed`**: The HTTP method used is not supported for the resource.
+*   **`409 Conflict`**: The request could not be completed due to a conflict with the current state of the resource (e.g., duplicate username).
+*   **`429 Too Many Requests`**: The user has sent too many requests in a given amount of time (rate limiting).
+*   **`500 Internal Server Error`**: An unexpected error occurred on the server.
 ```
