@@ -1,35 +1,49 @@
-```cmake
-add_executable(test_runner
+find_package(GTest REQUIRED)
+find_package(soci REQUIRED)
+find_package(PostgreSQL REQUIRED)
+find_package(jwt-cpp REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(CURLPP REQUIRED)
+find_package(Gumbo REQUIRED)
+find_package(hiredis REQUIRED)
+
+add_executable(webscraper_tests
+    main.cpp
     unit/test_models.cpp
-    unit/test_services.cpp
-    unit/test_utils.cpp
+    unit/test_scraper.cpp
     integration/test_database.cpp
-    integration/test_api.cpp
 )
 
-# Link test_runner against Catch2
-find_package(Catch2 REQUIRED)
-target_link_libraries(test_runner Catch2::Catch2)
-
-# Link test_runner against the main application libraries
-target_link_libraries(test_runner
-    performance_monitor # Link against the main app's libraries
-    pqxx::pqxx
+target_link_libraries(webscraper_tests PRIVATE
+    GTest::gtest_main
+    ${SOCI_LIBRARIES} ${PostgreSQL_LIBRARIES} # Link soci and postgres
     jwt-cpp::jwt-cpp
-    bcrypt
+    spdlog::spdlog
+    CURLPP::CURLPP
+    Gumbo::gumbo
+    hiredis
+    # Link all application source files, or specific libraries
+    # This is often done by creating a 'static library' for the main app
+    # and linking against it in tests, or directly linking the object files.
+    # For simplicity, we'll include necessary source folders.
 )
 
-# Include directories needed for tests
-target_include_directories(test_runner
-    PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${NLOHMANN_JSON_INCLUDE_DIR}
-    ${CROW_INCLUDE_DIR}
-    ${JWT_CPP_INCLUDE_DIR}
+target_include_directories(webscraper_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src # Include main app's headers
+    ${CMAKE_SOURCE_DIR}/src/config
+    ${CMAKE_SOURCE_DIR}/src/database
+    ${CMAKE_SOURCE_DIR}/src/models
+    ${CMAKE_SOURCE_DIR}/src/services
+    ${CMAKE_SOURCE_DIR}/src/scraper
+    ${CMAKE_SOURCE_DIR}/src/utils
+    ${CMAKE_SOURCE_DIR}/src/cache
+    ${CURLPP_INCLUDE_DIRS}
+    ${Gumbo_INCLUDE_DIRS}
+    ${HIREDIS_INCLUDE_DIRS}
 )
 
-# Add test discovery for Catch2 (makes CTest find your tests)
-include(CTest)
-catch_discover_tests(test_runner)
-
-```
+# For coverage, compile with GCOV flags
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(webscraper_tests PRIVATE --coverage)
+    target_link_libraries(webscraper_tests PRIVATE gcov)
+endif()

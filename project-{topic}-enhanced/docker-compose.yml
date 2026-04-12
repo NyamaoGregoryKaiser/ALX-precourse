@@ -1,32 +1,30 @@
-```yaml
 version: '3.8'
 
 services:
-  db-optiflow-postgres:
-    image: postgres:16-alpine
-    container_name: db-optiflow-postgres
+  db:
+    image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: webscraper_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql # Run init script on first start
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql # Seed data
+    ports:
+      - "5432:5432" # Expose for local development/debugging
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d webscraper_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  db-optiflow-redis:
+  redis:
     image: redis:7-alpine
-    container_name: db-optiflow-redis
     restart: always
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
+      - "6379:6379" # Expose for local development/debugging
     volumes:
       - redis_data:/data
     healthcheck:
@@ -35,40 +33,32 @@ services:
       timeout: 5s
       retries: 5
 
-  db-optiflow-backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    container_name: db-optiflow-backend
     restart: always
     ports:
-      - "${SERVER_PORT}:${SERVER_PORT}"
-    env_file:
-      - ./.env # Make sure .env is correctly setup with DB_USER etc.
-    depends_on:
-      db-optiflow-postgres:
-        condition: service_healthy
-      db-optiflow-redis:
-        condition: service_healthy
-    # Ensure migrations run on startup
-    command: sh -c "npm run migration:run && npm start"
-
-  db-optiflow-frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: db-optiflow-frontend
-    restart: always
-    ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (nginx default)
-    env_file:
-      - ./.env
+      - "8080:8080" # Expose application port
     environment:
-      VITE_API_BASE_URL: http://localhost:${SERVER_PORT}/api # Ensure this matches backend service URL
+      APP_PORT: 8080
+      DATABASE_URL: postgresql://user:password@db:5432/webscraper_db # Connect to 'db' service
+      JWT_SECRET: super_secret_jwt_key_that_is_at_least_32_chars_long # CHANGE ME IN PRODUCTION
+      REDIS_HOST: redis # Connect to 'redis' service
+      REDIS_PORT: 6379
+      RATE_LIMIT_REQUESTS: 100
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      SCHEDULER_INTERVAL_SECONDS: 300 # Run scheduler every 5 minutes
     depends_on:
-      - db-optiflow-backend
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src # Mount source for easier development (optional for production)
+      - ./frontend:/app/frontend # Mount frontend for serving static files
+    # command: ["/usr/local/bin/webscraper"] # Explicitly specify command if needed, but CMD in Dockerfile is usually fine.
 
 volumes:
   postgres_data:
   redis_data:
-```

@@ -1,98 +1,60 @@
-```cpp
-#ifndef AUTHMIDDLEWARE_H
-#define AUTHMIDDLEWARE_H
+#pragma once
 
-#include <crow.h>
-#include <string>
-#include <stdexcept>
-#include <nlohmann/json.hpp>
+#include "crow.h"
+#include "services/AuthService.h"
+#include "models/AuthToken.h"
+#include "utils/Logger.h"
 
-#include "../utils/Logger.h"
-#include "../utils/Crypto.h"
-#include "../exceptions/ApiException.h"
-
-// Define a context struct to pass authenticated user info to handlers
-struct AuthContext {
-    std::string user_id;
-    std::string username; // Optional, useful for logging/display
-};
-
-class AuthMiddleware {
-public:
-    // Define the Context type for this middleware
-    struct context : crow::IBaseMiddleware::context {
-        AuthContext auth_context; // The actual context data
+// Extend crow::request to include authenticated user info
+namespace crow {
+    struct AuthRequestContext : crow::context<AuthRequestContext> {
+        std::optional<AuthToken> user_token;
     };
 
-    void before_handle(crow::request& req, crow::response& res, context& ctx) {
-        // Skip authentication for OPTIONS requests (preflight CORS)
-        if (req.method == crow::HTTPMethod::OPTIONS) {
-            return;
-        }
+    class AuthMiddleware {
+    public:
+        AuthMiddleware() = default;
 
-        // Check for public routes that don't need authentication
-        // This is a simplified check; in a real app, you might have a dedicated public route list
-        if (req.url.find("/api/v1/auth/register") == 0 || req.url.find("/api/v1/auth/login") == 0 ||
-            req.url.find("/web/") == 0 || req.url.find("/static/") == 0) {
-            return; // Allow access without authentication
-        }
-        
-        // Extract token from Authorization header
-        const char* auth_header = req.get_header("Authorization");
-        if (!auth_header) {
-            LOG_WARN("Authentication failed: No Authorization header.");
-            // Send 401 Unauthorized
-            res.code = crow::UNAUTHORIZED;
-            res.write(nlohmann::json{{"error", "Unauthorized"}, {"message", "Missing Authorization header"}}.dump());
-            res.end();
-            return;
-        }
+        std::string get_secret() const { return jwt_secret_; }
+        void set_secret(const std::string& secret) { jwt_secret_ = secret; }
 
-        std::string token_str = auth_header;
-        if (token_str.length() <= 7 || token_str.substr(0, 7) != "Bearer ") {
-            LOG_WARN("Authentication failed: Invalid Authorization header format.");
-            res.code = crow::UNAUTHORIZED;
-            res.write(nlohmann::json{{"error", "Unauthorized"}, {"message", "Invalid Authorization header format. Must be 'Bearer <token>'"}}.dump());
-            res.end();
-            return;
-        }
-
-        std::string jwt_token = token_str.substr(7);
-
-        try {
-            jwt::decoded_jwt decoded_token = Crypto::verify_jwt(jwt_token);
-            
-            // Extract user information from token claims
-            ctx.auth_context.user_id = decoded_token.get_subject();
-            
-            auto username_claim = decoded_token.get_payload_claim("username");
-            if (!username_claim.is_empty()) {
-                ctx.auth_context.username = username_claim.as_string();
-            } else {
-                LOG_WARN("JWT token for user ID {} missing username claim.", ctx.auth_context.user_id);
+        void before_handle(crow::request& req, crow::response& res, AuthRequestContext& ctx) {
+            // Public routes or OPTIONS pre-flight requests do not require authentication
+            if (req.url == "/api/auth/register" || req.url == "/api/auth/login" || req.method == "OPTIONS") {
+                return;
             }
-            
-            LOG_DEBUG("Authenticated user: ID={}, Username={}", ctx.auth_context.user_id, ctx.auth_context.username);
 
-            // Authentication successful, proceed to handler
-        } catch (const std::runtime_error& e) {
-            // JWT verification failed (e.g., invalid signature, expired)
-            LOG_WARN("JWT verification failed: {}. Token: {}", e.what(), jwt_token);
-            res.code = crow::UNAUTHORIZED;
-            res.write(nlohmann::json{{"error", "Unauthorized"}, {"message", e.what()}}.dump());
-            res.end();
-        } catch (const std::exception& e) {
-            LOG_ERROR("Unexpected error during authentication: {}", e.what());
-            res.code = crow::INTERNAL_SERVER_ERROR;
-            res.write(nlohmann::json{{"error", "Internal Server Error"}, {"message", "An unexpected error occurred during authentication."}}.dump());
-            res.end();
+            const auto& auth_header = req.get_header("Authorization");
+            if (auth_header.empty() || auth_header.rfind("Bearer ", 0) != 0) {
+                LOG_WARN("AuthMiddleware: Missing or malformed Authorization header for URL: {}", req.url);
+                res.code = 401; // Unauthorized
+                res.write("{\"error\":\"Authorization token missing or invalid format.\"}");
+                res.end();
+                return;
+            }
+
+            std::string token_str = auth_header.substr(7); // "Bearer " is 7 chars
+            auto auth_token_opt = auth_service_.decode_jwt(token_str, jwt_secret_);
+
+            if (!auth_token_opt || !auth_token_opt->is_valid()) {
+                LOG_WARN("AuthMiddleware: Invalid or expired JWT token for URL: {}", req.url);
+                res.code = 401; // Unauthorized
+                res.write("{\"error\":\"Invalid or expired authentication token.\"}");
+                res.end();
+                return;
+            }
+
+            ctx.user_token = auth_token_opt.value();
+            LOG_DEBUG("AuthMiddleware: User '{}' (ID: {}) authenticated for URL: {}",
+                      ctx.user_token->username, ctx.user_token->user_id, req.url);
         }
-    }
 
-    void after_handle(crow::request& /*req*/, crow::response& /*res*/, context& /*ctx*/) {
-        // Post-processing if needed
-    }
-};
+        void after_handle(crow::request& req, crow::response& res, AuthRequestContext& ctx) {
+            // No action needed after handle, context info already used
+        }
 
-#endif // AUTHMIDDLEWARE_H
-```
+    private:
+        AuthService auth_service_;
+        std::string jwt_secret_;
+    };
+}

@@ -1,64 +1,46 @@
-```cpp
-#ifndef LOGGER_H
-#define LOGGER_H
+#pragma once
 
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/sinks/rotating_file_sink.h>
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include <string>
 #include <memory>
 
 class Logger {
 public:
-    static void init() {
-        if (!initialized) {
-            // Console sink
+    static void init(const std::string& log_file = "app.log", spdlog::level::level_enum level = spdlog::level::info) {
+        if (!initialized_) {
             auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-            console_sink->set_level(spdlog::level::debug);
-            console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l]%$: %v");
+            console_sink->set_level(level);
+            console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] %v");
 
-            // File sink (e.g., rotating file)
-            auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/app.log", 1048576 * 5, 3); // 5MB, 3 files
-            file_sink->set_level(spdlog::level::info);
+            auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file, true);
+            file_sink->set_level(spdlog::level::trace); // File logs everything
             file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [thread %t] %v");
 
-            // Create logger with both sinks
             std::vector<spdlog::sink_ptr> sinks {console_sink, file_sink};
-            logger = std::make_shared<spdlog::logger>("app_logger", begin(sinks), end(sinks));
-            logger->set_level(spdlog::level::debug); // Overall logger level
-            logger->flush_on(spdlog::level::warn); // Flush log on warnings and errors
-            spdlog::set_default_logger(logger);
-            spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] %^[%l]%$: %v"); // Default pattern for global functions if used
-
-            initialized = true;
+            logger_ = std::make_shared<spdlog::logger>("webscraper", begin(sinks), end(sinks));
+            logger_->set_level(level);
+            logger_->flush_on(spdlog::level::warn); // Flush log buffer on warnings/errors
+            spdlog::set_default_logger(logger_);
+            initialized_ = true;
+            spdlog::info("Logger initialized with console and file output to {}", log_file);
         }
     }
 
-    static std::shared_ptr<spdlog::logger>& get_logger() {
-        if (!initialized) {
-            init(); // Ensure logger is initialized if someone tries to get it before main init
-        }
-        return logger;
+    static std::shared_ptr<spdlog::logger> get_logger() {
+        return logger_;
     }
 
 private:
-    static std::shared_ptr<spdlog::logger> logger;
-    static bool initialized;
-
-    Logger() = delete; // Prevent instantiation
+    static std::shared_ptr<spdlog::logger> logger_;
+    static bool initialized_;
 };
 
-// Define static members
-std::shared_ptr<spdlog::logger> Logger::logger;
-bool Logger::initialized = false;
-
-// Convenience macros
-#define LOG_TRACE(...) spdlog::get("app_logger")->trace(__VA_ARGS__)
-#define LOG_DEBUG(...) spdlog::get("app_logger")->debug(__VA_ARGS__)
-#define LOG_INFO(...)  spdlog::get("app_logger")->info(__VA_ARGS__)
-#define LOG_WARN(...)  spdlog::get("app_logger")->warn(__VA_ARGS__)
-#define LOG_ERROR(...) spdlog::get("app_logger")->error(__VA_ARGS__)
-#define LOG_CRITICAL(...) spdlog::get("app_logger")->critical(__VA_ARGS__)
-
-#endif // LOGGER_H
-
-```
+// Global logger macros for convenience
+#define LOG_TRACE(...) Logger::get_logger()->trace(__VA_ARGS__)
+#define LOG_DEBUG(...) Logger::get_logger()->debug(__VA_ARGS__)
+#define LOG_INFO(...)  Logger::get_logger()->info(__VA_ARGS__)
+#define LOG_WARN(...)  Logger::get_logger()->warn(__VA_ARGS__)
+#define LOG_ERROR(...) Logger::get_logger()->error(__VA_ARGS__)
+#define LOG_CRITICAL(...) Logger::get_logger()->critical(__VA_ARGS__)

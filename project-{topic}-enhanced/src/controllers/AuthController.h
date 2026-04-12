@@ -1,90 +1,69 @@
-```cpp
-#ifndef AUTHCONTROLLER_H
-#define AUTHCONTROLLER_H
+#pragma once
 
-#include <crow.h>
-#include <string>
-#include <nlohmann/json.hpp>
-#include <stdexcept>
-#include <memory>
-
-#include "../services/AuthService.h"
-#include "../database/DbConnection.h" // For getting a fresh connection
-#include "../utils/Logger.h"
-#include "../exceptions/ApiException.h"
-#include "../utils/JsonUtils.h"
+#include "crow.h"
+#include "services/AuthService.h"
+#include "utils/Logger.h"
+#include "config/AppConfig.h"
 
 class AuthController {
 public:
-    // Pass the connection pool (or a connection factory) to controllers
-    AuthController(std::function<std::shared_ptr<pqxx::connection>()> get_conn_func)
-        : get_conn_from_pool(std::move(get_conn_func)) {}
+    static void register_routes(crow::App<
+            crow::AuthMiddleware,
+            crow::ErrorMiddleware,
+            crow::RateLimitMiddleware
+        >& app, AuthService& auth_service) {
 
-    // Handler for user registration
-    crow::response registerUser(const crow::request& req) {
-        try {
-            nlohmann::json request_body = nlohmann::json::parse(req.body);
+        CROW_ROUTE(app, "/api/auth/register").methods("POST"_method)(
+            [&auth_service](const crow::request& req) {
+                crow::json::rvalue req_body = crow::json::load(req.body);
+                if (!req_body) {
+                    return crow::response(400, "{\"error\":\"Invalid JSON body.\"}");
+                }
 
-            std::string username = JsonUtils::get_required<std::string>(request_body, "username");
-            std::string email = JsonUtils::get_required<std::string>(request_body, "email");
-            std::string password = JsonUtils::get_required<std::string>(request_body, "password");
-            
-            // Get a connection from the pool and ensure it's returned
-            auto conn = get_conn_from_pool();
-            AuthService authService(conn);
-            User user = authService.register_user(username, email, password);
-            DbConnection::release_connection(conn); // Release connection back to pool
+                std::string username = req_body["username"].s();
+                std::string email = req_body["email"].s();
+                std::string password = req_body["password"].s();
 
-            nlohmann::json response_json = {
-                {"message", "User registered successfully"},
-                {"user", user.to_json()}
-            };
-            return crow::response(crow::CREATED, response_json.dump());
+                if (username.empty() || email.empty() || password.empty()) {
+                    return crow::response(400, "{\"error\":\"Username, email, and password are required.\"}");
+                }
 
-        } catch (const nlohmann::json::exception& e) {
-            LOG_WARN("JSON parse error in registerUser: {}", e.what());
-            throw ApiException(crow::BAD_REQUEST, "Invalid JSON format or missing fields.");
-        } catch (const ApiException& e) {
-            throw e; // Re-throw specific API exceptions
-        } catch (const std::runtime_error& e) {
-            LOG_ERROR("Runtime error in registerUser: {}", e.what());
-            throw ApiException(crow::INTERNAL_SERVER_ERROR, "An unexpected error occurred during registration.");
-        }
+                auto new_user_opt = auth_service.register_user(username, email, password);
+                if (new_user_opt) {
+                    crow::json::wvalue res_body;
+                    res_body["message"] = "User registered successfully.";
+                    res_body["user"]["id"] = new_user_opt->id;
+                    res_body["user"]["username"] = new_user_opt->username;
+                    res_body["user"]["email"] = new_user_opt->email;
+                    return crow::response(201, res_body);
+                } else {
+                    return crow::response(409, "{\"error\":\"Username or email already exists.\"}");
+                }
+            });
+
+        CROW_ROUTE(app, "/api/auth/login").methods("POST"_method)(
+            [&auth_service](const crow::request& req) {
+                crow::json::rvalue req_body = crow::json::load(req.body);
+                if (!req_body) {
+                    return crow::response(400, "{\"error\":\"Invalid JSON body.\"}");
+                }
+
+                std::string username = req_body["username"].s();
+                std::string password = req_body["password"].s();
+
+                if (username.empty() || password.empty()) {
+                    return crow::response(400, "{\"error\":\"Username and password are required.\"}");
+                }
+
+                auto token_opt = auth_service.login_user(username, password, AppConfig::get_instance().get_jwt_secret());
+                if (token_opt) {
+                    crow::json::wvalue res_body;
+                    res_body["message"] = "Login successful.";
+                    res_body["token"] = token_opt.value();
+                    return crow::response(200, res_body);
+                } else {
+                    return crow::response(401, "{\"error\":\"Invalid credentials.\"}");
+                }
+            });
     }
-
-    // Handler for user login
-    crow::response loginUser(const crow::request& req) {
-        try {
-            nlohmann::json request_body = nlohmann::json::parse(req.body);
-
-            std::string email = JsonUtils::get_required<std::string>(request_body, "email");
-            std::string password = JsonUtils::get_required<std::string>(request_body, "password");
-            
-            auto conn = get_conn_from_pool();
-            AuthService authService(conn);
-            std::string token = authService.login_user(email, password);
-            DbConnection::release_connection(conn);
-
-            nlohmann::json response_json = {
-                {"message", "Login successful"},
-                {"token", token}
-            };
-            return crow::response(crow::OK, response_json.dump());
-
-        } catch (const nlohmann::json::exception& e) {
-            LOG_WARN("JSON parse error in loginUser: {}", e.what());
-            throw ApiException(crow::BAD_REQUEST, "Invalid JSON format or missing fields.");
-        } catch (const ApiException& e) {
-            throw e;
-        } catch (const std::runtime_error& e) {
-            LOG_ERROR("Runtime error in loginUser: {}", e.what());
-            throw ApiException(crow::INTERNAL_SERVER_ERROR, "An unexpected error occurred during login.");
-        }
-    }
-
-private:
-    std::function<std::shared_ptr<pqxx::connection>()> get_conn_from_pool;
 };
-
-#endif // AUTHCONTROLLER_H
-```
