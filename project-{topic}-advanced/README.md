@@ -1,296 +1,423 @@
-```markdown
-# ALX-ECommerce-Pro
+# Web Scraping Tools System (Enterprise-Grade)
 
-A comprehensive, production-ready e-commerce solution built with a modern TypeScript stack, focusing on enterprise-grade architecture, scalability, and maintainability. This project demonstrates best practices in backend API design, frontend development, database management, testing, and DevOps.
+This project provides a comprehensive, production-ready web scraping tools system. It's built with a Node.js/Express backend, a React frontend, PostgreSQL database, and includes advanced features like authentication, job queuing, caching, logging, rate limiting, and Dockerization.
 
 ## Table of Contents
 
-- [Project Overview](#project-overview)
-- [Features](#features)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Local Development Setup](#local-development-setup)
-  - [Running with Docker Compose](#running-with-docker-compose)
-- [Backend Development](#backend-development)
-  - [Scripts](#backend-development-scripts)
-  - [API Endpoints](#api-endpoints)
-- [Frontend Development](#frontend-development)
-  - [Scripts](#frontend-development-scripts)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
+1.  [Features](#features)
+2.  [Architecture](#architecture)
+3.  [Getting Started](#getting-started)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup (without Docker)](#local-development-setup-without-docker)
+    *   [Docker Setup (Recommended)](#docker-setup-recommended)
+4.  [API Documentation](#api-documentation)
+5.  [Testing](#testing)
+6.  [Deployment Guide](#deployment-guide)
+7.  [CI/CD](#cicd)
+8.  [Code Structure](#code-structure)
+9.  [Future Enhancements](#future-enhancements)
+10. [License](#license)
 
-## Project Overview
+---
 
-ALX-ECommerce-Pro is designed as a modular and scalable e-commerce platform. It separates concerns between a robust Node.js/Express/TypeScript backend API and a dynamic React/TypeScript frontend. It integrates essential features like authentication, product management, shopping cart functionality, and order processing, alongside crucial production readiness components like caching, rate limiting, logging, and comprehensive testing.
+## 1. Features
 
-## Features
+*   **User Management:** Register, Login, User Roles (User, Admin) with JWT authentication.
+*   **Scraping Job Management:**
+    *   Create new scraping jobs by providing a URL and CSS selectors for target elements.
+    *   View job status (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED).
+    *   Cancel running or pending jobs.
+*   **Scraped Data Storage & Retrieval:**
+    *   Scraped data is stored in PostgreSQL.
+    *   View all scraped results.
+    *   Delete scraped results.
+*   **Robust Scraping Engine:** Leverages `Playwright` for headless browser automation, capable of handling dynamic, JavaScript-rendered content.
+*   **Asynchronous Job Processing:** Jobs are added to an in-memory queue (extendable to Redis/RabbitMQ for production) and processed asynchronously.
+*   **Database:** PostgreSQL with `Prisma` ORM for type-safe database interactions and migrations.
+*   **Security:**
+    *   JWT-based authentication.
+    *   Role-based authorization (User, Admin).
+    *   Rate limiting to prevent abuse.
+    *   Basic `helmet` middleware for common web vulnerabilities.
+*   **Observability:**
+    *   Structured logging with `Winston` for application events and errors.
+    *   HTTP request logging with `Morgan`.
+*   **Performance:**
+    *   In-memory caching (`node-cache`) for API responses to reduce database load.
+*   **Scalability:** Designed with modular components, ready for scaling individual services.
+*   **Containerization:** `Docker` and `docker-compose` setup for easy environment replication.
+*   **CI/CD:** GitHub Actions workflow for automated testing and Docker image building.
+*   **Comprehensive Testing:** Unit, integration, and API tests for backend; unit tests for frontend.
 
--   **User Authentication & Authorization**: JWT-based authentication, role-based access control (User/Admin).
--   **Product Management**: CRUD operations for products and categories.
--   **Shopping Cart**: Add, update, remove, and clear items from a user's cart.
--   **Order Processing**: (Planned for future expansion)
--   **API Endpoints**: RESTful APIs for all core functionalities with validation.
--   **Database Layer**: PostgreSQL with Prisma ORM for type-safe and efficient data management.
--   **Caching**: Redis integration for frequently accessed data (e.g., product listings).
--   **Rate Limiting**: Protects APIs from abuse and DDoS attacks.
--   **Logging & Monitoring**: Centralized logging with Winston.
--   **Error Handling**: Global error middleware with custom `AppError` class.
--   **Containerization**: Docker and Docker Compose for easy setup and deployment.
--   **CI/CD**: GitHub Actions workflows for automated build and testing.
--   **Comprehensive Testing**: Unit, Integration, and API tests.
--   **Detailed Documentation**: README, API docs, Architecture overview, Deployment guide.
+---
 
-## Technology Stack
+## 2. Architecture
 
-**Backend:**
-*   **Language:** TypeScript
-*   **Runtime:** Node.js
-*   **Framework:** Express.js
-*   **Database:** PostgreSQL
-*   **ORM:** Prisma
-*   **Authentication:** JSON Web Tokens (JWT)
-*   **Validation:** Joi
-*   **Caching:** Redis
-*   **Logging:** Winston
-*   **Testing:** Jest, Supertest
-*   **Containerization:** Docker
+The system follows a typical client-server architecture with a database.
 
-**Frontend:**
-*   **Language:** TypeScript
-*   **Framework:** React
-*   **Styling:** Tailwind CSS
-*   **State Management:** React Context API, `useState`/`useReducer`
-*   **Routing:** React Router DOM
-*   **API Client:** Axios
-*   **Testing:** Jest, React Testing Library
+```mermaid
+graph TD
+    User[Client (Browser/Frontend)] -->|HTTP/S Requests| CDN(CDN / Load Balancer)
+    CDN --> Nginx(Nginx / API Gateway)
+    Nginx -->|API Calls| Backend[Backend Service (Node.js/Express)]
+    Backend -->|Database Queries| PostgreSQL[Database (PostgreSQL)]
+    Backend -->|Async Task| JobQueueService[Job Queue (In-memory / Redis)]
+    JobQueueService -->|Pulls Jobs| Backend
+    Backend -- Playwright --> ScrapeTarget[Target Website]
 
-**DevOps & Tools:**
-*   **Container Orchestration:** Docker Compose
-*   **CI/CD:** GitHub Actions
-*   **Code Quality:** ESLint, Prettier
+    subgraph Backend Services
+        Backend
+        JobQueueService
+    end
 
-## Project Structure
+    subgraph Infrastructure
+        PostgreSQL
+        Nginx
+        CDN
+    end
 
-```
-ALX-ECommerce-Pro/
-├── backend/
-│   ├── src/
-│   │   ├── config/             # Environment configuration
-│   │   ├── controllers/        # Handle HTTP requests, delegate to services
-│   │   ├── database/           # Prisma client setup
-│   │   ├── middleware/         # Auth, error handling, rate limiting, caching
-│   │   ├── services/           # Business logic
-│   │   ├── routes/             # API route definitions
-│   │   ├── utils/              # Helper functions (logger, errorHandler)
-│   │   ├── validators/         # Joi validation schemas
-│   │   ├── app.ts              # Express app setup
-│   │   └── server.ts           # Server entry point
-│   ├── prisma/
-│   │   ├── migrations/         # Database migration files
-│   │   ├── schema.prisma       # Prisma schema (database definition)
-│   │   └── seed.ts             # Seed data script
-│   ├── tests/                  # Unit, integration, API tests
-│   ├── .env.example
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── api/                # Axios client for API interaction
-│   │   ├── assets/             # Static assets
-│   │   ├── components/         # Reusable UI components
-│   │   ├── contexts/           # React Context API for global state (e.g., Auth)
-│   │   ├── hooks/              # Custom React hooks
-│   │   ├── pages/              # Page-level components
-│   │   ├── styles/             # Global CSS, Tailwind config
-│   │   ├── utils/              # Frontend helper utilities
-│   │   ├── App.tsx             # Main application component
-│   │   └── main.tsx            # React entry point
-│   ├── public/                 # Static files served directly
-│   ├── .env.example
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile
-├── docker-compose.yml          # Docker orchestration for all services
-├── .github/
-│   └── workflows/              # GitHub Actions CI/CD workflows
-├── docs/
-│   ├── ARCHITECTURE.md         # High-level architecture overview
-│   ├── API.md                  # API endpoints documentation
-│   └── DEPLOYMENT.md           # Deployment instructions
-└── README.md                   # This file
+    subgraph Core Components
+        Frontend[React Application]
+        Backend[Node.js / Express API]
+        PostgreSQL
+        Playwright[Headless Browser (via Playwright)]
+        JobQueue[Asynchronous Job Queue]
+        Auth[Authentication/Authorization]
+        Cache[Caching Layer]
+        Logger[Logging/Monitoring]
+    end
+
+    User -- Interacts with --> Frontend
+    Frontend -- Requests Data --> Backend
+    Backend -- Stores/Retrieves --> PostgreSQL
+    Backend -- Initiates --> JobQueue
+    JobQueue -- Processes --> Playwright
+    Playwright -- Scrapes --> ScrapeTarget
 ```
 
-## Getting Started
+**Key Architectural Decisions:**
+
+*   **Separation of Concerns:** Frontend and backend are distinct services, communicating via RESTful API.
+*   **Asynchronous Scraping:** Scraping is a time-consuming task. Jobs are queued and processed in the background to avoid blocking the main API thread, ensuring a responsive user experience.
+*   **Headless Browser (Playwright):** Chosen for its ability to handle modern JavaScript-heavy websites, allowing for robust data extraction from dynamic content.
+*   **Prisma ORM:** Provides an excellent developer experience with type safety and powerful migrations.
+*   **Containerization:** Docker allows for consistent environments from development to production, simplifying deployment.
+
+---
+
+## 3. Getting Started
 
 ### Prerequisites
 
-*   Node.js (v20 or higher)
-*   npm or pnpm (pnpm is recommended for monorepos, but npm works fine here)
-*   Docker & Docker Compose (for containerized setup)
-*   PostgreSQL client (optional, for direct database access)
+*   Node.js (v18+)
+*   npm (v8+)
+*   Docker & Docker Compose (for Docker setup)
+*   Git
 
-### Local Development Setup
+### Local Development Setup (without Docker)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/ALX-ECommerce-Pro.git
-    cd ALX-ECommerce-Pro
+    git clone https://github.com/ALX-Software-Engineering/web-scraping-system.git
+    cd web-scraping-system
     ```
 
-2.  **Backend Setup:**
+2.  **Setup PostgreSQL Database:**
+    *   Ensure you have a PostgreSQL server running (e.g., using `brew install postgres` on macOS, or a Docker container for just the DB).
+    *   Create a new database named `web_scraper_db` with a user `user` and password `password` (or adjust `backend/.env` accordingly).
+    *   Example using Docker for just the DB:
+        ```bash
+        docker run --name web-scraper-postgres -e POSTGRES_DB=web_scraper_db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:16-alpine
+        ```
+
+3.  **Backend Setup:**
     ```bash
     cd backend
-    npm install # or pnpm install
     cp .env.example .env
-    # Edit .env file with your PostgreSQL and JWT_SECRET details.
-    # Ensure DATABASE_URL points to a running PostgreSQL instance.
-    # For local development, you can use a local PostgreSQL server or the one from docker-compose.
-    ```
-    **Database Initialization:**
-    ```bash
-    npx prisma migrate dev --name init # Apply database migrations
-    npx prisma db seed # Seed initial data (admin user, categories, products)
-    ```
-    **Run Backend:**
-    ```bash
-    npm run dev # Starts the backend in watch mode
-    ```
+    # Edit .env file if your PostgreSQL connection string differs
+    # DATABASE_URL="postgresql://user:password@localhost:5432/web_scraper_db?schema=public"
+    # JWT_SECRET="your_strong_secret"
+    # ADMIN_PASSWORD="Admin@123" # for seeding
+    # USER_PASSWORD="User@123"   # for seeding
 
-3.  **Frontend Setup:**
+    npm install
+    npx prisma migrate dev --name init # Apply migrations
+    npm run seed # Seed initial admin and user accounts
+    npm run dev # Start backend in development mode (with nodemon)
+    ```
+    The backend will run on `http://localhost:5000`.
+
+4.  **Frontend Setup:**
     ```bash
     cd ../frontend
-    npm install # or pnpm install
     cp .env.example .env
-    # Edit .env file to set VITE_API_BASE_URL to your backend URL (e.g., http://localhost:5000/api)
+    # Ensure REACT_APP_API_BASE_URL points to your backend:
+    # REACT_APP_API_BASE_URL=http://localhost:5000/api
+
+    npm install
+    npm start # Start frontend in development mode
     ```
-    **Run Frontend:**
+    The frontend will run on `http://localhost:3000`.
+
+You should now be able to access the application at `http://localhost:3000`.
+You can log in with:
+*   **Admin:** `admin@example.com` / `Admin@123`
+*   **User:** `user@example.com` / `User@123`
+
+### Docker Setup (Recommended)
+
+1.  **Clone the repository:**
     ```bash
-    npm run dev # Starts the React development server
+    git clone https://github.com/ALX-Software-Engineering/web-scraping-system.git
+    cd web-scraping-system
     ```
-
-Now, the frontend should be accessible at `http://localhost:3000` (or similar) and the backend API at `http://localhost:5000/api`.
-
-### Running with Docker Compose
-
-This is the recommended way to run the entire application stack (PostgreSQL, Redis, Backend, Frontend) with minimal local setup.
-
-1.  **Ensure Docker Desktop is running.**
 
 2.  **Create `.env` files:**
-    *   `backend/.env`: Copy content from `backend/.env.example` and fill in `JWT_SECRET`. For `DATABASE_URL` and `REDIS_HOST`, use the service names defined in `docker-compose.yml` (e.g., `postgresql://user:password@db:5432/ecommerce_db?schema=public` and `redis`).
-    *   `frontend/.env`: Copy content from `frontend/.env.example`. `VITE_API_BASE_URL` should point to the backend service `http://backend:5000/api` if running from within the docker network, or `http://localhost:5000/api` if accessed from your host machine browser. For full local docker-compose, `http://localhost:5000/api` will work via port mapping.
-
-3.  **Build and run the services:**
     ```bash
-    docker compose up --build -d
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
     ```
-    *   `--build`: Builds images from Dockerfiles (necessary on first run or if Dockerfiles changed).
-    *   `-d`: Runs services in detached mode (in the background).
+    **Important:** Update the `JWT_SECRET` in `backend/.env` with a strong, random string. You can also adjust `ADMIN_PASSWORD` and `USER_PASSWORD` for initial seed data.
 
-4.  **Verify services:**
+3.  **Build and run with Docker Compose:**
     ```bash
-    docker compose ps
+    docker-compose up --build -d
     ```
-    You should see `db`, `redis`, `backend`, and `frontend` services running. The `backend` service will automatically run Prisma migrations and seeds on startup.
+    This command will:
+    *   Build Docker images for the backend and frontend.
+    *   Start a PostgreSQL container.
+    *   Start the backend container, applying Prisma migrations and seeding the database.
+    *   Start the frontend container.
 
-5.  **Access the application:**
-    *   Frontend: `http://localhost:3000`
-    *   Backend API: `http://localhost:5000/api`
+4.  **Access the application:**
+    Once all services are up (this might take a few minutes for the first build), you can access the frontend at `http://localhost:3000`.
 
-6.  **Stop services:**
+5.  **Stop services:**
     ```bash
-    docker compose down -v # -v removes volumes (useful for a clean slate database)
+    docker-compose down
     ```
 
-## Backend Development
+---
 
-Navigate to the `backend` directory.
+## 4. API Documentation
 
-### Scripts
+The backend API provides the following endpoints:
 
-*   `npm run dev`: Starts the TypeScript backend server with `nodemon` for live reloading.
-*   `npm run build`: Compiles TypeScript to JavaScript.
-*   `npm start`: Starts the compiled JavaScript server (production mode).
-*   `npm test`: Runs all tests (unit, integration, api) with coverage.
-*   `npm run test:unit`: Runs only unit tests.
-*   `npm run test:integration`: Runs only integration tests.
-*   `npm run test:api`: Runs only API tests.
-*   `npm run lint`: Lints code with ESLint.
-*   `npm run format`: Formats code with Prettier.
-*   `npx prisma migrate dev --name [migration-name]`: Creates and applies a new database migration.
-*   `npx prisma db seed`: Runs the database seeding script.
+### Authentication
 
-### API Endpoints
+*   `POST /api/auth/register`
+    *   **Description:** Register a new user.
+    *   **Request Body:** `{"username": "...", "email": "...", "password": "..."}`
+    *   **Response:** User data and JWT token.
+*   `POST /api/auth/login`
+    *   **Description:** Authenticate a user and get a JWT token.
+    *   **Request Body:** `{"email": "...", "password": "..."}`
+    *   **Response:** User data and JWT token.
+*   `GET /api/auth/profile`
+    *   **Description:** Get current authenticated user's profile.
+    *   **Authorization:** Bearer Token (Required)
+    *   **Response:** User data.
 
-Refer to `docs/API.md` for detailed endpoint documentation.
+### Scraping Jobs
 
-## Frontend Development
+*   `POST /api/scrape`
+    *   **Description:** Create a new web scraping job.
+    *   **Authorization:** Bearer Token (Required)
+    *   **Request Body:**
+        ```json
+        {
+          "url": "https://example.com",
+          "targetElements": [
+            { "name": "pageTitle", "selector": "h1", "type": "text" },
+            { "name": "mainParagraph", "selector": "p", "type": "html" },
+            { "name": "linkHref", "selector": "a", "type": "attribute", "attribute": "href" }
+          ]
+        }
+        ```
+    *   **Response:** `{"message": "Scraping job initiated...", "jobId": "...", "status": "PENDING"}`
+*   `GET /api/jobs`
+    *   **Description:** Get all scraping jobs for the authenticated user (or all for Admin).
+    *   **Authorization:** Bearer Token (Required)
+    *   **Query Params:** `status` (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED), `limit`, `offset`.
+    *   **Response:** Array of job objects.
+*   `GET /api/jobs/:id`
+    *   **Description:** Get details of a specific scraping job.
+    *   **Authorization:** Bearer Token (Required, User must own job or be Admin)
+    *   **Response:** Single job object, including latest `scrapeResults` (if any).
+*   `PUT /api/jobs/:id/cancel`
+    *   **Description:** Cancel a pending or running scraping job.
+    *   **Authorization:** Bearer Token (Required, User must own job or be Admin)
+    *   **Response:** `{"message": "Scraping job cancelled successfully.", "job": {...}}`
 
-Navigate to the `frontend` directory.
+### Scraped Results
 
-### Scripts
+*   `GET /api/results`
+    *   **Description:** Get all scraped results for the authenticated user (or all for Admin).
+    *   **Authorization:** Bearer Token (Required)
+    *   **Query Params:** `jobId`, `userId` (Admin only), `limit`, `offset`.
+    *   **Response:** Array of result objects.
+*   `GET /api/results/:id`
+    *   **Description:** Get details of a specific scraped result.
+    *   **Authorization:** Bearer Token (Required, User must own job associated with result or be Admin)
+    *   **Response:** Single result object.
+*   `DELETE /api/results/:id`
+    *   **Description:** Delete a scraped result.
+    *   **Authorization:** Bearer Token (Required, User must own job associated with result or be Admin)
+    *   **Response:** `{"message": "Scraped result deleted successfully."}`
 
-*   `npm run dev`: Starts the React development server.
-*   `npm run build`: Builds the React app for production.
-*   `npm run lint`: Lints code with ESLint.
-*   `npm test`: Runs frontend unit tests with Jest and React Testing Library.
-*   `npm run coverage`: Runs tests and generates coverage report.
+---
 
-## Testing
+## 5. Testing
 
-The project includes a comprehensive testing suite:
+The project includes comprehensive tests for both backend and frontend.
 
-*   **Unit Tests:** (`backend/tests/unit`, `frontend/src/tests`)
-    *   Focus: Individual functions, services, small components in isolation.
-    *   Tools: Jest, React Testing Library.
-    *   Coverage Target: 80%+.
-*   **Integration Tests:** (`backend/tests/integration`)
-    *   Focus: Interactions between multiple modules (e.g., controller -> service -> database).
-    *   Tools: Jest, Supertest.
-*   **API Tests:** (`backend/tests/api`)
-    *   Focus: End-to-end testing of API endpoints, verifying HTTP responses, status codes, and data structures.
-    *   Tools: Jest, Supertest.
-*   **Performance Tests (Conceptual):** (`frontend/tests/performance`)
-    *   Focus: Simulating load to measure response times, throughput, and resource utilization.
-    *   Tools: k6 (conceptual scripts provided).
+### Backend Tests
 
-To run all tests:
+*   **Unit Tests:** Jest for isolated functions (e.g., `scrapingService` logic).
+*   **Integration Tests:** Supertest for API endpoints, testing interactions between controllers, services, and mocked database/external services.
+*   **API Tests:** Cover full API flows (e.g., user registration -> login -> create job -> get job).
+*   **Coverage:** Aiming for 80%+ coverage on critical business logic.
+
+To run backend tests:
 ```bash
-# From project root
-cd backend && npm test
-cd ../frontend && npm test
+cd backend
+npm test
+# For coverage report:
+npm run test:coverage
 ```
 
-## Deployment
+### Frontend Tests
 
-A detailed deployment guide can be found in `docs/DEPLOYMENT.md`. This includes:
-*   Pre-deployment checks.
-*   Building Docker images.
-*   Pushing images to a container registry.
-*   Deploying to a cloud provider (e.g., AWS ECS/EC2, DigitalOcean Droplet, Render).
-*   Setting up environment variables.
-*   Configuring production web servers (e.g., Nginx for frontend).
-*   Database setup and migrations in production.
-*   Monitoring tools.
+*   **Unit Tests:** React Testing Library for components and hooks.
 
-## Documentation
+To run frontend tests:
+```bash
+cd frontend
+npm test -- --watchAll=false --coverage # --watchAll=false to run once and exit
+```
 
-*   **`docs/ARCHITECTURE.md`**: High-level design principles, technology choices, and component interactions.
-*   **`docs/API.md`**: Detailed documentation for all API endpoints, including request/response formats, authentication requirements, and error codes. (Using OpenAPI/Swagger structure).
-*   **`docs/DEPLOYMENT.md`**: Step-by-step guide for deploying the application to a production environment.
-*   **`README.md` (this file)**: Project overview, setup instructions, development scripts, and general guidelines.
+---
 
-## Contributing
+## 6. Deployment Guide
 
-Contributions are welcome! Please refer to the `CONTRIBUTING.md` (planned) for guidelines on how to contribute to this project.
+This system is designed for containerized deployment using Docker.
 
-## License
+1.  **Build Docker Images:**
+    Ensure you have `docker` and `docker-compose` installed. From the root of the project:
+    ```bash
+    docker-compose build
+    ```
+    This command uses the `Dockerfile` in `backend/` and `frontend/` to create optimized images.
 
-This project is licensed under the ISC License. See the `LICENSE` (planned) file for details.
+2.  **Environment Configuration:**
+    Ensure your `backend/.env` and `frontend/.env` files are correctly configured for your production environment.
+    *   **`backend/.env`:**
+        *   `DATABASE_URL`: Point to your production PostgreSQL instance.
+        *   `JWT_SECRET`: **CRITICAL** - Use a strong, unique secret key.
+        *   `NODE_ENV=production`
+        *   `FRONTEND_URL`: Set to your production frontend URL (e.g., `https://your-app.com`).
+    *   **`frontend/.env`:**
+        *   `REACT_APP_API_BASE_URL`: Point to your production backend API URL (e.g., `https://api.your-app.com/api`).
+
+3.  **Run with Docker Compose:**
+    ```bash
+    docker-compose up -d
+    ```
+    This command starts all services in detached mode.
+
+4.  **Scaling (Optional):**
+    For higher availability and performance, you would typically deploy these Docker containers to a container orchestration platform like Kubernetes, Amazon ECS, Google Kubernetes Engine, or Azure Kubernetes Service. This allows for:
+    *   **Load Balancing:** Distribute traffic across multiple instances of backend/frontend.
+    *   **Auto-scaling:** Automatically adjust the number of instances based on demand.
+    *   **Service Discovery:** Services can find each other easily.
+    *   **Persistent Storage:** Mount persistent volumes for PostgreSQL data.
+    *   **External Job Queue:** Replace the in-memory `jobQueueService` with a robust solution like Redis Queue, RabbitMQ, or AWS SQS/Azure Service Bus.
+
+5.  **Monitoring:**
+    Integrate with external monitoring tools (e.g., Prometheus, Grafana, ELK Stack) to collect logs (`logs/` directory in backend), metrics (CPU, memory, request rates), and application traces for production environments.
+
+---
+
+## 7. CI/CD
+
+A basic GitHub Actions workflow is provided in `.github/workflows/ci.yml`.
+
+**Workflow Steps:**
+
+1.  **`backend-test`:**
+    *   Sets up a PostgreSQL service for testing.
+    *   Installs backend dependencies.
+    *   Applies Prisma migrations to the test database.
+    *   Runs Jest tests with coverage.
+    *   Uploads coverage report as an artifact.
+2.  **`frontend-test`:**
+    *   Installs frontend dependencies.
+    *   Runs React Testing Library tests with coverage.
+    *   Uploads coverage report as an artifact.
+3.  **`build-and-push-docker-images`:**
+    *   **Depends on successful completion of `backend-test` and `frontend-test`.**
+    *   Logs into Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` GitHub Secrets).
+    *   Builds and pushes Docker images for both backend and frontend to Docker Hub, tagged with the commit SHA.
+
+**To Set Up CI/CD:**
+
+1.  Fork this repository to your GitHub account.
+2.  Go to your repository settings -> Secrets and variables -> Actions.
+3.  Add the following repository secrets:
+    *   `DOCKER_USERNAME`: Your Docker Hub username.
+    *   `DOCKER_PASSWORD`: Your Docker Hub access token (not your main password).
+4.  Push changes to `main` or `develop` branch, or open a Pull Request, to trigger the workflow.
+
+---
+
+## 8. Code Structure
+
+*   `backend/`: Node.js/Express application.
+    *   `prisma/`: Database schema, migrations, and seed scripts.
+    *   `src/`:
+        *   `config/`: Environment-specific configurations (DB, Auth, Logger, Cache).
+        *   `controllers/`: Handle incoming API requests, validate input, and delegate to services.
+        *   `middleware/`: Express middleware for authentication, error handling, rate limiting, caching.
+        *   `services/`: Encapsulate business logic, interact with database/external APIs (e.g., scraping logic, job queue).
+        *   `routes/`: Define API endpoints and link to controllers.
+        *   `tests/`: Unit and integration tests for backend.
+        *   `utils/`: Helper functions (e.g., validation).
+        *   `app.js`: Main Express application setup.
+        *   `server.js`: Entry point, starts server and job processor.
+*   `frontend/`: React application.
+    *   `public/`: Static assets.
+    *   `src/`:
+        *   `api/`: Axios instance for API calls.
+        *   `components/`: Reusable UI components (Auth forms, Scrape forms, Job/Result cards).
+        *   `context/`: React Context for global state (e.g., authentication).
+        *   `hooks/`: Custom React hooks for data fetching and state management.
+        *   `pages/`: Top-level page components (Home, Dashboard).
+        *   `tests/`: Unit tests for frontend components.
+        *   `App.js`: Main application component, handles routing.
+        *   `index.js`: Entry point for React app.
+*   `.github/workflows/`: GitHub Actions CI/CD pipeline configuration.
+*   `docker-compose.yml`: Defines multi-container Docker application.
+
+---
+
+## 9. Future Enhancements
+
+*   **Advanced Job Queue:** Replace in-memory `jobQueueService` with a robust solution like [BullMQ](https://github.com/taskforcesh/bullmq) (backed by Redis) or a cloud-managed queue like AWS SQS.
+*   **Proxy Rotation:** Implement proxy management to avoid IP bans when scraping frequently.
+*   **Captcha Solving:** Integrate with CAPTCHA solving services if target websites use them.
+*   **Scheduled Jobs:** Allow users to schedule scraping jobs at recurring intervals.
+*   **Webhooks/Notifications:** Notify users upon job completion or failure.
+*   **Data Export:** Provide options to export scraped data (CSV, JSON).
+*   **Dashboard Improvements:** More interactive charts, real-time updates using WebSockets for job status.
+*   **Admin Panel:** A dedicated admin interface to manage all users, jobs, and system settings.
+*   **Playwright Browser as a Service:** Run Playwright in a separate, dedicated container or service for better isolation and scalability of scraping operations.
+*   **Persistent Caching:** Replace `node-cache` with Redis for distributed, persistent caching.
+*   **Observability:** Integrate with Prometheus/Grafana for metric collection and visualization, and centralized logging (ELK Stack, LogDNA).
+*   **Enhanced Input Validation:** Use a schema validation library like `Joi` or `Zod` for more robust request body validation.
+
+---
+
+## 10. License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 ```

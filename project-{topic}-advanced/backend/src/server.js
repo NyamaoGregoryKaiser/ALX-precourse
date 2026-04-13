@@ -1,68 +1,47 @@
-require('dotenv').config();
 const app = require('./app');
-const { sequelize } = require('./db/models');
-const config = require('./config/config');
-const logger = require('./config/logger.config');
-const { connectRedis } = require('./config/redis.config');
+const { logger } = require('./config/logger');
+const { startJobProcessor } = require('./services/jobQueueService');
+const { prisma } = require('./config/db');
 
-const PORT = config.port;
+const PORT = process.env.PORT || 5000;
 
-let server;
+async function bootstrap() {
+  try {
+    // Connect to database
+    await prisma.$connect();
+    logger.info('Connected to PostgreSQL database');
 
-// Connect to PostgreSQL and sync models
-sequelize.authenticate()
-  .then(() => {
-    logger.info('Connected to PostgreSQL');
-    // For production, prefer migrations: `sequelize db:migrate`
-    // For development/testing, `sequelize.sync()` can be useful
-    // sequelize.sync({ alter: true }) // Use `alter: true` with caution in production
-    //   .then(() => {
-    //     logger.info('Database synced successfully');
-    //   })
-    //   .catch((error) => {
-    //     logger.error('Failed to sync database:', error);
-    //   });
-  })
-  .catch((error) => {
-    logger.error('Unable to connect to PostgreSQL:', error);
-    process.exit(1);
-  });
+    // Start the job processing loop
+    startJobProcessor();
+    logger.info('Scraping job processor started');
 
-// Connect to Redis
-connectRedis()
-  .then(() => {
-    logger.info('Connected to Redis');
-  })
-  .catch((error) => {
-    logger.error('Unable to connect to Redis:', error);
-  });
+    // Start the Express server
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1); // Exit with failure code
+  }
+}
 
-server = app.listen(PORT, () => {
-  logger.info(`Server listening on port ${PORT} in ${config.env} mode`);
+bootstrap();
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  await prisma.$disconnect();
+  logger.info('Prisma client disconnected');
+  process.exit(0);
 });
 
-const exitHandler = () => {
-  if (server) {
-    server.close(() => {
-      logger.info('Server closed');
-      process.exit(1);
-    });
-  } else {
-    process.exit(1);
-  }
-};
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Optionally, perform graceful shutdown or just log
+});
 
-const unexpectedErrorHandler = (error) => {
-  logger.error(error);
-  exitHandler();
-};
-
-process.on('uncaughtException', unexpectedErrorHandler);
-process.on('unhandledRejection', unexpectedErrorHandler);
-
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received');
-  if (server) {
-    server.close();
-  }
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  // Perform graceful shutdown for uncaught exceptions
+  process.exit(1);
 });

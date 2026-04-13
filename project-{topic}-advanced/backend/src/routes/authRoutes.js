@@ -1,15 +1,12 @@
 const express = require('express');
-const { register, login, getMe } = require('../controllers/authController');
+const { register, login, getProfile } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
+const { authLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
-router.post('/register', register);
-router.post('/login', login);
-router.get('/me', protect, getMe);
+router.post('/register', authLimiter, register);
+router.post('/login', authLimiter, login);
+router.get('/profile', protect, getProfile);
 
 module.exports = router;
-```
-
-### `backend/src/routes/userRoutes.js`
-```javascript

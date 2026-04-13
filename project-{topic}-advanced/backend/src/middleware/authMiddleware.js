@@ -1,14 +1,9 @@
 const jwt = require('jsonwebtoken');
-const asyncHandler = require('./asyncHandler'); // A simple utility to wrap async express route handlers
-const User = require('../models/user');
-const logger = require('../utils/logger');
+const { jwtSecret } = require('../config/auth');
+const { prisma } = require('../config/db');
+const { logger } = require('../config/logger');
 
-// Utility to wrap async functions to catch errors
-const asyncHandlerWrapper = fn => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
-
-
-const protect = asyncHandlerWrapper(async (req, res, next) => {
+exports.protect = async (req, res, next) => {
   let token;
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
@@ -17,48 +12,37 @@ const protect = asyncHandlerWrapper(async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
 
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, jwtSecret);
 
-      // Attach user to the request object, excluding password
-      req.user = await User.findByPk(decoded.id, {
-        attributes: { exclude: ['password'] }
+      // Attach user to the request
+      req.user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, username: true, role: true } // Exclude password hash
       });
 
       if (!req.user) {
-        const error = new Error('User not found.');
-        error.statusCode = 401;
-        return next(error);
+        logger.warn('User associated with token not found.');
+        return res.status(401).json({ message: 'Not authorized, user not found' });
       }
 
       next();
     } catch (error) {
       logger.error('Token verification failed:', error.message);
-      const authError = new Error('Not authorized, token failed.');
-      authError.statusCode = 401;
-      next(authError);
+      return res.status(401).json({ message: 'Not authorized, token failed' });
     }
   }
 
   if (!token) {
-    const error = new Error('Not authorized, no token.');
-    error.statusCode = 401;
-    next(error);
+    return res.status(401).json({ message: 'Not authorized, no token' });
   }
-});
+};
 
-const authorize = (...roles) => {
+exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      const error = new Error(`User role ${req.user ? req.user.role : 'N/A'} is not authorized to access this route.`);
-      error.statusCode = 403; // Forbidden
-      return next(error);
+      logger.warn(`User ${req.user ? req.user.username : 'unknown'} attempted unauthorized access to role-restricted route. Required roles: ${roles.join(', ')}`);
+      return res.status(403).json({ message: `User role ${req.user ? req.user.role : 'unknown'} is not authorized to access this route.` });
     }
     next();
   };
 };
-
-module.exports = { protect, authorize };
-```
-
-### `backend/src/middleware/asyncHandler.js` (Async Handler for routes)
-```javascript

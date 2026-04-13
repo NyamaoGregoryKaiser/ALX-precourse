@@ -1,71 +1,79 @@
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/user');
-const AppError = require('../utils/appError');
-const logger = require('../utils/logger');
+const { prisma } = require('../config/db');
+const { jwtSecret, jwtExpiresIn, saltRounds } = require('../config/auth');
+const { logger } = require('../config/logger');
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
+/**
+ * Registers a new user.
+ * @param {string} username
+ * @param {string} email
+ * @param {string} password
+ * @returns {Promise<Object>} The created user object (without password) and token.
+ */
+exports.registerUser = async (username, email, password) => {
+  const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+  const user = await prisma.user.create({
+    data: {
+      username,
+      email,
+      passwordHash: hashedPassword,
+      role: 'USER', // Default role
+    },
+    select: { id: true, username: true, email: true, role: true, createdAt: true },
   });
+
+  const token = jwt.sign({ id: user.id, role: user.role }, jwtSecret, {
+    expiresIn: jwtExpiresIn,
+  });
+
+  logger.info(`User registered: ${user.username} (${user.role})`);
+  return { user, token };
 };
 
-const registerUser = async (username, email, password) => {
-  // Check if user already exists
-  const existingUser = await User.findOne({ where: { email } });
-  if (existingUser) {
-    throw new AppError('User with that email already exists.', 400);
-  }
-
-  // Create new user
-  const user = await User.create({ username, email, password });
-
-  // Generate token
-  const token = generateToken(user.id);
-
-  logger.info(`User registered: ${user.email}`);
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-    token,
-  };
-};
-
-const loginUser = async (email, password) => {
-  // Check if user exists
-  const user = await User.findOne({ where: { email } });
+/**
+ * Authenticates a user and generates a JWT.
+ * @param {string} email
+ * @param {string} password
+ * @returns {Promise<Object>} The authenticated user object (without password) and token.
+ */
+exports.loginUser = async (email, password) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
 
   if (!user) {
-    throw new AppError('Invalid credentials (email not found).', 401);
+    logger.warn(`Login attempt with non-existent email: ${email}`);
+    throw new Error('Invalid credentials');
   }
 
-  // Check password
-  const isMatch = await user.matchPassword(password);
+  const isMatch = await bcrypt.compare(password, user.passwordHash);
 
   if (!isMatch) {
-    throw new AppError('Invalid credentials (password incorrect).', 401);
+    logger.warn(`Login attempt with incorrect password for email: ${email}`);
+    throw new Error('Invalid credentials');
   }
 
-  // Generate token
-  const token = generateToken(user.id);
+  const token = jwt.sign({ id: user.id, role: user.role }, jwtSecret, {
+    expiresIn: jwtExpiresIn,
+  });
 
-  logger.info(`User logged in: ${user.email}`);
+  logger.info(`User logged in: ${user.username} (${user.role})`);
   return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
+    user: { id: user.id, username: user.username, email: user.email, role: user.role, createdAt: user.createdAt },
     token,
   };
 };
 
-module.exports = {
-  registerUser,
-  loginUser,
-  generateToken,
+/**
+ * Gets a user by ID.
+ * @param {string} userId
+ * @returns {Promise<Object|null>} The user object (without password) or null.
+ */
+exports.getUserById = async (userId) => {
+  return await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, username: true, email: true, role: true, createdAt: true },
+  });
 };
-```
-
-### `backend/src/services/userService.js` (User Business Logic)
-```javascript

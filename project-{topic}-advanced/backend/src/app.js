@@ -1,57 +1,52 @@
+require('dotenv').config();
 const express = require('express');
-const helmet = require('helmet');
-const xss = require('xss-clean');
-const compression = require('compression');
 const cors = require('cors');
-const httpStatus = require('http-status');
-const config = require('./config/config');
-const { errorConverter, errorHandler } = require('./middleware/error.middleware');
-const { apiLogger } = require('./middleware/logger.middleware');
-const { limiter } = require('./middleware/rateLimit.middleware');
-const ApiError = require('./utils/ApiError');
-const routes = require('./routes');
+const morgan = require('morgan');
+const helmet = require('helmet'); // Security middleware
+
+const authRoutes = require('./routes/authRoutes');
+const scrapeRoutes = require('./routes/scrapeRoutes');
+const errorHandler = require('./middleware/errorHandler');
+const { requestLogger } = require('./config/logger');
 
 const app = express();
 
-// Set security HTTP headers
+// Security Middleware
 app.use(helmet());
 
-// Parse incoming requests with JSON payloads
-app.use(express.json());
+// CORS Configuration (Adjust for production)
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
 
-// Parse URL-encoded bodies (for form data)
-app.use(express.urlencoded({ extended: true }));
+// Request logging (Winston)
+app.use(requestLogger);
 
-// Sanitize request data
-app.use(xss());
-
-// Gzip compression
-app.use(compression());
-
-// Enable CORS
-app.use(cors());
-app.options('*', cors());
-
-// API request logging
-app.use(apiLogger);
-
-// Limit repeated failed requests to auth endpoints
-if (config.env === 'production') {
-  app.use(limiter);
+// Morgan for development logging (optional, can be removed in production if Winston is sufficient)
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
 }
 
-// API routes
-app.use('/api/v1', routes);
+// JSON Body Parser
+app.use(express.json());
 
-// Send back a 404 error for any unknown API request
-app.use((req, res, next) => {
-  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api', scrapeRoutes); // Prefix all other routes with /api
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
-// Convert error to ApiError, if needed
-app.use(errorConverter);
+// Root endpoint for basic info
+app.get('/', (req, res) => {
+  res.status(200).json({ message: 'Welcome to the Web Scraping API. Use /api routes.' });
+});
 
-// Handle errors
+// Error Handling Middleware (must be last)
 app.use(errorHandler);
 
 module.exports = app;

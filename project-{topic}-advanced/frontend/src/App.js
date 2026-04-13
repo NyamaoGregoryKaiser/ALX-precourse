@@ -1,69 +1,45 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import RegisterPage from './pages/RegisterPage';
-import api from './api/client';
+import DashboardPage from './pages/DashboardPage';
+import { useAuth } from './hooks/useAuth';
+import Navbar from './components/Layout/Navbar';
+import './App.css'; // Global app styling
+
+function PrivateRoute({ children, roles }) {
+  const { isAuthenticated, user } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (roles && user && !roles.includes(user.role)) {
+    // Optionally show an unauthorized message or redirect to a /403 page
+    return <Navigate to="/dashboard" replace />; // Redirect unauthorized users to dashboard
+  }
+
+  return children;
+}
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const userData = localStorage.getItem('user');
-    if (token && userData) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(userData));
-    }
-  }, []);
-
-  const handleLogin = (userData, tokens) => {
-    localStorage.setItem('accessToken', tokens.access.token);
-    localStorage.setItem('refreshToken', tokens.refresh.token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setIsAuthenticated(true);
-    setUser(userData);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    setIsAuthenticated(false);
-    setUser(null);
-  };
-
   return (
     <Router>
-      <div className="App">
-        <nav>
-          <h1>PMApi</h1>
-          <div>
-            <Link to="/">Home</Link>
-            {!isAuthenticated ? (
-              <>
-                <Link to="/login">Login</Link>
-                <Link to="/register">Register</Link>
-              </>
-            ) : (
-              <>
-                <span>Hello, {user?.name} ({user?.role})</span>
-                <button onClick={handleLogout} style={{ marginLeft: '1rem', backgroundColor: '#e74c3c' }}>Logout</button>
-              </>
-            )}
-          </div>
-        </nav>
-
+      <Navbar />
+      <main className="container">
         <Routes>
-          <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
-          <Route path="/register" element={<RegisterPage onRegister={handleLogin} />} />
-          <Route path="/" element={<HomePage isAuthenticated={isAuthenticated} user={user} />} />
+          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <PrivateRoute roles={['USER', 'ADMIN']}>
+                <DashboardPage />
+              </PrivateRoute>
+            }
+          />
+          {/* Add more private routes here, e.g., /admin, /settings */}
+          <Route path="*" element={<h1>404: Page Not Found</h1>} />
         </Routes>
-        <footer>
-          <p>&copy; 2024 PMApi. All rights reserved.</p>
-        </footer>
-      </div>
+      </main>
     </Router>
   );
 }

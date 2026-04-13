@@ -1,4 +1,3 @@
-```yaml
 version: '3.8'
 
 services:
@@ -6,70 +5,68 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
+      POSTGRES_DB: web_scraper_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: ecommerce_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d ecommerce_db"]
+      test: ["CMD-SHELL", "pg_isready -U user -d web_scraper_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes # Ensure persistence
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     restart: always
-    env_file:
-      - ./backend/.env # Link to your actual .env file for sensitive vars
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/ecommerce_db?schema=public # Connect to db service by name
-      REDIS_HOST: redis # Connect to redis service by name
-      REDIS_PORT: 6379
-      PORT: 5000
-      FRONTEND_URL: http://localhost:3000 # Or the public frontend URL
     ports:
       - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/web_scraper_db?schema=public
+      PORT: 5000
+      JWT_SECRET: your_jwt_secret_key_for_docker_env
+      JWT_EXPIRES_IN: 1d
+      SCRAPER_BROWSER: chromium # Or firefox/webkit
+      CACHE_TTL_SECONDS: 300
+      NODE_ENV: production
+      ADMIN_PASSWORD: Admin@123
+      USER_PASSWORD: User@123
+      FRONTEND_URL: http://localhost:3000
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "npx prisma migrate deploy && npm run prisma:seed && npm start" # Apply migrations & seed before starting app
+    volumes:
+      - ./backend:/app # Mount local code for development, remove/adjust for production
+      - /app/node_modules # Ensure node_modules inside container is used
+      - /app/logs # For Winston logs
+    command: sh -c "npx prisma migrate deploy && npm run seed && npm start"
+    # Ensure Playwright browser binaries are available.
+    # The default Playwright Docker images already have them: mcr.microsoft.com/playwright/node
+    # If building from scratch, you'd need to add browser installation steps in your Dockerfile.
+    # Our Dockerfile installs them.
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: always
-    env_file:
-      - ./frontend/.env # Link to your actual .env file
-    environment:
-      VITE_API_BASE_URL: http://localhost:5000/api # Connect to backend service by name
     ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (Nginx)
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      REACT_APP_API_BASE_URL: http://localhost:5000/api
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app # Mount local code for development, remove/adjust for production
+      - /app/node_modules # Ensure node_modules inside container is used
+
 
 volumes:
   postgres_data:
-  redis_data:
 ```
-
-### CI/CD Pipeline Configuration (GitHub Actions)
-
-These files define automated workflows for building and testing the backend and frontend. For full deployment, steps would be added to push Docker images to a registry (e.g., Docker Hub, AWS ECR) and then deploy to a cloud provider (e.g., AWS EC2/ECS, Vercel, Netlify).
