@@ -1,0 +1,19 @@
++--------------------+        +---------------------+        +--------------------+
+|     Frontend       |        |    Backend API      |        |     Database       |
+|    (React.js)      |------->| (Node.js/Express.js)|<------>|   (PostgreSQL)     |
+| - User Dashboard   |        | - Authentication    |        | - Users Table      |
+| - Job Management   |        | - Authorization     |        | - ScrapingJobs     |
+| - Data Visualization|        | - Rate Limiting     |        | - ScrapedData      |
++--------------------+        | - Caching (Redis)   |        | - JobLogs          |
+                               | - Error Handling    |        | - Schema Migrations|
+                               | - Logging (Winston) |        +--------------------+
+                               | - Scraping Engine   |<-------------------+
+                               |   (Puppeteer/Cheerio)|                     |
+                               | - Job Scheduler     |                     |
+                               | - Data Transformation|                     |
+                               | - CRUD API Endpoints|                     |
+                               +---------------------+                     |
+                                         ^                                 |
+                                         |                                 |
+                                         +---------------------------------+
+                                           (Data Persistence & Retrieval)

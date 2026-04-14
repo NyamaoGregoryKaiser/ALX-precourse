@@ -1,48 +1,65 @@
+```javascript
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
-const cookieParser = require('cookie-parser');
-const morgan = require('morgan'); // For HTTP request logging
-const { errorHandler } = require('./middleware/errorHandler');
-const rateLimitMiddleware = require('./middleware/rateLimit');
-const logger = require('./middleware/logger');
-
-// Import routes
+const xss = require('xss-clean');
+const mongoSanitize = require('express-mongo-sanitize'); // Placeholder, useful for NoSQL, but good practice awareness
+const compression = require('compression');
+const cors = require('cors');
+const httpStatus = require('http-status');
+const config = require('./config');
+const { apiLimiter } = require('./middleware/rateLimit.middleware');
+const { errorConverter, errorHandler } = require('./middleware/error.middleware');
+const AppError = require('./utils/AppError');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
-const dataSourceRoutes = require('./routes/dataSource.routes');
-const visualizationRoutes = require('./routes/visualization.routes');
-const dashboardRoutes = require('./routes/dashboard.routes');
+const scrapingJobRoutes = require('./routes/scrapingJob.routes');
+const scrapedDataRoutes = require('./routes/scrapedData.routes');
+const logger = require('./config/logger');
 
 const app = express();
 
-// --- Core Middleware ---
-app.use(express.json()); // Parses incoming JSON requests
-app.use(express.urlencoded({ extended: true })); // Parses URL-encoded data
-app.use(cookieParser()); // Parses cookies
-app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from frontend
-    credentials: true // Allow sending cookies
-}));
-app.use(helmet()); // Sets various HTTP headers for security
+// Set security HTTP headers
+app.use(helmet());
 
-// --- Logging Middleware (using Morgan for HTTP requests, Winston for app logs) ---
-app.use(morgan('combined', { stream: { write: message => logger.http(message.trim()) } }));
+// Parse json request body
+app.use(express.json());
 
-// --- Rate Limiting ---
-app.use(rateLimitMiddleware);
+// Parse urlencoded request body
+app.use(express.urlencoded({ extended: true }));
 
-// --- Routes ---
-app.get('/', (req, res) => {
-    res.status(200).json({ message: 'Welcome to the Data Visualization API!' });
-});
+// Sanitize request data
+app.use(xss());
+app.use(mongoSanitize()); // Prevent NoSQL injection attacks (even if using SQL, good to have)
+
+// Gzip compression
+app.use(compression());
+
+// Enable cors
+app.use(cors());
+app.options('*', cors());
+
+// Limit repeated failed requests to auth endpoints
+if (config.env === 'production') {
+    app.use('/api', apiLimiter); // Apply general API rate limiting
+}
+
+
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/data-sources', dataSourceRoutes);
-app.use('/api/visualizations', visualizationRoutes);
-app.use('/api/dashboards', dashboardRoutes);
+app.use('/api/jobs', scrapingJobRoutes);
+app.use('/api/data', scrapedDataRoutes);
 
-// --- Error Handling Middleware (must be last) ---
+// send 404 error for any unknown api request
+app.use((req, res, next) => {
+    next(new AppError(httpStatus.NOT_FOUND, 'Not found'));
+});
+
+// convert error to AppError, if needed
+app.use(errorConverter);
+
+// handle error
 app.use(errorHandler);
 
 module.exports = app;
+```

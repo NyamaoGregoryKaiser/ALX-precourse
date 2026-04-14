@@ -1,38 +1,35 @@
 ```dockerfile
-# Use a multi-stage build to create a small final image
+# --- Multi-stage build for frontend ---
+FROM node:18-alpine as frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
 
-# Stage 1: Build the application
-FROM eclipse-temurin:17-jdk-jammy AS build
-WORKDIR /app
+# --- Backend build and runtime ---
+FROM node:18-alpine as backend-builder
+WORKDIR /app/backend
+COPY backend/package*.json ./
+RUN npm install
+COPY backend/ ./
 
-# Copy the Maven wrapper and pom.xml to download dependencies
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
-RUN ./mvnw dependency:go-offline
+# Install Chromium for Puppeteer in a production-ready environment
+# See: https://github.com/puppeteer/puppeteer/blob/main/docs/puppeteer-api.md#puppeteerlaunchoptions
+# Install these dependencies for Puppeteer to run headless Chrome
+RUN apk add --no-cache udev chromium nss freetype fontconfig harfbuzz ca-certificates
 
-# Copy the rest of the source code
-COPY src ./src
+# Expose the port the app runs on
+EXPOSE 8000
 
-# Build the JAR file
-RUN ./mvnw package -DskipTests
+# Copy frontend build artifacts to backend public folder
+COPY --from=frontend-builder /app/frontend/build /app/backend/src/public
 
-# Stage 2: Create the final runtime image
-FROM eclipse-temurin:17-jre-jammy AS final
-WORKDIR /app
+# Set environment variables (production specific)
+ENV NODE_ENV=production
+# Define where Puppeteer should look for Chromium executable
+ENV CHROME_BIN=/usr/bin/chromium-browser
 
-# Copy the built JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
-
-# Expose the port the Spring Boot application runs on
-EXPOSE 8080
-
-# Create the uploads directory for datasets
-RUN mkdir -p /app/uploads
-
-# Set the entry point to run the Spring Boot application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-# Add healthcheck (optional but recommended for production)
-HEALTHCHECK --interval=30s --timeout=10s --retries=5 \
-  CMD curl --fail http://localhost:8080/actuator/health || exit 1
+# Start the application
+CMD ["node", "src/server.js"]
 ```

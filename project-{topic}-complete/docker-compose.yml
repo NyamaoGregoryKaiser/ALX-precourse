@@ -1,82 +1,75 @@
+```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    restart: always
+    container_name: postgres_db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: taskdb
-    volumes:
-      - task_db_data:/var/lib/postgresql/data
+      POSTGRES_USER: ${DB_USER:-scraper_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-scraper_password}
+      POSTGRES_DB: ${DB_NAME:-scraper_db}
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d taskdb"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    restart: always
+    container_name: redis_cache
     ports:
       - "6379:6379"
     volumes:
-      - task_redis_data:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  server:
+  backend:
     build:
-      context: ./server
+      context: .
       dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "5000:5000"
+    container_name: scraper_backend
     environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://user:password@db:5432/taskdb?schema=public # Hostname 'db' for Docker network
-      REDIS_URL: redis://redis:6379 # Hostname 'redis' for Docker network
-      JWT_SECRET: supersecretjwtkey
-      JWT_EXPIRES_IN: 1h
-      CLIENT_URL: http://localhost:3000 # For CORS in dev
+      PORT: 8000
+      NODE_ENV: development # Use development for dev environment in docker compose
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-scraper_user}
+      DB_PASSWORD: ${DB_PASSWORD:-scraper_password}
+      DB_NAME: ${DB_NAME:-scraper_db}
+      JWT_SECRET: ${JWT_SECRET:-a_dev_secret_key}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpassword}
+      SCRAPER_CONCURRENCY: ${SCRAPER_CONCURRENCY:-5}
+      # Puppeteer specific env for chrome path in container
+      CHROME_BIN: /usr/bin/chromium-browser
+    ports:
+      - "8000:8000"
     volumes:
-      - ./server:/usr/src/app # Mount source for hot-reloading in dev
-      - /usr/src/app/node_modules # Exclude node_modules from host mount
+      - ./backend:/app/backend # Mount backend source for hot-reloading (dev only)
+      - /app/backend/node_modules # Keep node_modules inside container
+      - /app/backend/src/public # Keep frontend build artifact here
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "npx prisma migrate deploy && npx ts-node prisma/seed.ts && npm run dev"
-    # ^ Use `npm run dev` for hot-reloading in development.
-    # For production, use `node dist/server.js` or `npm start` after `npm run build`.
-
-  client:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-      args:
-        REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # This is for local dev without Nginx proxying
-    restart: always
-    ports:
-      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
-    volumes:
-      - ./client:/app # For live reload of client in dev
-      - /app/node_modules # Exclude node_modules from host mount
-    depends_on:
-      - server
-    environment:
-      # These are for react-scripts start/build locally, and args for Dockerfile build stage
-      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1
-
+    command: sh -c "npm run migrate:latest && npm run seed:run && npm run dev" # Run migrations, seeds, then start dev server
+    # For production: command: sh -c "npm run migrate:latest && npm start"
 
 volumes:
-  task_db_data:
-  task_redis_data:
+  postgres_data:
+  redis_data:
 ```

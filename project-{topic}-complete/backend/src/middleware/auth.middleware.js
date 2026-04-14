@@ -1,37 +1,43 @@
+```javascript
 const jwt = require('jsonwebtoken');
-const { AppError } = require('../utils/errorHandler');
-const logger = require('./logger');
+const httpStatus = require('http-status');
+const config = require('../config');
+const AppError = require('../utils/AppError');
+const User = require('../models/user.model');
+const asyncHandler = require('../utils/asyncHandler');
 
-const authenticateToken = (req, res, next) => {
-    // Get token from cookie
-    const token = req.cookies.token;
+const verifyToken = asyncHandler(async (req, res, next) => {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
 
     if (!token) {
-        logger.warn('Authentication attempt without token.');
-        return next(new AppError('Unauthorized - No token provided', 401));
+        throw new AppError(httpStatus.UNAUTHORIZED, 'Authentication token missing');
     }
 
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // Attach user payload to request
-        next();
-    } catch (error) {
-        logger.error(`Token verification failed: ${error.message}`);
-        return next(new AppError('Unauthorized - Invalid token', 401));
-    }
-};
+    const decoded = jwt.verify(token, config.jwt.secret);
+    const user = await User.findById(decoded.sub);
 
-const authorizeRoles = (...roles) => {
+    if (!user) {
+        throw new AppError(httpStatus.UNAUTHORIZED, 'User belonging to this token no longer exists');
+    }
+
+    req.user = user; // Attach user to request object
+    next();
+});
+
+const authorize = (...roles) => {
     return (req, res, next) => {
-        if (!req.user || !roles.includes(req.user.role)) {
-            logger.warn(`Forbidden access attempt by user ${req.user ? req.user.id : 'N/A'} (Role: ${req.user ? req.user.role : 'N/A'}) to restricted resource.`);
-            return next(new AppError('Forbidden - Insufficient permissions', 403));
+        if (!roles.includes(req.user.role)) {
+            throw new AppError(httpStatus.FORBIDDEN, 'You do not have permission to perform this action');
         }
         next();
     };
 };
 
 module.exports = {
-    authenticateToken,
-    authorizeRoles
+    verifyToken,
+    authorize,
 };
+```

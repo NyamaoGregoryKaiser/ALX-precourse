@@ -1,175 +1,165 @@
 ```markdown
-# Task Management System Architecture
+# Web Scraping Tools System - Architecture Documentation
 
-This document provides a high-level overview of the architecture for the Task Management System.
+This document provides a detailed overview of the architectural design, components, and interactions within the Web Scraping Tools System.
 
-## 1. Overview
+## 1. High-Level Architecture
 
-The Task Management System is designed as a **monolith (Flask backend)** with a **minimal HTML/JavaScript frontend** for demonstration purposes. It follows a layered architectural pattern to promote separation of concerns, maintainability, and scalability.
+The system follows a typical three-tier architecture:
 
-**Key Technologies:**
-*   **Backend**: Python (Flask)
-*   **Database**: PostgreSQL
-*   **ORM**: SQLAlchemy
-*   **Caching/Rate Limiting**: Redis
-*   **Authentication**: JWT (JSON Web Tokens)
-*   **Deployment**: Docker, Docker Compose, Gunicorn (production web server)
-*   **CI/CD**: GitHub Actions
-*   **Testing**: Pytest
-
-## 2. System Diagram
-
-```mermaid
-graph TD
-    User[Web Browser (HTML/JS)] --> |HTTP/HTTPS| Frontend[Nginx/Load Balancer]
-    Frontend --> |Reverse Proxy| FlaskApp[Flask Backend (Python/Gunicorn)]
-    
-    FlaskApp --> |SQLAlchemy (ORM)| PostgreSQL[Database (PostgreSQL)]
-    FlaskApp --> |Redis Client| Redis[Cache/Rate Limiter (Redis)]
-    
-    subgraph Backend Services
-        FlaskApp --- A[Routes (API Endpoints)]
-        FlaskApp --- B[Services (Business Logic)]
-        FlaskApp --- C[Models (Data Access / ORM)]
-        FlaskApp --- D[Extensions (DB, JWT, Cache, Limiter)]
-        FlaskApp --- E[Utils (Auth, Error Handling, Decorators)]
-        A --> B
-        B --> C
-        C --> D
-        A --> E
-        B --> E
-    end
-
-    User --> |Browser to Flask Directly (Dev)| FlaskApp
-
-    CI_CD[CI/CD (GitHub Actions)] --> |Tests| FlaskApp
-    CI_CD --> |Build/Push Image| DockerRegistry[Docker Registry (e.g., Docker Hub)]
-    DockerRegistry --> |Pull Image| DeploymentEnv[Production Environment (e.g., Kubernetes, ECS)]
+```
++--------------------+        +---------------------+        +--------------------+
+|     Frontend       |        |    Backend API      |        |     Database       |
+|    (React.js)      |------->| (Node.js/Express.js)|<------>|   (PostgreSQL)     |
+| - User Dashboard   |        | - Authentication    |        | - Users Table      |
+| - Job Management   |        | - Authorization     |        | - ScrapingJobs     |
+| - Data Visualization|        | - Rate Limiting     |        | - ScrapedData      |
++--------------------+        | - Caching (Redis)   |        | - JobLogs          |
+                               | - Error Handling    |        | - Schema Migrations|
+                               | - Logging (Winston) |        +--------------------+
+                               | - Scraping Engine   |<-------------------+
+                               |   (Puppeteer/Cheerio)|                     |
+                               | - Job Scheduler     |                     |
+                               | - Data Transformation|                     |
+                               | - CRUD API Endpoints|                     |
+                               +---------------------+                     |
+                                         ^                                 |
+                                         |                                 |
+                                         +---------------------------------+
+                                           (Data Persistence & Retrieval)
 ```
 
-## 3. Component Breakdown
+This separation allows for independent development, scaling, and deployment of each component.
 
-### 3.1. Frontend (Demonstration)
+## 2. Component Breakdown
 
-*   **Technology**: Pure HTML, CSS, and JavaScript.
-*   **Purpose**: Provides a simple user interface to interact with the backend API, demonstrating authentication flows and CRUD operations.
-*   **Location**: `app/templates/index.html`, `app/static/style.css`, `app/static/script.js`.
-*   **Note**: A production-grade frontend would typically be a separate Single Page Application (SPA) built with frameworks like React, Vue, or Angular, communicating with the API.
+### 2.1. Frontend (React.js)
 
-### 3.2. Flask Backend (Core Application)
+*   **Purpose**: Provides a user-friendly interface for interacting with the scraping system.
+*   **Key Responsibilities**:
+    *   User authentication (Login, Register).
+    *   Dashboard for managing scraping jobs (Create, View, Edit, Delete).
+    *   Triggering immediate job runs.
+    *   Displaying scraped data and job execution logs.
+*   **Technologies**: React.js, React Router, Axios for API calls, Tailwind CSS for styling.
+*   **Interaction**: Communicates with the Backend API via RESTful HTTP requests. JWT tokens are stored locally (`localStorage`) and sent with each authenticated request.
 
-The Flask application is the heart of the system, responsible for handling API requests, executing business logic, and interacting with the database and other services.
+### 2.2. Backend API (Node.js/Express.js)
 
-#### 3.2.1. `app/__init__.py`
-*   Initializes the Flask application.
-*   Configures logging (file and console handlers).
-*   Initializes Flask extensions (SQLAlchemy, JWT, Bcrypt, Cache, Limiter).
-*   Registers blueprints for different API modules (`auth`, `users`, `projects`, `tasks`).
-*   Sets up global error handlers.
-*   Integrates with Sentry for error monitoring (optional, via DSN).
+The core of the application, handling all business logic and orchestrating tasks.
 
-#### 3.2.2. `app/config.py`
-*   Manages application settings for different environments (Development, Testing, Production).
-*   Loads sensitive configuration from environment variables (using `python-dotenv`).
+*   **Framework**: Express.js for building robust RESTful APIs.
+*   **Structure**:
+    *   `src/server.js`: Application entry point, initializes Express app, connects to DB, starts scheduler.
+    *   `src/app.js`: Configures Express middleware (security, parsing, CORS, rate limiting) and defines main API routes.
+    *   `src/config/`: Manages environment variables, database configuration, and logging setup.
+    *   `src/db/`: Contains Knex.js configuration, migration scripts, and seed data for PostgreSQL.
+    *   `src/middleware/`: Houses custom Express middleware for authentication, authorization, error handling, caching, and rate limiting.
+    *   `src/models/`: Encapsulates database interactions for `User`, `ScrapingJob`, `ScrapedData`, providing an ORM-like interface using Knex.js.
+    *   `src/controllers/`: Contains the request handlers, orchestrating business logic, interacting with models and services, and formatting API responses.
+    *   `src/routes/`: Defines the API endpoints and maps them to respective controller functions.
+    *   `src/services/`: Core business logic services, including the `ScraperService` and `SchedulerService`.
+    *   `src/utils/`: Helper utilities like `AppError`, `ApiResponse`, and `asyncHandler`.
 
-#### 3.2.3. `app/extensions.py`
-*   Centralizes the initialization and instantiation of Flask extensions like `db` (SQLAlchemy), `migrate` (Alembic), `jwt` (Flask-JWT-Extended), `bcrypt` (Flask-Bcrypt), `cache` (Flask-Caching), and `limiter` (Flask-Limiter).
+*   **Key Sub-Components**:
 
-#### 3.2.4. `app/models/`
-*   **Purpose**: Defines the database schema using SQLAlchemy ORM. Each file represents a database table.
-*   **Components**:
-    *   `user.py`: `User` model for authentication and authorization.
-    *   `project.py`: `Project` model for grouping tasks.
-    *   `task.py`: `Task` model with details like title, description, status, priority, assignments.
-    *   `comment.py`: `Comment` model for adding notes to tasks or projects.
-*   **Relationships**: Models define relationships between entities (e.g., a Project has many Tasks, a Task is assigned to a User).
+    *   **Authentication & Authorization**:
+        *   Uses `jsonwebtoken` for JWT generation and verification.
+        *   `bcryptjs` for password hashing.
+        *   `auth.middleware.js` verifies tokens and extracts user information.
+        *   `authorize` middleware implements role-based access control.
 
-#### 3.2.5. `app/services/`
-*   **Purpose**: Encapsulates business logic and orchestrates interactions between models. This layer is responsible for data validation, complex operations, and ensuring data integrity.
-*   **Components**:
-    *   `user_service.py`: Logic for user creation, retrieval, update, and deletion.
-    *   `project_service.py`: Logic for project management.
-    *   `task_service.py`: Logic for task and comment management.
-*   **Key Principle**: Services should be reusable and independent of the API layer, making the core logic testable and portable.
+    *   **Logging & Error Handling**:
+        *   `Winston` for structured and comprehensive logging (console, file transports).
+        *   `error.middleware.js` provides a centralized error handling mechanism, converting various errors into a consistent `AppError` format.
 
-#### 3.2.6. `app/routes/`
-*   **Purpose**: Defines API endpoints using Flask Blueprints. These routes receive HTTP requests, parse input, call the appropriate service methods, and return JSON responses.
-*   **Components**:
-    *   `auth.py`: User registration, login, logout, token refresh, profile.
-    *   `users.py`: CRUD operations for users (admin-only).
-    *   `projects.py`: CRUD operations for projects.
-    *   `tasks.py`: CRUD operations for tasks and comments.
-*   **Authorization**: Decorators (`@jwt_required`, `@admin_required`, `@manager_required_for_project_action`, etc.) are applied to routes for access control.
-*   **Error Handling**: Catches exceptions raised by the service layer and converts them into appropriate HTTP error responses.
+    *   **Caching Layer (Redis)**:
+        *   `redis` client for connecting to Redis.
+        *   `cache.middleware.js` intercepts GET requests, serving cached responses when available and storing new responses. Configurable cache duration.
 
-#### 3.2.7. `app/utils/`
-*   **Purpose**: Provides utility functions, decorators, and custom exceptions used across the application.
-*   **Components**:
-    *   `auth_utils.py`: Helper functions for JWT claims and role checks.
-    *   `decorators.py`: Custom decorators for logging, and fine-grained authorization checks.
-    *   `error_handlers.py`: Centralized handlers for custom and generic exceptions, ensuring consistent API error responses.
-    *   `exceptions.py`: Custom exception classes (e.g., `ResourceNotFound`, `InvalidInput`).
+    *   **Rate Limiting**:
+        *   `express-rate-limit` middleware protects API endpoints (especially authentication routes) from brute-force attacks and abuse.
 
-#### 3.2.8. `manage.py`
-*   Entry point for Flask CLI commands (e.g., `flask run`, `flask db_commands migrate`, `flask seed`, `flask run-tests`).
-*   Initializes the Flask app context for CLI operations.
+    *   **Scraping Engine (`ScraperService`)**:
+        *   **Static Scraping**: Utilizes `cheerio` to parse HTML fetched via `node-fetch` (or built-in `fetch` in Node.js 18+). Ideal for simple, static content.
+        *   **Dynamic Scraping**: Employs `puppeteer` (a headless Chrome browser API) to render JavaScript-heavy pages before extracting content with `cheerio`. This handles SPAs, AJAX-loaded content, etc.
+        *   **Concurrency**: Manages a queue of scraping jobs and limits the number of concurrent scrapes to prevent overwhelming target websites or the server.
+        *   **Job Status Updates**: Communicates with `ScrapingJob` model to update job status (`running`, `completed`, `failed`) and log events.
 
-### 3.3. Database (PostgreSQL)
+    *   **Job Scheduler (`SchedulerService`)**:
+        *   Uses `node-cron` to schedule recurring scraping jobs based on cron expressions defined by users.
+        *   Loads active scheduled jobs from the database on startup and periodically re-evaluates them.
+        *   Adds, updates, and removes cron tasks dynamically.
+        *   Enqueues jobs to the `ScraperService` when their scheduled time arrives.
 
-*   **Persistence Layer**: Stores all application data (users, projects, tasks, comments).
-*   **Docker Integration**: Run as a Docker container, making setup consistent across environments.
-*   **Alembic**: Used for database migrations to manage schema evolution. Scripts are in the `migrations/` directory.
+### 2.3. Database (PostgreSQL)
 
-### 3.4. Cache & Rate Limiter (Redis)
+*   **Purpose**: Persistent storage for all application data.
+*   **Schema**:
+    *   `users`: Stores user credentials and roles.
+    *   `scraping_jobs`: Stores configurations for each scraping task (URL, selectors, type, schedule, status).
+    *   `scraped_data`: Stores the actual data extracted by scraping jobs. Uses `JSONB` for flexible schema-less storage of scraped content.
+    *   `job_logs`: Records events and errors related to scraping job executions.
+*   **Query Optimization**:
+    *   Indexes on foreign keys and frequently queried columns (`job_id`, `url` in `scraped_data`) to improve read performance.
+    *   Use of `JSONB` for efficient storage and querying of semi-structured data.
 
-*   **Purpose**:
-    *   **Caching**: Stores frequently accessed data (e.g., user profiles) in memory to reduce database load and improve response times.
-    *   **Rate Limiting**: Tracks and limits the number of requests a client can make to prevent abuse.
-*   **Docker Integration**: Run as a Docker container.
+### 2.4. Caching (Redis)
 
-### 3.5. Testing Frameworks
+*   **Purpose**: In-memory data store used for caching API responses to reduce database load and improve response times for frequently accessed, read-heavy endpoints.
+*   **Integration**: Integrated as an Express middleware that sits before route handlers.
 
-*   **Pytest**: Primary testing framework for unit and integration tests.
-*   **Coverage.py**: Measures test coverage to ensure a high percentage of code is tested.
-*   **Locust**: Performance testing tool to simulate user load and identify bottlenecks.
-*   **Structure**: Tests are organized in `tests/unit`, `tests/integration`, and `tests/performance`.
+## 3. Data Flow
 
-### 3.6. DevOps & Monitoring
+1.  **User Interaction**: Frontend sends an API request (e.g., create job) to the Backend API.
+2.  **API Gateway**: Express app receives the request.
+3.  **Middleware Chain**:
+    *   Security middleware (Helmet, XSS, Mongo Sanitize).
+    *   Rate limiting.
+    *   Authentication middleware (`verifyToken`) authenticates the user.
+    *   Authorization middleware (`authorize`) checks user's role/permissions.
+    *   Caching middleware checks Redis; if hit, returns cached response; if miss, proceeds.
+4.  **Controller**: Executes business logic specific to the request.
+    *   Interacts with `Models` (e.g., `ScrapingJob.create()`).
+    *   Invokes `Services` (e.g., `schedulerService.addJob()` or `scraperService.enqueueScrape()`).
+5.  **Models**: Interact with the PostgreSQL database using Knex.js to persist or retrieve data.
+6.  **Services**:
+    *   `SchedulerService`: Manages cron jobs. When a scheduled time arrives, it pushes a job to `ScraperService`.
+    *   `ScraperService`: Fetches web pages (using `fetch` for static, `Puppeteer` for dynamic), parses content with `Cheerio`, processes extracted data.
+    *   Logs job events to `job_logs` table via `ScrapingJob.logJob()`.
+    *   Stores scraped data into `scraped_data` table via `ScrapedData.create()`.
+    *   Updates `scraping_jobs` status.
+7.  **Response**:
+    *   Controller formats the response using `ApiResponse`.
+    *   If caching middleware was active, the response is stored in Redis before being sent back.
+    *   Express sends the response back to the Frontend.
 
-*   **Docker**: Containerization ensures consistent environments from development to production.
-*   **Docker Compose**: Orchestrates multi-container applications for local development and testing.
-*   **GitHub Actions**: Automates the CI/CD pipeline:
-    *   Runs tests on every push/pull request.
-    *   Builds Docker images.
-    *   (Conceptual) Deploys to a production environment (e.g., AWS ECS, Kubernetes).
-*   **Logging**: Python's `logging` module captures application events, errors, and access logs.
-*   **Sentry (Conceptual)**: For real-time error tracking and performance monitoring in production.
+## 4. Scalability Considerations
 
-## 4. Data Flow Example: Creating a Task
+*   **Stateless Backend**: The Express.js backend is largely stateless, allowing for easy horizontal scaling by running multiple instances behind a load balancer.
+*   **Separated Concerns**: Database, Redis, and application logic are in separate services, allowing them to be scaled independently.
+*   **Scraping Concurrency**: `ScraperService` manages internal concurrency to avoid overwhelming target sites or local resources. This can be adjusted via configuration.
+*   **Database**: PostgreSQL is highly scalable, especially with proper indexing and query optimization.
+*   **Redis**: Provides a fast, scalable caching layer.
 
-1.  **Client Request**: User sends a `POST` request to `/api/tasks/` with task details (JSON body) and a JWT in the Authorization header.
-2.  **Flask Route (`app/routes/tasks.py`)**:
-    *   The `create_task` function receives the request.
-    *   `@jwt_required()` decorator verifies the JWT and extracts the user identity.
-    *   Request JSON data is parsed.
-    *   `TaskService.create_task()` is called with the task data.
-3.  **Task Service (`app/services/task_service.py`)**:
-    *   Validates input data (e.g., `title`, `project_id`, `creator_id` are present).
-    *   Checks if `project_id`, `creator_id`, `assigned_to_id` correspond to existing resources using `Project.query.get()` and `User.query.get()`.
-    *   If validation passes, a new `Task` object is instantiated (`app/models/task.py`).
-    *   `db.session.add(task)` stages the new task for persistence.
-    *   `db.session.commit()` persists the task to the PostgreSQL database.
-    *   Returns the created `Task` object.
-4.  **Flask Route (Response)**:
-    *   The `Task` object is converted to a dictionary using `task.to_dict()`.
-    *   A JSON response with a `201 Created` status code is returned to the client.
-5.  **Logging**: Relevant actions are logged at different layers (route access, service operation, model creation) via decorators (`@log_route_access`, `@log_service_operation`, `@log_model_operation`).
+## 5. Security Measures
 
-## 5. Scalability Considerations
+*   **JWT Authentication**: Secure, token-based authentication.
+*   **Bcrypt Hashing**: Strong password hashing.
+*   **Role-Based Access Control**: Granular control over who can access what.
+*   **HTTPS (Deployment)**: Essential for securing communication in production (handled at load balancer/proxy level).
+*   **Security Headers**: `helmet` middleware for various HTTP header protections.
+*   **Input Sanitization**: `xss-clean` and `express-mongo-sanitize` (even for SQL, good practice).
+*   **Rate Limiting**: Protects against brute-force attacks and DDoS.
+*   **Environment Variables**: Sensitive information is stored in environment variables, not hardcoded.
 
-*   **Stateless API**: JWT authentication keeps the API stateless, enabling easy scaling of backend instances.
-*   **Database**: PostgreSQL can be scaled vertically or horizontally (e.g., read replicas).
-*   **Redis**: Provides offloading for database by caching data and handling rate limiting, reducing direct database hits.
-*   **Containerization**: Docker allows for easy deployment and scaling of services on container orchestration platforms (Kubernetes, AWS ECS, etc.).
-*   **Asynchronous Tasks**: For long-running operations (e.g., sending notifications, complex reports), integrating a message queue (e.g., Celery with Redis/RabbitMQ) would be beneficial, though not explicitly implemented in this basic version.
+## 6. Future Enhancements
+
+*   **Distributed Scraping**: Integrate with a message queue (e.g., RabbitMQ, Kafka) and a distributed task queue (e.g., BullMQ) for more robust and scalable job processing across multiple scraping worker instances.
+*   **Proxy Rotators**: Integrate with proxy services to avoid IP blocking from target websites.
+*   **CAPTCHA Solving**: Integration with CAPTCHA solving services.
+*   **Advanced Data Processing**: More complex data transformation, validation, and export options (CSV, Excel).
+*   **Webhook Notifications**: Notify external systems upon job completion or failure.
+*   **Monitoring Dashboards**: Integrate with Prometheus/Grafana for detailed metrics and alerts.
+*   **User Management UI**: A dedicated admin interface for managing users and their roles.
 ```
