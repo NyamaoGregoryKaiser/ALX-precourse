@@ -1,72 +1,167 @@
-```yaml
 name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build:
+  build-and-test-server:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb?schema=public
+      JWT_SECRET: supersecretjwtkeyforci
+      REDIS_URL: redis://localhost:6379
+      # Add other necessary server environment variables for testing
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake libpoco-dev libspdlog-dev libjwt-dev libpq-dev git
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-    - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build
+      - name: Install server dependencies
+        run: |
+          cd server
+          npm install
 
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config Release -j$(nproc)
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          until pg_isready -h localhost -p 5432 -U testuser; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready!"
 
-    - name: Run Unit and Integration Tests
-      run: |
-        cd ${{github.workspace}}/build
-        ctest --output-on-failure
-      env:
-        # Provide test environment variables if necessary, e.g., for test DB
-        DB_OPTIMIZER_DB_HOST: localhost
-        DB_OPTIMIZER_DB_PORT: 5432
-        DB_OPTIMIZER_DB_NAME: test_db_optimizer_db
-        DB_OPTIMIZER_DB_USER: test_user
-        DB_OPTIMIZER_DB_PASSWORD: test_password
-        DB_OPTIMIZER_JWT_SECRET: testSecret
+      - name: Run Prisma Migrations and Seed Test DB
+        run: |
+          cd server
+          npx prisma migrate reset --force --skip-generate --skip-seed
+          npx prisma migrate dev --name ci_init --skip-generate --skip-seed
+          npm run prisma:seed # Use the script defined in package.json
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
-  docker-build:
-    needs: build
+      - name: Build server
+        run: |
+          cd server
+          npm run build
+
+      - name: Run server tests
+        run: |
+          cd server
+          npm test
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+          # Pass other required envs for the server tests
+
+
+  build-and-test-client:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-    - name: Login to DockerHub
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Install client dependencies
+        run: |
+          cd client
+          npm install
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        file: docker/Dockerfile
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/db-optimizer:${{ github.sha }}
-          ${{ secrets.DOCKER_USERNAME }}/db-optimizer:latest
+      - name: Build client
+        run: |
+          cd client
+          npm run build
+        env:
+          REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Placeholder for build, actual API might be different in deploy
+
+      - name: Run client tests
+        run: |
+          cd client
+          npm test -- --ci --watchAll=false
+          # Note: CRA's `npm test` by default runs in watch mode.
+          # --ci --watchAll=false is needed for CI environments.
+
+  # Example deployment job (requires external setup, e.g., cloud provider, Docker Hub)
+  # deploy:
+  #   needs: [build-and-test-server, build-and-test-client]
+  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+
+  #     - name: Log in to Docker Hub
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
+
+  #     - name: Build and push server Docker image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: ./server
+  #         file: ./server/Dockerfile
+  #         push: true
+  #         tags: yourdockerusername/task-management-server:latest
+
+  #     - name: Build and push client Docker image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: ./client
+  #         file: ./client/Dockerfile
+  #         push: true
+  #         tags: yourdockerusername/task-management-client:latest
+  #         build-args: |
+  #           REACT_APP_API_BASE_URL=${{ secrets.PROD_API_BASE_URL }} # Use prod API URL
+
+  #     - name: Deploy to your server (e.g., SSH and run docker-compose pull/up)
+  #       uses: appleboy/ssh-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_KEY }}
+  #         script: |
+  #           cd /path/to/your/deployment
+  #           docker-compose pull
+  #           docker-compose up -d --build
+  #           docker system prune -f # Clean up old images
 ```

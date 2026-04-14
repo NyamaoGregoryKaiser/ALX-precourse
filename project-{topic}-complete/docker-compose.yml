@@ -1,64 +1,82 @@
-```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: ml-utils-postgres
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-ml_utils_db}
-      POSTGRES_USER: ${DB_USERNAME:-ml_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-ml_password}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: taskdb
+    volumes:
+      - task_db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ml_user} -d ${DB_NAME:-ml_utils_db}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U user -d taskdb"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ml-utils-backend
+  redis:
+    image: redis:7-alpine
     restart: always
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-ml_utils_db}
-      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-ml_user}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-ml_password}
-      JWT_SECRET: ${JWT_SECRET:-aStrongSecretKeyForJWTAuthenticationWhichShouldBeAtLeast32BytesLong}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      SPRING_FLYWAY_ENABLED: "true"
     ports:
-      - "8080:8080"
+      - "6379:6379"
     volumes:
-      - ./uploads:/app/uploads # Mount a volume for dataset uploads
+      - task_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://user:password@db:5432/taskdb?schema=public # Hostname 'db' for Docker network
+      REDIS_URL: redis://redis:6379 # Hostname 'redis' for Docker network
+      JWT_SECRET: supersecretjwtkey
+      JWT_EXPIRES_IN: 1h
+      CLIENT_URL: http://localhost:3000 # For CORS in dev
+    volumes:
+      - ./server:/usr/src/app # Mount source for hot-reloading in dev
+      - /usr/src/app/node_modules # Exclude node_modules from host mount
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:8080/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      redis:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npx ts-node prisma/seed.ts && npm run dev"
+    # ^ Use `npm run dev` for hot-reloading in development.
+    # For production, use `node dist/server.js` or `npm start` after `npm run build`.
 
-  frontend:
+  client:
     build:
-      context: ./frontend # Path to your React frontend directory
+      context: ./client
       dockerfile: Dockerfile
-    container_name: ml-utils-frontend
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # This is for local dev without Nginx proxying
     restart: always
     ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_URL: http://localhost:8080/api # Adjust if backend is on a different host/port
+      - "3000:80" # Map host port 3000 to container's port 80 (Nginx default)
+    volumes:
+      - ./client:/app # For live reload of client in dev
+      - /app/node_modules # Exclude node_modules from host mount
     depends_on:
-      - backend
+      - server
+    environment:
+      # These are for react-scripts start/build locally, and args for Dockerfile build stage
+      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1
+
 
 volumes:
-  postgres_data:
+  task_db_data:
+  task_redis_data:
 ```
