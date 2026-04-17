@@ -1,75 +1,51 @@
-```yaml
 version: '3.8'
 
 services:
-  db:
+  postgres:
     image: postgres:15-alpine
-    container_name: postgres_db
+    container_name: ecommerce-postgres
     environment:
-      POSTGRES_USER: ${DB_USER:-scraper_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-scraper_password}
-      POSTGRES_DB: ${DB_NAME:-scraper_db}
+      POSTGRES_DB: ecommerce_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    healthcheck: # Basic health check for database readiness
+      test: ["CMD-SHELL", "pg_isready -U admin -d ecommerce_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: redis_cache
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  backend:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: scraper_backend
-    environment:
-      PORT: 8000
-      NODE_ENV: development # Use development for dev environment in docker compose
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-scraper_user}
-      DB_PASSWORD: ${DB_PASSWORD:-scraper_password}
-      DB_NAME: ${DB_NAME:-scraper_db}
-      JWT_SECRET: ${JWT_SECRET:-a_dev_secret_key}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpassword}
-      SCRAPER_CONCURRENCY: ${SCRAPER_CONCURRENCY:-5}
-      # Puppeteer specific env for chrome path in container
-      CHROME_BIN: /usr/bin/chromium-browser
+    container_name: ecommerce-app
     ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app/backend # Mount backend source for hot-reloading (dev only)
-      - /app/backend/node_modules # Keep node_modules inside container
-      - /app/backend/src/public # Keep frontend build artifact here
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
+      - "8080:8080"
+    environment:
+      # These environment variables will override those set in the Dockerfile
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ecommerce_db
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      APP_JWT_SECRET: YourSuperSecretKeyForJWTGenerationAndValidationThatMustBeAtLeast256BitsLongAndStoredSecurely
+      # Optionally configure Spring profiles, e.g., 'prod', 'dev'
+      SPRING_PROFILES_ACTIVE: dev
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: sh -c "npm run migrate:latest && npm run seed:run && npm run dev" # Run migrations, seeds, then start dev server
-    # For production: command: sh -c "npm run migrate:latest && npm start"
+      postgres:
+        condition: service_healthy # Wait for postgres to be healthy
+    # For local development, bind mount source code for live reloading (optional)
+    # volumes:
+    #   - ./src:/app/src
+    #   - ~/.m2:/root/.m2 # Cache maven dependencies
+    # command: ["./mvnw", "spring-boot:run"] # Use this for hot-reloading in dev
 
 volumes:
   postgres_data:
-  redis_data:
 ```
+
+**`.github/workflows/ci-cd.yml`** (GitHub Actions Example)
+
+```yaml

@@ -1,224 +1,268 @@
-```markdown
-# Web Scraping Tools System - Deployment Guide
+# ALX E-commerce System - Deployment Guide
 
-This guide provides instructions for deploying the Web Scraping Tools System to a production environment using Docker and Docker Compose. While the `docker-compose.yml` is suitable for local development and small-scale deployments, for larger-scale production, consider Kubernetes or cloud-specific container services (AWS ECS, Google Cloud Run, Azure Container Apps).
+This document provides a guide for deploying the ALX E-commerce System backend to various environments. The application is containerized using Docker, simplifying the deployment process.
 
-## 1. Prerequisites
+## 1. Production Deployment Considerations
 
-*   A Linux-based server (Ubuntu, CentOS, etc.)
-*   Docker installed on the server
-*   Docker Compose installed on the server
-*   Git installed on the server
-*   Domain name (optional, but recommended for HTTPS)
-*   SSL/TLS certificate (e.g., Let's Encrypt with Nginx or Caddy)
-*   Access to `sudo` or root privileges
+Before deploying to production, ensure the following best practices are addressed:
 
-## 2. Server Setup
+*   **Secrets Management:** Never hardcode sensitive information (JWT secret, database credentials, API keys). Use environment variables, Docker secrets, Kubernetes secrets, or a dedicated secrets management service (e.g., AWS Secrets Manager, HashiCorp Vault).
+*   **HTTPS:** Always enforce HTTPS for all API traffic to ensure data encryption in transit. This typically involves configuring a load balancer or reverse proxy (like Nginx) for SSL/TLS termination.
+*   **Database Management:**
+    *   Use a managed database service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for production.
+    *   Ensure database backups, high availability, and disaster recovery strategies are in place.
+    *   Restrict database access to only the application server(s) via firewall rules.
+*   **Logging & Monitoring:** Set up centralized logging (e.g., ELK Stack, Grafana Loki) and application performance monitoring (APM) (e.g., Prometheus/Grafana, Datadog, New Relic) to proactively identify and resolve issues.
+*   **Scalability:** Design for horizontal scaling by running multiple instances of the application behind a load balancer. Ensure sessions are stateless (which our JWT-based auth already supports).
+*   **Security Groups/Firewalls:** Configure network security to allow only necessary inbound/outbound traffic (e.g., port 80/443 for web traffic, port 8080 from load balancer).
+*   **Rate Limiting:** Implement API rate limiting at the load balancer or application layer to protect against abuse and DDoS attacks.
+*   **Health Checks:** Configure health checks (`/actuator/health` if Spring Boot Actuator is added) for load balancers and container orchestrators to ensure traffic is only routed to healthy instances.
+*   **Resource Allocation:** Allocate sufficient CPU, memory, and storage resources based on expected load.
 
-1.  **Connect to your server**:
-    ```bash
-    ssh user@your_server_ip
-    ```
+## 2. Deployment with Docker Compose (Single Host)
 
-2.  **Update packages and install Docker/Docker Compose (if not already installed)**:
-    ```bash
-    sudo apt update
-    sudo apt upgrade -y
-    sudo apt install -y docker.io docker-compose git
-    sudo usermod -aG docker ${USER} # Add current user to docker group
-    # You might need to log out and log back in for the changes to take effect
-    exit
-    ```
-    (Log back in)
+This method is suitable for small-scale deployments, staging environments, or simplified production setups on a single server.
 
-3.  **Verify Docker installation**:
-    ```bash
-    docker --version
-    docker-compose --version
-    ```
+1.  **Prepare the Production Server:**
+    *   Provision a Linux server (e.g., AWS EC2, DigitalOcean Droplet, Linode).
+    *   Install **Docker Engine** and **Docker Compose** on the server.
+    *   Ensure firewall rules allow inbound traffic on port `80` (for HTTP) and `443` (for HTTPS) from the internet, and optionally `8080` for direct access if no reverse proxy.
 
-## 3. Clone the Repository
+2.  **Transfer Files:**
+    *   Copy `docker-compose.yml` to your server (e.g., `/opt/ecommerce-app/docker-compose.yml`).
+    *   **Important:** Create a `.env` file in the same directory as `docker-compose.yml` for production secrets.
+        ```
+        # .env (Example - DO NOT COMMIT THIS FILE TO GIT)
+        POSTGRES_DB=ecommerce_prod_db
+        POSTGRES_USER=your_prod_user
+        POSTGRES_PASSWORD=your_super_strong_db_password
+        SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce_prod_db
+        SPRING_DATASOURCE_USERNAME=your_prod_user
+        SPRING_DATASOURCE_PASSWORD=your_super_strong_db_password
+        APP_JWT_SECRET=A_VERY_LONG_AND_COMPLEX_RANDOM_STRING_FOR_PRODUCTION_JWT_SIGNING_THAT_IS_NOT_IN_GIT_HISTORY
+        # Other production specific environment variables
+        SPRING_PROFILES_ACTIVE=prod
+        ```
 
-1.  **Choose a directory for your project (e.g., `/opt/web-scraper`)**:
-    ```bash
-    sudo mkdir -p /opt/web-scraper
-    sudo chown ${USER}:${USER} /opt/web-scraper
-    cd /opt/web-scraper
-    git clone https://github.com/your-username/web-scraping-tools.git .
-    ```
+3.  **Deploy the Application:**
+    *   SSH into your server.
+    *   Navigate to the directory where you saved `docker-compose.yml` and `.env`.
+    *   Pull the latest Docker image (if you've pushed it to a registry like Docker Hub):
+        ```bash
+        docker pull your-dockerhub-username/ecommerce-backend:latest
+        ```
+        (Replace `your-dockerhub-username` with your actual Docker Hub username)
+    *   Start the services:
+        ```bash
+        docker-compose -f docker-compose.yml --env-file ./.env up -d
+        ```
+        This will:
+        *   Start the PostgreSQL container.
+        *   Start the Spring Boot application container.
+        *   Automatically run Flyway migrations and seed data.
 
-## 4. Configure Environment Variables
+4.  **Verification:**
+    *   Check container status: `docker-compose ps`
+    *   View logs: `docker-compose logs -f app`
+    *   Access the API at `http://YOUR_SERVER_IP:8080/swagger-ui.html` (if directly exposed).
 
-1.  **Create a `.env` file**:
-    ```bash
-    cp .env.example .env
-    ```
-
-2.  **Edit the `.env` file**:
-    ```bash
-    nano .env
-    ```
-    **Crucial variables to change for production:**
-
-    ```dotenv
-    # Application Configuration
-    PORT=8000 # Keep 8000 for internal container port, expose differently via reverse proxy
-    NODE_ENV=production # IMPORTANT!
-
-    # Database Configuration (PostgreSQL)
-    # Use strong, random passwords. If using an external managed DB, adjust DB_HOST, DB_PORT
-    DB_HOST=db # Internal Docker service name if using docker-compose db
-    DB_PORT=5432
-    DB_USER=your_secure_db_user
-    DB_PASSWORD=your_secure_db_password
-    DB_NAME=your_production_db_name
-
-    # JWT Configuration - GENERATE A NEW, LONG, RANDOM SECRET
-    JWT_SECRET=super_long_and_random_production_jwt_secret_!!!!!!!
-    JWT_ACCESS_EXPIRATION_MINUTES=60
-    JWT_REFRESH_EXPIRATION_DAYS=30
-
-    # Redis Configuration
-    REDIS_HOST=redis # Internal Docker service name
-    REDIS_PORT=6379
-
-    # Admin User Seed Data - CHANGE THIS TO SECURE VALUES FOR PROD SEEDING
-    # This will only be used if the database is empty and seeds are run.
-    ADMIN_EMAIL=your_admin_email@example.com
-    ADMIN_PASSWORD=your_super_strong_admin_password
-
-    # Scraper Configuration
-    SCRAPER_CONCURRENCY=5 # Adjust based on server resources and target site policies
-
-    # Frontend API URL - This should point to your public API endpoint (e.g., https://api.yourdomain.com/api)
-    REACT_APP_API_URL=http://localhost:8000/api # During build, this is used. For production, the backend serves the frontend.
-
-    # Puppeteer Specific - If using different chrome path
-    # CHROME_BIN=/usr/bin/chromium-browser
-    ```
-
-    **Important Considerations**:
-    *   **Passwords**: Use strong, unique passwords for DB, JWT, and admin user.
-    *   **`NODE_ENV=production`**: This enables production optimizations, stricter error handling, and security measures in the backend.
-    *   **`JWT_SECRET`**: Generate a cryptographically secure random string. Never share it.
-    *   **`ADMIN_EMAIL` / `ADMIN_PASSWORD`**: These are used for seeding the initial admin user. Once seeded, you can manage users via the application. It's recommended to remove them from `.env` or comment them out after the first successful deployment/seeding.
-
-## 5. Docker Compose Configuration for Production
-
-The provided `docker-compose.yml` is generally suitable. However, ensure the backend `command` is set for production.
-
-**Modify `docker-compose.yml` (if needed)**:
-
-Open `docker-compose.yml` and locate the `backend` service.
-Change the `command` line from development to production:
-
-```yaml
-  backend:
-    # ... other configurations ...
-    command: sh -c "npm run migrate:latest && npm start" # For production
-    # command: sh -c "npm run migrate:latest && npm run seed:run && npm run dev" # For dev
-```
-
-*   `npm run migrate:latest`: Ensures all database migrations are applied.
-*   `npm start`: Starts the Node.js backend in production mode.
-*   **Optional `seed:run`**: If you want to re-seed data on every `up --build` (e.g., for staging environments), you can add `npm run seed:run` before `npm start`. For a persistent production database, you typically seed once manually or via CI/CD.
-
-## 6. Build and Run the Stack
-
-1.  **Build the Docker images**:
-    This step will build the backend image, which includes building the React frontend and placing its static assets into the backend's `src/public` directory.
-    ```bash
-    docker-compose build
-    ```
-
-2.  **Start the services**:
-    ```bash
-    docker-compose up -d
-    ```
-    The `-d` flag runs the containers in detached mode (in the background).
-
-3.  **Verify services are running**:
-    ```bash
-    docker-compose ps
-    ```
-    You should see `Up (healthy)` for `db` and `redis`, and `Up` for `backend`.
-
-4.  **Check logs for initial setup**:
-    ```bash
-    docker-compose logs backend
-    ```
-    Look for messages indicating successful DB connection, migrations, and server listening.
-
-## 7. Setup a Reverse Proxy (Nginx/Caddy - Recommended for Production)
-
-Directly exposing the Node.js app on port 8000 is not recommended for production. A reverse proxy (like Nginx or Caddy) provides:
-*   **HTTPS**: Essential for securing traffic.
-*   **Load Balancing**: If you scale your backend to multiple instances.
-*   **Static File Serving**: Nginx/Caddy can efficiently serve static files (like your React build) directly, offloading this from your Node.js app.
-*   **Security**: Additional layer of protection.
-
-### Example Nginx Configuration
-
-1.  **Install Nginx**:
-    ```bash
-    sudo apt install nginx -y
-    ```
-
-2.  **Create a new Nginx configuration file**:
-    ```bash
-    sudo nano /etc/nginx/sites-available/web-scraper
-    ```
-
-3.  **Add the following configuration (replace `yourdomain.com` with your actual domain):**
-
-    ```nginx
-    server {
-        listen 80;
-        server_name yourdomain.com www.yourdomain.com;
-        return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
-    }
-
-    server {
-        listen 443 ssl;
-        server_name yourdomain.com www.yourdomain.com;
-
-        # SSL Configuration (replace with your actual certificate paths)
-        ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-        include /etc/letsencrypt/options-ssl-nginx.conf; # Recommended SSL settings
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # Diffie-Hellman parameters
-
-        location / {
-            proxy_pass http://localhost:8000; # Pass requests to your backend container
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+5.  **Setting up a Reverse Proxy (Recommended for Production):**
+    *   Install Nginx on your server.
+    *   Configure Nginx to:
+        *   Listen on ports 80 and 443.
+        *   Proxy requests to `http://localhost:8080` (your `app` service).
+        *   Handle SSL/TLS termination (using Let's Encrypt or your own certificates).
+        *   Add HTTP security headers.
+        *   Implement basic rate limiting.
+    *   Example Nginx configuration snippet for `your_domain.com`:
+        ```nginx
+        server {
+            listen 80;
+            listen [::]:80;
+            server_name your_domain.com;
+            return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
         }
 
-        # Optional: If you want Nginx to serve static files from the backend container directly
-        # You would need to map the /app/backend/src/public volume from backend service
-        # to a host path and then configure Nginx to serve from that host path.
-        # This is not implemented in the current Dockerfile/docker-compose.yml for simplicity.
-        # The current Dockerfile bundles frontend into backend, so backend serves it.
-    }
-    ```
-    *   **HTTPS**: You'll need to obtain SSL certificates (e.g., using Certbot for Let's Encrypt). Follow Certbot's instructions for Nginx.
-    *   `proxy_pass http://localhost:8000;`: This assumes Nginx is running directly on the host and can access port 8000 of the Docker container (which is mapped in `docker-compose.yml`).
+        server {
+            listen 443 ssl http2;
+            listen [::]:443 ssl http2;
+            server_name your_domain.com;
 
-4.  **Enable the Nginx configuration**:
+            ssl_certificate /etc/nginx/ssl/your_domain.com/fullchain.pem; # Path to your SSL cert
+            ssl_certificate_key /etc/nginx/ssl/your_domain.com/privkey.pem; # Path to your SSL key
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20";
+            ssl_prefer_server_ciphers on;
+
+            location / {
+                proxy_pass http://localhost:8080; # Forward to your Spring Boot app
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_redirect off;
+            }
+        }
+        ```
+    *   After configuring Nginx, reload its configuration: `sudo nginx -t && sudo systemctl reload nginx`.
+
+## 3. Deployment to Kubernetes (Advanced/Cloud)
+
+For larger-scale, highly available, and resilient deployments, Kubernetes is the preferred choice.
+
+1.  **Set up a Kubernetes Cluster:**
+    *   Use a managed Kubernetes service (EKS, AKS, GKE) or set up your own.
+
+2.  **Managed Database Service:**
+    *   **Strongly Recommended:** Use a cloud-managed PostgreSQL service (e.g., AWS RDS PostgreSQL, Azure Database for PostgreSQL, Google Cloud SQL for PostgreSQL) instead of running PostgreSQL directly in Kubernetes. This offloads database management, backups, and scaling.
+
+3.  **Container Registry:**
+    *   Ensure your Docker image is pushed to a reliable container registry (e.g., Docker Hub, AWS ECR, Google Container Registry). The CI/CD pipeline is configured to push to Docker Hub.
+
+4.  **Kubernetes Manifests:**
+    *   Create `Deployment` and `Service` manifests for your backend application.
+    *   **`deployment.yaml` (Example):**
+        ```yaml
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ecommerce-backend-deployment
+          labels:
+            app: ecommerce-backend
+        spec:
+          replicas: 3 # Run multiple instances for high availability
+          selector:
+            matchLabels:
+              app: ecommerce-backend
+          template:
+            metadata:
+              labels:
+                app: ecommerce-backend
+            spec:
+              containers:
+              - name: ecommerce-backend
+                image: your-dockerhub-username/ecommerce-backend:latest # Your image
+                ports:
+                - containerPort: 8080
+                env:
+                - name: SPRING_DATASOURCE_URL
+                  value: "jdbc:postgresql://your-managed-db-host:5432/ecommerce_prod_db" # Use your managed DB endpoint
+                - name: SPRING_DATASOURCE_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-secrets # Kubernetes secret for DB user
+                      key: db_username
+                - name: SPRING_DATASOURCE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-secrets # Kubernetes secret for DB password
+                      key: db_password
+                - name: APP_JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets # Kubernetes secret for JWT secret
+                      key: jwt_secret
+                resources: # Define resource limits and requests
+                  requests:
+                    memory: "512Mi"
+                    cpu: "250m"
+                  limits:
+                    memory: "1Gi"
+                    cpu: "500m"
+                readinessProbe: # For Kubernetes to know when the app is ready to receive traffic
+                  httpGet:
+                    path: /actuator/health/readiness # Requires Spring Boot Actuator
+                    port: 8080
+                  initialDelaySeconds: 20
+                  periodSeconds: 10
+                livenessProbe: # For Kubernetes to know when the app is healthy
+                  httpGet:
+                    path: /actuator/health/liveness # Requires Spring Boot Actuator
+                    port: 8080
+                  initialDelaySeconds: 60
+                  periodSeconds: 30
+        ```
+    *   **`service.yaml` (Example):**
+        ```yaml
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ecommerce-backend-service
+          labels:
+            app: ecommerce-backend
+        spec:
+          selector:
+            app: ecommerce-backend
+          ports:
+            - protocol: TCP
+              port: 80
+              targetPort: 8080
+          type: LoadBalancer # Creates an external load balancer (cloud provider specific)
+        ```
+    *   **`secrets.yaml` (Example - for `db-secrets` and `app-secrets`):**
+        ```yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: db-secrets
+        type: Opaque
+        data:
+          db_username: YWRtaW4= # base64 encoded 'admin'
+          db_password: cGFzc3dvcmQ= # base64 encoded 'password' - USE REAL STRONG PASSWORDS!
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: app-secrets
+        type: Opaque
+        data:
+          jwt_secret: WW91clN1cGVyU2VjcmV0S2V5Rm9ySl... # base64 encoded AppConstants.JWT_SECRET - USE REAL STRONG SECRETS!
+        ```
+        **NOTE:** For production, use `kubectl create secret generic <name> --from-literal=<key>=<value>` or a secrets management solution like Vault, AWS Secrets Manager, or Kubernetes External Secrets. Do NOT commit base64 encoded secrets to Git.
+
+5.  **Deployment Steps:**
+    *   Apply your secrets (create once):
+        ```bash
+        kubectl apply -f secrets.yaml
+        ```
+    *   Apply your deployment and service:
+        ```bash
+        kubectl apply -f deployment.yaml
+        kubectl apply -f service.yaml
+        ```
+    *   Monitor rollout: `kubectl rollout status deployment/ecommerce-backend-deployment`
+    *   Get external IP of service: `kubectl get service ecommerce-backend-service`
+
+## 4. CI/CD Integration
+
+The provided `.github/workflows/ci-cd.yml` demonstrates a basic GitHub Actions pipeline:
+
+*   **Continuous Integration (CI):** On every `push` or `pull_request` to `main` or `develop`:
+    *   Builds the application.
+    *   Runs all tests.
+    *   Creates a Docker image (for `main` branch).
+*   **Continuous Deployment (CD):** On `push` to the `main` branch:
+    *   Triggers a `deploy` job. This job requires custom scripting based on your chosen deployment platform (e.g., SSH, `kubectl`, cloud CLI tools).
+    *   **GitHub Secrets:** For production deployments, ensure sensitive credentials (SSH keys, cloud API tokens, Docker Hub credentials) are stored as GitHub Secrets and accessed securely within the workflow.
+
+**Example `PROD_SSH_KEY` GitHub Secret for SSH deployment:**
+Store your private SSH key in GitHub Secrets named `PROD_SSH_KEY` to be used by the `ssh-action`.
+
+## 5. Rollbacks
+
+*   **Docker Compose:** Stop containers and restart with a previous image version:
     ```bash
-    sudo ln -s /etc/nginx/sites-available/web-scraper /etc/nginx/sites-enabled/
-    sudo nginx -t # Test Nginx configuration for syntax errors
-    sudo systemctl restart nginx
+    docker-compose stop app
+    docker-compose rm -f app
+    docker pull your-dockerhub-username/ecommerce-backend:v1.0.0 # Pull previous version
+    docker-compose up -d # Will use the pulled image
+    ```
+*   **Kubernetes:** Use `kubectl rollout undo` to revert to a previous deployment revision:
+    ```bash
+    kubectl rollout undo deployment/ecommerce-backend-deployment
     ```
 
-## 8. Continuous Integration / Continuous Deployment (CI/CD)
-
-The `.github/workflows/main.yml` provides a basic GitHub Actions workflow.
-
-### `.github/workflows/main.yml`
+This guide covers common deployment patterns. Adapt it to your specific infrastructure and organizational requirements. Always prioritize security, reliability, and observability in production environments.
+```

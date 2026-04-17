@@ -1,205 +1,372 @@
-```markdown
-# Web Scraping Tools System
+# ALX E-commerce System Backend
 
-This is a comprehensive, production-ready web scraping tools system built with a Node.js/Express backend, PostgreSQL database, React frontend, and Docker for containerization. It's designed to be robust, scalable, and includes features essential for enterprise-grade applications like authentication, authorization, logging, caching, and scheduling.
+This is a comprehensive, production-ready E-commerce solutions system built with Java (Spring Boot), PostgreSQL, and Docker. It provides a robust backend API for managing products, categories, users, orders, and more.
 
 ## Table of Contents
 
--   [Project Overview](#project-overview)
--   [Features](#features)
--   [Technology Stack](#technology-stack)
--   [Getting Started](#getting-started)
-    -   [Prerequisites](#prerequisites)
-    -   [Local Development Setup](#local-development-setup)
-    -   [Running with Docker Compose](#running-with-docker-compose)
--   [API Documentation](#api-documentation)
--   [Architecture Documentation](#architecture-documentation)
--   [Testing](#testing)
--   [Deployment Guide](#deployment-guide)
--   [Contributing](#contributing)
--   [License](#license)
+1.  [Features](#features)
+2.  [Technologies Used](#technologies-used)
+3.  [Prerequisites](#prerequisites)
+4.  [Getting Started](#getting-started)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+5.  [Database](#database)
+    *   [Migrations](#migrations)
+    *   [Seed Data](#seed-data)
+6.  [API Endpoints](#api-endpoints)
+7.  [Authentication & Authorization](#authentication--authorization)
+8.  [Testing](#testing)
+    *   [Running Tests](#running-tests)
+    *   [Test Coverage](#test-coverage)
+9.  [Logging & Monitoring](#logging--monitoring)
+10. [Caching](#caching)
+11. [CI/CD](#cicd)
+12. [Deployment](#deployment)
+13. [Frontend (Conceptual)](#frontend-conceptual)
+14. [Contributing](#contributing)
+15. [License](#license)
 
-## Project Overview
+## 1. Features
 
-The system provides a platform for users to create, manage, and monitor web scraping jobs. It supports both static (Cheerio) and dynamic (Puppeteer) scraping, allowing it to handle a wide range of websites. Scraped data is stored, and jobs can be scheduled to run at regular intervals.
+*   **User Management:** Registration, login, user profiles (Admin/User roles).
+*   **Authentication & Authorization:** JWT-based security with Spring Security. Role-based access control.
+*   **Product Management:** CRUD operations for products, search, pagination.
+*   **Category Management:** CRUD operations for product categories.
+*   **Order Management:** Create orders, view user-specific orders, update order status (Admin).
+*   **Reviews:** Product reviews and ratings.
+*   **Database:** PostgreSQL for persistent data storage.
+*   **API Documentation:** OpenAPI (Swagger UI) for interactive API exploration.
+*   **Caching:** In-memory caching with Caffeine to improve performance.
+*   **Error Handling:** Global exception handling for consistent API responses.
+*   **Logging:** Structured logging with Logback.
+*   **Containerization:** Docker for easy deployment and local development.
+*   **Database Migrations:** Flyway for schema evolution.
+*   **Testing:** Comprehensive unit, integration, and API tests.
+*   **CI/CD:** GitHub Actions workflow for automated build, test, and deployment.
 
-## Features
+## 2. Technologies Used
 
-*   **User Authentication & Authorization**: Secure JWT-based login, registration, and role-based access control (User/Admin).
-*   **Scraping Job Management**: CRUD operations for scraping jobs.
-    *   Define `start_url`, `scrape_type` (static/dynamic), and CSS `selectors` for data extraction.
-    *   Set `schedule_cron` for recurring jobs.
-    *   Manually trigger jobs immediately.
-*   **Data Storage**: Scraped data and job logs are stored in PostgreSQL.
-*   **Scraping Engine**:
-    *   Utilizes `Cheerio` for efficient static HTML parsing.
-    *   Utilizes `Puppeteer` for dynamic content rendering (JavaScript-heavy sites).
-    *   Configurable concurrency for scraping tasks.
-*   **Job Scheduling**: `node-cron` integration for scheduling jobs based on cron expressions.
-*   **API Endpoints**: RESTful API for all system functionalities.
-*   **Caching Layer**: Redis integration to cache API responses for improved performance.
-*   **Rate Limiting**: Protects API endpoints from abuse.
-*   **Logging & Monitoring**: Comprehensive logging using Winston to track application events and errors.
-*   **Centralized Error Handling**: Robust middleware for consistent error responses.
-*   **Database Migrations & Seeding**: Managed with Knex.js for structured schema evolution and initial data population.
-*   **Containerization**: Docker and Docker Compose for easy setup and deployment across environments.
-*   **Testing**: Unit, Integration, and API tests to ensure code quality and functionality.
-*   **Frontend Dashboard**: A React.js SPA for user interaction, job creation, data visualization, and log viewing.
+*   **Java:** 17+
+*   **Spring Boot:** 3.x
+*   **Maven:** Build automation tool
+*   **PostgreSQL:** Relational database
+*   **Spring Data JPA:** ORM for database interaction
+*   **Spring Security:** Authentication and authorization
+*   **JJWT:** JSON Web Token implementation
+*   **Flyway:** Database migration tool
+*   **Lombok:** Boilerplate code reduction
+*   **SpringDoc OpenAPI:** API documentation (Swagger UI)
+*   **Caffeine:** High-performance in-memory caching library
+*   **Docker & Docker Compose:** Containerization
+*   **JUnit 5, Mockito, Testcontainers:** Testing frameworks
+*   **JaCoCo:** Code coverage reports
+*   **GitHub Actions:** CI/CD
 
-## Technology Stack
+## 3. Prerequisites
 
-### Backend
-*   **Runtime**: Node.js (v18+)
-*   **Framework**: Express.js
-*   **Database**: PostgreSQL
-*   **ORM/Query Builder**: Knex.js
-*   **Scraping**: Puppeteer, Cheerio
-*   **Caching**: Redis
-*   **Authentication**: JWT (jsonwebtoken), bcryptjs
-*   **Logging**: Winston
-*   **Scheduling**: node-cron
-*   **Security**: helmet, xss-clean, express-mongo-sanitize, express-rate-limit
+Before you begin, ensure you have the following installed:
 
-### Frontend
-*   **Framework**: React.js
-*   **State Management**: React Hooks (built-in)
-*   **Routing**: React Router DOM
-*   **API Client**: Axios
-*   **Styling**: Tailwind CSS
-*   **Modals**: react-modal
+*   **Java Development Kit (JDK) 17 or higher**
+*   **Maven 3.6.x or higher**
+*   **Docker Desktop** (includes Docker Engine and Docker Compose)
+*   **Git**
 
-### Infrastructure
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-
-## Getting Started
-
-### Prerequisites
-
-*   Git
-*   Node.js (v18+)
-*   npm (or yarn)
-*   Docker & Docker Compose (recommended for easy setup)
+## 4. Getting Started
 
 ### Local Development Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/web-scraping-tools.git
-    cd web-scraping-tools
+    git clone https://github.com/your-username/ecommerce-system.git
+    cd ecommerce-system
     ```
 
-2.  **Backend Setup:**
+2.  **Start PostgreSQL database locally (without Docker Compose):**
+    You can manually run a PostgreSQL instance or use a tool like `pgAdmin`.
+    Ensure you create a database named `ecommerce_db` with user `admin` and password `password`.
+
+3.  **Update `application.properties` (if not using default Docker Compose values):**
+    Edit `src/main/resources/application.properties` to point to your local PostgreSQL instance if it differs from the defaults (`localhost:5432`, `ecommerce_db`, `admin`, `password`).
+
+4.  **Run Flyway Migrations (optional, if not using Spring Boot's auto-migration or Docker Compose):**
     ```bash
-    cd backend
-    npm install
-    cp .env.example .env # Edit .env as needed, particularly database and JWT_SECRET
-    # Make sure PostgreSQL is running locally or configured in .env
-    # Example for local PostgreSQL (if not using Docker Compose):
-    # psql -U postgres
-    # CREATE USER scraper_user WITH PASSWORD 'scraper_password';
-    # CREATE DATABASE scraper_db OWNER scraper_user;
-    knex --knexfile src/db/knexfile.js migrate:latest
-    knex --knexfile src/db/knexfile.js seed:run
-    npm run dev # Starts the backend server with nodemon
+    mvn flyway:migrate
+    ```
+    Spring Boot will run migrations automatically on startup if `spring.flyway.enabled=true`.
+
+5.  **Build and run the Spring Boot application:**
+    ```bash
+    mvn clean install
+    mvn spring-boot:run
+    ```
+    The application will start on `http://localhost:8080`.
+
+### Running with Docker Compose
+
+This is the recommended way to run the application and its database for local development.
+
+1.  **Build the Docker image (if not already built by CI/CD or `docker-compose up`):**
+    ```bash
+    docker build -t ecommerce-backend:latest .
     ```
 
-3.  **Frontend Setup:**
+2.  **Start the application and PostgreSQL database:**
     ```bash
-    cd ../frontend
-    npm install
-    cp .env.example .env # Ensure REACT_APP_API_URL points to your backend (default: http://localhost:8000/api)
-    npm start # Starts the React development server
+    docker-compose up --build -d
     ```
+    *   `--build`: Rebuilds the Docker image for the `app` service.
+    *   `-d`: Runs containers in detached mode (in the background).
+
+3.  **Verify containers are running:**
+    ```bash
+    docker-compose ps
+    ```
+    You should see `ecommerce-postgres` and `ecommerce-app` listed as `Up`.
 
 4.  **Access the application:**
-    *   Frontend: `http://localhost:3000`
-    *   Backend API: `http://localhost:8000/api`
+    *   The backend API will be available at `http://localhost:8080`.
+    *   Swagger UI (API documentation) will be at `http://localhost:8080/swagger-ui.html`.
 
-### Running with Docker Compose (Recommended)
-
-This is the easiest way to get all services (PostgreSQL, Redis, Backend, Frontend) running.
-
-1.  **Create `.env` file:**
+5.  **Stop the containers:**
     ```bash
-    cp .env.example .env
-    ```
-    Edit the `.env` file to customize database credentials, JWT secret, etc. The Docker Compose file will pick these up.
-
-2.  **Build and run the services:**
-    ```bash
-    docker-compose up --build
-    ```
-    This command will:
-    *   Build the `backend` image (which also builds the React frontend inside it).
-    *   Pull `postgres` and `redis` images.
-    *   Start all services.
-    *   Run database migrations and seeds on the backend service start.
-
-3.  **Access the application:**
-    *   The frontend (served by the backend Express app) will be available at `http://localhost:8000`.
-    *   The backend API will also be at `http://localhost:8000/api`.
-
-    **Default Admin Credentials (from `backend/.env.example` or `.env`):**
-    *   Email: `admin@example.com`
-    *   Password: `adminpassword`
-
-## API Documentation
-
-Refer to [API_DOCS.md](API_DOCS.md) for detailed information on all available API endpoints, request/response formats, and authentication requirements.
-
-## Architecture Documentation
-
-Refer to [ARCHITECTURE.md](ARCHITECTURE.md) for a deeper dive into the system's design, component interactions, and technical decisions.
-
-## Testing
-
-The project includes a comprehensive test suite:
-
-**Backend Tests (from `backend/` directory):**
-
-*   **Unit Tests**:
-    ```bash
-    npm run test:unit
-    ```
-*   **Integration Tests**:
-    ```bash
-    npm run test:integration
-    ```
-*   **API Tests**:
-    ```bash
-    npm run test:api
-    ```
-*   **All Backend Tests with Coverage (aims for 80%+):**
-    ```bash
-    npm test
+    docker-compose down
     ```
 
-**Frontend Tests (from `frontend/` directory):**
+## 5. Database
 
-*   **Unit Tests (React Testing Library):**
-    ```bash
-    npm test
-    ```
+The system uses **PostgreSQL** as its relational database.
 
-## Deployment Guide
+### Migrations
 
-Refer to [DEPLOYMENT.md](DEPLOYMENT.md) for instructions on deploying this system to a production environment.
+**Flyway** is used for database schema migrations.
+*   Migration scripts are located in `src/main/resources/db/migration/`.
+*   Spring Boot automatically runs Flyway migrations on startup if `spring.flyway.enabled=true`.
 
-## Contributing
+### Seed Data
+
+*   `V2__Seed_Data.sql` contains initial data for roles, admin/user accounts, categories, products, and some sample reviews/orders.
+*   The admin user credentials are:
+    *   **Username:** `admin`
+    *   **Password:** `adminpass`
+*   The regular user credentials are:
+    *   **Username:** `john.doe`
+    *   **Password:** `userpass`
+
+## 6. API Endpoints
+
+The API documentation is available via **Swagger UI** once the application is running:
+`http://localhost:8080/swagger-ui.html`
+
+A brief overview of key endpoints:
+
+*   **Authentication:**
+    *   `POST /api/v1/auth/register`: Register a new user.
+    *   `POST /api/v1/auth/login`: Authenticate and get a JWT token.
+*   **Products:**
+    *   `POST /api/v1/products` (ADMIN): Create product.
+    *   `GET /api/v1/products`: Get all products (paginated).
+    *   `GET /api/v1/products/{id}`: Get product by ID.
+    *   `PUT /api/v1/products/{id}` (ADMIN): Update product.
+    *   `DELETE /api/v1/products/{id}` (ADMIN): Delete product.
+    *   `GET /api/v1/products/search?q={query}`: Search products.
+*   **Categories:**
+    *   `POST /api/v1/categories` (ADMIN): Create category.
+    *   `GET /api/v1/categories`: Get all categories (paginated).
+    *   `GET /api/v1/categories/{id}`: Get category by ID.
+    *   `PUT /api/v1/categories/{id}` (ADMIN): Update category.
+    *   `DELETE /api/v1/categories/{id}` (ADMIN): Delete category.
+*   **Users:**
+    *   `GET /api/v1/users` (ADMIN): Get all users (paginated).
+    *   `GET /api/v1/users/{id}` (ADMIN or Owner): Get user by ID.
+    *   `PUT /api/v1/users/{id}` (ADMIN or Owner): Update user.
+    *   `DELETE /api/v1/users/{id}` (ADMIN): Delete user.
+*   **Orders:**
+    *   `POST /api/v1/orders` (USER/ADMIN): Create a new order.
+    *   `GET /api/v1/orders/{id}` (ADMIN or Owner): Get order by ID.
+    *   `GET /api/v1/orders/my-orders` (USER/ADMIN): Get orders for the authenticated user.
+    *   `GET /api/v1/orders` (ADMIN): Get all orders (paginated).
+    *   `PATCH /api/v1/orders/{id}/status` (ADMIN): Update order status.
+    *   `DELETE /api/v1/orders/{id}` (ADMIN): Delete order.
+
+## 7. Authentication & Authorization
+
+The system uses **JWT (JSON Web Tokens)** for securing API endpoints.
+
+*   **Registration:** New users register with `ROLE_USER` by default.
+*   **Login:** Upon successful login, a JWT `accessToken` is returned.
+*   **Accessing Protected Resources:** The JWT token must be included in the `Authorization` header of subsequent requests, prefixed with `Bearer `.
+    Example: `Authorization: Bearer <your_jwt_token>`
+*   **Role-Based Access Control (RBAC):**
+    *   `ROLE_ADMIN`: Has full access to all CRUD operations on products, categories, users, and orders.
+    *   `ROLE_USER`: Can register, login, view products/categories, create orders, view their own orders and profile.
+    *   Spring Security's `@PreAuthorize` is used to enforce these rules.
+
+## 8. Testing
+
+The project emphasizes quality through comprehensive testing.
+
+### Running Tests
+
+To run all unit and integration tests:
+```bash
+mvn test
+```
+
+### Test Coverage
+
+**JaCoCo** is integrated to generate code coverage reports.
+After running `mvn clean install`, you can find the report at:
+`target/site/jacoco/index.html`
+
+The `pom.xml` is configured to fail the build if line coverage drops below 80% or branch coverage below 70%.
+
+## 9. Logging & Monitoring
+
+*   **Logging:** `SLF4J` with `Logback` is used for structured logging.
+    *   Configuration is in `src/main/resources/logback-spring.xml`.
+    *   Logs are written to `console` and a `rolling file` (`logs/ecommerce-system.log`).
+    *   Log levels can be configured in `application.properties` and `logback-spring.xml`.
+*   **Monitoring (Conceptual):** For production, integrate with tools like:
+    *   **Prometheus:** For metrics collection (e.g., JVM, HTTP requests, custom business metrics via Micrometer).
+    *   **Grafana:** For dashboarding and visualizing metrics.
+    *   **Loki:** For centralizing logs from multiple services.
+
+## 10. Caching
+
+*   **Spring Cache Abstraction** with **Caffeine** is used for in-memory caching.
+*   The `CacheConfig.java` defines cache managers and expiration policies for different data types (products, categories, users).
+*   `@Cacheable`, `@CachePut`, and `@CacheEvict` annotations are used in service methods to manage caching behavior.
+
+## 11. CI/CD
+
+A **GitHub Actions** workflow (`.github/workflows/ci-cd.yml`) is configured for continuous integration and continuous deployment:
+
+*   **Build & Test:** On every push or pull request to `main` or `develop` branches:
+    *   Checks out code.
+    *   Sets up JDK.
+    *   Builds the project with Maven.
+    *   Runs all tests (unit and integration).
+    *   Generates and uploads JaCoCo coverage reports.
+    *   Builds and pushes a Docker image to Docker Hub (only on `main` branch).
+*   **Deploy:** On successful build/test on the `main` branch:
+    *   Triggers a placeholder deployment script. This should be customized to your specific deployment environment (e.g., SSH to a server, Kubernetes deployment, cloud services).
+
+## 12. Deployment
+
+The application is containerized with Docker, making deployment straightforward.
+
+**Production Deployment Options:**
+
+1.  **Docker Host:**
+    *   Provision a Linux server.
+    *   Install Docker and Docker Compose.
+    *   Copy `docker-compose.yml` to the server.
+    *   Ensure environment variables for PostgreSQL and JWT secret are set securely (e.g., via `.env` file or directly in `docker-compose.yml` but avoid committing secrets).
+    *   `docker-compose up -d`
+    *   Consider a reverse proxy like Nginx for SSL termination, rate limiting, and domain routing.
+
+2.  **Kubernetes:**
+    *   Create Kubernetes deployment and service manifests (e.g., `deployment.yaml`, `service.yaml`) for the backend and PostgreSQL.
+    *   Use a managed PostgreSQL service (e.g., AWS RDS, Azure Database for PostgreSQL) instead of running PostgreSQL in Kubernetes for production.
+    *   Deploy using `kubectl apply -f <manifests>`.
+
+3.  **Cloud Platforms (PaaS):**
+    *   **AWS Elastic Beanstalk / ECS Fargate:** Deploy the Docker image directly.
+    *   **Azure App Service / Container Instances:** Deploy the Docker image.
+    *   **Google Cloud Run / App Engine:** Deploy the Docker image.
+
+**Important Security Considerations for Production:**
+
+*   **Environment Variables:** Never hardcode sensitive information (JWT secret, database credentials). Use environment variables, Docker secrets, or Kubernetes secrets.
+*   **HTTPS:** Always use HTTPS in production. Configure a load balancer or reverse proxy for SSL termination.
+*   **Firewall:** Restrict database access to only the application server.
+*   **Rate Limiting:** Implement robust rate limiting at the API Gateway or application level to prevent abuse. (Conceptual in this project, but can be added via Spring Cloud Gateway or Bucket4j).
+*   **Monitoring & Alerts:** Set up continuous monitoring and alerts for application health, performance, and security events.
+
+## 13. Frontend (Conceptual)
+
+This repository focuses on the backend implementation. A separate frontend application (e.g., built with React, Angular, or Vue.js) would consume these REST APIs.
+
+**Example Frontend Interaction:**
+
+```javascript
+// Example: React component for login
+import React, { useState } from 'react';
+import axios from 'axios';
+
+function LoginComponent() {
+    const [usernameOrEmail, setUsernameOrEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [message, setMessage] = useState('');
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        try {
+            const response = await axios.post('http://localhost:8080/api/v1/auth/login', {
+                usernameOrEmail,
+                password,
+            });
+            localStorage.setItem('jwtToken', response.data.accessToken);
+            setMessage('Login successful!');
+            // Redirect to dashboard or home page
+        } catch (error) {
+            setMessage(error.response?.data?.message || 'Login failed.');
+        }
+    };
+
+    return (
+        <form onSubmit={handleLogin}>
+            <h2>Login</h2>
+            <input
+                type="text"
+                placeholder="Username or Email"
+                value={usernameOrEmail}
+                onChange={(e) => setUsernameOrEmail(e.target.value)}
+            />
+            <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+            />
+            <button type="submit">Login</button>
+            {message && <p>{message}</p>}
+        </form>
+    );
+}
+
+// Example: Fetching products with JWT
+const fetchProducts = async () => {
+    const token = localStorage.getItem('jwtToken');
+    try {
+        const response = await axios.get('http://localhost:8080/api/v1/products', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+        console.log('Products:', response.data.content);
+    } catch (error) {
+        console.error('Failed to fetch products:', error);
+    }
+};
+```
+
+## 14. Contributing
 
 Contributions are welcome! Please follow these steps:
 
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
-3.  Make your changes.
-4.  Write tests for your changes.
-5.  Ensure all tests pass (`npm test` in `backend/` and `npm test` in `frontend/`).
-6.  Commit your changes (`git commit -am 'feat: Add new feature'`).
-7.  Push to the branch (`git push origin feature/your-feature`).
-8.  Create a new Pull Request.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes and ensure tests pass.
+4.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+5.  Push to your fork (`git push origin feature/your-feature-name`).
+6.  Open a Pull Request to the `develop` branch of the main repository.
 
-## License
+## 15. License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the [MIT License](LICENSE).
 ```
+
+**ARCHITECTURE.md**
+
+```markdown

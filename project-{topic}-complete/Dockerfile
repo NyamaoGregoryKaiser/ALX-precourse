@@ -1,35 +1,44 @@
-```dockerfile
-# --- Multi-stage build for frontend ---
-FROM node:18-alpine as frontend-builder
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ ./
-RUN npm run build
+# Use a slim OpenJDK 17 image for a smaller final image size
+FROM openjdk:17-jdk-slim AS build
 
-# --- Backend build and runtime ---
-FROM node:18-alpine as backend-builder
-WORKDIR /app/backend
-COPY backend/package*.json ./
-RUN npm install
-COPY backend/ ./
+# Set the working directory inside the container
+WORKDIR /app
 
-# Install Chromium for Puppeteer in a production-ready environment
-# See: https://github.com/puppeteer/puppeteer/blob/main/docs/puppeteer-api.md#puppeteerlaunchoptions
-# Install these dependencies for Puppeteer to run headless Chrome
-RUN apk add --no-cache udev chromium nss freetype fontconfig harfbuzz ca-certificates
+# Copy the Maven wrapper files to enable building inside the container
+COPY .mvn .mvn
+COPY mvnw pom.xml ./
 
-# Expose the port the app runs on
-EXPOSE 8000
+# Download all project dependencies (only if pom.xml changes)
+RUN ./mvnw dependency:go-offline -Dmaven.test.skip=true
 
-# Copy frontend build artifacts to backend public folder
-COPY --from=frontend-builder /app/frontend/build /app/backend/src/public
+# Copy the rest of the application source code
+COPY src src
 
-# Set environment variables (production specific)
-ENV NODE_ENV=production
-# Define where Puppeteer should look for Chromium executable
-ENV CHROME_BIN=/usr/bin/chromium-browser
+# Build the application
+RUN ./mvnw install -DskipTests
 
-# Start the application
-CMD ["node", "src/server.js"]
+# Stage 2: Create the final runtime image
+FROM openjdk:17-jdk-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the built JAR file from the build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Expose the port the application runs on
+EXPOSE 8080
+
+# Define environment variables for database (can be overridden via docker-compose or Kubernetes)
+ENV SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce_db
+ENV SPRING_DATASOURCE_USERNAME=admin
+ENV SPRING_DATASOURCE_PASSWORD=password
+ENV APP_JWT_SECRET=YourSuperSecretKeyForJWTGenerationAndValidationThatMustBeAtLeast256BitsLongAndStoredSecurely
+
+# Set an entrypoint to run the JAR
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
+
+**docker-compose.yml**
+
+```yaml

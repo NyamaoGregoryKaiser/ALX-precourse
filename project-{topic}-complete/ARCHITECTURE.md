@@ -1,165 +1,172 @@
-```markdown
-# Web Scraping Tools System - Architecture Documentation
+# ALX E-commerce System - Architecture Documentation
 
-This document provides a detailed overview of the architectural design, components, and interactions within the Web Scraping Tools System.
+This document outlines the architectural design and principles of the ALX E-commerce System backend.
 
 ## 1. High-Level Architecture
 
-The system follows a typical three-tier architecture:
+The system follows a classic **Monolithic Microservice** (or layered monolithic) architecture for the backend API, backed by a relational database, and designed to be consumed by a separate frontend client.
 
-```
-+--------------------+        +---------------------+        +--------------------+
-|     Frontend       |        |    Backend API      |        |     Database       |
-|    (React.js)      |------->| (Node.js/Express.js)|<------>|   (PostgreSQL)     |
-| - User Dashboard   |        | - Authentication    |        | - Users Table      |
-| - Job Management   |        | - Authorization     |        | - ScrapingJobs     |
-| - Data Visualization|        | - Rate Limiting     |        | - ScrapedData      |
-+--------------------+        | - Caching (Redis)   |        | - JobLogs          |
-                               | - Error Handling    |        | - Schema Migrations|
-                               | - Logging (Winston) |        +--------------------+
-                               | - Scraping Engine   |<-------------------+
-                               |   (Puppeteer/Cheerio)|                     |
-                               | - Job Scheduler     |                     |
-                               | - Data Transformation|                     |
-                               | - CRUD API Endpoints|                     |
-                               +---------------------+                     |
-                                         ^                                 |
-                                         |                                 |
-                                         +---------------------------------+
-                                           (Data Persistence & Retrieval)
+```mermaid
+graph TD
+    A[Client: Web Browser/Mobile App] -->|HTTP/REST| B(Load Balancer / API Gateway - Nginx/Cloud LB)
+    B --> C[E-commerce Backend Service]
+    C --> D[Database: PostgreSQL]
+    C --> E[Cache: Caffeine (in-memory)]
+    C --> F[External Services (e.g., Payment Gateway, Email Service - conceptual)]
+
+    subgraph Monitoring & Ops
+        G[Prometheus] --> H[Grafana]
+        I[Log Aggregation (e.g., Loki)] --> J[Alerting]
+    end
+
+    C -- Logs --> I
+    C -- Metrics --> G
 ```
 
-This separation allows for independent development, scaling, and deployment of each component.
+*   **Client:** A separate frontend application (Web or Mobile) interacts with the backend via RESTful APIs.
+*   **Load Balancer / API Gateway:** Distributes incoming traffic, provides SSL termination, and potentially handles rate limiting, authentication, and routing before requests reach the backend service. (Conceptual; Nginx or cloud-managed load balancers would fill this role in production).
+*   **E-commerce Backend Service:** The core Spring Boot application, responsible for all business logic, data persistence, and API exposure.
+*   **Database (PostgreSQL):** The primary data store for all application data.
+*   **Cache (Caffeine):** An in-memory cache to reduce database load and improve response times for frequently accessed data.
+*   **External Services:** Integration points for functionalities like payment processing, email notifications, etc. (Not fully implemented in this example but designed for).
+*   **Monitoring & Ops:** Tools for collecting metrics (Prometheus), visualizing data (Grafana), and centralizing logs (Loki) for operational visibility and alerting.
 
-## 2. Component Breakdown
+## 2. Backend Service Architecture (Layered)
 
-### 2.1. Frontend (React.js)
+The Spring Boot application follows a traditional **layered architecture** to separate concerns:
 
-*   **Purpose**: Provides a user-friendly interface for interacting with the scraping system.
-*   **Key Responsibilities**:
-    *   User authentication (Login, Register).
-    *   Dashboard for managing scraping jobs (Create, View, Edit, Delete).
-    *   Triggering immediate job runs.
-    *   Displaying scraped data and job execution logs.
-*   **Technologies**: React.js, React Router, Axios for API calls, Tailwind CSS for styling.
-*   **Interaction**: Communicates with the Backend API via RESTful HTTP requests. JWT tokens are stored locally (`localStorage`) and sent with each authenticated request.
+```mermaid
+graph TD
+    A[Client Requests (JSON)] --> B(Controller Layer)
+    B --> C(Service Layer)
+    C --> D(Repository Layer)
+    D --> E[Database (PostgreSQL)]
+    C --> F[Caching Layer (Caffeine)]
 
-### 2.2. Backend API (Node.js/Express.js)
+    subgraph Cross-Cutting Concerns
+        G[Spring Security & JWT]
+        H[Global Exception Handling]
+        I[Logging (SLF4J/Logback)]
+        J[Validation (@Valid)]
+    end
 
-The core of the application, handling all business logic and orchestrating tasks.
+    G -- Authorizes/Authenticates --> B
+    H -- Catches Exceptions --> B
+    J -- Validates Input --> B
+```
 
-*   **Framework**: Express.js for building robust RESTful APIs.
-*   **Structure**:
-    *   `src/server.js`: Application entry point, initializes Express app, connects to DB, starts scheduler.
-    *   `src/app.js`: Configures Express middleware (security, parsing, CORS, rate limiting) and defines main API routes.
-    *   `src/config/`: Manages environment variables, database configuration, and logging setup.
-    *   `src/db/`: Contains Knex.js configuration, migration scripts, and seed data for PostgreSQL.
-    *   `src/middleware/`: Houses custom Express middleware for authentication, authorization, error handling, caching, and rate limiting.
-    *   `src/models/`: Encapsulates database interactions for `User`, `ScrapingJob`, `ScrapedData`, providing an ORM-like interface using Knex.js.
-    *   `src/controllers/`: Contains the request handlers, orchestrating business logic, interacting with models and services, and formatting API responses.
-    *   `src/routes/`: Defines the API endpoints and maps them to respective controller functions.
-    *   `src/services/`: Core business logic services, including the `ScraperService` and `SchedulerService`.
-    *   `src/utils/`: Helper utilities like `AppError`, `ApiResponse`, and `asyncHandler`.
-
-*   **Key Sub-Components**:
-
-    *   **Authentication & Authorization**:
-        *   Uses `jsonwebtoken` for JWT generation and verification.
-        *   `bcryptjs` for password hashing.
-        *   `auth.middleware.js` verifies tokens and extracts user information.
-        *   `authorize` middleware implements role-based access control.
-
-    *   **Logging & Error Handling**:
-        *   `Winston` for structured and comprehensive logging (console, file transports).
-        *   `error.middleware.js` provides a centralized error handling mechanism, converting various errors into a consistent `AppError` format.
-
-    *   **Caching Layer (Redis)**:
-        *   `redis` client for connecting to Redis.
-        *   `cache.middleware.js` intercepts GET requests, serving cached responses when available and storing new responses. Configurable cache duration.
-
-    *   **Rate Limiting**:
-        *   `express-rate-limit` middleware protects API endpoints (especially authentication routes) from brute-force attacks and abuse.
-
-    *   **Scraping Engine (`ScraperService`)**:
-        *   **Static Scraping**: Utilizes `cheerio` to parse HTML fetched via `node-fetch` (or built-in `fetch` in Node.js 18+). Ideal for simple, static content.
-        *   **Dynamic Scraping**: Employs `puppeteer` (a headless Chrome browser API) to render JavaScript-heavy pages before extracting content with `cheerio`. This handles SPAs, AJAX-loaded content, etc.
-        *   **Concurrency**: Manages a queue of scraping jobs and limits the number of concurrent scrapes to prevent overwhelming target websites or the server.
-        *   **Job Status Updates**: Communicates with `ScrapingJob` model to update job status (`running`, `completed`, `failed`) and log events.
-
-    *   **Job Scheduler (`SchedulerService`)**:
-        *   Uses `node-cron` to schedule recurring scraping jobs based on cron expressions defined by users.
-        *   Loads active scheduled jobs from the database on startup and periodically re-evaluates them.
-        *   Adds, updates, and removes cron tasks dynamically.
-        *   Enqueues jobs to the `ScraperService` when their scheduled time arrives.
-
-### 2.3. Database (PostgreSQL)
-
-*   **Purpose**: Persistent storage for all application data.
-*   **Schema**:
-    *   `users`: Stores user credentials and roles.
-    *   `scraping_jobs`: Stores configurations for each scraping task (URL, selectors, type, schedule, status).
-    *   `scraped_data`: Stores the actual data extracted by scraping jobs. Uses `JSONB` for flexible schema-less storage of scraped content.
-    *   `job_logs`: Records events and errors related to scraping job executions.
-*   **Query Optimization**:
-    *   Indexes on foreign keys and frequently queried columns (`job_id`, `url` in `scraped_data`) to improve read performance.
-    *   Use of `JSONB` for efficient storage and querying of semi-structured data.
-
-### 2.4. Caching (Redis)
-
-*   **Purpose**: In-memory data store used for caching API responses to reduce database load and improve response times for frequently accessed, read-heavy endpoints.
-*   **Integration**: Integrated as an Express middleware that sits before route handlers.
+*   **Controller Layer (`com.alx.ecommerce.controller`):**
+    *   Handles incoming HTTP requests.
+    *   Maps requests to appropriate service methods.
+    *   Performs input validation using `@Valid`.
+    *   Returns HTTP responses (JSON).
+    *   Leverages Spring Security annotations (`@PreAuthorize`) for endpoint-level authorization.
+*   **Service Layer (`com.alx.ecommerce.service`):**
+    *   Contains the core business logic.
+    *   Orchestrates operations across multiple repositories.
+    *   Applies transaction management (`@Transactional`).
+    *   Manages caching using Spring's `@Cacheable`, `@CachePut`, `@CacheEvict`.
+    *   Performs data transformations between DTOs and entities.
+    *   Handles business rule validation and throws custom exceptions.
+*   **Repository Layer (`com.alx.ecommerce.repository`):**
+    *   Interacts directly with the database.
+    *   Uses Spring Data JPA to define data access methods.
+    *   Provides CRUD operations for entities.
+    *   Includes custom queries for optimized data retrieval (e.g., `findByIdWithCategory`).
+*   **Model Layer (`com.alx.ecommerce.model`):**
+    *   Defines the JPA entities that represent the domain objects and map to database tables.
+    *   Includes relationships (e.g., `@OneToMany`, `@ManyToOne`, `@ManyToMany`).
+    *   Uses Lombok for boilerplate code reduction.
+*   **DTO Layer (`com.alx.ecommerce.dto`):**
+    *   Data Transfer Objects for transferring data between the client and controller, and between layers.
+    *   Separates internal entity structure from external API representation.
+    *   Used for request bodies and response payloads.
+*   **Security Layer (`com.alx.ecommerce.security` & `com.alx.ecommerce.config.SecurityConfig`):**
+    *   **Spring Security:** Provides authentication and authorization framework.
+    *   **JWT (JSON Web Tokens):** Used for stateless authentication. `JwtTokenProvider` handles token generation and validation. `JwtAuthenticationFilter` intercepts requests to validate tokens. `JwtAuthenticationEntryPoint` handles unauthorized access.
+*   **Configuration Layer (`com.alx.ecommerce.config`):**
+    *   Contains Spring configurations for security, caching, OpenAPI, CORS, etc.
+*   **Exception Layer (`com.alx.ecommerce.exception`):**
+    *   Custom exception classes (e.g., `ResourceNotFoundException`, `CustomAuthenticationException`).
+    *   `GlobalExceptionHandler` (`@ControllerAdvice`) provides centralized handling of exceptions, converting them into consistent, user-friendly API error responses.
+*   **Utility Layer (`com.alx.ecommerce.util`):**
+    *   General utility classes and constants (`AppConstants`).
 
 ## 3. Data Flow
 
-1.  **User Interaction**: Frontend sends an API request (e.g., create job) to the Backend API.
-2.  **API Gateway**: Express app receives the request.
-3.  **Middleware Chain**:
-    *   Security middleware (Helmet, XSS, Mongo Sanitize).
-    *   Rate limiting.
-    *   Authentication middleware (`verifyToken`) authenticates the user.
-    *   Authorization middleware (`authorize`) checks user's role/permissions.
-    *   Caching middleware checks Redis; if hit, returns cached response; if miss, proceeds.
-4.  **Controller**: Executes business logic specific to the request.
-    *   Interacts with `Models` (e.g., `ScrapingJob.create()`).
-    *   Invokes `Services` (e.g., `schedulerService.addJob()` or `scraperService.enqueueScrape()`).
-5.  **Models**: Interact with the PostgreSQL database using Knex.js to persist or retrieve data.
-6.  **Services**:
-    *   `SchedulerService`: Manages cron jobs. When a scheduled time arrives, it pushes a job to `ScraperService`.
-    *   `ScraperService`: Fetches web pages (using `fetch` for static, `Puppeteer` for dynamic), parses content with `Cheerio`, processes extracted data.
-    *   Logs job events to `job_logs` table via `ScrapingJob.logJob()`.
-    *   Stores scraped data into `scraped_data` table via `ScrapedData.create()`.
-    *   Updates `scraping_jobs` status.
-7.  **Response**:
-    *   Controller formats the response using `ApiResponse`.
-    *   If caching middleware was active, the response is stored in Redis before being sent back.
-    *   Express sends the response back to the Frontend.
+1.  **Client Request:** A client (e.g., web browser) sends an HTTP request (e.g., `POST /api/v1/auth/login`, `GET /api/v1/products`).
+2.  **API Gateway/Load Balancer:** (If present) Forwards the request to the backend service.
+3.  **Spring Security Filter Chain:**
+    *   `JwtAuthenticationFilter` intercepts the request.
+    *   If a JWT token is present in the `Authorization` header, it's validated.
+    *   If valid, the user's authentication context is set in `SecurityContextHolder`.
+    *   If invalid or missing for a protected resource, `JwtAuthenticationEntryPoint` is triggered, returning a 401 Unauthorized.
+4.  **Controller:**
+    *   The request reaches the appropriate `@RestController` method.
+    *   Input `DTO`s are validated using `@Valid`. If validation fails, `GlobalExceptionHandler` returns a 400 Bad Request.
+    *   `@PreAuthorize` annotations are checked to ensure the authenticated user has the necessary roles/permissions. If not, a 403 Forbidden is returned.
+    *   The controller calls a method in the `Service Layer`.
+5.  **Service:**
+    *   Executes business logic.
+    *   Checks cache (`@Cacheable`). If data is present, it's returned directly.
+    *   If not cached, calls one or more `Repository` methods to interact with the database.
+    *   Performs additional business validations.
+    *   Transforms `Entity` objects from the repository into `DTO`s for the controller.
+    *   Updates cache (`@CachePut`, `@CacheEvict`) if data is modified.
+6.  **Repository:**
+    *   Executes JPA queries (either derived from method names or custom `@Query` annotations).
+    *   Retrieves or persists data from/to PostgreSQL.
+7.  **Response:** The service returns a `DTO` to the controller, which then formats it into a JSON HTTP response and sends it back to the client.
 
-## 4. Scalability Considerations
+## 4. Database Schema (PostgreSQL)
 
-*   **Stateless Backend**: The Express.js backend is largely stateless, allowing for easy horizontal scaling by running multiple instances behind a load balancer.
-*   **Separated Concerns**: Database, Redis, and application logic are in separate services, allowing them to be scaled independently.
-*   **Scraping Concurrency**: `ScraperService` manages internal concurrency to avoid overwhelming target sites or local resources. This can be adjusted via configuration.
-*   **Database**: PostgreSQL is highly scalable, especially with proper indexing and query optimization.
-*   **Redis**: Provides a fast, scalable caching layer.
+The database schema is defined using SQL migration scripts managed by Flyway. Key tables include:
 
-## 5. Security Measures
+*   **`users`**: Stores user authentication and profile information.
+*   **`roles`**: Defines user roles (e.g., `ROLE_USER`, `ROLE_ADMIN`).
+*   **`user_roles`**: Junction table for many-to-many relationship between users and roles.
+*   **`categories`**: Stores product categories.
+*   **`products`**: Stores product details, linked to `categories`.
+*   **`reviews`**: Stores user reviews for products, linked to `users` and `products`.
+*   **`orders`**: Stores order information, linked to `users`.
+*   **`order_items`**: Stores individual items within an order, linking `orders` to `products`.
 
-*   **JWT Authentication**: Secure, token-based authentication.
-*   **Bcrypt Hashing**: Strong password hashing.
-*   **Role-Based Access Control**: Granular control over who can access what.
-*   **HTTPS (Deployment)**: Essential for securing communication in production (handled at load balancer/proxy level).
-*   **Security Headers**: `helmet` middleware for various HTTP header protections.
-*   **Input Sanitization**: `xss-clean` and `express-mongo-sanitize` (even for SQL, good practice).
-*   **Rate Limiting**: Protects against brute-force attacks and DDoS.
-*   **Environment Variables**: Sensitive information is stored in environment variables, not hardcoded.
+## 5. Scalability and Performance Considerations
 
-## 6. Future Enhancements
+*   **Stateless Backend:** JWT-based authentication makes the backend stateless, enabling easy horizontal scaling by adding more application instances behind a load balancer.
+*   **Caching (Caffeine):** Reduces database load and latency for read-heavy operations. For distributed caching across multiple instances, Caffeine would be replaced or augmented with an external cache like Redis.
+*   **Database Indexing:** Proper indexing (as seen in `V1__Initial_Schema.sql`) is crucial for query performance.
+*   **Pagination & Sorting:** All list endpoints support pagination and sorting to prevent large data transfers and improve responsiveness.
+*   **Lazy Loading & Fetching Strategies:** JPA `FetchType.LAZY` is used by default to avoid loading unnecessary related data. Custom `@Query` with `JOIN FETCH` is used where eager loading is beneficial to prevent N+1 query problems.
+*   **Asynchronous Operations (`@EnableAsync`):** The application is configured to support asynchronous tasks, which can be used for non-critical operations like sending email notifications or processing image uploads in the background, freeing up request threads.
+*   **Rate Limiting (Conceptual):** Essential for protecting APIs from abuse. Can be implemented at the API Gateway level (Nginx, cloud gateway) or within the application using libraries like Bucket4j.
 
-*   **Distributed Scraping**: Integrate with a message queue (e.g., RabbitMQ, Kafka) and a distributed task queue (e.g., BullMQ) for more robust and scalable job processing across multiple scraping worker instances.
-*   **Proxy Rotators**: Integrate with proxy services to avoid IP blocking from target websites.
-*   **CAPTCHA Solving**: Integration with CAPTCHA solving services.
-*   **Advanced Data Processing**: More complex data transformation, validation, and export options (CSV, Excel).
-*   **Webhook Notifications**: Notify external systems upon job completion or failure.
-*   **Monitoring Dashboards**: Integrate with Prometheus/Grafana for detailed metrics and alerts.
-*   **User Management UI**: A dedicated admin interface for managing users and their roles.
+## 6. Security Considerations
+
+*   **Authentication:** Strong password hashing (BCrypt) and JWT for token-based authentication.
+*   **Authorization:** Role-Based Access Control using Spring Security's `@PreAuthorize` annotations.
+*   **Input Validation:** `@Valid` annotations on DTOs prevent common injection attacks and ensure data integrity.
+*   **Error Handling:** Generic error messages prevent information leakage.
+*   **CORS:** Configured to allow only trusted frontend origins.
+*   **Secrets Management:** Sensitive information (JWT secret, DB passwords) is expected to be managed via environment variables or secret management tools in production, not hardcoded.
+*   **HTTPS:** Mandatory for production to protect data in transit.
+
+## 7. Future Enhancements
+
+*   **Frontend Application:** Develop a rich UI using React/Angular/Vue.js.
+*   **Payment Gateway Integration:** Implement integration with Stripe, PayPal, etc.
+*   **Email Service:** Send order confirmations, shipping updates, etc.
+*   **Search Engine:** Integrate with Elasticsearch or Apache Solr for advanced product search.
+*   **Shopping Cart:** Implement a persistent shopping cart functionality.
+*   **Image Uploads:** Integrate with cloud storage (AWS S3, Google Cloud Storage) for product images.
+*   **Distributed Caching:** Replace or augment Caffeine with Redis for a clustered environment.
+*   **Message Queues:** Integrate Kafka or RabbitMQ for asynchronous processing (e.g., order processing, inventory updates).
+*   **Admin Dashboard:** A dedicated interface for administrators to manage products, users, orders, etc.
+*   **GraphQL API:** Provide an alternative API for more flexible data fetching.
+
+This architecture provides a solid foundation for a scalable and maintainable e-commerce application, adhering to modern software engineering best practices.
 ```
+
+**API_DOCS.md**
+
+```markdown

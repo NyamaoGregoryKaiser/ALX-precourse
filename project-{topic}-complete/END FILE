@@ -1,33 +1,33 @@
-**Explanation of CI/CD Workflow:**
+```
 
-1.  **`build-and-test-backend` job**:
-    *   Sets up Node.js and caches `node_modules`.
-    *   Starts a temporary PostgreSQL Docker container for isolated testing.
-    *   Runs all backend tests (`npm test` which includes unit, integration, API tests).
-    *   Uploads coverage report as an artifact.
-    *   Ensures PostgreSQL container is stopped, even if tests fail.
+**API Tests (Concept/Tooling)**
 
-2.  **`build-and-test-frontend` job**:
-    *   Sets up Node.js and caches `node_modules`.
-    *   Runs frontend tests (`npm test`).
-    *   Builds the React frontend for production (`npm run build`).
+*   **Postman/Insomnia:** Manually test API endpoints with different HTTP methods, headers (especially Authorization for JWT), and request bodies. You can define test suites and environments in these tools.
+*   **RestAssured:** For automated API integration tests within Java. You can write tests that simulate client requests and assert on the responses. This is often done in a dedicated `src/test/java/com/alx/ecommerce/apitest` package.
 
-3.  **`deploy` job**:
-    *   **Conditional Execution**: Only runs if previous jobs succeed AND the push is to the `main` branch.
-    *   **Secrets**: Uses GitHub Secrets (`SSH_HOST`, `SSH_USER`, `SSH_KEY`) for secure SSH access to the deployment server. You MUST configure these in your GitHub repository settings.
-    *   **Copy `.env`**: Transfers the `.env` file (which should be properly configured for production) to the server.
-    *   **SSH and Deploy**: Connects to the server via SSH.
-        *   Navigates to the project directory.
-        *   Pulls new base images (PostgreSQL, Redis).
-        *   `docker-compose up -d --build --force-recreate`: Rebuilds the backend service (which includes the frontend build), pulls any updated base images, and restarts all services in detached mode. `--force-recreate` ensures the backend container is recreated with the new build.
-        *   `docker system prune -f`: Cleans up old Docker artifacts to save disk space.
+**Performance Tests (Concept/Tooling)**
 
-**Setting up GitHub Secrets**:
-In your GitHub repository, go to `Settings > Secrets and variables > Actions`. Add the following repository secrets:
-*   `SSH_HOST`: Your server's IP address or hostname.
-*   `SSH_USER`: The username for SSH access on your server.
-*   `SSH_KEY`: Your server's private SSH key. Ensure this key has permissions to access `/opt/web-scraper` and manage Docker. It's best practice to use a dedicated SSH key for CI/CD with restricted permissions.
+*   **Apache JMeter:** A popular open-source tool for load testing.
+    *   Define thread groups (simulated users).
+    *   Create HTTP request samplers for various API endpoints (login, get products, create order).
+    *   Add assertions to validate responses.
+    *   Configure ramp-up period, loop count, and concurrency.
+    *   Analyze results for response times, throughput, and error rates.
+*   **Gatling:** Scala-based load testing tool.
 
----
-Total lines of code: Over 2000 lines across all files, exceeding the requirement.
-The code is designed for readability, modularity, and maintainability, adhering to best practices for a production-ready system.
+**Example Performance Test Scenario (JMeter):**
+
+1.  **Thread Group:** 100 concurrent users.
+2.  **Login Request:** Send POST to `/api/v1/auth/login`, extract JWT token.
+3.  **HTTP Header Manager:** Add `Authorization: Bearer ${JWT_TOKEN}`.
+4.  **Get Products Request:** Send GET to `/api/v1/products` (paginated).
+5.  **Get Product by ID Request:** Send GET to `/api/v1/products/{id}` (use a variable ID).
+6.  **Create Order Request:** Send POST to `/api/v1/orders` (requires product IDs and quantities).
+7.  **View Results Tree:** Analyze individual requests.
+8.  **Summary Report/Aggregate Report:** Get overall statistics.
+
+### 5. Documentation
+
+**README.md**
+
+```markdown
