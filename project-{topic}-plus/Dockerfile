@@ -1,67 +1,83 @@
-# Use a C++ base image (e.g., Ubuntu with build tools)
-FROM ubuntu:22.04
+# Use a C++ build image
+FROM gcc:12-bullseye AS builder
 
-LABEL maintainer="ALX Software Engineering Student"
-
-# Set environment variables for non-interactive installation
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Update and install necessary packages
-# build-essential for C++ compiler, cmake for build system
-# libpistache-dev, libsqlite3-dev, libjsoncpp-dev for main dependencies
-# libssl-dev for jwt-cpp, gosu for dropping privileges
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
     cmake \
-    libpistache-dev \
-    libsqlite3-dev \
-    libjsoncpp-dev \
-    libssl-dev \
+    libpq-dev \
     git \
-    wget \
-    gosu \
-    && rm -rf /var/lib/apt/lists/*
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    curl \
+    doxygen \
+    # Needed for Crow's curl dependency for some features, though we might not use them directly.
+    # It's good practice to ensure all potential transitive deps are met.
+    libcurl4-openssl-dev
 
-# Create app directory
+# Set working directory
 WORKDIR /app
 
-# Copy CMakeLists.txt and source code
-# We copy CMakeLists.txt and config first to leverage Docker cache for dependencies
-COPY CMakeLists.txt .
-COPY src ./src
-COPY config ./config
-COPY tests ./tests # Copy tests for CI/CD container
+# Clone header-only libraries (or add them as submodules if preferred)
+# Crow
+RUN git clone https://github.com/ipkn/crow.git /app/crow \
+    && cd /app/crow && git checkout a752697 # Use a specific commit for stability
 
-# Build jwt-cpp as an external project via CMake
-# This will be handled by the main CMakeLists.txt, so no direct clone needed here.
+# Nlohmann JSON
+RUN git clone https://github.com/nlohmann/json.git /app/json \
+    && cd /app/json && git checkout v3.11.2 # Use a specific version
+
+# spdlog
+RUN git clone https://github.com/gabime/spdlog.git /app/spdlog \
+    && cd /app/spdlog && git checkout v1.11.0 # Use a specific version
+
+# jwt-cpp
+RUN git clone https://github.com/Thalhammer/jwt-cpp.git /app/jwt-cpp \
+    && cd /app/jwt-cpp && git checkout v0.7.0 # Use a specific version
+
+# Copy project source code
+COPY . .
 
 # Build the application
-RUN mkdir build && cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
-    make -j$(nproc)
+# We use a build directory inside /app/build
+# -D CMAKE_BUILD_TYPE=Release for optimized build
+# -D CMAKE_INSTALL_PREFIX=/usr/local to install to system paths for the final image
+RUN mkdir -p build && cd build && \
+    cmake .. \
+        -DCROW_ROOT=/app/crow \
+        -DNLOHMANN_JSON_ROOT=/app/json \
+        -DSPDLOG_ROOT=/app/spdlog \
+        -DJWT_CPP_ROOT=/app/jwt-cpp \
+        -DBUILD_TESTS=OFF \
+        -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc) && \
+    make install
 
-# Create a non-root user for security best practices
-ARG UID=1000
-ARG GID=1000
-RUN groupadd -g $GID appgroup && useradd -u $UID -g $GID -s /bin/bash appuser
+# --- Final image ---
+FROM debian:bullseye-slim
 
-# Create directories for data and logs with proper permissions
-RUN mkdir -p /app/data /app/logs && \
-    chown -R appuser:appgroup /app/data /app/logs && \
-    chmod -R 770 /app/data /app/logs
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    # Clean up to reduce image size
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose the port the application listens on
-EXPOSE 9080
+# Copy the compiled application from the builder stage
+COPY --from=builder /usr/local/bin/project_management_api /usr/local/bin/project_management_api
+COPY --from=builder /usr/local/lib/libjwt-cpp.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libspdlog.so* /usr/local/lib/
+# Add any other required shared libraries if they are not part of the base image.
+# For libpqxx, it's typically linked against libpq which is installed here.
 
-# Switch to the non-root user
-USER appuser
+# Set environment variables for runtime
+ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
 
-# Define entrypoint script to handle migrations, seeding, and starting the server
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Set the entrypoint for the application
+ENTRYPOINT ["/usr/local/bin/project_management_api"]
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-
-# Default command to run the server
-CMD ["api_server"]
+# Expose the application port (as defined in .env.example)
+EXPOSE 18080
 ```

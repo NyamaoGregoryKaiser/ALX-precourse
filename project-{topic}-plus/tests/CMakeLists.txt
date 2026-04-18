@@ -1,75 +1,40 @@
-# CMakeLists.txt for the tests directory
-cmake_minimum_required(VERSION 3.10)
-
-# Google Test
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
-
-# Source files for the test runner
-set(TEST_SRCS
-    main_test.cpp
-    unit/test_auth_service.cpp
-    unit/test_task_model.cpp
-    unit/test_cache.cpp
-    integration/test_database.cpp
-    integration/test_api_tasks.cpp
-)
-
-# Application source files needed for tests
-# Link against necessary application components
-set(APP_TEST_SRCS
-    ${CMAKE_SOURCE_DIR}/src/app.cpp
-    ${CMAKE_SOURCE_DIR}/src/auth/auth_service.cpp
-    ${CMAKE_SOURCE_DIR}/src/auth/jwt_middleware.cpp
-    ${CMAKE_SOURCE_DIR}/src/controllers/auth_controller.cpp
-    ${CMAKE_SOURCE_DIR}/src/controllers/task_controller.cpp
-    ${CMAKE_SOURCE_DIR}/src/database/database_manager.cpp
-    ${CMAKE_SOURCE_DIR}/src/models/task.cpp
-    ${CMAKE_SOURCE_DIR}/src/models/user.cpp
-    ${CMAKE_SOURCE_DIR}/src/middleware/error_handler.cpp
-    ${CMAKE_SOURCE_DIR}/src/middleware/rate_limiter.cpp
-    ${CMAKE_SOURCE_DIR}/src/utils/logger.cpp
-    ${CMAKE_SOURCE_DIR}/src/utils/cache.cpp
-    ${CMAKE_SOURCE_DIR}/src/server.cpp
-)
-
-add_executable(run_tests ${TEST_SRCS} ${APP_TEST_SRCS})
-
-target_include_directories(run_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/config
-    ${GTEST_INCLUDE_DIRS}
-    ${Pistache_INCLUDE_DIRS}
-    ${JSONCPP_INCLUDE_DIR}
-    ${SQLITE3_INCLUDE_DIR}
-    ${OPENSSL_INCLUDE_DIR}
-    ${jwt-cpp_SOURCE_DIR}/include # For jwt-cpp if fetched
+# tests/CMakeLists.txt
+add_executable(run_tests tests/unit/test_models.cpp tests/unit/test_jwt_manager.cpp tests/integration/test_db_manager.cpp
+    src/config/config.h
+    src/database/db_manager.h src/database/db_manager.cpp
+    src/models/user.h src/models/user.cpp
+    src/models/project.h src/models/project.cpp
+    src/models/task.h src/models/task.cpp
+    src/models/team.h src/models/team.cpp
+    src/services/user_service.h src/services/user_service.cpp
+    src/services/project_service.h src/services/project_service.cpp
+    src/services/task_service.h src/services/task_service.cpp
+    src/services/team_service.h src/services/team_service.cpp
+    src/utils/jwt_manager.h src/utils/jwt_manager.cpp
+    src/utils/logger.h src/utils/logger.cpp
 )
 
 target_link_libraries(run_tests
-    GTest::gtest_main
-    Pistache::Pistache
-    jsoncpp::jsoncpp
-    jwt-cpp
-    ${OPENSSL_LIBRARIES}
-    SQLiteCpp # Link against our minimal SQLiteCpp wrapper
+    PRIVATE
+        gtest_main gmock_main
+        ${DB_LIBRARIES}
+        ${JWT_CPP_LIB}
+        ${OpenSSL_LIBRARIES}
+        ${CRYPT_LIBRARY}
 )
 
-# Copy the .env.example file to .env in the build directory for tests to use
-add_custom_command(TARGET run_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${CMAKE_SOURCE_DIR}/.env.example
-    $<TARGET_FILE_DIR:run_tests>/.env
-    COMMENT "Copying .env.example for tests"
+# Set necessary include directories for tests
+target_include_directories(run_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CROW_ROOT}/include
+    ${NLOHMANN_JSON_ROOT}/include
+    ${SPDLOG_ROOT}/include
+    ${JWT_CPP_ROOT}/include
+    ${LIBPQXX_INCLUDE_DIRS}
+    ${GTEST_INCLUDE_DIRS}
+    ${GMOCK_INCLUDE_DIRS}
 )
 
-# Create a 'data' directory for the test database
-add_custom_command(TARGET run_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-    $<TARGET_FILE_DIR:run_tests>/data
-    COMMENT "Creating data directory for tests"
-)
-
-# Add test executable to CTest discovery
-add_test(NAME CppApiSystemTests COMMAND run_tests)
+# Ensure tests are built as part of 'make all' if BUILD_TESTS is ON
+add_test(NAME AllTests COMMAND run_tests)
 ```

@@ -1,87 +1,147 @@
-name: C++ API CI Pipeline
+# .github/workflows/ci.yml
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build-and-test:
+  build_and_test:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
+    - name: Checkout Repository
       uses: actions/checkout@v3
-      with:
-        submodules: recursive # If using git submodules for dependencies
 
-    - name: Install system dependencies for build and test
+    - name: Setup Environment Variables
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake libpistache-dev libsqlite3-dev libjsoncpp-dev libssl-dev libgtest-dev
+        # Create a .env file from example for Docker Compose during tests
+        cp .env.example .env
+        # Set dummy/test values for CI/CD, override if specific test values are needed
+        echo "APP_ENV=test" >> .env
+        echo "DB_HOST=localhost" >> .env # For tests running directly on host, or 'db' for docker-compose based tests
+        echo "DB_NAME=project_management_test_db" >> .env
+        echo "DB_USER=test_user" >> .env
+        echo "DB_PASSWORD=test_password" >> .env
+        echo "JWT_SECRET=super-secret-jwt-key-for-testing" >> .env
+        echo "LOG_LEVEL=debug" >> .env
+      # This .env will be used if tests run locally or by docker-compose within the runner
 
-    - name: Create Build Directory
-      run: mkdir build
+    - name: Set up Docker BuildX
+      uses: docker/setup-buildx-action@v2
 
-    - name: Configure CMake
-      working-directory: ./build
-      run: cmake .. -DCMAKE_BUILD_TYPE=Release
+    - name: Build Docker Image
+      id: docker_build
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false # Don't push to registry yet, just build for testing
+        tags: project-management-api:latest
+        load: true # Load the image into Docker daemon for local use
 
-    - name: Build Application and Tests
-      working-directory: ./build
-      run: make -j$(nproc)
+    - name: Start Database Service
+      run: |
+        docker run --name ci_test_db -p 5432:5432 \
+          -e POSTGRES_DB=${DB_NAME} \
+          -e POSTGRES_USER=${DB_USER} \
+          -e POSTGRES_PASSWORD=${DB_PASSWORD} \
+          -d postgres:15-alpine
+      env:
+        DB_NAME: project_management_test_db
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        MAX_RETRIES=10
+        RETRY_COUNT=0
+        until docker exec ci_test_db pg_isready -U test_user -d project_management_test_db || [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+          echo "Waiting for PostgreSQL... ($((MAX_RETRIES - RETRY_COUNT)) retries left)"
+          sleep 5
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+        done
+        if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+          echo "PostgreSQL did not become ready in time."
+          exit 1
+        fi
+        echo "PostgreSQL is ready!"
+      env:
+        DB_NAME: project_management_test_db
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+
+    - name: Apply Database Migrations and Seed Data (using app image)
+      run: |
+        docker run --rm \
+          --network host \
+          -e DB_HOST=localhost \
+          -e DB_PORT=5432 \
+          -e DB_NAME=${DB_NAME} \
+          -e DB_USER=${DB_USER} \
+          -e DB_PASSWORD=${DB_PASSWORD} \
+          -v "$(pwd)/database/migrations":/app/database/migrations \
+          -v "$(pwd)/database/seed":/app/database/seed \
+          project-management-api:latest /bin/sh -c "
+            PGPASSWORD=${DB_PASSWORD} psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} -f /app/database/migrations/V1__create_tables.sql &&
+            PGPASSWORD=${DB_PASSWORD} psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} -f /app/database/migrations/V2__add_roles_and_seed_data.sql &&
+            PGPASSWORD=${DB_PASSWORD} psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} -f /app/database/seed/seed.sql
+          "
+      env:
+        DB_NAME: project_management_test_db
+        DB_USER: test_user
+        DB_PASSWORD: test_password
 
     - name: Run Unit and Integration Tests
-      working-directory: ./build
-      env:
-        # Set environment variables for tests.
-        # These override defaults in config.h and must be present for JWT.
-        # Using specific test values to avoid conflicts.
-        APP_PORT: 9081
-        DATABASE_PATH: ./data/test_ci.db
-        JWT_SECRET: ci_test_jwt_secret_12345
-        JWT_EXPIRATION_SECONDS: 10
-        DEFAULT_ADMIN_USERNAME: ciadmin
-        DEFAULT_ADMIN_PASSWORD: ciadminpass
-        LOG_LEVEL: WARN # Keep test logs minimal in CI
       run: |
-        # Ensure test data directory exists for database tests
-        mkdir -p data
-        # Run tests executable
-        ./run_tests
+        # Run tests inside the built Docker image
+        docker run --rm \
+          --network host \
+          -e DB_HOST=localhost \
+          -e DB_PORT=5432 \
+          -e DB_NAME=${DB_NAME} \
+          -e DB_USER=${DB_USER} \
+          -e DB_PASSWORD=${DB_PASSWORD} \
+          -e JWT_SECRET=${JWT_SECRET} \
+          -e APP_PORT=18080 \
+          project-management-api:latest /bin/bash -c "
+            # Set up CMake for tests
+            mkdir -p /app/build && cd /app/build &&
+            cmake .. -DBUILD_TESTS=ON &&
+            make -j$(nproc) &&
+            # Execute tests
+            ./tests/run_tests
+          "
+      env:
+        DB_NAME: project_management_test_db
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+        JWT_SECRET: super-secret-jwt-key-for-testing
 
-    # Optional: Add static analysis (e.g., clang-tidy, cppcheck)
-    # - name: Run Static Analysis (e.g., Clang-Tidy)
-    #   run: |
-    #     # Example, requires more setup in CMake and potentially installing clang-tools
-    #     # cmake --build build --target clang-tidy
-    #     echo "Static analysis step placeholder"
+    # Optional: Push Docker image to a registry on successful merge to main
+    # - name: Login to DockerHub
+    #   if: github.ref == 'refs/heads/main'
+    #   uses: docker/login-action@v2
+    #   with:
+    #     username: ${{ secrets.DOCKER_USERNAME }}
+    #     password: ${{ secrets.DOCKER_PASSWORD }}
 
-    # Optional: Build Docker image to ensure Dockerfile is valid
-    - name: Build Docker Image
-      run: docker build -t cpp-api-system:latest .
+    # - name: Push Docker Image
+    #   if: github.ref == 'refs/heads/main'
+    #   uses: docker/build-push-action@v4
+    #   with:
+    #     context: .
+    #     file: ./Dockerfile
+    #     push: true
+    #     tags: your-dockerhub-username/project-management-api:latest, your-dockerhub-username/project-management-api:${{ github.sha }}
 
-  # This job could be for deployment if Continuous Deployment is desired
-  # deploy:
-  #   needs: build-and-test
-  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Deploy to Production
-  #     uses: your-deployment-action/provider@v1
-  #     with:
-  #       # Deployment credentials and commands
-  #       host: ${{ secrets.SSH_HOST }}
-  #       username: ${{ secrets.SSH_USERNAME }}
-  #       key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #       script: |
-  #         cd /path/to/app
-  #         docker-compose pull
-  #         docker-compose up -d --remove-orphans
-  #         docker system prune -f
+    - name: Cleanup Docker Containers
+      if: always() # Run cleanup even if previous steps fail
+      run: |
+        docker stop ci_test_db || true
+        docker rm ci_test_db || true
 ```

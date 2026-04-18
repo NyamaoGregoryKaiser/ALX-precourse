@@ -1,61 +1,82 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <string>
-#include <fstream>
-#include <mutex>
-#include <chrono>
-#include <iomanip> // For std::put_time
-#include <iostream> // For std::cout, std::cerr
-
-namespace Logger {
-
-enum class Level {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR
-};
-
-// Convert Level to string
-std::string level_to_string(Level level);
-
-// Convert string to Level
-Level string_to_level(const std::string& level_str);
+#include <memory>
+#include <stdexcept>
 
 class Logger {
 public:
-    static Logger& getInstance();
+    static void init(const std::string& level = "info") {
+        if (!initialized_) {
+            auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+            // [YYYY-MM-DD HH:MM:SS.mmm] [level] [thread_id] [file:line] message
+            console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] [%s:%#] %v");
+            
+            logger_ = std::make_shared<spdlog::logger>("project_management_api", console_sink);
+            
+            // Set log level
+            if (level == "trace") logger_->set_level(spdlog::level::trace);
+            else if (level == "debug") logger_->set_level(spdlog::level::debug);
+            else if (level == "info") logger_->set_level(spdlog::level::info);
+            else if (level == "warn") logger_->set_level(spdlog::level::warn);
+            else if (level == "error") logger_->set_level(spdlog::level::err);
+            else if (level == "critical") logger_->set_level(spdlog::level::critical);
+            else if (level == "off") logger_->set_level(spdlog::level::off);
+            else logger_->set_level(spdlog::level::info); // Default to info
 
-    // Initialize the logger with file path and minimum log level
-    void init(const std::string& filepath, Level min_level);
+            logger_->flush_on(spdlog::level::err); // Flush on error and critical
+            spdlog::set_default_logger(logger_);
+            initialized_ = true;
+            spdlog::info("Logger initialized with level: {}", level);
+        }
+    }
 
-    // Log a message at a specific level
-    void log(Level level, const std::string& message, const std::string& file = "", int line = 0);
+    static std::shared_ptr<spdlog::logger>& getLogger() {
+        if (!initialized_) {
+            // If not initialized explicitly, do a default initialization
+            init("info");
+        }
+        return logger_;
+    }
 
-    // Convenience methods
-    void debug(const std::string& message, const std::string& file = "", int line = 0);
-    void info(const std::string& message, const std::string& file = "", int line = 0);
-    void warn(const std::string& message, const std::string& file = "", int line = 0);
-    void error(const std::string& message, const std::string& file = "", int line = 0);
+    // Convenience macros for logging
+    template<typename... Args>
+    static void trace(const std::string& fmt, const Args&... args) {
+        getLogger()->trace(fmt, args...);
+    }
+
+    template<typename... Args>
+    static void debug(const std::string& fmt, const Args&... args) {
+        getLogger()->debug(fmt, args...);
+    }
+
+    template<typename... Args>
+    static void info(const std::string& fmt, const Args&... args) {
+        getLogger()->info(fmt, args...);
+    }
+
+    template<typename... Args>
+    static void warn(const std::string& fmt, const Args&... args) {
+        getLogger()->warn(fmt, args...);
+    }
+
+    template<typename... Args>
+    static void error(const std::string& fmt, const Args&... args) {
+        getLogger()->error(fmt, args...);
+    }
+
+    template<typename... Args>
+    static void critical(const std::string& fmt, const Args&... args) {
+        getLogger()->critical(fmt, args...);
+    }
 
 private:
-    Logger() = default; // Private constructor for singleton
-    ~Logger(); // Close file stream
+    static inline std::shared_ptr<spdlog::logger> logger_;
+    static inline bool initialized_ = false;
 
-    // Delete copy constructor and assignment operator
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
-
-    std::ofstream log_file_stream_;
-    std::mutex mutex_;
-    Level min_log_level_ = Level::INFO; // Default minimum level
+    // Private constructor to prevent instantiation
+    Logger() = default;
 };
-
-} // namespace Logger
-
-// Macro for logging with file and line information
-#define LOG_DEBUG(msg) Logger::Logger::getInstance().debug(msg, __FILE__, __LINE__)
-#define LOG_INFO(msg) Logger::Logger::getInstance().info(msg, __FILE__, __LINE__)
-#define LOG_WARN(msg) Logger::Logger::getInstance().warn(msg, __FILE__, __LINE__)
-#define LOG_ERROR(msg) Logger::Logger::getInstance().error(msg, __FILE__, __LINE__)
 ```

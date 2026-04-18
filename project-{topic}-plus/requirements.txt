@@ -1,27 +1,12 @@
-# This file serves as a placeholder as per the prompt's request for 'requirements.txt'.
-# For C++ projects, dependencies are typically managed via:
-# - CMake for project-specific libraries (like Pistache, SQLiteCpp, jsoncpp, jwt-cpp, GTest).
-# - System package managers (e.g., apt, yum, brew) for development tools and core libraries (like libssl-dev, libsqlite3-dev).
-# - Vcpkg or Conan as C++ package managers for more complex dependency trees.
+# requirements.txt
+# This file is typically for Python projects.
+# For a C++ project, dependencies are managed by CMake.
+# However, if you were to add Python tools for scripting, linting, or further testing,
+# they would be listed here.
 
-# Application-level runtime dependencies (example, not exhaustive for C++ build):
-# - SQLite3: Database engine
-# - OpenSSL: Used by jwt-cpp for cryptographic operations
-
-# Build-time dependencies:
-# - CMake: Build system generator
-# - C++ Compiler (g++ or clang with C++17 support)
-
-# C++ Libraries (managed by CMake in this project):
-# - Pistache (Web framework)
-# - SQLiteCpp (SQLite C++ wrapper)
-# - jsoncpp (JSON parsing and generation)
-# - jwt-cpp (JSON Web Token library)
-# - Google Test (Testing framework)
-
-# Development/Tooling dependencies:
-# - Docker Engine & Docker Compose (for containerization)
-# - Git (version control)
-# - Curl (for manual API testing)
-# - ApacheBench / JMeter / k6 (for performance testing, if desired)
+# Example if using Python for API testing or utilities:
+# requests==2.31.0
+# pytest==7.4.3
+# pylint==3.0.3
+# flake8==6.1.0
 ```
