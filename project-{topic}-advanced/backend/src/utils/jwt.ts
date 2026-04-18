@@ -1,49 +1,49 @@
 ```typescript
 import jwt from 'jsonwebtoken';
-import config from '../config';
-import { User, UserRole } from '../entities/User';
+import config from '../config/config';
+import { UserRole } from '../models/User.entity';
+import { AppError } from './appError';
+
+export interface JwtPayload {
+  userId: string;
+  role: UserRole;
+  email: string; // Include email for convenience in frontend or logging
+  iat?: number; // Issued at
+  exp?: number; // Expiration time
+}
 
 /**
- * Generates an access token for a user.
- * @param user The user object.
- * @returns {string} The generated JWT access token.
+ * Generates a JSON Web Token (JWT) for an authenticated user.
+ * @param userId The ID of the user.
+ * @param role The role of the user.
+ * @param email The email of the user.
+ * @returns A signed JWT string.
  */
-export const generateAccessToken = (user: User): string => {
-  const payload = {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-  };
-  return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: `${config.jwt.accessExpirationMinutes}m`,
-  });
+export const generateAccessToken = (userId: string, role: UserRole, email: string): string => {
+  if (!config.jwtSecret) {
+    throw new Error('JWT_SECRET is not defined in environment configuration.');
+  }
+  return jwt.sign({ userId, role, email }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 };
 
 /**
- * Generates a refresh token for a user.
- * (For a full implementation, refresh tokens would typically be stored in the DB/Redis and invalidated on logout)
- * @param user The user object.
- * @returns {string} The generated JWT refresh token.
+ * Verifies a JWT and returns its payload.
+ * Throws an AppError if the token is invalid or expired.
+ * @param token The JWT string to verify.
+ * @returns The decoded JWT payload.
  */
-export const generateRefreshToken = (user: User): string => {
-  const payload = {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-  };
-  return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: `${config.jwt.refreshExpirationDays}d`,
-  });
-};
-
-/**
- * Verifies a JWT token.
- * @param token The JWT token string.
- * @returns {jwt.JwtPayload | string} The decoded payload or an error.
- */
-export const verifyToken = (token: string): jwt.JwtPayload | string => {
-  return jwt.verify(token, config.jwt.secret);
+export const verifyAccessToken = (token: string): JwtPayload => {
+  if (!config.jwtSecret) {
+    throw new Error('JWT_SECRET is not defined in environment configuration.');
+  }
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret);
+    return decoded as JwtPayload;
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      throw new AppError('Authentication token expired', 401);
+    }
+    throw new AppError('Invalid authentication token', 403);
+  }
 };
 ```
-
-#### `backend/src/utils/error.ts`

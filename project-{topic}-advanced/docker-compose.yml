@@ -1,72 +1,85 @@
+```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: always
+  postgres:
+    image: postgres:15-alpine
+    container_name: task_management_postgres
     environment:
-      POSTGRES_DB: web_scraper_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d web_scraper_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s # Give postgres a bit more time to start up
+
+  redis:
+    image: redis:7-alpine
+    container_name: task_management_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: always
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: task_management_backend
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: 5000
+      DB_HOST: postgres # Service name in docker-compose for inter-container communication
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REDIS_HOST: redis # Service name in docker-compose
+      REDIS_PORT: 6379
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
+      FRONTEND_URL: ${FRONTEND_URL} # For CORS
     ports:
       - "5000:5000"
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/web_scraper_db?schema=public
-      PORT: 5000
-      JWT_SECRET: your_jwt_secret_key_for_docker_env
-      JWT_EXPIRES_IN: 1d
-      SCRAPER_BROWSER: chromium # Or firefox/webkit
-      CACHE_TTL_SECONDS: 300
-      NODE_ENV: production
-      ADMIN_PASSWORD: Admin@123
-      USER_PASSWORD: User@123
-      FRONTEND_URL: http://localhost:3000
     depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app # Mount local code for development, remove/adjust for production
-      - /app/node_modules # Ensure node_modules inside container is used
-      - /app/logs # For Winston logs
-    command: sh -c "npx prisma migrate deploy && npm run seed && npm start"
-    # Ensure Playwright browser binaries are available.
-    # The default Playwright Docker images already have them: mcr.microsoft.com/playwright/node
-    # If building from scratch, you'd need to add browser installation steps in your Dockerfile.
-    # Our Dockerfile installs them.
+      postgres:
+        condition: service_healthy # Wait for postgres to be healthy
+      redis:
+        condition: service_healthy # Wait for redis to be healthy
+    restart: always
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:3000"
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: task_management_frontend
     environment:
-      NODE_ENV: production
-      REACT_APP_API_BASE_URL: http://localhost:5000/api
+      # VITE_API_BASE_URL is set during the build process in Dockerfile.frontend
+      # For local dev without Nginx, you'd set this to `http://localhost:5000/api/v1` in frontend/.env
+      # When using Nginx, it's set to `/api/v1` which Nginx proxies
+    ports:
+      - "${FRONTEND_PORT}:80" # Map host port to container's 80 (nginx)
     depends_on:
       backend:
-        condition: service_started
-    volumes:
-      - ./frontend:/app # Mount local code for development, remove/adjust for production
-      - /app/node_modules # Ensure node_modules inside container is used
-
+        condition: service_started # Frontend only needs backend to be accessible, not necessarily healthy at first request.
+    restart: always
 
 volumes:
   postgres_data:
+  redis_data:
 ```

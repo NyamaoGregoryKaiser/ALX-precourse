@@ -1,67 +1,81 @@
 ```typescript
-import { AppDataSource } from '../database/data-source';
-import { User, UserRole } from '../entities/User.entity';
-import { UserRepository } from '../repositories/User.repository';
-import { hashPassword, comparePasswords } from '../utils/password.utils';
-import { generateJwtToken } from '../auth/jwt.utils';
-import { ApiError } from '../utils/api-error';
-import { StatusCodes } from 'http-status-codes';
+import { Repository } from 'typeorm';
+import { AppDataSource } from '../data-source';
+import { User } from '../models/User.entity';
+import bcrypt from 'bcryptjs';
+import { AppError } from '../utils/appError';
+import logger from '../utils/logger';
 
 class AuthService {
-  private userRepository: UserRepository;
+  private userRepository: Repository<User>;
 
-  constructor(userRepository: UserRepository) {
-    this.userRepository = userRepository;
+  constructor() {
+    this.userRepository = AppDataSource.getRepository(User);
   }
 
-  async registerUser(username: string, email: string, passwordPlain: string): Promise<User> {
-    const existingUserByEmail = await this.userRepository.findByEmail(email);
-    if (existingUserByEmail) {
-      throw new ApiError(StatusCodes.CONFLICT, 'User with this email already exists.');
+  /**
+   * Registers a new user with a hashed password.
+   * Throws AppError if user with email or username already exists.
+   * @param username The user's chosen username.
+   * @param email The user's email address.
+   * @param passwordPlain The plain text password.
+   * @returns The newly created User entity.
+   */
+  public async registerUser(username: string, email: string, passwordPlain: string): Promise<User> {
+    const existingUser = await this.userRepository.findOne({ where: [{ email }, { username }] });
+    if (existingUser) {
+      throw new AppError('User with this email or username already exists', 409); // Conflict
     }
 
-    const existingUserByUsername = await this.userRepository.findByUsername(username);
-    if (existingUserByUsername) {
-      throw new ApiError(StatusCodes.CONFLICT, 'User with this username already exists.');
-    }
-
-    const hashedPassword = await hashPassword(passwordPlain);
+    const hashedPassword = await bcrypt.hash(passwordPlain, 10);
 
     const newUser = this.userRepository.create({
       username,
       email,
       password: hashedPassword,
-      role: UserRole.USER, // Default role
+      role: 'member', // Default role for new registrations
     });
 
-    await this.userRepository.save(newUser);
-    return newUser;
+    try {
+      await this.userRepository.save(newUser);
+      logger.info(`New user registered: ${newUser.email}`);
+      return newUser;
+    } catch (error: any) {
+      logger.error(`Error registering user ${email}:`, error);
+      // Re-throw as AppError to normalize error handling
+      throw new AppError('Failed to register user', 500, error);
+    }
   }
 
-  async loginUser(email: string, passwordPlain: string): Promise<{ user: User; token: string }> {
-    const user = await this.userRepository.createQueryBuilder('user')
-      .addSelect('user.password') // Select password explicitly
-      .where('user.email = :email', { email })
-      .getOne();
+  /**
+   * Validates user credentials for login.
+   * @param email The user's email address.
+   * @param passwordPlain The plain text password provided.
+   * @returns The User entity if credentials are valid, otherwise null.
+   */
+  public async validateUser(email: string, passwordPlain: string): Promise<User | null> {
+    // Select password explicitly as it's excluded by default in the entity
+    const user = await this.userRepository.findOne({
+      where: { email },
+      select: ['id', 'username', 'email', 'password', 'role', 'createdAt', 'updatedAt'] // Include password for comparison
+    });
 
     if (!user) {
-      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.');
+      logger.warn(`Login attempt failed: User not found for email ${email}`);
+      return null;
     }
 
-    const isPasswordValid = await comparePasswords(passwordPlain, user.password);
-    if (!isPasswordValid) {
-      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.');
+    const isMatch = await bcrypt.compare(passwordPlain, user.password);
+
+    if (!isMatch) {
+      logger.warn(`Login attempt failed: Invalid password for user ${email}`);
+      return null;
     }
 
-    const token = generateJwtToken(user.id, user.role);
-
-    // Remove password from user object before returning
-    delete user.password;
-
-    return { user, token };
+    logger.info(`User ${user.email} successfully validated.`);
+    return user;
   }
 }
 
-// Instantiate the service with its repository
-export const authService = new AuthService(new UserRepository(AppDataSource.getRepository(User)));
+export default new AuthService();
 ```

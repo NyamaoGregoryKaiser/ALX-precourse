@@ -1,24 +1,18 @@
 ```typescript
 import { Router } from 'express';
-import authRoutes from './authRoutes';
-import productRoutes from './productRoutes';
-import userRoutes from './userRoutes';
-import cartRoutes from './cartRoutes';
-// import orderRoutes from './orderRoutes'; // Future expansion
+import authRoutes from './auth.routes';
+import userRoutes from './user.routes';
+import projectRoutes from './project.routes';
+import taskRoutes from './task.routes';
+import commentRoutes from './comment.routes'; // Add comments route
 
 const router = Router();
 
 router.use('/auth', authRoutes);
-router.use('/products', productRoutes);
 router.use('/users', userRoutes);
-router.use('/cart', cartRoutes);
-// router.use('/orders', orderRoutes); // Add order routes when implemented
+router.use('/projects', projectRoutes);
+router.use('/tasks', taskRoutes);
+router.use('/comments', commentRoutes); // Mount comments route
 
 export default router;
 ```
-
----
-
-## 4. Core Application (Frontend)
-
-The frontend is a React application built with TypeScript and styled using Tailwind CSS. It focuses on modular components, context-based state management, and clear API interaction.

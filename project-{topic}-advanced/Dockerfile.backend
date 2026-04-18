@@ -1,0 +1,44 @@
+```dockerfile
+# Stage 1: Build the TypeScript application
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Copy package.json and yarn.lock (or package-lock.json if using npm)
+COPY backend/package.json backend/yarn.lock ./
+# Install dependencies
+RUN yarn install --frozen-lockfile
+
+# Copy the rest of the backend source code
+COPY backend/. .
+
+# Build the TypeScript project
+RUN yarn build
+
+# Stage 2: Create the final production image
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/yarn.lock ./yarn.lock
+RUN yarn install --frozen-lockfile --production
+
+# Copy the built application and static assets (like swagger.yaml)
+COPY --from=build /app/dist ./dist
+COPY backend/swagger.yaml ./swagger.yaml # Include swagger file
+
+# Expose the port the app runs on
+EXPOSE 5000
+
+# Set environment variables for production
+ENV NODE_ENV=production
+# These environment variables will be provided via Docker Compose or Kubernetes secrets in production
+# ENV DB_HOST=postgres
+# ENV REDIS_HOST=redis
+# ENV JWT_SECRET=your_production_jwt_secret
+
+# Start the application
+CMD ["node", "dist/server.js"]
+```

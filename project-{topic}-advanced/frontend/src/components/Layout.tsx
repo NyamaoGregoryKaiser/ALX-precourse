@@ -1,28 +1,27 @@
-```tsx
-import React, { ReactNode } from 'react';
-import Navbar from './Navbar';
-import { Box, Container } from '@mui/material';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+```typescript
+import React from 'react';
+import Header from './Header';
+import Sidebar from './Sidebar';
+import { Toaster } from 'react-hot-toast'; // For toast notifications
 
 interface LayoutProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#f4f6f8' }}>
-      <Navbar />
-      <Container component="main" sx={{ mt: 4, mb: 4, flexGrow: 1 }}>
-        {children}
-      </Container>
-      {/* Footer can be added here */}
-      <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
-    </Box>
+    <div className="flex min-h-screen bg-gray-100 font-sans antialiased text-gray-900">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Header />
+        <main className="flex-1 p-6 lg:p-8 overflow-auto">
+          {children}
+        </main>
+      </div>
+      <Toaster position="top-right" reverseOrder={false} />
+    </div>
   );
 };
 
 export default Layout;
 ```
-
-#### `frontend/src/components/QueryCard.tsx`

@@ -1,4 +1,5 @@
-name: CI/CD Pipeline
+```yaml
+name: CI Pipeline
 
 on:
   push:
@@ -11,122 +12,130 @@ on:
       - develop
 
 jobs:
-  backend-test:
-    name: Backend Tests
+  backend-build-test-lint:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
           node-version: '20'
+          cache: 'yarn' # Cache node modules for faster builds
+          cache-dependency-path: backend/yarn.lock
 
       - name: Install backend dependencies
-        run: npm install
-        working-directory: ./backend
-
-      - name: Wait for PostgreSQL
         run: |
-          npm install -g wait-for-it
-          wait-for-it postgres:5432 --timeout=60 --strict -- ./backend/node_modules/.bin/prisma migrate dev --name init --schema ./backend/prisma/schema.prisma
-          # Apply migrations to the test database
-          echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/test_db?schema=public" > ./backend/.env
-          ./backend/node_modules/.bin/prisma migrate dev --name init --schema ./backend/prisma/schema.prisma
-
-        working-directory: ./backend
+          cd backend
+          yarn install --frozen-lockfile
 
       - name: Run backend tests
+        run: |
+          cd backend
+          # Use a dedicated test database, or mock TypeORM entirely for unit tests
+          # For integration tests, a temporary database container could be started
+          yarn test --ci --json --outputFile=test-results.json --coverage
         env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db?schema=public
-          JWT_SECRET: test_secret
-          PORT: 5000
+          # Provide dummy env vars for tests that might need them
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_NAME: testdb
+          JWT_SECRET: ci_test_secret_for_jwt_validation
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
           NODE_ENV: test
-        run: npm test -- --coverage
-        working-directory: ./backend
 
-      - name: Upload backend coverage report
-        uses: actions/upload-artifact@v4
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
         with:
-          name: backend-coverage
+          name: backend-test-results
+          path: backend/test-results.json
+
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: backend-coverage-report
           path: backend/coverage/lcov-report
 
-  frontend-test:
-    name: Frontend Tests
+      - name: Run backend lint
+        run: |
+          cd backend
+          yarn lint
+
+  frontend-build-test-lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
           node-version: '20'
+          cache: 'yarn' # Cache node modules for faster builds
+          cache-dependency-path: frontend/yarn.lock
 
       - name: Install frontend dependencies
-        run: npm install
-        working-directory: ./frontend
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
 
       - name: Run frontend tests
-        run: npm test -- --coverage --watchAll=false
-        working-directory: ./frontend
-        env:
-          CI: true # This makes create-react-app test runner run once
+        run: |
+          cd frontend
+          yarn test --ci --json --outputFile=test-results.json --coverage
 
-      - name: Upload frontend coverage report
-        uses: actions/upload-artifact@v4
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
         with:
-          name: frontend-coverage
+          name: frontend-test-results
+          path: frontend/test-results.json
+
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: frontend-coverage-report
           path: frontend/coverage/lcov-report
 
-  build-and-push-docker-images:
-    name: Build & Push Docker Images
-    runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test] # Only build if tests pass
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only push on main/develop
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Run frontend lint
+        run: |
+          cd frontend
+          yarn lint
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/web-scraper-backend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/web-scraper-frontend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  # Optional: Docker build stage (can be integrated into a CD pipeline)
+  # docker-build:
+  #   runs-on: ubuntu-latest
+  #   needs: [backend-build-test-lint, frontend-build-test-lint] # Only build if tests pass
+  #   if: github.ref == 'refs/heads/main' # Only build on pushes to main
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v3
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v2
+  #     - name: Login to Docker Hub (if publishing)
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_TOKEN }}
+  #     - name: Build and push backend image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: .
+  #         file: Dockerfile.backend
+  #         push: true # Set to true to push to registry
+  #         tags: your_docker_username/task-mgmt-backend:latest
+  #     - name: Build and push frontend image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: .
+  #         file: Dockerfile.frontend
+  #         push: true # Set to true to push to registry
+  #         tags: your_docker_username/task-mgmt-frontend:latest
+```

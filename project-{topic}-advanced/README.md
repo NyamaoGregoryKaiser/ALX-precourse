@@ -1,423 +1,372 @@
-# Web Scraping Tools System (Enterprise-Grade)
+```markdown
+# Enterprise-Grade Task Management System
 
-This project provides a comprehensive, production-ready web scraping tools system. It's built with a Node.js/Express backend, a React frontend, PostgreSQL database, and includes advanced features like authentication, job queuing, caching, logging, rate limiting, and Dockerization.
+This is a comprehensive, production-ready Task Management System built with a focus on scalability, maintainability, and security. It features a modern full-stack architecture using Node.js/Express/TypeScript for the backend and React/TypeScript for the frontend, backed by PostgreSQL.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Getting Started](#getting-started)
+1.  [Features](#1-features)
+2.  [Technology Stack](#2-technology-stack)
+3.  [Project Structure](#3-project-structure)
+4.  [Local Development Setup](#4-local-development-setup)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup (without Docker)](#local-development-setup-without-docker)
-    *   [Docker Setup (Recommended)](#docker-setup-recommended)
-4.  [API Documentation](#api-documentation)
-5.  [Testing](#testing)
-6.  [Deployment Guide](#deployment-guide)
-7.  [CI/CD](#cicd)
-8.  [Code Structure](#code-structure)
-9.  [Future Enhancements](#future-enhancements)
-10. [License](#license)
-
----
+    *   [Environment Variables](#environment-variables)
+    *   [Database & Cache Setup (Docker Compose)](#database--cache-setup-docker-compose)
+    *   [Backend Setup](#backend-setup)
+    *   [Frontend Setup](#frontend-setup)
+    *   [Running the Application](#running-the-application)
+5.  [API Documentation](#5-api-documentation)
+6.  [Testing](#6-testing)
+7.  [Architecture](#7-architecture)
+8.  [Deployment Guide](#8-deployment-guide)
+9.  [Contributing](#9-contributing)
+10. [License](#10-license)
 
 ## 1. Features
 
-*   **User Management:** Register, Login, User Roles (User, Admin) with JWT authentication.
-*   **Scraping Job Management:**
-    *   Create new scraping jobs by providing a URL and CSS selectors for target elements.
-    *   View job status (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED).
-    *   Cancel running or pending jobs.
-*   **Scraped Data Storage & Retrieval:**
-    *   Scraped data is stored in PostgreSQL.
-    *   View all scraped results.
-    *   Delete scraped results.
-*   **Robust Scraping Engine:** Leverages `Playwright` for headless browser automation, capable of handling dynamic, JavaScript-rendered content.
-*   **Asynchronous Job Processing:** Jobs are added to an in-memory queue (extendable to Redis/RabbitMQ for production) and processed asynchronously.
-*   **Database:** PostgreSQL with `Prisma` ORM for type-safe database interactions and migrations.
-*   **Security:**
-    *   JWT-based authentication.
-    *   Role-based authorization (User, Admin).
-    *   Rate limiting to prevent abuse.
-    *   Basic `helmet` middleware for common web vulnerabilities.
-*   **Observability:**
-    *   Structured logging with `Winston` for application events and errors.
-    *   HTTP request logging with `Morgan`.
-*   **Performance:**
-    *   In-memory caching (`node-cache`) for API responses to reduce database load.
-*   **Scalability:** Designed with modular components, ready for scaling individual services.
-*   **Containerization:** `Docker` and `docker-compose` setup for easy environment replication.
-*   **CI/CD:** GitHub Actions workflow for automated testing and Docker image building.
-*   **Comprehensive Testing:** Unit, integration, and API tests for backend; unit tests for frontend.
+*   **User Management:** Register, Login, User Profiles, Role-based Access Control (Admin, Member, Guest).
+*   **Project Management:** Create, View, Update, Delete projects. Assign project owners.
+*   **Task Management:** Create, Assign, Update (status, priority, due date), Delete tasks. Filter, sort, and search tasks.
+*   **Comments:** Add and manage comments for tasks.
+*   **Authentication & Authorization:** JWT-based secure access with middleware for role-based permissions.
+*   **Robust Error Handling:** Centralized error middleware, custom `AppError` types for predictable error responses.
+*   **Logging & Monitoring:** Structured logging with Winston for effective debugging and operational insights. Custom request logger.
+*   **Caching:** Redis integration for improved data retrieval performance for frequently accessed data.
+*   **Rate Limiting:** Protects against abuse and Denial-of-Service (DoS) attacks.
+*   **Input Validation:** Joi-based schema validation for all incoming API requests.
+*   **Dockerized Development:** Easy setup and consistent development/production environments using Docker Compose.
+*   **CI/CD Ready:** GitHub Actions configuration for automated testing and linting on every push/pull request.
+*   **Comprehensive Documentation:** Detailed `README`, interactive API documentation with Swagger/OpenAPI, and architectural overview.
 
----
+## 2. Technology Stack
 
-## 2. Architecture
+*   **Backend:** Node.js, Express.js, TypeScript, TypeORM
+*   **Frontend:** React, TypeScript, Vite, Tailwind CSS (for styling examples)
+*   **Database:** PostgreSQL
+*   **Caching:** Redis
+*   **Authentication:** JSON Web Tokens (JWT), `bcryptjs` for password hashing
+*   **Containerization:** Docker, Docker Compose
+*   **Testing:** Jest, Supertest (backend), React Testing Library (frontend)
+*   **Validation:** Joi
+*   **Logging:** Winston
+*   **API Documentation:** Swagger/OpenAPI (YAML)
+*   **CI/CD:** GitHub Actions
 
-The system follows a typical client-server architecture with a database.
+## 3. Project Structure
 
-```mermaid
-graph TD
-    User[Client (Browser/Frontend)] -->|HTTP/S Requests| CDN(CDN / Load Balancer)
-    CDN --> Nginx(Nginx / API Gateway)
-    Nginx -->|API Calls| Backend[Backend Service (Node.js/Express)]
-    Backend -->|Database Queries| PostgreSQL[Database (PostgreSQL)]
-    Backend -->|Async Task| JobQueueService[Job Queue (In-memory / Redis)]
-    JobQueueService -->|Pulls Jobs| Backend
-    Backend -- Playwright --> ScrapeTarget[Target Website]
+The project uses a monorepo-like structure with separate `backend` and `frontend` directories, along with shared Docker configurations.
 
-    subgraph Backend Services
-        Backend
-        JobQueueService
-    end
-
-    subgraph Infrastructure
-        PostgreSQL
-        Nginx
-        CDN
-    end
-
-    subgraph Core Components
-        Frontend[React Application]
-        Backend[Node.js / Express API]
-        PostgreSQL
-        Playwright[Headless Browser (via Playwright)]
-        JobQueue[Asynchronous Job Queue]
-        Auth[Authentication/Authorization]
-        Cache[Caching Layer]
-        Logger[Logging/Monitoring]
-    end
-
-    User -- Interacts with --> Frontend
-    Frontend -- Requests Data --> Backend
-    Backend -- Stores/Retrieves --> PostgreSQL
-    Backend -- Initiates --> JobQueue
-    JobQueue -- Processes --> Playwright
-    Playwright -- Scrapes --> ScrapeTarget
+```
+task-management-system/
+├── backend/                  # Node.js/Express/TypeScript API
+│   ├── src/                  # Source code for the backend
+│   │   ├── config/           # Environment and application configurations
+│   │   ├── controllers/      # Request handlers, call services
+│   │   ├── middlewares/      # Express middlewares (auth, error, rate limiting, logging)
+│   │   ├── models/           # TypeORM entities (database schemas)
+│   │   ├── migrations/       # Database migration scripts
+│   │   ├── routes/           # API route definitions
+│   │   ├── services/         # Business logic, interacts with repositories
+│   │   ├── utils/            # Utility functions (logger, JWT, validation schemas, errors)
+│   │   ├── data-source.ts    # TypeORM data source configuration & seeding
+│   │   ├── app.ts            # Express application setup
+│   │   └── server.ts         # Application entry point
+│   ├── swagger.yaml          # OpenAPI/Swagger definition (auto-generated or manually maintained)
+│   ├── .env.example          # Example environment variables
+│   ├── package.json          # Backend dependencies and scripts
+│   ├── tsconfig.json         # TypeScript configuration
+│   └── ormconfig.ts          # TypeORM CLI configuration
+├── frontend/                 # React/TypeScript application
+│   ├── public/               # Static assets
+│   ├── src/                  # Source code for the frontend
+│   │   ├── assets/           # Images, icons
+│   │   ├── components/       # Reusable UI components
+│   │   ├── context/          # React Context providers (e.g., AuthContext)
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── pages/            # Main application views
+│   │   ├── services/         # API client (Axios), other external services
+│   │   ├── types/            # TypeScript type definitions
+│   │   ├── utils/            # Frontend utility functions (e.g., logger)
+│   │   ├── App.tsx           # Main application component, routing
+│   │   └── main.tsx          # React entry point
+│   ├── .env.example          # Example environment variables for frontend
+│   ├── package.json          # Frontend dependencies and scripts
+│   └── tsconfig.json         # TypeScript configuration
+├── docker-compose.yml        # Docker Compose for local development (DB, Redis, Backend, Frontend)
+├── Dockerfile.backend        # Dockerfile for backend production image
+├── Dockerfile.frontend       # Dockerfile for frontend production image
+├── nginx/                    # Nginx configuration for frontend serving & API proxy
+│   └── nginx.conf
+├── .github/                  # GitHub Actions CI/CD workflows
+│   └── workflows/
+│       └── ci.yml
+└── README.md                 # Project documentation
 ```
 
-**Key Architectural Decisions:**
-
-*   **Separation of Concerns:** Frontend and backend are distinct services, communicating via RESTful API.
-*   **Asynchronous Scraping:** Scraping is a time-consuming task. Jobs are queued and processed in the background to avoid blocking the main API thread, ensuring a responsive user experience.
-*   **Headless Browser (Playwright):** Chosen for its ability to handle modern JavaScript-heavy websites, allowing for robust data extraction from dynamic content.
-*   **Prisma ORM:** Provides an excellent developer experience with type safety and powerful migrations.
-*   **Containerization:** Docker allows for consistent environments from development to production, simplifying deployment.
-
----
-
-## 3. Getting Started
+## 4. Local Development Setup
 
 ### Prerequisites
 
-*   Node.js (v18+)
-*   npm (v8+)
-*   Docker & Docker Compose (for Docker setup)
-*   Git
+Before you begin, ensure you have the following installed:
 
-### Local Development Setup (without Docker)
+*   **Git**
+*   **Node.js** (v20 or higher recommended)
+*   **Yarn** (or npm, but `yarn` is used in scripts)
+*   **Docker Desktop** (or Docker Engine and Docker Compose)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/ALX-Software-Engineering/web-scraping-system.git
-    cd web-scraping-system
-    ```
-
-2.  **Setup PostgreSQL Database:**
-    *   Ensure you have a PostgreSQL server running (e.g., using `brew install postgres` on macOS, or a Docker container for just the DB).
-    *   Create a new database named `web_scraper_db` with a user `user` and password `password` (or adjust `backend/.env` accordingly).
-    *   Example using Docker for just the DB:
-        ```bash
-        docker run --name web-scraper-postgres -e POSTGRES_DB=web_scraper_db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:16-alpine
-        ```
-
-3.  **Backend Setup:**
-    ```bash
-    cd backend
-    cp .env.example .env
-    # Edit .env file if your PostgreSQL connection string differs
-    # DATABASE_URL="postgresql://user:password@localhost:5432/web_scraper_db?schema=public"
-    # JWT_SECRET="your_strong_secret"
-    # ADMIN_PASSWORD="Admin@123" # for seeding
-    # USER_PASSWORD="User@123"   # for seeding
-
-    npm install
-    npx prisma migrate dev --name init # Apply migrations
-    npm run seed # Seed initial admin and user accounts
-    npm run dev # Start backend in development mode (with nodemon)
-    ```
-    The backend will run on `http://localhost:5000`.
-
-4.  **Frontend Setup:**
-    ```bash
-    cd ../frontend
-    cp .env.example .env
-    # Ensure REACT_APP_API_BASE_URL points to your backend:
-    # REACT_APP_API_BASE_URL=http://localhost:5000/api
-
-    npm install
-    npm start # Start frontend in development mode
-    ```
-    The frontend will run on `http://localhost:3000`.
-
-You should now be able to access the application at `http://localhost:3000`.
-You can log in with:
-*   **Admin:** `admin@example.com` / `Admin@123`
-*   **User:** `user@example.com` / `User@123`
-
-### Docker Setup (Recommended)
+### Environment Variables
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/ALX-Software-Engineering/web-scraping-system.git
-    cd web-scraping-system
+    git clone https://github.your-username/task-management-system.git
+    cd task-management-system
     ```
 
 2.  **Create `.env` files:**
-    ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    *   Copy `backend/.env.example` to `backend/.env`
+    *   Copy `frontend/.env.example` to `frontend/.env`
+    *   Edit these files with your desired configurations. For local Docker Compose setup, the default values in `.env.example` should work well.
+
+    **`backend/.env` (example for local Docker Compose setup):**
+    ```dotenv
+    NODE_ENV=development
+    PORT=5000
+    FRONTEND_PORT=3000
+    FRONTEND_URL=http://localhost:3000
+
+    # These point to the Docker service names for inter-container communication
+    DB_HOST=postgres
+    DB_PORT=5432
+    DB_USER=postgres
+    DB_PASSWORD=postgres
+    DB_NAME=task_management_db
+
+    JWT_SECRET=a_super_secret_key_for_development_only_do_not_use_in_production
+    JWT_EXPIRES_IN=1h
+
+    REDIS_HOST=redis
+    REDIS_PORT=6379
+
+    RATE_LIMIT_WINDOW_MS=60000
+    RATE_LIMIT_MAX_REQUESTS=100
     ```
-    **Important:** Update the `JWT_SECRET` in `backend/.env` with a strong, random string. You can also adjust `ADMIN_PASSWORD` and `USER_PASSWORD` for initial seed data.
 
-3.  **Build and run with Docker Compose:**
-    ```bash
-    docker-compose up --build -d
+    **`frontend/.env` (example for local direct backend access):**
+    ```dotenv
+    # In local development without the Nginx proxy, the frontend directly calls the backend
+    VITE_API_BASE_URL=http://localhost:5000/api/v1
     ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Start a PostgreSQL container.
-    *   Start the backend container, applying Prisma migrations and seeding the database.
-    *   Start the frontend container.
+    *Note: If you plan to run frontend and backend via `docker-compose up` without individual `yarn dev` for frontend, then `VITE_API_BASE_URL` should be `/api/v1` in `Dockerfile.frontend` for Nginx to proxy it.*
 
-4.  **Access the application:**
-    Once all services are up (this might take a few minutes for the first build), you can access the frontend at `http://localhost:3000`.
+### Database & Cache Setup (Docker Compose)
 
-5.  **Stop services:**
-    ```bash
-    docker-compose down
-    ```
+Use Docker Compose to spin up your PostgreSQL database and Redis cache services. The `healthcheck` in `docker-compose.yml` ensures that the backend and frontend wait for these services to be ready.
 
----
-
-## 4. API Documentation
-
-The backend API provides the following endpoints:
-
-### Authentication
-
-*   `POST /api/auth/register`
-    *   **Description:** Register a new user.
-    *   **Request Body:** `{"username": "...", "email": "...", "password": "..."}`
-    *   **Response:** User data and JWT token.
-*   `POST /api/auth/login`
-    *   **Description:** Authenticate a user and get a JWT token.
-    *   **Request Body:** `{"email": "...", "password": "..."}`
-    *   **Response:** User data and JWT token.
-*   `GET /api/auth/profile`
-    *   **Description:** Get current authenticated user's profile.
-    *   **Authorization:** Bearer Token (Required)
-    *   **Response:** User data.
-
-### Scraping Jobs
-
-*   `POST /api/scrape`
-    *   **Description:** Create a new web scraping job.
-    *   **Authorization:** Bearer Token (Required)
-    *   **Request Body:**
-        ```json
-        {
-          "url": "https://example.com",
-          "targetElements": [
-            { "name": "pageTitle", "selector": "h1", "type": "text" },
-            { "name": "mainParagraph", "selector": "p", "type": "html" },
-            { "name": "linkHref", "selector": "a", "type": "attribute", "attribute": "href" }
-          ]
-        }
-        ```
-    *   **Response:** `{"message": "Scraping job initiated...", "jobId": "...", "status": "PENDING"}`
-*   `GET /api/jobs`
-    *   **Description:** Get all scraping jobs for the authenticated user (or all for Admin).
-    *   **Authorization:** Bearer Token (Required)
-    *   **Query Params:** `status` (PENDING, RUNNING, COMPLETED, FAILED, CANCELLED), `limit`, `offset`.
-    *   **Response:** Array of job objects.
-*   `GET /api/jobs/:id`
-    *   **Description:** Get details of a specific scraping job.
-    *   **Authorization:** Bearer Token (Required, User must own job or be Admin)
-    *   **Response:** Single job object, including latest `scrapeResults` (if any).
-*   `PUT /api/jobs/:id/cancel`
-    *   **Description:** Cancel a pending or running scraping job.
-    *   **Authorization:** Bearer Token (Required, User must own job or be Admin)
-    *   **Response:** `{"message": "Scraping job cancelled successfully.", "job": {...}}`
-
-### Scraped Results
-
-*   `GET /api/results`
-    *   **Description:** Get all scraped results for the authenticated user (or all for Admin).
-    *   **Authorization:** Bearer Token (Required)
-    *   **Query Params:** `jobId`, `userId` (Admin only), `limit`, `offset`.
-    *   **Response:** Array of result objects.
-*   `GET /api/results/:id`
-    *   **Description:** Get details of a specific scraped result.
-    *   **Authorization:** Bearer Token (Required, User must own job associated with result or be Admin)
-    *   **Response:** Single result object.
-*   `DELETE /api/results/:id`
-    *   **Description:** Delete a scraped result.
-    *   **Authorization:** Bearer Token (Required, User must own job associated with result or be Admin)
-    *   **Response:** `{"message": "Scraped result deleted successfully."}`
-
----
-
-## 5. Testing
-
-The project includes comprehensive tests for both backend and frontend.
-
-### Backend Tests
-
-*   **Unit Tests:** Jest for isolated functions (e.g., `scrapingService` logic).
-*   **Integration Tests:** Supertest for API endpoints, testing interactions between controllers, services, and mocked database/external services.
-*   **API Tests:** Cover full API flows (e.g., user registration -> login -> create job -> get job).
-*   **Coverage:** Aiming for 80%+ coverage on critical business logic.
-
-To run backend tests:
 ```bash
-cd backend
-npm test
-# For coverage report:
-npm run test:coverage
+docker-compose up -d postgres redis
+```
+You can check the status with `docker-compose ps` and logs with `docker-compose logs -f postgres`.
+
+### Backend Setup
+
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd backend
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    yarn install
+    # or npm install
+    ```
+
+3.  **Run database migrations:**
+    ```bash
+    yarn typeorm migration:run
+    # This will create tables based on your entities and migration scripts.
+    ```
+
+4.  **Seed the database (optional, for development/testing):**
+    ```bash
+    yarn seed
+    # This will populate your database with initial admin and member users, projects, and tasks.
+    # Check `backend/src/data-source.ts` for the `seedDatabase` function details.
+    ```
+
+5.  **Build Swagger Documentation:**
+    ```bash
+    yarn build:swagger
+    # This generates `swagger.yaml` from JSDoc comments in routes and models.
+    # It's also run as a `predev` hook, so `yarn dev` will build it automatically.
+    ```
+
+### Frontend Setup
+
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd ../frontend
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    yarn install
+    # or npm install
+    ```
+
+### Running the Application
+
+1.  **Start the Backend (in a new terminal):**
+    ```bash
+    cd ../backend
+    yarn dev
+    # The backend will start on http://localhost:5000
+    ```
+
+2.  **Start the Frontend (in another new terminal):**
+    ```bash
+    cd ../frontend
+    yarn dev
+    # The frontend will start on http://localhost:3000 (or as configured in frontend/.env)
+    ```
+
+Now, open your browser to `http://localhost:3000` to access the application.
+
+**Default Login Credentials (after seeding):**
+*   **Admin:** `email: admin@example.com`, `password: adminpassword`
+*   **Member:** `email: member@example.com`, `password: memberpassword`
+
+---
+
+## 5. API Documentation
+
+The backend exposes an OpenAPI/Swagger UI endpoint for interactive API documentation.
+
+*   **Swagger UI:** Access it at `http://localhost:5000/api-docs` when the backend is running.
+*   The API definitions are located in `backend/swagger.yaml` and are generated by the `yarn build:swagger` script. This script parses JSDoc comments in your route files and TypeORM entity definitions to construct the OpenAPI specification.
+
+## 6. Testing
+
+The project includes comprehensive tests across the stack to ensure quality and reliability.
+
+*   **Unit Tests:** For individual functions, services, and utilities, focusing on isolated logic. (Jest)
+*   **Integration Tests:** For controllers and service interactions with mocked or dedicated test databases, ensuring component collaboration. (Jest, Supertest)
+*   **API Tests:** Verifying API endpoints behave as expected from an external perspective. (Supertest, Postman/Newman, Swagger UI)
+*   **Frontend Tests:** For React components (rendering, user interaction) and custom hooks. (Jest, React Testing Library)
+
+To run tests:
+
+*   **Backend Tests:**
+    ```bash
+    cd backend
+    yarn test
+    # Aim for 80%+ coverage.
+    ```
+*   **Frontend Tests:**
+    ```bash
+    cd frontend
+    yarn test
+    # Aim for 80%+ coverage.
+    ```
+
+## 7. Architecture
+
+The system follows a typical **Client-Server** architecture with a **RESTful API** and a layered backend design.
+
+**High-Level Overview:**
+
+```
++-----------------------------------+     +-----------------------------------+     +-------------------------+     +-----------------+
+|          Frontend App             |     |            Backend API            |     |      PostgreSQL         |     |      Redis      |
+|     (React/TypeScript/Vite)       |<--->|       (Node.js/Express/TS)        |<--->|         Database        |<--->|     (Cache)     |
++-----------------------------------+     +-----------------------------------+     +-------------------------+     +-----------------+
+        ^                                        ^                                                                  ^
+        |                                        |                                                                  |
+        +----------------------------------------+ (HTTPS / HTTP)                                                   |
+          Browser/Mobile Client                                                                                     |
+                                                 |                                                                  |
+                                                 +------------------------------------------------------------------+ (Internal Network)
+                                                        Logging, Monitoring, CI/CD, Docker Orchestration
 ```
 
-### Frontend Tests
+**Backend Architecture (Layered):**
 
-*   **Unit Tests:** React Testing Library for components and hooks.
+The backend employs a layered architecture for clear separation of concerns:
 
-To run frontend tests:
-```bash
-cd frontend
-npm test -- --watchAll=false --coverage # --watchAll=false to run once and exit
-```
+*   **Routes:** Define API endpoints and map incoming requests to appropriate controllers. They also apply common middlewares like authentication, authorization, and validation.
+*   **Controllers:** Act as the entry point for API requests. They handle request parsing, input validation (using Joi schemas), and delegate business logic execution to services. They then format the service response into an HTTP response.
+*   **Services:** Encapsulate the core business logic of the application. They orchestrate complex operations, interact with repositories (ORM) for data persistence, apply domain-specific rules, and can interact with other services or external APIs. This layer is decoupled from HTTP concerns.
+*   **Models (Entities):** TypeORM entities define the database schema, table relationships, data types, and any entity-specific behaviors (e.g., hooks).
+*   **Middlewares:** Intercept requests and responses to handle cross-cutting concerns such as authentication, authorization, error handling, request logging, and rate limiting.
+*   **Utils:** A collection of helper functions and modules, including JWT token generation/verification, structured logging (Winston), custom error classes, and Joi validation schemas.
+*   **`data-source.ts`:** TypeORM's central configuration for database connection, entity registration, and migration management. Also includes a `seedDatabase` function for development.
 
----
+**Frontend Architecture:**
 
-## 6. Deployment Guide
+The frontend follows a component-based architecture using React:
 
-This system is designed for containerized deployment using Docker.
+*   **Pages:** Top-level components that represent distinct views or routes in the application (e.g., `DashboardPage`, `ProjectsPage`, `LoginPage`). They often compose multiple smaller components.
+*   **Components:** Reusable UI elements (`TaskCard`, `Header`, `Sidebar`, `Button`). They are designed to be modular and encapsulate their own styling and logic.
+*   **Context/Hooks:** React Context is used for global state management (e.g., `AuthContext` for user authentication). Custom hooks (`useAuth`, `useTasks`) encapsulate reusable logic and stateful behavior.
+*   **Services:** Dedicated modules (e.g., `api.ts` with Axios) handle communication with the backend API.
+*   **Types:** TypeScript interfaces and types are used extensively to ensure type safety across the application, especially for API request/response structures.
+
+## 8. Deployment Guide
+
+This project is designed for containerized deployment using Docker. The provided `Dockerfile.backend`, `Dockerfile.frontend`, and `docker-compose.yml` can be extended for various production environments.
 
 1.  **Build Docker Images:**
-    Ensure you have `docker` and `docker-compose` installed. From the root of the project:
+    Ensure Docker Desktop is running. From the root directory of the project:
     ```bash
-    docker-compose build
+    docker build -f Dockerfile.backend -t task-management-backend:latest .
+    docker build -f Dockerfile.frontend -t task-management-frontend:latest .
     ```
-    This command uses the `Dockerfile` in `backend/` and `frontend/` to create optimized images.
+    (Alternatively, `docker-compose up --build` will build images defined in `docker-compose.yml` automatically).
 
-2.  **Environment Configuration:**
-    Ensure your `backend/.env` and `frontend/.env` files are correctly configured for your production environment.
-    *   **`backend/.env`:**
-        *   `DATABASE_URL`: Point to your production PostgreSQL instance.
-        *   `JWT_SECRET`: **CRITICAL** - Use a strong, unique secret key.
-        *   `NODE_ENV=production`
-        *   `FRONTEND_URL`: Set to your production frontend URL (e.g., `https://your-app.com`).
-    *   **`frontend/.env`:**
-        *   `REACT_APP_API_BASE_URL`: Point to your production backend API URL (e.g., `https://api.your-app.com/api`).
+2.  **Prepare Production Environment Variables:**
+    Ensure your `backend/.env` file (or environment variables directly injected into your deployment environment) contains production-ready values. **Critical variables** like `JWT_SECRET`, `DB_PASSWORD`, and `NODE_ENV` must be secure and appropriate for production. For the frontend, `VITE_API_BASE_URL` should be `/api/v1` to leverage the Nginx proxy within Docker.
 
-3.  **Run with Docker Compose:**
+3.  **Run with Docker Compose (Production-like Environment):**
+    For a single-server production-like deployment (suitable for smaller applications or staging), you can use `docker-compose.yml` with production environment variables.
     ```bash
-    docker-compose up -d
+    # Make sure your backend/.env and frontend/.env are configured for production
+    # Or export them before running compose:
+    # export NODE_ENV=production
+    # export DB_HOST=postgres
+    # ...
+    docker-compose -f docker-compose.yml up --build -d
     ```
-    This command starts all services in detached mode.
+    This command will start the PostgreSQL database, Redis cache, backend API, and frontend (served by Nginx) services. The frontend will be accessible on the port mapped for Nginx (e.g., `http://localhost:3000` if `FRONTEND_PORT=3000` in `.env`). Nginx will then proxy `/api/v1/` requests to the backend service.
 
-4.  **Scaling (Optional):**
-    For higher availability and performance, you would typically deploy these Docker containers to a container orchestration platform like Kubernetes, Amazon ECS, Google Kubernetes Engine, or Azure Kubernetes Service. This allows for:
-    *   **Load Balancing:** Distribute traffic across multiple instances of backend/frontend.
-    *   **Auto-scaling:** Automatically adjust the number of instances based on demand.
-    *   **Service Discovery:** Services can find each other easily.
-    *   **Persistent Storage:** Mount persistent volumes for PostgreSQL data.
-    *   **External Job Queue:** Replace the in-memory `jobQueueService` with a robust solution like Redis Queue, RabbitMQ, or AWS SQS/Azure Service Bus.
+4.  **Database Migrations on Deployment:**
+    In a robust production deployment, running database migrations is a critical step *before* starting the backend application.
+    *   **Option A (Docker Exec):** After the `backend` container is running, you can execute the migration command inside it:
+        ```bash
+        docker exec -it task_management_backend yarn typeorm migration:run
+        ```
+    *   **Option B (Dedicated Migration Container):** For more automation, you can create a small, temporary Docker container whose sole purpose is to run migrations and then exit. This is ideal for CI/CD pipelines. This would involve a separate service in `docker-compose.yml` or a dedicated Kubernetes Job.
+    **Important:** Always keep `synchronize: false` in `backend/src/data-source.ts` for production. `synchronize: true` is extremely dangerous in production as it can lead to data loss.
 
-5.  **Monitoring:**
-    Integrate with external monitoring tools (e.g., Prometheus, Grafana, ELK Stack) to collect logs (`logs/` directory in backend), metrics (CPU, memory, request rates), and application traces for production environments.
+5.  **CI/CD for Automated Deployment:**
+    The `.github/workflows/ci.yml` provides a starting point for GitHub Actions. For a full Continuous Deployment (CD) pipeline, you would extend this workflow to:
+    *   Build and push Docker images to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry) upon successful CI.
+    *   Deploy the updated images to your cloud provider's orchestration service (e.g., AWS ECS/EKS, Google Cloud Run/GKE, Azure AKS, DigitalOcean App Platform) using appropriate deployment tools (e.g., Terraform, AWS CLI, Kubectl, Helm charts).
+    *   Implement rollback strategies in case of deployment failures.
 
----
+## 9. Contributing
 
-## 7. CI/CD
+Contributions are welcome! If you have suggestions, bug reports, or want to add new features, please:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write tests for your changes.
+5.  Ensure linting and tests pass (`yarn lint && yarn test`).
+6.  Commit your changes (`git commit -am 'feat: Add new feature'`).
+7.  Push to your branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
 
-A basic GitHub Actions workflow is provided in `.github/workflows/ci.yml`.
-
-**Workflow Steps:**
-
-1.  **`backend-test`:**
-    *   Sets up a PostgreSQL service for testing.
-    *   Installs backend dependencies.
-    *   Applies Prisma migrations to the test database.
-    *   Runs Jest tests with coverage.
-    *   Uploads coverage report as an artifact.
-2.  **`frontend-test`:**
-    *   Installs frontend dependencies.
-    *   Runs React Testing Library tests with coverage.
-    *   Uploads coverage report as an artifact.
-3.  **`build-and-push-docker-images`:**
-    *   **Depends on successful completion of `backend-test` and `frontend-test`.**
-    *   Logs into Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` GitHub Secrets).
-    *   Builds and pushes Docker images for both backend and frontend to Docker Hub, tagged with the commit SHA.
-
-**To Set Up CI/CD:**
-
-1.  Fork this repository to your GitHub account.
-2.  Go to your repository settings -> Secrets and variables -> Actions.
-3.  Add the following repository secrets:
-    *   `DOCKER_USERNAME`: Your Docker Hub username.
-    *   `DOCKER_PASSWORD`: Your Docker Hub access token (not your main password).
-4.  Push changes to `main` or `develop` branch, or open a Pull Request, to trigger the workflow.
-
----
-
-## 8. Code Structure
-
-*   `backend/`: Node.js/Express application.
-    *   `prisma/`: Database schema, migrations, and seed scripts.
-    *   `src/`:
-        *   `config/`: Environment-specific configurations (DB, Auth, Logger, Cache).
-        *   `controllers/`: Handle incoming API requests, validate input, and delegate to services.
-        *   `middleware/`: Express middleware for authentication, error handling, rate limiting, caching.
-        *   `services/`: Encapsulate business logic, interact with database/external APIs (e.g., scraping logic, job queue).
-        *   `routes/`: Define API endpoints and link to controllers.
-        *   `tests/`: Unit and integration tests for backend.
-        *   `utils/`: Helper functions (e.g., validation).
-        *   `app.js`: Main Express application setup.
-        *   `server.js`: Entry point, starts server and job processor.
-*   `frontend/`: React application.
-    *   `public/`: Static assets.
-    *   `src/`:
-        *   `api/`: Axios instance for API calls.
-        *   `components/`: Reusable UI components (Auth forms, Scrape forms, Job/Result cards).
-        *   `context/`: React Context for global state (e.g., authentication).
-        *   `hooks/`: Custom React hooks for data fetching and state management.
-        *   `pages/`: Top-level page components (Home, Dashboard).
-        *   `tests/`: Unit tests for frontend components.
-        *   `App.js`: Main application component, handles routing.
-        *   `index.js`: Entry point for React app.
-*   `.github/workflows/`: GitHub Actions CI/CD pipeline configuration.
-*   `docker-compose.yml`: Defines multi-container Docker application.
-
----
-
-## 9. Future Enhancements
-
-*   **Advanced Job Queue:** Replace in-memory `jobQueueService` with a robust solution like [BullMQ](https://github.com/taskforcesh/bullmq) (backed by Redis) or a cloud-managed queue like AWS SQS.
-*   **Proxy Rotation:** Implement proxy management to avoid IP bans when scraping frequently.
-*   **Captcha Solving:** Integrate with CAPTCHA solving services if target websites use them.
-*   **Scheduled Jobs:** Allow users to schedule scraping jobs at recurring intervals.
-*   **Webhooks/Notifications:** Notify users upon job completion or failure.
-*   **Data Export:** Provide options to export scraped data (CSV, JSON).
-*   **Dashboard Improvements:** More interactive charts, real-time updates using WebSockets for job status.
-*   **Admin Panel:** A dedicated admin interface to manage all users, jobs, and system settings.
-*   **Playwright Browser as a Service:** Run Playwright in a separate, dedicated container or service for better isolation and scalability of scraping operations.
-*   **Persistent Caching:** Replace `node-cache` with Redis for distributed, persistent caching.
-*   **Observability:** Integrate with Prometheus/Grafana for metric collection and visualization, and centralized logging (ELK Stack, LogDNA).
-*   **Enhanced Input Validation:** Use a schema validation library like `Joi` or `Zod` for more robust request body validation.
-
----
+Please adhere to conventional commit messages.
 
 ## 10. License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the `LICENSE` file in the root of the repository for details.
 ```

@@ -1,0 +1,340 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: Task Management System API
+  version: 1.0.0
+  description: API documentation for the Task Management System built with Node.js, Express, and TypeORM.
+  contact:
+    email: support@example.com
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local Development Server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your JWT token in the format 'Bearer YOUR_TOKEN'
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the user.
+          example: a1b2c3d4-e5f6-7890-1234-567890abcdef
+        username:
+          type: string
+          description: User's chosen username.
+          example: john_doe
+        email:
+          type: string
+          format: email
+          description: User's email address.
+          example: john.doe@example.com
+        role:
+          type: string
+          enum: [admin, member, guest]
+          description: User's role in the system.
+          example: member
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of when the user was created.
+          example: 2023-11-20T10:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp of when the user was last updated.
+          example: 2023-11-20T10:00:00.000Z
+      required:
+        - id
+        - username
+        - email
+        - role
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the project.
+          example: p1r2o3j4-e5c6-7890-1234-567890abcdef
+        name:
+          type: string
+          description: Name of the project.
+          example: Website Redesign
+        description:
+          type: string
+          nullable: true
+          description: Detailed description of the project.
+          example: Redesign the company website with a modern look and improved UX.
+        status:
+          type: string
+          description: Current status of the project.
+          example: active
+        ownerId:
+          type: string
+          format: uuid
+          description: ID of the user who owns the project.
+          example: a1b2c3d4-e5f6-7890-1234-567890abcdef
+        owner:
+          $ref: '#/components/schemas/User'
+          description: The user object of the project owner.
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T11:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T11:00:00.000Z
+      required:
+        - id
+        - name
+        - ownerId
+        - status
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: t1a2s3k4-e5f6-7890-1234-567890abcdef
+        title:
+          type: string
+          example: Create Homepage Mockups
+        description:
+          type: string
+          nullable: true
+          example: Design initial wireframes and mockups for the new website homepage.
+        status:
+          type: string
+          enum: [to-do, in-progress, under-review, completed, blocked]
+          example: in-progress
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          example: high
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: 2023-12-01T23:59:59.000Z
+        projectId:
+          type: string
+          format: uuid
+          example: p1r2o3j4-e5c6-7890-1234-567890abcdef
+        project:
+          $ref: '#/components/schemas/Project'
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
+          example: a1b2c3d4-e5f6-7890-1234-567890abcdef
+        assignee:
+          $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T12:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T12:00:00.000Z
+      required:
+        - id
+        - title
+        - status
+        - priority
+        - projectId
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: c1o2m3m4-e5n6-7890-1234-567890abcdef
+        content:
+          type: string
+          example: Looks good so far! Remember to include mobile views.
+        authorId:
+          type: string
+          format: uuid
+          example: a1b2c3d4-e5f6-7890-1234-567890abcdef
+        author:
+          $ref: '#/components/schemas/User'
+        taskId:
+          type: string
+          format: uuid
+          example: t1a2s3k4-e5f6-7890-1234-567890abcdef
+        task:
+          $ref: '#/components/schemas/Task'
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T13:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-11-20T13:00:00.000Z
+      required:
+        - id
+        - content
+        - authorId
+        - taskId
+
+tags:
+  - Auth
+  - Users
+  - Projects
+  - Tasks
+  - Comments
+
+paths:
+  # Auth routes are defined in backend/src/routes/auth.routes.ts comments directly
+  # Example for /users
+  /users:
+    get:
+      summary: Get all users
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: A list of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        401:
+          description: Unauthorized
+    post:
+      summary: Create a new user (admin only)
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - role
+              properties:
+                username: { type: string, example: new.user }
+                email: { type: string, format: email, example: new.user@example.com }
+                password: { type: string, format: password, example: StrongP@ss1 }
+                role: { type: string, enum: [admin, member, guest], example: member }
+      responses:
+        201:
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Bad request (validation errors)
+        401:
+          description: Unauthorized (missing token)
+        403:
+          description: Forbidden (insufficient permissions)
+
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the user to retrieve
+      responses:
+        200:
+          description: User data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          description: Unauthorized
+        404:
+          description: User not found
+    put:
+      summary: Update user by ID
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the user to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string, example: updated.user }
+                email: { type: string, format: email, example: updated.user@example.com }
+                role: { type: string, enum: [admin, member, guest], example: admin }
+              # Note: Password updates should be a separate, dedicated endpoint
+      responses:
+        200:
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Bad request (validation errors)
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden (insufficient permissions)
+        404:
+          description: User not found
+    delete:
+      summary: Delete user by ID
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the user to delete
+      responses:
+        204:
+          description: User deleted successfully (No Content)
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden (insufficient permissions)
+        404:
+          description: User not found
+
+  # ... (Similar definitions for /projects, /tasks, /comments)
+```
