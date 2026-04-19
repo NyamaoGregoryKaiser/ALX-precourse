@@ -1,5 +1,4 @@
-```yaml
-name: CI/CD Pipeline for Web Scraping System
+name: CI/CD Pipeline
 
 on:
   push:
@@ -10,145 +9,122 @@ on:
       - main
 
 jobs:
-  build-and-test-backend:
-    name: Build and Test Backend
+  build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js for Backend
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        run: npm install
         working-directory: ./backend
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Cache Node Modules
-        id: cache-npm
-        uses: actions/cache@v3
-        with:
-          path: backend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install Dependencies
-        if: steps.cache-npm.outputs.cache-hit != 'true'
-        run: npm ci
-
-      - name: Start PostgreSQL (for backend tests)
+      - name: Create Backend .env file
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          docker run --name test-postgres -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -e POSTGRES_DB=test_db -p 5432:5432 -d postgres:15-alpine
-          # Wait for PostgreSQL to be ready
-          sleep 10 # Give it some time to start, for robustness add a loop with pg_isready
-          echo "PG is ready"
-        # Set environment variables for tests to connect to the temporary PostgreSQL container
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-          JWT_SECRET: test_jwt_secret
-          ADMIN_EMAIL: test_admin@example.com
-          ADMIN_PASSWORD: test_admin_password
+          cp .env.example .env
+          echo "DB_HOST=localhost" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "DB_USER=test_user" >> .env
+          echo "DB_PASSWORD=test_password" >> .env
+          echo "DB_NAME=test_db" >> .env
+          echo "JWT_SECRET=supersecret" >> .env
+          echo "REDIS_HOST=localhost" >> .env
+          echo "REDIS_PORT=6379" >> .env
+        working-directory: ./backend
+
+      - name: Start PostgreSQL and Redis for Backend Tests
+        run: |
+          docker-compose -f docker-compose.test.yml up -d db redis
+          docker ps
+          sleep 10 # Give services time to start and health checks to pass
+        working-directory: ./backend
+
+      - name: Run Backend Migrations & Seeders
+        run: |
+          npx sequelize-cli db:create --env test
+          npx sequelize-cli db:migrate --env test
+          npx sequelize-cli db:seed:all --env test
+        working-directory: ./backend
 
       - name: Run Backend Tests
         run: npm test
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-          JWT_SECRET: test_jwt_secret
-          ADMIN_EMAIL: test_admin@example.com
-          ADMIN_PASSWORD: test_admin_password
-          # Add a dummy REDIS_HOST/PORT as redis client is imported globally
-          REDIS_HOST: localhost
-          REDIS_PORT: 63790 # A port unlikely to be used
+        working-directory: ./backend
 
-      - name: Stop PostgreSQL
-        if: always()
-        run: docker stop test-postgres && docker rm test-postgres
-
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v3
+      - name: Upload Backend Coverage Report
+        uses: actions/upload-artifact@v4
         with:
           name: backend-coverage-report
-          path: backend/coverage/lcov.info
+          path: backend/coverage/
 
+      - name: Set up Node.js for Frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
-  build-and-test-frontend:
-    name: Build and Test Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
+      - name: Install Frontend Dependencies
+        run: npm install
         working-directory: ./frontend
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Cache Node Modules
-        id: cache-npm
-        uses: actions/cache@v3
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install Dependencies
-        if: steps.cache-npm.outputs.cache-hit != 'true'
-        run: npm ci
-
       - name: Run Frontend Tests
-        run: npm test -- --watchAll=false # --watchAll=false to prevent watch mode
+        run: npm test -- --coverage
+        working-directory: ./frontend
 
-      - name: Build Frontend
-        run: npm run build
-
+      - name: Upload Frontend Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage/
 
   deploy:
-    name: Deploy to Production
+    needs: build-and-test
     runs-on: ubuntu-latest
-    needs: [build-and-test-backend, build-and-test-frontend] # Ensure tests pass before deploying
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
-
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Copy .env to server
-        uses: appleboy/scp-action@master
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: your_docker_username/task-manager-backend:latest
+          file: ./backend/Dockerfile
+
+      - name: Build and push Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: your_docker_username/task-manager-frontend:latest
+          file: ./frontend/Dockerfile
+
+      - name: Deploy to Server (Example - SSH into server and run docker-compose pull/up)
+        uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: ".env"
-          target: "/opt/web-scraper/"
-
-      - name: Deploy with Docker Compose
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /opt/web-scraper
-            docker-compose pull # Pulls latest images for postgres/redis if they changed
-            docker-compose up -d --build --force-recreate # Rebuild backend (includes frontend) and restart services
-            docker system prune -f # Clean up old images/containers
-
-```
+            cd /path/to/your/app
+            docker-compose pull
+            docker-compose up -d --remove-orphans
+            docker system prune -f

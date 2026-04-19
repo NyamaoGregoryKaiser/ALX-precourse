@@ -1,13 +1,20 @@
-```javascript
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css'; // Ensure this points to your TailwindCSS output
+import './index.css'; // Global styles (e.g., Tailwind CSS imports or basic CSS)
 import App from './App';
+import reportWebVitals from './reportWebVitals';
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-    <React.StrictMode>
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
         <App />
-    </React.StrictMode>
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
 );
-```
+
+reportWebVitals();

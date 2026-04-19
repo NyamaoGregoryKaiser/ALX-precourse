@@ -1,17 +1,19 @@
 const rateLimit = require('express-rate-limit');
-const logger = require('./logger');
-const { AppError } = require('../utils/errorHandler');
+const AppError = require('../utils/appError');
+const logger = require('../config/logger');
 
-const apiLimiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || 60 * 1000), // 1 minute
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || 100), // Max 100 requests per minute
-    message: new AppError('Too many requests from this IP, please try again after a minute', 429),
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    handler: (req, res, next, options) => {
-        logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
-        next(options.message); // Pass the AppError to the error handling middleware
-    }
+const rateLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || 60 * 1000, 10), // 1 minute
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || 100, 10), // max 100 requests per minute per IP
+  message: 'Too many requests from this IP, please try again after some time.',
+  handler: (req, res, next) => {
+    logger.warn(`Rate limit exceeded for IP: ${req.ip} on ${req.method} ${req.originalUrl}`);
+    next(new AppError('Too many requests, please try again later.', 429));
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
-module.exports = apiLimiter;
+module.exports = {
+  rateLimiter,
+};

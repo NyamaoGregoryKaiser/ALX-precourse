@@ -1,51 +1,68 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: ecommerce-postgres
+  db:
+    image: postgres:13-alpine
+    restart: always
     environment:
-      POSTGRES_DB: ecommerce_db
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck: # Basic health check for database readiness
-      test: ["CMD-SHELL", "pg_isready -U admin -d ecommerce_db"]
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose for local access/debugging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ecommerce-app
+  redis:
+    image: redis:6-alpine
+    restart: always
     ports:
-      - "8080:8080"
-    environment:
-      # These environment variables will override those set in the Dockerfile
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ecommerce_db
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-      APP_JWT_SECRET: YourSuperSecretKeyForJWTGenerationAndValidationThatMustBeAtLeast256BitsLongAndStoredSecurely
-      # Optionally configure Spring profiles, e.g., 'prod', 'dev'
-      SPRING_PROFILES_ACTIVE: dev
+      - "6379:6379" # Expose for local access/debugging
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5000:5000"
     depends_on:
-      postgres:
-        condition: service_healthy # Wait for postgres to be healthy
-    # For local development, bind mount source code for live reloading (optional)
-    # volumes:
-    #   - ./src:/app/src
-    #   - ~/.m2:/root/.m2 # Cache maven dependencies
-    # command: ["./mvnw", "spring-boot:run"] # Use this for hot-reloading in dev
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Wait for DB migrations and seeding to complete.
+    # In a real CI/CD, migrations would be a separate step before backend service starts.
+    # For local dev, we include it as part of the backend entrypoint via server.js or a separate entrypoint script.
+    # The `sequelize.sync({ alter: true })` in server.js handles this for simplicity here.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./frontend/.env.local
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
-  postgres_data:
-```
-
-**`.github/workflows/ci-cd.yml`** (GitHub Actions Example)
-
-```yaml
+  pgdata:
+  redisdata:

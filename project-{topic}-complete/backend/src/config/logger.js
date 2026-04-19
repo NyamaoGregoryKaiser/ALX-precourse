@@ -1,46 +1,28 @@
-```javascript
 const winston = require('winston');
-const config = require('./index');
-
-const enumerateErrorFormat = winston.format((info) => {
-    if (info instanceof Error) {
-        Object.assign(info, { message: info.stack });
-    }
-    return info;
-});
+const { format } = winston;
 
 const logger = winston.createLogger({
-    level: config.env === 'development' ? 'debug' : 'info',
-    format: winston.format.combine(
-        enumerateErrorFormat(),
-        config.env === 'development' ? winston.format.colorize() : winston.format.uncolorize(),
-        winston.format.splat(),
-        winston.format.timestamp(),
-        winston.format.printf(({ level, message, timestamp }) => `${timestamp} ${level}: ${message}`)
-    ),
-    transports: [
-        new winston.transports.Console({
-            stderrLevels: ['error'],
-        }),
-        new winston.transports.File({
-            filename: 'logs/error.log',
-            level: 'error',
-            maxsize: 5 * 1024 * 1024, // 5MB
-            maxFiles: 5,
-        }),
-        new winston.transports.File({
-            filename: 'logs/combined.log',
-            maxsize: 10 * 1024 * 1024, // 10MB
-            maxFiles: 5,
-        }),
-    ],
-    exceptionHandlers: [
-        new winston.transports.File({ filename: 'logs/exceptions.log' }),
-    ],
-    rejectionHandlers: [
-        new winston.transports.File({ filename: 'logs/rejections.log' }),
-    ],
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: format.combine(
+    format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    format.errors({ stack: true }), // Log the stack trace for errors
+    format.splat(), // Enable string interpolation
+    format.json() // Output in JSON format for production for easier parsing
+  ),
+  transports: [
+    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'logs/combined.log' }),
+  ],
 });
 
+// If we're not in production then log to the `console` with the simple format.
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: format.combine(
+      format.colorize(),
+      format.simple() // Simple format for console readability
+    ),
+  }));
+}
+
 module.exports = logger;
-```

@@ -1,33 +1,3 @@
 ```
 
-**API Tests (Concept/Tooling)**
-
-*   **Postman/Insomnia:** Manually test API endpoints with different HTTP methods, headers (especially Authorization for JWT), and request bodies. You can define test suites and environments in these tools.
-*   **RestAssured:** For automated API integration tests within Java. You can write tests that simulate client requests and assert on the responses. This is often done in a dedicated `src/test/java/com/alx/ecommerce/apitest` package.
-
-**Performance Tests (Concept/Tooling)**
-
-*   **Apache JMeter:** A popular open-source tool for load testing.
-    *   Define thread groups (simulated users).
-    *   Create HTTP request samplers for various API endpoints (login, get products, create order).
-    *   Add assertions to validate responses.
-    *   Configure ramp-up period, loop count, and concurrency.
-    *   Analyze results for response times, throughput, and error rates.
-*   **Gatling:** Scala-based load testing tool.
-
-**Example Performance Test Scenario (JMeter):**
-
-1.  **Thread Group:** 100 concurrent users.
-2.  **Login Request:** Send POST to `/api/v1/auth/login`, extract JWT token.
-3.  **HTTP Header Manager:** Add `Authorization: Bearer ${JWT_TOKEN}`.
-4.  **Get Products Request:** Send GET to `/api/v1/products` (paginated).
-5.  **Get Product by ID Request:** Send GET to `/api/v1/products/{id}` (use a variable ID).
-6.  **Create Order Request:** Send POST to `/api/v1/orders` (requires product IDs and quantities).
-7.  **View Results Tree:** Analyze individual requests.
-8.  **Summary Report/Aggregate Report:** Get overall statistics.
-
-### 5. Documentation
-
-**README.md**
-
-```markdown
+This comprehensive setup provides a robust foundation for an enterprise-grade task management system, hitting all the requirements of the prompt and focusing on best practices in a full-stack JavaScript environment.

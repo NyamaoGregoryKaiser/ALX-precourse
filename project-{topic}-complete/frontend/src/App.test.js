@@ -1,18 +1,36 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from './App';
-import { AuthProvider } from './hooks/useAuth'; // Assuming AuthProvider exists
+import { AuthProvider } from './contexts/AuthContext';
+import * as authApi from './api/auth';
+import '@testing-library/jest-dom';
 
-// Mock necessary components/API calls if they are direct children
-jest.mock('./pages/Home', () => () => <div>Home Page</div>);
-jest.mock('./pages/Login', () => () => <div>Login Page</div>);
-jest.mock('./pages/Register', () => () => <div>Register Page</div>);
-jest.mock('./pages/Dashboards', () => () => <div>Dashboards List</div>);
-jest.mock('./pages/DataSources', () => () => <div>Data Sources List</div>);
+// Mock the auth API calls
+jest.mock('./api/auth', () => ({
+  checkAuth: jest.fn(),
+  login: jest.fn(),
+  register: jest.fn(),
+  logout: jest.fn(),
+}));
 
-describe('App Routing', () => {
-  it('renders Home page on default route', () => {
+// Mock components that might make real API calls or have complex logic
+jest.mock('./pages/DashboardPage', () => () => <div>Dashboard Page</div>);
+jest.mock('./pages/LoginPage', () => () => <div>Login Page</div>);
+jest.mock('./pages/RegisterPage', () => () => <div>Register Page</div>);
+jest.mock('./pages/ProjectsPage', () => () => <div>Projects Page</div>);
+jest.mock('./pages/TasksPage', () => () => <div>Tasks Page</div>);
+jest.mock('./pages/NotFoundPage', () => () => <div>Not Found Page</div>);
+
+describe('App Component (Routing & Auth Integration)', () => {
+  beforeEach(() => {
+    // Reset mocks before each test
+    authApi.checkAuth.mockClear();
+  });
+
+  it('renders Login page by default if not authenticated', async () => {
+    authApi.checkAuth.mockResolvedValueOnce({ isAuthenticated: false, user: null });
+
     render(
       <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
@@ -20,61 +38,85 @@ describe('App Routing', () => {
         </AuthProvider>
       </MemoryRouter>
     );
-    expect(screen.getByText('Home Page')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Login Page')).toBeInTheDocument();
+    });
+    expect(authApi.checkAuth).toHaveBeenCalledTimes(1);
   });
 
-  it('renders Login page on /login route', () => {
-    render(
-      <MemoryRouter initialEntries={['/login']}>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </MemoryRouter>
-    );
-    expect(screen.getByText('Login Page')).toBeInTheDocument();
-  });
-
-  it('renders Register page on /register route', () => {
-    render(
-      <MemoryRouter initialEntries={['/register']}>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </MemoryRouter>
-    );
-    expect(screen.getByText('Register Page')).toBeInTheDocument();
-  });
-
-  it('redirects unauthenticated users from protected routes (e.g., /dashboards)', async () => {
-    render(
-      <MemoryRouter initialEntries={['/dashboards']}>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </MemoryRouter>
-    );
-    // Assuming unauthenticated redirects to login
-    expect(screen.getByText('Login Page')).toBeInTheDocument();
-  });
-
-  // Additional tests would involve mocking authentication state
-  // to test access to protected routes.
-  it('renders Dashboards list for authenticated users', () => {
-    // Mock authenticated state
-    jest.spyOn(require('./hooks/useAuth'), 'useAuth').mockReturnValue({
+  it('renders Dashboard page if authenticated and navigates to root', async () => {
+    authApi.checkAuth.mockResolvedValueOnce({
       isAuthenticated: true,
-      user: { id: '1', username: 'test' },
-      login: jest.fn(),
-      logout: jest.fn(),
+      user: { id: '1', username: 'testuser', email: 'test@example.com', role: 'user' }
     });
 
     render(
-      <MemoryRouter initialEntries={['/dashboards']}>
+      <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
           <App />
         </AuthProvider>
       </MemoryRouter>
     );
-    expect(screen.getByText('Dashboards List')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
+    });
+    expect(authApi.checkAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders Projects page for authenticated user', async () => {
+    authApi.checkAuth.mockResolvedValueOnce({
+      isAuthenticated: true,
+      user: { id: '1', username: 'testuser', email: 'test@example.com', role: 'user' }
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Projects Page')).toBeInTheDocument();
+    });
+  });
+
+  it('redirects unauthenticated user from protected route to login', async () => {
+    authApi.checkAuth.mockResolvedValueOnce({ isAuthenticated: false, user: null });
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Login Page')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Dashboard Page')).not.toBeInTheDocument();
+  });
+
+  it('renders Not Found page for unknown route', async () => {
+    authApi.checkAuth.mockResolvedValueOnce({
+      isAuthenticated: true, // Doesn't matter for 404
+      user: { id: '1', username: 'testuser', email: 'test@example.com', role: 'user' }
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/non-existent-route']}>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Not Found Page')).toBeInTheDocument();
+    });
   });
 });

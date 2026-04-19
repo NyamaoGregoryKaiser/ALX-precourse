@@ -1,59 +1,48 @@
-const logger = require('./logger');
+const AppError = require('../utils/appError');
+const logger = require('../config/logger');
 
-class AppError extends Error {
-    constructor(message, statusCode) {
-        super(message);
-        this.statusCode = statusCode;
-        this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
-        this.isOperational = true; // Marks operational errors (expected)
-        Error.captureStackTrace(this, this.constructor);
-    }
-}
-
+// Centralized error handling middleware
 const errorHandler = (err, req, res, next) => {
-    // Log the error
-    logger.error(`Error occurred: ${err.message}`, {
-        statusCode: err.statusCode || 500,
-        stack: err.stack,
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-        user: req.user ? req.user.id : 'guest',
-        isOperational: err.isOperational
-    });
+  // Log the error for debugging
+  logger.error(err.stack || err.message);
 
-    // Default error values
-    let statusCode = err.statusCode || 500;
-    let message = err.message || 'Something went wrong!';
+  // Default error values
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Something went wrong!';
 
-    // Handle specific types of errors (e.g., database errors, validation errors)
-    if (err.name === 'JsonWebTokenError') {
-        statusCode = 401;
-        message = 'Invalid token. Please log in again!';
-    } else if (err.name === 'TokenExpiredError') {
-        statusCode = 401;
-        message = 'Your token has expired. Please log in again!';
-    } else if (err.name === 'SequelizeUniqueConstraintError') {
-        statusCode = 409; // Conflict
-        message = `Duplicate entry: ${err.errors.map(e => e.message).join(', ')}`;
-    } else if (err.name === 'SequelizeValidationError') {
-        statusCode = 400; // Bad Request
-        message = `Validation error: ${err.errors.map(e => e.message).join(', ')}`;
-    } else if (err.name === 'SequelizeForeignKeyConstraintError') {
-        statusCode = 400; // Bad Request
-        message = `Invalid reference: ${err.message}`;
-    }
+  // Handle specific types of errors
+  if (err.name === 'SequelizeValidationError') {
+    statusCode = 400;
+    message = err.errors.map(e => e.message).join(', ');
+  } else if (err.name === 'SequelizeUniqueConstraintError') {
+    statusCode = 400;
+    message = err.errors.map(e => e.message || `${e.path} already in use`).join(', ');
+  } else if (err.name === 'SequelizeForeignKeyConstraintError') {
+    statusCode = 400;
+    message = `Invalid foreign key: ${err.index}`;
+  } else if (err.name === 'CastError' && err.kind === 'ObjectId') { // For MongoDB, but good pattern
+    statusCode = 400;
+    message = `Invalid ${err.path}: ${err.value}`;
+  } else if (err.name === 'ValidationError') { // For Joi validation errors
+    statusCode = 400;
+    message = err.details.map(e => e.message).join(', ');
+  } else if (err instanceof AppError) {
+    // Custom operational errors
+    statusCode = err.statusCode;
+    message = err.message;
+  } else if (err.code === 'LIMIT_FILE_SIZE') { // For file upload errors
+    statusCode = 413;
+    message = 'File size too large!';
+  }
 
-    // Send error response
-    res.status(statusCode).json({
-        status: `${statusCode}`.startsWith('4') ? 'fail' : 'error',
-        message: message,
-        // In development, send stack trace for debugging
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    });
+  // Send the error response
+  res.status(statusCode).json({
+    status: 'error',
+    statusCode: statusCode,
+    message: message,
+    // In development, send stack trace for debugging
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
 };
 
-module.exports = {
-    AppError,
-    errorHandler
-};
+module.exports = errorHandler;

@@ -1,65 +1,58 @@
-```javascript
 const express = require('express');
-const helmet = require('helmet');
-const xss = require('xss-clean');
-const mongoSanitize = require('express-mongo-sanitize'); // Placeholder, useful for NoSQL, but good practice awareness
-const compression = require('compression');
 const cors = require('cors');
-const httpStatus = require('http-status');
-const config = require('./config');
-const { apiLimiter } = require('./middleware/rateLimit.middleware');
-const { errorConverter, errorHandler } = require('./middleware/error.middleware');
-const AppError = require('./utils/AppError');
-const authRoutes = require('./routes/auth.routes');
-const userRoutes = require('./routes/user.routes');
-const scrapingJobRoutes = require('./routes/scrapingJob.routes');
-const scrapedDataRoutes = require('./routes/scrapedData.routes');
-const logger = require('./config/logger');
+const helmet = require('helmet'); // Security middleware
+const compression = require('compression'); // Compression middleware
+const { rateLimiter } = require('./middleware/rateLimit');
+const { requestLogger, errorLogger } = require('./middleware/logging');
+const errorHandler = require('./middleware/errorHandler');
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const projectRoutes = require('./routes/projectRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 
 const app = express();
 
-// Set security HTTP headers
+// Security middleware
 app.use(helmet());
 
-// Parse json request body
-app.use(express.json());
+// Enable CORS for all routes (adjust as needed for specific origins in production)
+app.use(cors());
 
-// Parse urlencoded request body
+// Enable request body parsing
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Sanitize request data
-app.use(xss());
-app.use(mongoSanitize()); // Prevent NoSQL injection attacks (even if using SQL, good to have)
-
-// Gzip compression
+// Apply compression
 app.use(compression());
 
-// Enable cors
-app.use(cors());
-app.options('*', cors());
+// Request logging middleware
+app.use(requestLogger);
 
-// Limit repeated failed requests to auth endpoints
-if (config.env === 'production') {
-    app.use('/api', apiLimiter); // Apply general API rate limiting
-}
+// Rate limiting middleware
+app.use(rateLimiter);
 
-
-// API routes
+// --- API Routes ---
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/jobs', scrapingJobRoutes);
-app.use('/api/data', scrapedDataRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/tasks', taskRoutes);
 
-// send 404 error for any unknown api request
-app.use((req, res, next) => {
-    next(new AppError(httpStatus.NOT_FOUND, 'Not found'));
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
-// convert error to AppError, if needed
-app.use(errorConverter);
+// Catch-all for undefined routes
+app.use((req, res, next) => {
+  const error = new Error(`Not Found - ${req.originalUrl}`);
+  error.statusCode = 404;
+  next(error);
+});
 
-// handle error
+// Error logging middleware (must be before the final error handler)
+app.use(errorLogger);
+
+// Centralized error handling middleware
 app.use(errorHandler);
 
 module.exports = app;
-```

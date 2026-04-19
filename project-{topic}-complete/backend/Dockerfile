@@ -1,38 +1,21 @@
-```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:18-alpine AS builder
+# Use a Node.js 18 LTS image as the base
+FROM node:18-alpine
 
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package.json package-lock.json ./
+# Copy package.json and package-lock.json (if exists)
+# This allows caching dependencies if they don't change
+COPY package*.json ./
+
+# Install project dependencies
 RUN npm install
 
-# Copy source code
+# Copy the rest of the application code
 COPY . .
 
-# Build TypeScript to JavaScript
-RUN npm run build
-
-# Stage 2: Run the application
-FROM node:18-alpine AS runner
-
-WORKDIR /app
-
-# Install production dependencies only
-COPY package.json package-lock.json ./
-RUN npm install --production
-
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/.env.example ./.env.example # Copy example env
-
-# Expose port (ensure this matches your application's listen port)
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Set environment variables (if any specific to runtime)
-ENV NODE_ENV production
-
 # Command to run the application
-CMD ["node", "dist/server.js"]
-```
+CMD ["npm", "start"]

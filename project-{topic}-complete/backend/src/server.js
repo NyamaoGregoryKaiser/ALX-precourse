@@ -1,68 +1,31 @@
-```javascript
+require('dotenv').config();
 const app = require('./app');
-const config = require('./config');
+const sequelize = require('./config/database');
 const logger = require('./config/logger');
-const db = require('./db');
-const schedulerService = require('./services/scheduler.service');
 
-let server;
+const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-    try {
-        // Ensure database connection and run migrations
-        await db.raw('SELECT 1+1 AS result');
-        logger.info('PostgreSQL connected successfully.');
+async function startServer() {
+  try {
+    // Test database connection and apply migrations
+    await sequelize.authenticate();
+    logger.info('Database connection has been established successfully.');
 
-        await db.migrate.latest();
-        logger.info('Database migrations ran successfully.');
+    // Apply migrations
+    // In production, migrations are often run as a separate step.
+    // For simplicity in this comprehensive example, we run them on server start.
+    // Consider using `npx sequelize-cli db:migrate` in CI/CD or deployment scripts.
+    await sequelize.sync({ alter: true }); // 'alter: true' will modify tables to reflect model changes without dropping data.
+                                         // Use `force: true` for development to drop and recreate tables.
+    logger.info('Database synchronized (migrations applied or schema updated).');
 
-        // Initialize and start the scheduler
-        await schedulerService.start();
-
-        server = app.listen(config.port, () => {
-            logger.info(`Server listening on port ${config.port} in ${config.env} mode`);
-        });
-    } catch (error) {
-        logger.error('Failed to start server:', error.message);
-        process.exit(1);
-    }
-};
-
-const exitHandler = async () => {
-    if (server) {
-        server.close(async () => {
-            logger.info('Server closed');
-            await db.destroy(); // Close DB connection
-            await schedulerService.stop(); // Stop scheduler and puppeteer
-            process.exit(1);
-        });
-    } else {
-        await db.destroy();
-        await schedulerService.stop();
-        process.exit(1);
-    }
-};
-
-const unexpectedErrorHandler = (error) => {
-    logger.error('Unexpected error:', error);
-    exitHandler();
-};
-
-process.on('uncaughtException', unexpectedErrorHandler);
-process.on('unhandledRejection', unexpectedErrorHandler);
-
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received');
-    if (server) {
-        exitHandler();
-    }
-});
-process.on('SIGINT', () => {
-    logger.info('SIGINT received');
-    if (server) {
-        exitHandler();
-    }
-});
+    app.listen(PORT, () => {
+      logger.info(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Unable to connect to the database or start the server:', error);
+    process.exit(1); // Exit process with failure
+  }
+}
 
 startServer();
-```

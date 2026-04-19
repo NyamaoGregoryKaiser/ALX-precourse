@@ -1,54 +1,47 @@
-```javascript
 import axios from 'axios';
+import { getAuthToken, removeAuthToken } from '../utils/authToken';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
+// Request interceptor to add the auth token to headers
+api.interceptors.request.use(
+  (config) => {
+    const token = getAuthToken();
     if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
-}, (error) => {
+  },
+  (error) => {
     return Promise.reject(error);
-});
+  }
+);
 
-api.interceptors.response.use((response) => {
+// Response interceptor to handle token expiration or invalidity
+api.interceptors.response.use(
+  (response) => {
     return response;
-}, (error) => {
+  },
+  (error) => {
     if (error.response && error.response.status === 401) {
-        // Handle unauthorized errors, e.g., redirect to login
-        localStorage.removeItem('token');
-        // window.location.href = '/login'; // Uncomment in a real app
+      // Token expired or unauthorized. Clear token and redirect to login.
+      console.error('Unauthorized access - Token expired or invalid. Logging out...');
+      removeAuthToken();
+      // Use window.location.href to force a full page reload and clear React state
+      // In a real app, you might use navigate or a context method for smoother UX
+      if (window.location.pathname !== '/login') {
+         window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
-});
-
-export const auth = {
-    login: (email, password) => api.post('/auth/login', { email, password }),
-    register: (username, email, password) => api.post('/auth/register', { username, email, password }),
-};
-
-export const jobs = {
-    getAll: () => api.get('/jobs'),
-    getById: (id) => api.get(`/jobs/${id}`),
-    create: (jobData) => api.post('/jobs', jobData),
-    update: (id, jobData) => api.patch(`/jobs/${id}`, jobData),
-    delete: (id) => api.delete(`/jobs/${id}`),
-    runNow: (id) => api.post(`/jobs/${id}/run`),
-};
-
-export const data = {
-    getScrapedData: (jobId, limit = 100, offset = 0) => api.get(`/data/jobs/${jobId}/data`, { params: { limit, offset } }),
-    getJobLogs: (jobId) => api.get(`/data/jobs/${jobId}/logs`),
-};
+  }
+);
 
 export default api;
-```
