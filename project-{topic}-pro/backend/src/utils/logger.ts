@@ -1,37 +1,41 @@
-import { createLogger, format, transports } from 'winston';
-import { config } from '../config/env';
+```typescript
+import winston from 'winston';
 
-const { combine, timestamp, printf, colorize, errors, json } = format;
-
-const logFormat = printf(({ level, message, timestamp, stack }) => {
-  return `${timestamp} ${level}: ${stack || message}`;
+const logger = winston.createLogger({
+    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.splat(),
+        winston.format.json()
+    ),
+    transports: [
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                winston.format.simple()
+            )
+        }),
+        new winston.transports.File({ filename: 'error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'combined.log' })
+    ],
+    exceptionHandlers: [
+        new winston.transports.File({ filename: 'exceptions.log' })
+    ],
+    rejectionHandlers: [
+        new winston.transports.File({ filename: 'rejections.log' })
+    ]
 });
 
-export const logger = createLogger({
-  level: config.NODE_ENV === 'development' ? 'debug' : 'info',
-  format: combine(
-    errors({ stack: true }), // Include stack trace for errors
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    colorize(), // For console output
-    logFormat // Custom format for console
-  ),
-  transports: [
-    new transports.Console(),
-    new transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new transports.File({ filename: 'logs/combined.log' })
-  ],
-  exceptionHandlers: [
-    new transports.File({ filename: 'logs/exceptions.log' })
-  ],
-  rejectionHandlers: [
-    new transports.File({ filename: 'logs/rejections.log' })
-  ]
-});
-
-// For production, prefer JSON format for better log aggregation
-if (config.NODE_ENV === 'production') {
-  logger.add(new transports.File({
-    filename: 'logs/production.log',
-    format: combine(timestamp(), json())
-  }));
+// For development, also log to console in a human-readable format
+if (process.env.NODE_ENV !== 'production') {
+    logger.add(new winston.transports.Console({
+        format: winston.format.combine(
+            winston.format.colorize(),
+            winston.format.simple()
+        )
+    }));
 }
+
+export default logger;
+```

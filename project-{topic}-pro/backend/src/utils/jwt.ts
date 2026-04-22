@@ -1,36 +1,38 @@
 ```typescript
 import jwt from 'jsonwebtoken';
-import { config } from '@config/index';
-import AppError, { ErrorType } from './AppError';
+import { User } from '../database/entities/User';
+import logger from './logger';
 
-interface TokenPayload {
-  id: string;
-  role: string;
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretdefaultkey';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
+
+export interface DecodedToken {
+    id: string;
+    email: string;
+    role: string;
+    iat: number;
+    exp: number;
 }
 
-export const generateAccessToken = (payload: TokenPayload): string => {
-  return jwt.sign(payload, config.SECRET_KEY, { expiresIn: config.ACCESS_TOKEN_EXPIRATION });
+export const generateToken = (user: User): string => {
+    try {
+        return jwt.sign(
+            { id: user.id, email: user.email, role: user.role },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
+    } catch (error) {
+        logger.error('Error generating JWT token:', error);
+        throw new Error('Failed to generate token');
+    }
 };
 
-export const generateRefreshToken = (payload: TokenPayload): string => {
-  return jwt.sign(payload, config.REFRESH_SECRET_KEY, { expiresIn: config.REFRESH_TOKEN_EXPIRATION });
-};
-
-export const verifyAccessToken = (token: string): TokenPayload => {
-  try {
-    const decoded = jwt.verify(token, config.SECRET_KEY) as TokenPayload;
-    return decoded;
-  } catch (error) {
-    throw new AppError('Invalid or expired access token', ErrorType.UNAUTHORIZED);
-  }
-};
-
-export const verifyRefreshToken = (token: string): TokenPayload => {
-  try {
-    const decoded = jwt.verify(token, config.REFRESH_SECRET_KEY) as TokenPayload;
-    return decoded;
-  } catch (error) {
-    throw new AppError('Invalid or expired refresh token', ErrorType.UNAUTHORIZED);
-  }
+export const verifyToken = (token: string): DecodedToken | null => {
+    try {
+        return jwt.verify(token, JWT_SECRET) as DecodedToken;
+    } catch (error) {
+        logger.warn('Invalid or expired JWT token:', error);
+        return null;
+    }
 };
 ```

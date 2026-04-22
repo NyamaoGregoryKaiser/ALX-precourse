@@ -1,30 +1,22 @@
 ```typescript
-import { DataSource, DataSourceOptions } from 'typeorm';
-import dotenv from 'dotenv';
-import path from 'path';
+// This file is used by the TypeORM CLI to run migrations.
+// Make sure it points to your DataSource configuration.
+import { config } from 'dotenv';
+import { DataSourceOptions } from 'typeorm';
 
-// Load environment variables based on NODE_ENV
-const envPath = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
-dotenv.config({ path: path.resolve(process.cwd(), envPath) });
+// Load environment variables for TypeORM CLI
+config();
 
-export const dataSourceOptions: DataSourceOptions = {
-  type: 'postgres',
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  synchronize: false, // Never use true in production! Use migrations.
-  logging: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
-  entities: [path.join(__dirname, 'src/models/**/*.ts')],
-  migrations: [path.join(__dirname, 'src/migrations/**/*.ts')],
-  subscribers: [],
-  extra: {
-    max: 10, // Maximum number of connections in the pool
-    min: 2,  // Minimum number of connections in the pool
-    idleTimeoutMillis: 30000 // How long a client is allowed to remain idle before being closed
-  }
+const dataSourceOptions: DataSourceOptions = {
+    type: "postgres",
+    url: process.env.DATABASE_URL,
+    synchronize: false, // Should be false in production, migrations handle schema
+    logging: false,
+    entities: [__dirname + "/src/database/entities/*.ts"],
+    migrations: [__dirname + "/src/database/migrations/*.ts"],
+    seeds: [__dirname + "/src/database/seeders/*.ts"], // Example for future seeder integration
+    migrationsRun: true // Automatically run migrations on startup (can be false for manual control)
 };
 
-export const AppDataSource = new DataSource(dataSourceOptions);
+export default dataSourceOptions;
 ```

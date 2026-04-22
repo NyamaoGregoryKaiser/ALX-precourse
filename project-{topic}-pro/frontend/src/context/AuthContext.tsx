@@ -1,95 +1,66 @@
 ```typescript
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { authService } from '../services/auth.service';
-import { User, LoginData, RegisterData } from '../types';
-import { jwtDecode } from 'jwt-decode';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import { User, AuthContextType } from '../types';
+import axiosInstance from '../api/axiosInstance';
 
-interface AuthContextType {
-  user: Omit<User, 'password'> | null;
-  isAuthenticated: boolean;
-  login: (credentials: LoginData) => Promise<void>;
-  register: (userData: RegisterData) => Promise<void>;
-  logout: () => void;
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+interface AuthProviderProps {
+    children: ReactNode;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [token, setToken] = useState<string | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
 
-interface JwtPayload {
-  sub: string; // User ID
-  email: string;
-  roles: string[];
-  exp: number; // Expiration time
-}
+    useEffect(() => {
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<Omit<User, 'password'> | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  const checkTokenValidity = useCallback(() => {
-    const token = authService.getToken();
-    if (token) {
-      try {
-        const decodedToken = jwtDecode<JwtPayload>(token);
-        // Check if token is expired
-        if (decodedToken.exp * 1000 > Date.now()) {
-          const storedUser = authService.getCurrentUser();
-          if (storedUser && storedUser.id === decodedToken.sub) {
-            setUser(storedUser);
-            setIsAuthenticated(true);
-          } else {
-            // User in localStorage might be inconsistent with token, clear it
-            authService.logout();
-            setUser(null);
-            setIsAuthenticated(false);
-          }
-        } else {
-          // Token expired
-          console.log('Token expired.');
-          authService.logout();
-          setUser(null);
-          setIsAuthenticated(false);
+        if (storedToken && storedUser) {
+            try {
+                const parsedUser: User = JSON.parse(storedUser);
+                setToken(storedToken);
+                setUser(parsedUser);
+            } catch (error) {
+                console.error("Failed to parse stored user data:", error);
+                // Clear invalid data
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+            }
         }
-      } catch (error) {
-        console.error('Invalid token:', error);
-        authService.logout();
+        setLoading(false);
+    }, []);
+
+    const login = (newToken: string, newUser: User) => {
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('user', JSON.stringify(newUser));
+        setToken(newToken);
+        setUser(newUser);
+    };
+
+    const logout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setToken(null);
         setUser(null);
-        setIsAuthenticated(false);
-      }
-    } else {
-      setUser(null);
-      setIsAuthenticated(false);
+    };
+
+    const isAuthenticated = !!token && !!user;
+
+    return (
+        <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated, loading }}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
     }
-  }, []);
-
-
-  useEffect(() => {
-    checkTokenValidity();
-    // Optional: set up an interval to periodically check token validity or refresh it
-    // const interval = setInterval(checkTokenValidity, 60 * 1000 * 5); // Every 5 minutes
-    // return () => clearInterval(interval);
-  }, [checkTokenValidity]);
-
-  const loginHandler = async (credentials: LoginData) => {
-    const authResponse = await authService.login(credentials);
-    setUser(authResponse.user);
-    setIsAuthenticated(true);
-  };
-
-  const registerHandler = async (userData: RegisterData) => {
-    await authService.register(userData);
-    // After registration, user needs to login separately
-  };
-
-  const logoutHandler = () => {
-    authService.logout();
-    setUser(null);
-    setIsAuthenticated(false);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login: loginHandler, register: registerHandler, logout: logoutHandler }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return context;
 };
 ```

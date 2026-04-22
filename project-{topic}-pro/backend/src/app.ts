@@ -1,51 +1,62 @@
 ```typescript
-import 'reflect-metadata'; // Required for TypeORM
+import 'dotenv/config'; // Load environment variables first
+import "reflect-metadata"; // Required for TypeORM decorators
+
 import express from 'express';
-import bodyParser from 'body-parser';
 import cors from 'cors';
 import helmet from 'helmet';
-import logger from '@config/logger';
-import { config } from '@config/index';
-import { apiRateLimiter } from '@middleware/rateLimit.middleware';
-import errorHandler from '@middleware/error.middleware';
-import AppError, { ErrorType } from '@utils/AppError';
+import { errorHandler } from './middleware/errorHandling';
+import { requestLogger } from './middleware/logging';
+import { apiRateLimiter } from './middleware/rateLimiting';
+import { initializeDatabase } from './database/data-source';
+import logger from './utils/logger';
 
 // Import Routes
-import authRoutes from '@routes/auth.routes';
-import userRoutes from '@routes/user.routes';
-import projectRoutes from '@routes/project.routes';
-import taskRoutes from '@routes/task.routes';
+import authRoutes from './modules/auth/auth.routes';
+import dashboardRoutes from './modules/dashboards/dashboards.routes';
+import dataSourceRoutes from './modules/data-sources/data-sources.routes';
 
 const app = express();
 
-// Security Middleware
-app.use(helmet()); // Sets various HTTP headers for security
+// Security Middlewares
+app.use(helmet());
 app.use(cors({
-  origin: config.NODE_ENV === 'development' ? '*' : 'http://localhost:3000', // Adjust for production frontend URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from frontend
+    credentials: true,
 }));
 
-// Body parser
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Request body parser
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Rate Limiting (apply to all requests, specific endpoints can override)
-app.use(apiRateLimiter);
+// Custom Middlewares
+app.use(requestLogger);
+app.use(apiRateLimiter); // Apply rate limiting to all API requests
 
-// Routes
-app.get('/health', (req, res) => res.status(200).send('API is healthy!'));
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/tasks', taskRoutes);
-
-// Catch-all for undefined routes
-app.all('*', (req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, ErrorType.NOT_FOUND));
+// Initialize Database
+initializeDatabase().then(() => {
+    logger.info('Database initialized successfully.');
+}).catch(error => {
+    logger.error('Failed to initialize database:', error);
+    process.exit(1);
 });
 
-// Global error handling middleware
+// Define API Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/dashboards', dashboardRoutes);
+app.use('/api/v1/data-sources', dataSourceRoutes);
+
+// Health check endpoint
+app.get('/api/v1/health', (req, res) => {
+    res.status(200).json({ status: 'ok', message: 'API is running' });
+});
+
+// Not Found Handler
+app.use((req, res, next) => {
+    res.status(404).json({ message: `Not Found - ${req.originalUrl}` });
+});
+
+// Error Handling Middleware
 app.use(errorHandler);
 
 export default app;

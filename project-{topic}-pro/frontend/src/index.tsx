@@ -1,7 +1,7 @@
 ```typescript
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css'; // Your global CSS file (e.g., for Tailwind CSS setup)
+import './index.css'; // Assuming you have some basic Tailwind CSS setup or global styles
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 

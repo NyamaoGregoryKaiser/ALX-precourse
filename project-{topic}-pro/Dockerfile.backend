@@ -1,0 +1,45 @@
+```dockerfile
+# Use a Node.js 20 LTS Alpine image for a smaller footprint
+FROM node:20-alpine AS build
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY backend/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy TypeScript source code
+COPY backend/src ./src
+COPY backend/ormconfig.ts ./
+COPY backend/tsconfig.json ./
+
+# Build the TypeScript project
+RUN npm run build
+
+# --- Production Stage ---
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install production dependencies only
+COPY backend/package*.json ./
+RUN npm install --only=production
+
+# Copy built application from the build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/ormconfig.ts ./ormconfig.ts # For TypeORM migrations in production container
+COPY backend/.env.example ./.env.example # Provide example env for reference
+
+# Expose the port the app runs on
+EXPOSE 5000
+
+# Set environment variables (production specific)
+ENV NODE_ENV=production
+
+# Command to run the application
+CMD ["node", "dist/server.js"]
+```

@@ -1,42 +1,63 @@
 ```typescript
 export interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: 'user' | 'manager' | 'admin';
+    id: string;
+    email: string;
+    role: string;
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  startDate: string;
-  endDate: string;
-  status: 'planned' | 'in-progress' | 'completed' | 'cancelled';
-  ownerId: string;
-  owner?: User;
-  tasks?: Task[];
-  createdAt: string;
-  updatedAt: string;
+export interface AuthContextType {
+    user: User | null;
+    token: string | null;
+    login: (token: string, user: User) => void;
+    logout: () => void;
+    isAuthenticated: boolean;
+    loading: boolean;
 }
 
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  projectId: string;
-  project?: Project;
-  assignedToId: string | null;
-  assignedTo?: User | null;
-  dueDate: string;
-  status: 'todo' | 'in-progress' | 'done' | 'blocked';
-  priority: 'low' | 'medium' | 'high';
-  createdAt: string;
-  updatedAt: string;
+export enum DataSourceType {
+    POSTGRES = "postgresql",
+    MYSQL = "mysql",
+    MONGODB = "mongodb",
+    CSV_UPLOAD = "csv_upload"
 }
 
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
+export interface DataSource {
+    id: string;
+    name: string;
+    type: DataSourceType;
+    connectionDetails: Record<string, any>;
+    userId: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface Dashboard {
+    id: string;
+    name: string;
+    description: string;
+    userId: string;
+    charts?: Chart[]; // Charts can be loaded with the dashboard
+    createdAt: string;
+    updatedAt: string;
+}
+
+export enum ChartType {
+    BAR = "bar",
+    LINE = "line",
+    PIE = "pie",
+    SCATTER = "scatter",
+    TABLE = "table"
+}
+
+export interface Chart {
+    id: string;
+    name: string;
+    type: ChartType;
+    configuration: Record<string, any>; // For Recharts/Nivo configs
+    query: string; // SQL query for data retrieval
+    dashboardId: string;
+    dataSourceId: string;
+    createdAt: string;
+    updatedAt: string;
 }
 ```

@@ -1,197 +1,124 @@
 ```yaml
-name: CI/CD Pipeline
+name: CI/CD Pipeline for DataVizApp
 
 on:
   push:
     branches:
       - main
       - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches:
       - main
       - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
-  backend-test:
+  build-and-test-backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: '20'
 
-      - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install
-
-      - name: Run Backend Unit Tests
-        working-directory: ./backend
-        run: npm test -- --coverage
-        env:
-          NODE_ENV: test
-          # Provide dummy env vars for tests that might rely on ConfigModule
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: testuser
-          DATABASE_PASSWORD: testpassword
-          DATABASE_NAME: testdb
-          JWT_SECRET: testsecret
-          REDIS_HOST: localhost
-          FRONTEND_URL: http://localhost:3000
-
-      - name: Upload Backend Coverage Report
-        uses: codecov/codecov-action@v3
-        with:
-          directory: ./backend/coverage
-          flags: backend
-          name: codecov-backend
-
-  frontend-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install
-
-      - name: Run Frontend Unit Tests
-        working-directory: ./frontend
-        run: npm test -- --watchAll=false
-        env:
-          CI: true # Required for Jest in non-interactive mode
-          REACT_APP_API_BASE_URL: http://localhost:3001 # Dummy API URL for tests
-
-      - name: Lint Frontend Code
-        working-directory: ./frontend
-        run: npm run lint
-
-  # Backend E2E/Integration Test (requires Docker)
-  backend-e2e-test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:6-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install
-
-      - name: Wait for PostgreSQL and Redis to be ready
+      - name: Install backend dependencies
         run: |
-          ./wait-for-it.sh localhost:5432 --timeout=60
-          ./wait-for-it.sh localhost:6379 --timeout=60
-        env:
-          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin # Ensure wait-for-it is found
-        # (You'd typically need to add a wait-for-it.sh script to your repo or use a composite action)
+          cd backend
+          npm install
 
-      - name: Run Backend Migrations for Test DB
-        working-directory: ./backend
-        run: npm run typeorm migration:run
-        env:
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: testuser
-          DATABASE_PASSWORD: testpassword
-          DATABASE_NAME: testdb
-          JWT_SECRET: testsecret
-          REDIS_HOST: localhost
-          FRONTEND_URL: http://localhost:3000
-          NODE_ENV: test
+      - name: Run backend tests
+        run: |
+          cd backend
+          npm test -- --coverage # Run tests and collect coverage
 
-      - name: Run Backend E2E Tests
-        working-directory: ./backend
-        run: npm run test:e2e
-        env:
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: testuser
-          DATABASE_PASSWORD: testpassword
-          DATABASE_NAME: testdb
-          JWT_SECRET: testsecret
-          REDIS_HOST: localhost
-          FRONTEND_URL: http://localhost:3000
-          NODE_ENV: test
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage-report
+          path: backend/coverage
 
-  # Build and Deploy (Example - adjust for your cloud provider)
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: [backend-test, frontend-test, backend-e2e-test]
+      - name: Build backend Docker image
+        run: docker build -t dataviz-backend:latest -f Dockerfile.backend .
+
+  build-and-test-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to Docker Hub
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false # Run tests and collect coverage
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage
+
+      - name: Build frontend Docker image
+        run: docker build -t dataviz-frontend:latest -f Dockerfile.frontend .
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-and-test-backend, build-and-test-frontend]
+    if: github.ref == 'refs/heads/main' # Only deploy on push to main branch
+    environment: production # Link to a GitHub environment (optional)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub (or your container registry)
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Backend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: Dockerfile.backend
-          push: true
-          tags: your-docker-username/task-management-backend:latest
+      - name: Build and push backend image
+        run: |
+          docker build -t YOUR_DOCKERHUB_USERNAME/dataviz-backend:${{ github.sha }} -f Dockerfile.backend .
+          docker push YOUR_DOCKERHUB_USERNAME/dataviz-backend:${{ github.sha }}
+          docker tag YOUR_DOCKERHUB_USERNAME/dataviz-backend:${{ github.sha }} YOUR_DOCKERHUB_USERNAME/dataviz-backend:latest
+          docker push YOUR_DOCKERHUB_USERNAME/dataviz-backend:latest
 
-      - name: Build and Push Frontend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: Dockerfile.frontend
-          push: true
-          tags: your-docker-username/task-management-frontend:latest
-          build-args: |
-            REACT_APP_API_BASE_URL=https://your-api-domain.com # Adjust for production API URL
+      - name: Build and push frontend image
+        run: |
+          docker build -t YOUR_DOCKERHUB_USERNAME/dataviz-frontend:${{ github.sha }} -f Dockerfile.frontend .
+          docker push YOUR_DOCKERHUB_USERNAME/dataviz-frontend:${{ github.sha }}
+          docker tag YOUR_DOCKERHUB_USERNAME/dataviz-frontend:${{ github.sha }} YOUR_DOCKERHUB_USERNAME/dataviz-frontend:latest
+          docker push YOUR_DOCKERHUB_USERNAME/dataviz-frontend:latest
 
-      - name: Deploy to Server (e.g., SSH and run docker compose pull/up)
-        uses: appleboy/ssh-action@master
+      - name: Deploy to Server (e.g., using SSH and Docker Compose)
+        uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /path/to/your/app # Your deployment directory on the server
+            cd /path/to/your/app # Replace with your app's directory on the server
             docker compose pull
-            docker compose up -d --remove-orphans
-            docker system prune -f # Clean up old images
+            docker compose down
+            docker compose up -d
+            docker system prune -f # Clean up old images/volumes
 ```
