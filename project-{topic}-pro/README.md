@@ -1,51 +1,51 @@
-.
-├── .github/                       # CI/CD workflows
-│   └── workflows/
-│       └── ci.yml
+alxpay-system/
 ├── backend/
 │   ├── src/
-│   │   ├── config/                # Environment variables, DB config
-│   │   ├── database/              # TypeORM entities, migrations, data-source.ts
-│   │   ├── middleware/            # Auth, error handling, logging, rate limiting
-│   │   ├── modules/               # Core application logic (users, dashboards, data-sources, charts)
-│   │   │   ├── auth/
-│   │   │   ├── charts/
-│   │   │   ├── dashboards/
-│   │   │   ├── data-sources/
-│   │   │   └── users/
-│   │   ├── services/              # External integrations (e.g., DataQueryService)
-│   │   ├── utils/                 # Utility functions (logger, jwt, etc.)
-│   │   └── app.ts                 # Express application setup
-│   │   └── server.ts              # Server entry point
-│   ├── tests/                     # Backend tests
+│   │   ├── config/              # Environment variables, database config
+│   │   ├── controllers/         # Handles incoming requests, orchestrates services
+│   │   ├── entities/            # TypeORM entities (database schemas)
+│   │   ├── middlewares/         # Authentication, error handling, rate limiting, caching
+│   │   ├── repositories/        # TypeORM custom repositories (data access)
+│   │   ├── services/            # Business logic, interacts with repositories
+│   │   ├── utils/               # Helpers, token generation, logging
+│   │   ├── types/               # TypeScript custom types/interfaces
+│   │   ├── routes/              # API route definitions
+│   │   ├── subscribers/         # TypeORM event subscribers (e.g., for webhooks)
+│   │   ├── app.ts               # Express application setup
+│   │   └── server.ts            # Entry point, starts the server
+│   ├── tests/
+│   │   ├── unit/
 │   │   ├── integration/
-│   │   └── unit/
+│   │   └── api/
 │   ├── .env.example
-│   ├── Dockerfile
+│   ├── .eslintrc.js
+│   ├── jest.config.ts
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── ormconfig.ts
+│   └── Dockerfile
 ├── frontend/
 │   ├── public/
 │   ├── src/
-│   │   ├── api/                   # API service calls
-│   │   ├── assets/
-│   │   ├── components/            # Reusable UI components
-│   │   ├── context/               # React Context API for global state
-│   │   ├── hooks/                 # Custom React hooks
-│   │   ├── pages/                 # Main application pages
-│   │   ├── types/                 # TypeScript types
-│   │   ├── utils/
-│   │   └── App.tsx                # Main React component
-│   │   └── index.tsx              # React entry point
-│   ├── tests/                     # Frontend tests
+│   │   ├── components/          # Reusable UI components
+│   │   ├── pages/               # Top-level page components
+│   │   ├── services/            # API interaction logic
+│   │   ├── context/             # React context for global state
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── App.tsx
+│   │   ├── index.tsx
+│   │   └── react-app-env.d.ts
 │   ├── .env.example
-│   ├── Dockerfile
 │   ├── package.json
 │   └── tsconfig.json
-├── docker-compose.yml             # Docker orchestration
-├── .gitignore
-├── API.md                         # API Documentation
-├── ARCHITECTURE.md                # Architecture Documentation
-├── DEPLOYMENT.md                  # Deployment Guide
-└── README.md                      # Project README
+├── docs/
+│   ├── README.md
+│   ├── API.md
+│   ├── ARCHITECTURE.md
+│   └── DEPLOYMENT.md
+├── docker-compose.yml
+├── .github/
+│   └── workflows/
+│       └── main.yml             # CI/CD pipeline
+├── loadtest/
+│   └── k6_script.js             # Performance testing script
+└── seed.ts                      # Database seed script

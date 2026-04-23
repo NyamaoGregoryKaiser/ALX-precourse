@@ -1,23 +1,17 @@
-```typescript
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load environment variables based on NODE_ENV
-const envPath = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
-dotenv.config({ path: path.resolve(process.cwd(), envPath) });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const config = {
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT || '5000', 10),
-  SECRET_KEY: process.env.SECRET_KEY || 'supersecretjwtkey',
-  REFRESH_SECRET_KEY: process.env.REFRESH_SECRET_KEY || 'supersecretrefreshjwtkey',
-  ACCESS_TOKEN_EXPIRATION: process.env.ACCESS_TOKEN_EXPIRATION || '1h',
-  REFRESH_TOKEN_EXPIRATION: process.env.REFRESH_TOKEN_EXPIRATION || '7d',
-  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-  RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
-  RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
-  REDIS_HOST: process.env.REDIS_HOST || 'localhost',
-  REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
-  REDIS_PASSWORD: process.env.REDIS_PASSWORD || ''
+  port: process.env.PORT || 5000,
+  env: process.env.NODE_ENV || 'development',
+  jwtSecret: process.env.JWT_SECRET || 'supersecretjwtkey',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
+  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || 'anothersecretkey',
+  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+  hashSaltRounds: parseInt(process.env.HASH_SALT_ROUNDS || '10', 10),
+  paymentGatewayUrl: process.env.PAYMENT_GATEWAY_URL || 'https://mock-payment-gateway.com/api',
+  webhookSecret: process.env.WEBHOOK_SECRET || 'webhooksecretkey',
+  maxPaymentAmount: parseFloat(process.env.MAX_PAYMENT_AMOUNT || '100000'), // Max amount in USD for example
 };
-```

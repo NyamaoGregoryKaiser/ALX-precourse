@@ -1,31 +1,31 @@
-```yaml
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: dataviz_db
+  postgres:
+    image: postgres:16-alpine
+    container_name: alxpay_db
     environment:
-      POSTGRES_DB: datavizdb
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ${DB_NAME:-alxpay}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
-      - dataviz_db_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # To enable uuid-ossp extension
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d datavizdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-alxpay}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: dataviz_redis
+    container_name: alxpay_redis
     ports:
       - "6379:6379"
     volumes:
-      - dataviz_redis_data:/data
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -34,46 +34,55 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: dataviz_backend
-    ports:
-      - "5000:5000"
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alxpay_backend
     environment:
-      PORT: 5000
-      DATABASE_URL: postgresql://user:password@db:5432/datavizdb # Connect to DB service
-      JWT_SECRET: your_jwt_secret_key_very_long_and_secure # CHANGE THIS IN PRODUCTION
-      JWT_EXPIRES_IN: 1d
-      NODE_ENV: development # Use 'production' for production builds
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX_REQUESTS: 100
-      FRONTEND_URL: http://localhost:3000 # For CORS
-    volumes:
-      - ./backend:/app # Mount backend source for dev mode (hot-reloading)
-      - /app/node_modules # Keep node_modules inside container
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-5000}
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-alxpay}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      HASH_SALT_ROUNDS: ${HASH_SALT_ROUNDS}
+      PAYMENT_GATEWAY_URL: ${PAYMENT_GATEWAY_URL}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    ports:
+      - "${PORT:-5000}:${PORT:-5000}"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy # Assuming Redis is used for caching, even if mocked in this code
-    command: npm run dev # Use 'npm start' for production
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules # Avoid overwriting node_modules inside container
+    command: sh -c "npm install && npm run typeorm migration:run && npm run seed && npm run dev"
+    # In production, use: command: sh -c "npm install --production && npm run typeorm migration:run && npm run start"
+
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: dataviz_frontend
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: alxpay_frontend
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      REACT_APP_API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:5000/api}
     ports:
       - "3000:3000"
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Connect to backend service
-    volumes:
-      - ./frontend:/app # Mount frontend source for dev mode (hot-reloading)
-      - /app/node_modules # Keep node_modules inside container
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Avoid overwriting node_modules inside container
+    command: npm start
 
 volumes:
-  dataviz_db_data:
-  dataviz_redis_data:
-```
+  pgdata:
+  redisdata:

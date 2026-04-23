@@ -1,107 +1,147 @@
-name: CI/CD Pipeline
+name: ALXPay CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   build-and-test-backend:
+    name: Build & Test Backend
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./backend
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: 'maven'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './backend/package-lock.json'
 
-    - name: Build and run tests
-      run: mvn -B package --file pom.xml
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Upload JaCoCo coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: jacoco-report
-        path: backend/target/site/jacoco/jacoco.xml # Path to JaCoCo XML report
+      - name: Copy .env.example to .env for tests
+        run: cp .env.example .env
 
-  build-and-push-docker-images:
-    needs: build-and-test-backend # Only proceed if backend build and tests pass
+      - name: Start PostgreSQL and Redis for integration tests
+        run: |
+          docker run --name test-postgres -e POSTGRES_DB=alxpay_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16-alpine
+          docker run --name test-redis -p 6379:6379 -d redis:7-alpine
+          sleep 10 # Give services time to start
+          docker exec test-postgres psql -U postgres -d alxpay_test -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+
+      - name: Run Backend Tests
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: alxpay_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret # Use a test secret for CI
+          HASH_SALT_ROUNDS: 5 # Faster hashing for tests
+          WEBHOOK_SECRET: test_webhook_secret
+        run: npm test
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: backend/coverage
+
+  build-frontend:
+    name: Build Frontend
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Only push to registry on main branch pushes
+    defaults:
+      run:
+        working-directory: ./frontend
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Set up JDK 17 (for backend JAR build, if not already built and cached)
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: 'maven'
+      - name: Build Frontend
+        env:
+          # Use a placeholder API URL for build, or actual production one if deploying directly
+          REACT_APP_API_BASE_URL: /api
+        run: npm run build
 
-    - name: Build backend JAR for Docker image
-      run: mvn -B clean package -DskipTests # Skip tests here, as they ran in previous job
-      working-directory: ./backend
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
 
-    - name: Build and push backend Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./backend
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/task-management-backend:latest
-          ${{ secrets.DOCKER_USERNAME }}/task-management-backend:${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    # Frontend build and push (conceptual)
-    - name: Build and push frontend Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./frontend
-        file: ./frontend/Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/task-management-frontend:latest
-          ${{ secrets.DOCKER_USERNAME }}/task-management-frontend:${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-  # This job is purely conceptual and shows where a deployment step would go.
-  # Actual deployment would involve cloud provider specific actions (e.g., AWS ECR, Kubernetes).
+  # This job would be for deployment to a production server (e.g., via SSH/Docker)
+  # Needs secrets configured in GitHub repository (e.g., SSH_USER, SSH_HOST, SSH_KEY)
   deploy:
-    needs: build-and-push-docker-images
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main' # Only deploy from main branch
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Only deploy on main branch pushes
+    needs: [build-and-test-backend, build-frontend] # Ensure tests pass and builds succeed
 
     steps:
-    - name: Deploy to Kubernetes (Conceptual)
-      run: |
-        echo "Deploying latest Docker images to Kubernetes cluster..."
-        # Replace with actual deployment commands, e.g., using kubectl
-        # kubectl apply -f kubernetes/deployment.yaml
-        # kubectl rollout status deployment/task-management-backend
-        # kubectl rollout status deployment/task-management-frontend
-        echo "Deployment complete."
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download backend-coverage-report
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: backend/coverage
+
+      - name: Download frontend-build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
+
+      - name: Deploy with SSH and Docker Compose
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd alxpay-system
+            git pull origin main
+            # Copy the built frontend artifacts from the CI workspace to the server
+            rm -rf frontend/build # Clear existing build
+            cp -R ${{ github.workspace }}/frontend/build frontend/
+            # Copy backend dist and node_modules (if not using multi-stage build)
+            # This is simpler if Dockerfile build copies everything needed
+            
+            # Ensure production .env files are in place on the server
+            # Use environment variables for sensitive data, or a secure file copy
+            
+            docker-compose pull # Pull latest images if any upstream changes
+            docker-compose up -d --build --remove-orphans # Recreate services with new images
+            docker-compose exec backend npm run typeorm migration:run # Run migrations
+            # Optional: Restart nginx if it's external to ensure it picks up new configs (if any)
+            sudo systemctl reload nginx
+```
+---
 ```

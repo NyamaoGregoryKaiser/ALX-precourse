@@ -1,14 +1,24 @@
+# Build stage
+FROM node:18-alpine as builder
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+# Production stage
 FROM nginx:alpine
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Remove default nginx html content
-RUN rm -rf /usr/share/nginx/html/*
+# Optional: Copy a custom Nginx configuration if needed
+# COPY ./nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy your frontend static files
-COPY public/ /usr/share/nginx/html/
-
-EXPOSE 80
+EXPOSE 3000
 
 CMD ["nginx", "-g", "daemon off;"]
