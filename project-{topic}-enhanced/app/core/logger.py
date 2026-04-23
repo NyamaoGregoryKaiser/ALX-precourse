@@ -1,39 +1,67 @@
 ```python
+import logging
 import sys
-from loguru import logger
+from logging.handlers import RotatingFileHandler
 from app.core.config import settings
 
-# Remove default logger to configure our own
-logger.remove()
+def setup_logging():
+    """
+    Configures the application's logging system.
+    Logs to console and a rotating file.
+    """
+    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 
-# Add a console logger with a custom format
-logger.add(
-    sys.stderr,
-    level="INFO" if not settings.DEBUG else "DEBUG",
-    format=(
-        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-        "<level>{level: <8}</level> | "
-        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-        "<level>{message}</level> {extra}"
-    ),
-    colorize=True,
-    backtrace=True,
-    diagnose=True,
-)
+    # Basic configuration for the root logger
+    # This captures messages from all modules
+    logging.basicConfig(level=log_level)
 
-# You can add more handlers here, e.g., to a file or an external logging service
-# logger.add(
-#     "logs/file_{time}.log",
-#     level="INFO",
-#     rotation="1 day", # New file every day
-#     compression="zip", # Compress old log files
-#     retention="7 days", # Keep logs for 7 days
-#     format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message} {extra}",
-# )
+    # Create a console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    console_formatter = logging.Formatter(
+        "%(levelname)s:     %(asctime)s - %(name)s - %(message)s"
+    )
+    console_handler.setFormatter(console_formatter)
 
-# Example of how to use it:
-# from app.core.logger import logger
-# logger.info("This is an info message")
-# logger.debug("This is a debug message")
-# logger.error("This is an error message", extra={"user_id": 123})
+    # Create a rotating file handler
+    # Max size 10 MB, keep 5 backup files
+    file_handler = RotatingFileHandler(
+        settings.LOG_FILE_PATH, maxBytes=10 * 1024 * 1024, backupCount=5
+    )
+    file_handler.setLevel(log_level)
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s (Line: %(lineno)d in %(funcName)s)"
+    )
+    file_handler.setFormatter(file_formatter)
+
+    # Get the root logger and remove any default handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Add our custom handlers
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+    # Suppress verbose logging from libraries like uvicorn, sqlalchemy etc.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING) # Reduce SQLAlchemy verbose logs
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING) # For test client
+
+    # Set application specific logger
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(log_level)
+
+# Example usage (can be called at app startup)
+# if __name__ == "__main__":
+#     setup_logging()
+#     logger = logging.getLogger("app.test")
+#     logger.debug("This is a debug message.")
+#     logger.info("This is an info message.")
+#     logger.warning("This is a warning message.")
+#     logger.error("This is an error message.")
+#     logger.critical("This is a critical message.")
+
 ```
