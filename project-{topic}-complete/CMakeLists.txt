@@ -1,69 +1,119 @@
 ```cmake
-cmake_minimum_required(VERSION 3.10)
-project(db_optimizer LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.15)
+project(ecommerce-cpp CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Required for shared libraries
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # For better IDE integration
 
-# Find Poco libraries
-find_package(Poco REQUIRED COMPONENTS Foundation Net Util Data Data/PostgreSQL)
-find_package(spdlog REQUIRED)
-find_package(jwt-cpp REQUIRED)
-
-# Define common include directories
-include_directories(app app/config app/core app/db app/http app/http/middleware app/http/responses app/models app/services app/utils app/controllers)
-
-# Source files for the main application
-set(APP_SOURCES
-    app/main.cpp
-    app/config/ConfigManager.cpp
-    app/core/Application.cpp
-    app/db/DBConnectionPool.cpp
-    app/db/PostgreSQLAdapter.cpp
-    app/http/HTTPServer.cpp
-    app/http/Router.cpp
-    app/http/RequestHandler.cpp
-    app/http/middleware/AuthMiddleware.cpp
-    app/http/middleware/ErrorMiddleware.cpp
-    app/services/AuthService.cpp
-    app/services/DBMonitorService.cpp
-    app/services/QueryAnalyzer.cpp
-    app/services/IndexRecommender.cpp
-    app/utils/Logger.cpp
-    app/utils/JSONUtils.cpp
-    app/utils/JWTUtils.cpp
-    app/controllers/AuthController.cpp
-    app/controllers/UserController.cpp
-    app/controllers/MonitoredDBController.cpp
-    app/controllers/OptimizationController.cpp
-)
-
-# Add executable
-add_executable(db_optimizer ${APP_SOURCES})
-
-# Link libraries
-target_link_libraries(db_optimizer
-    Poco::Foundation
-    Poco::Net
-    Poco::Util
-    Poco::Data
-    Poco::DataPostgreSQL
-    spdlog
-    jwt-cpp
-)
-
-# Add compiler options for better warnings and security
-if (CMAKE_BUILD_TYPE MATCHES "Debug")
-    target_compile_options(db_optimizer PRIVATE -Wall -Wextra -Wpedantic -g)
+# Find vcpkg and integrate it
+if(EXISTS "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+    include("${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
 else()
-    target_compile_options(db_optimizer PRIVATE -Wall -Wextra -Wpedantic -O2 -DNDEBUG)
-    target_link_options(db_optimizer PRIVATE -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+    message(FATAL_ERROR "VCPKG_ROOT is not set or vcpkg.cmake not found. Please set VCPKG_ROOT environment variable.")
 endif()
 
-# Install target
-install(TARGETS db_optimizer DESTINATION bin)
+# Find necessary packages
+find_package(Crow CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Pqxx CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(CURL CONFIG REQUIRED) # For client
+find_package(GTest CONFIG REQUIRED) # For tests
 
-# Add tests
-add_subdirectory(tests)
+# --- Backend Application ---
+add_executable(ecommerce_backend
+    src/backend/main.cpp
+    src/backend/db/db_manager.cpp
+    src/backend/middleware/auth_middleware.cpp
+    src/backend/middleware/error_middleware.cpp
+    src/backend/middleware/logging_middleware.cpp
+    src/backend/middleware/rate_limit_middleware.cpp
+    src/backend/services/auth_service.cpp
+    src/backend/services/product_service.cpp
+    src/backend/services/order_service.cpp
+    src/backend/utils/json_util.cpp
+    src/backend/utils/jwt_util.cpp
+)
+
+target_include_directories(ecommerce_backend PUBLIC
+    src/backend
+    src/backend/models
+    src/backend/services
+    src/backend/db
+    src/backend/middleware
+    src/backend/utils
+)
+
+target_link_libraries(ecommerce_backend PRIVATE
+    Crow::Crow
+    nlohmann_json::nlohmann_json
+    Pqxx::pqxx
+    spdlog::spdlog
+)
+
+# --- Client Application ---
+add_executable(ecommerce_client
+    src/client/client_main.cpp
+)
+
+target_include_directories(ecommerce_client PUBLIC
+    src/client
+    src/backend/models # Client also needs product/user models to parse responses
+    src/backend/utils # Client also needs json_util
+)
+
+target_link_libraries(ecommerce_client PRIVATE
+    CURL::libcurl
+    nlohmann_json::nlohmann_json
+)
+
+# --- Test Executables ---
+# Unit Tests
+add_executable(ecommerce_unit_tests
+    tests/unit/test_auth_service.cpp
+    tests/unit/test_product_service.cpp
+)
+target_include_directories(ecommerce_unit_tests PUBLIC
+    src/backend
+    src/backend/models
+    src/backend/services
+    src/backend/db
+    src/backend/middleware
+    src/backend/utils
+    ${GTest_INCLUDE_DIRS}
+)
+target_link_libraries(ecommerce_unit_tests PRIVATE
+    GTest::gtest GTest::gtest_main
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    Pqxx::pqxx # Link for mock DB manager or actual
+)
+
+# Integration Tests
+add_executable(ecommerce_integration_tests
+    tests/integration/test_db_integration.cpp
+)
+target_include_directories(ecommerce_integration_tests PUBLIC
+    src/backend
+    src/backend/models
+    src/backend/services
+    src/backend/db
+    src/backend/middleware
+    src/backend/utils
+    ${GTest_INCLUDE_DIRS}
+)
+target_link_libraries(ecommerce_integration_tests PRIVATE
+    GTest::gtest GTest::gtest_main
+    Pqxx::pqxx
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    # Link other backend components if they are part of the integration test scope
+    # For now, db_manager is sufficient
+)
+
+# Add custom commands for running tests
+add_test(NAME RunUnitTests COMMAND ecommerce_unit_tests)
+add_test(NAME RunIntegrationTests COMMAND ecommerce_integration_tests)
+
 ```

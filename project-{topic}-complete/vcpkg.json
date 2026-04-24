@@ -1,15 +1,14 @@
 ```json
 {
-  "name": "task-management-api",
-  "version-string": "1.0.0",
+  "name": "ecommerce-cpp",
+  "version": "1.0.0",
   "dependencies": [
     "crow",
+    "libpqxx",
     "nlohmann-json",
-    "sqlite3",
-    "jwt-cpp",
     "spdlog",
-    "cryptopp",
-    "googletest"
+    "libcurl",
+    "gtest"
   ]
 }
 ```

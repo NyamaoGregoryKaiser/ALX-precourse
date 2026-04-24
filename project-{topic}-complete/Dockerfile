@@ -1,44 +1,78 @@
-# Use a slim OpenJDK 17 image for a smaller final image size
-FROM openjdk:17-jdk-slim AS build
+```dockerfile
+# Stage 1: Build the C++ application
+FROM mcr.microsoft.com/vcpkg/github/actions/debian-stable AS builder
 
-# Set the working directory inside the container
+# Set VCPKG_ROOT for consistency
+ENV VCPKG_ROOT=/vcpkg
+ENV PATH="${VCPKG_ROOT}:${PATH}"
+
+# Install essential build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    libpq-dev \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone vcpkg if not already present (might be in actions runner, but safer)
+# This part might be skipped if using a vcpkg pre-installed image or multi-stage from specific vcpkg base
+# If you run into issues, consider a direct vcpkg install:
+# RUN git clone https://github.com/microsoft/vcpkg.git /vcpkg && \
+#     /vcpkg/bootstrap-vcpkg.sh -disableMetrics && \
+#     /vcpkg/vcpkg integrate install
+
 WORKDIR /app
 
-# Copy the Maven wrapper files to enable building inside the container
-COPY .mvn .mvn
-COPY mvnw pom.xml ./
+# Copy vcpkg.json and CMakeLists.txt first to leverage Docker cache
+COPY vcpkg.json CMakeLists.txt ./
+# Copy C++ source code
+COPY src src/
+COPY tests tests/
+COPY config config/
 
-# Download all project dependencies (only if pom.xml changes)
-RUN ./mvnw dependency:go-offline -Dmaven.test.skip=true
+# Install dependencies specified in vcpkg.json
+# Ensure correct triplet is used, e.g., x64-linux
+# vcpkg.json should be installed via --recurse if there are transitive deps
+# The vcpkg base image typically has vcpkg itself pre-built.
+RUN $VCPKG_ROOT/vcpkg install --triplet=x64-linux --recurse
 
-# Copy the rest of the application source code
-COPY src src
+# Configure and build the project
+RUN cmake -B build -S . \
+    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux \
+    -DCROW_BUILD_EXAMPLES=OFF \
+    -DCROW_BUILD_TESTS=OFF \
+    -DCROW_AMALGAMATION=OFF \
+    -DCROW_MSVC_USE_LIBCPP=OFF
 
-# Build the application
-RUN ./mvnw install -DskipTests
+RUN cmake --build build --config Release
 
-# Stage 2: Create the final runtime image
-FROM openjdk:17-jdk-slim
+# --- Stage 2: Create a minimal runtime image ---
+FROM debian:stable-slim
 
-# Set the working directory
+# Install necessary runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    libcurl4 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy the built JAR file from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the built backend executable from the builder stage
+COPY --from=builder /app/build/src/backend/ecommerce_backend ./ecommerce_backend
 
-# Expose the port the application runs on
+# Copy environment config (production settings would be injected)
+COPY config/.env.example ./config/.env
+
+# Make the startup script executable
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Expose the application port
 EXPOSE 8080
 
-# Define environment variables for database (can be overridden via docker-compose or Kubernetes)
-ENV SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce_db
-ENV SPRING_DATASOURCE_USERNAME=admin
-ENV SPRING_DATASOURCE_PASSWORD=password
-ENV APP_JWT_SECRET=YourSuperSecretKeyForJWTGenerationAndValidationThatMustBeAtLeast256BitsLongAndStoredSecurely
-
-# Set an entrypoint to run the JAR
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the entrypoint script
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 ```
-
-**docker-compose.yml**
-
-```yaml

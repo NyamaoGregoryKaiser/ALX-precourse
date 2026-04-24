@@ -1,435 +1,514 @@
-# Enterprise-Grade Task Management System
+# E-Commerce C++ Solution System
 
-This is a comprehensive, full-stack task management system built with modern web technologies, designed for scalability, security, and maintainability. It includes a robust Node.js/Express backend, a dynamic React frontend, a PostgreSQL database, and is containerized with Docker, complete with CI/CD configurations.
+This project provides a comprehensive, production-ready e-commerce solution with a C++ core application. It features a robust backend API, a console-based C++ client, a PostgreSQL database, Docker containerization, CI/CD setup, extensive testing, and critical enterprise-grade features like authentication, logging, caching, and rate limiting.
+
+The architecture emphasizes modularity, clean code, and adherence to software engineering best practices, focusing on programming logic, algorithm design, and technical problem-solving.
 
 ## Table of Contents
 
-1.  [Features](#features)
+1.  [Introduction](#introduction)
 2.  [Architecture](#architecture)
-3.  [Technologies Used](#technologies-used)
+    *   [High-Level Diagram](#high-level-diagram)
+    *   [Core Modules](#core-modules)
+    *   [Technology Stack](#technology-stack)
+3.  [Features](#features)
 4.  [Setup Instructions](#setup-instructions)
     *   [Prerequisites](#prerequisites)
-    *   [Local Setup with Docker Compose](#local-setup-with-docker-compose)
-    *   [Manual Backend Setup (without Docker)](#manual-backend-setup-without-docker)
-    *   [Manual Frontend Setup (without Docker)](#manual-frontend-setup-without-docker)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-7.  [CI/CD](#ci/cd)
-8.  [Deployment Guide](#deployment-guide)
-9.  [Future Enhancements](#future-enhancements)
-10. [License](#license)
+    *   [Local Development Setup (without Docker)](#local-development-setup-without-docker)
+    *   [Docker Setup](#docker-setup)
+5.  [Running the Application](#running-the-application)
+    *   [Running the Backend](#running-the-backend)
+    *   [Running the Client](#running-the-client)
+6.  [Database Layer](#database-layer)
+    *   [Schema](#schema)
+    *   [Migrations & Seeding](#migrations--seeding)
+    *   [Query Optimization](#query-optimization)
+7.  [Configuration & Environment](#configuration--environment)
+8.  [Testing & Quality](#testing--quality)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [API Tests](#api-tests)
+    *   [Performance Testing (Conceptual)](#performance-testing-conceptual)
+9.  [Documentation](#documentation)
+    *   [API Documentation](#api-documentation)
+    *   [Architecture Documentation](#architecture-documentation)
+    *   [Deployment Guide](#deployment-guide)
+10. [Additional Features](#additional-features)
+    *   [Authentication & Authorization](#authentication--authorization)
+    *   [Logging & Monitoring](#logging--monitoring)
+    *   [Error Handling](#error-handling)
+    *   [Caching Layer](#caching-layer)
+    *   [Rate Limiting](#rate-limiting)
+11. [CI/CD Pipeline](#cicd-pipeline)
+12. [Future Enhancements](#future-enhancements)
+13. [Contributing](#contributing)
+14. [License](#license)
 
-## 1. Features
+## 1. Introduction
 
-**Core Functionality:**
-
-*   **User Management:** Register, Login, User Profiles.
-*   **Project Management:** Create, Read, Update, Delete projects. Users can own multiple projects.
-*   **Task Management:** Create, Read, Update, Delete tasks within projects. Assign tasks to users, set status, priority, and due dates.
-*   **Relationships:** Tasks belong to Projects, Projects are owned by Users, Tasks can be assigned to Users and created by Users.
-
-**Enterprise-Grade Features:**
-
-*   **Authentication & Authorization:** JWT-based secure authentication, role-based access control (basic: `user`, `admin`), ownership checks for projects/tasks.
-*   **Data Validation:** Robust input validation on both frontend and backend.
-*   **Error Handling:** Centralized, structured error handling middleware.
-*   **Logging & Monitoring:** Winston-powered logging for request and error tracking.
-*   **Caching:** Redis integration for frequently accessed data (e.g., project lists).
-*   **Rate Limiting:** Protects API from abuse and brute-force attacks.
-*   **Database Migrations & Seeding:** Managed schema evolution and initial data population with Sequelize CLI.
-*   **Containerization:** Docker for consistent development and deployment environments.
-*   **CI/CD:** GitHub Actions workflow for automated testing and deployment.
-*   **Comprehensive Testing:** Unit, Integration, and API tests to ensure code quality and functionality.
-*   **Query Optimization:** Database indexing and efficient ORM queries for performance.
+This project aims to provide a robust foundation for an e-commerce platform using C++. The backend is built with the Crow C++ web framework, interacting with a PostgreSQL database. A console-based C++ client demonstrates API interaction. The solution covers essential aspects of modern software development, including containerization, automated testing, and comprehensive documentation.
 
 ## 2. Architecture
 
-The system follows a classic **Client-Server architecture** with a **RESTful API**.
+### High-Level Diagram
 
 ```
-+----------------+      +---------------------+      +---------------+
-|    Frontend    |<---->|   Backend (Node.js) |<---->|   PostgreSQL  |
-|   (React.js)   |      |      (Express)      |      |   (Database)  |
-+----------------+      +---------------------+      +---------------+
-       ^                        |
-       |                        |
-       |                  +------------+
-       |                  |   Redis    |
-       |                  | (Caching)  |
-       |                  +------------+
-       |
-+---------------------+
-|      Client         |
-| (Browser/Mobile App)|
-+---------------------+
++------------------+     +------------------+
+| C++ Console Client | <-> | C++ Backend (Crow) |
+|   (User Interface) |     | (API Endpoints)  |
++------------------+     +--------+---------+
+                                  |
+                                  | HTTP/TCP
+                                  |
+                           +------+---------+
+                           |  PostgreSQL DB |
+                           | (Data Storage) |
+                           +----------------+
+
+Components:
+- C++ Console Client: User-facing interface (command-line) for interacting with the e-commerce system.
+- C++ Backend (Crow): Handles business logic, API routing, authentication, data validation, and database interactions.
+- PostgreSQL DB: Persistent storage for users, products, orders, and other e-commerce data.
+
+Additional Features Integrated into Backend:
+- Authentication (JWT)
+- Authorization (Role-based, simple for demo)
+- Logging (spdlog)
+- Error Handling Middleware
+- Caching (In-memory)
+- Rate Limiting (In-memory per IP)
 ```
 
-*   **Frontend (React.js):** A single-page application (SPA) providing the user interface. It communicates with the backend via RESTful API calls.
-*   **Backend (Node.js/Express):** Handles business logic, data processing, authentication, authorization, and interacts with the database and caching layer. Exposes a RESTful API.
-*   **PostgreSQL:** The primary relational database for persistent storage of users, projects, and tasks.
-*   **Redis:** An in-memory data store used for caching API responses, reducing database load, and improving response times for common queries.
+### Core Modules
 
-**Backend Structure:**
+*   **User Management:** Registration, login, profile management.
+*   **Product Management:** CRUD operations for products (admins), browsing (users).
+*   **Shopping Cart:** Add/remove items, view cart.
+*   **Order Management:** Place orders, view order history.
+*   **Authentication & Authorization:** Secure access to API endpoints.
 
-*   `config/`: Environment-specific configurations (database, JWT, logger, Redis).
-*   `models/`: Sequelize ORM definitions for database tables (User, Project, Task) and their relationships.
-*   `services/`: Encapsulates business logic, interacting with models. This layer is responsible for data manipulation and validation beyond basic model constraints.
-*   `controllers/`: Handle incoming HTTP requests, delegate to services, and send HTTP responses.
-*   `routes/`: Defines API endpoints and maps them to controller functions.
-*   `middleware/`: Global or route-specific functions for authentication, authorization, error handling, logging, caching, and rate limiting.
-*   `utils/`: Helper functions like JWT token generation/verification and password hashing.
+### Technology Stack
 
-## 3. Technologies Used
+*   **Core Application Language:** C++17/20
+*   **Backend Framework:** [Crow](https://github.com/ipkn/crow) (C++ Web Framework)
+*   **Database:** [PostgreSQL](https://www.postgresql.org/)
+*   **Database Driver:** [Pqxx](https://github.com/jtv/pqxx) (C++ client for PostgreSQL)
+*   **JSON Handling:** [Nlohmann/json](https://github.com/nlohmann/json) (C++ JSON library)
+*   **Logging:** [spdlog](https://github.com/gabime/spdlog) (Fast C++ logging library)
+*   **HTTP Client (for C++ Client):** [libcurl](https://curl.se/libcurl/)
+*   **Dependency Management:** [vcpkg](https://vcpkg.io/en/index.html) (C++ package manager)
+*   **Build System:** [CMake](https://cmake.org/)
+*   **Testing Framework:** [Google Test](https://github.com/google/googletest)
+*   **Containerization:** [Docker](https://www.docker.com/)
+*   **CI/CD:** [GitHub Actions](https://docs.github.com/en/actions)
+*   **API Documentation:** [OpenAPI (Swagger)](https://swagger.io/specification/)
 
-**Backend:**
+## 3. Features
 
-*   **Node.js**: JavaScript runtime.
-*   **Express.js**: Web application framework for Node.js.
-*   **PostgreSQL**: Relational database.
-*   **Sequelize**: ORM (Object-Relational Mapper) for Node.js and PostgreSQL.
-*   **JWT (jsonwebtoken)**: For stateless authentication.
-*   **Bcrypt.js**: For password hashing.
-*   **Winston**: For robust logging.
-*   **Redis**: For caching.
-*   **express-rate-limit**: For API rate limiting.
-*   **Cors, Helmet, Compression**: Security and performance middleware.
-*   **Dotenv**: For environment variable management.
-*   **Joi (or built-in Sequelize validation)**: For input validation.
-*   **Jest & Supertest**: For unit, integration, and API testing.
+### Core E-commerce Functionality
 
-**Frontend:**
+*   User Registration & Login
+*   Product Listing & Detail View
+*   Shopping Cart management (add, remove, update quantity)
+*   Order Placement
+*   View Order History
+*   Admin features: Add/Update/Delete Products (simplified for demo)
 
-*   **React.js**: JavaScript library for building user interfaces.
-*   **React Router DOM**: For client-side routing.
-*   **Axios**: For making HTTP requests to the backend API.
-*   **React Context API**: For global state management (e.g., authentication).
-*   **Tailwind CSS (or similar)**: For styling (not explicitly implemented here, but good practice).
-*   **Jest & React Testing Library**: For component and integration testing.
+### Enterprise-Grade Features
 
-**DevOps & Tools:**
-
-*   **Docker**: For containerization of all services.
-*   **Docker Compose**: For orchestrating multi-container Docker applications.
-*   **GitHub Actions**: For CI/CD.
-*   **k6**: For performance testing.
-*   **ESLint**: For code linting.
-*   **Nodemon**: For development server auto-restarts.
+*   **Authentication:** JWT-based user authentication.
+*   **Authorization:** Role-based access control (Admin/User).
+*   **Logging:** Structured logging for request tracing and error diagnostics.
+*   **Error Handling:** Centralized error handling middleware for consistent API responses.
+*   **Caching:** In-memory caching for frequently accessed data (e.g., product listings).
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **Configuration:** Environment variable-based configuration.
+*   **Dockerization:** Easy setup and deployment using Docker.
+*   **CI/CD:** Automated build, test, and potentially deployment workflows.
+*   **Comprehensive Testing:** Unit, integration, and API tests.
 
 ## 4. Setup Instructions
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+*   Git
+*   CMake (>= 3.15)
+*   C++ Compiler (GCC >= 9 or Clang >= 9, MSVC >= 2019)
+*   `vcpkg` (Follow official [installation instructions](https://vcpkg.io/en/getting-started.html))
+    *   Set `VCPKG_ROOT` environment variable to your vcpkg installation directory.
+*   PostgreSQL (for local dev without Docker)
+*   Docker & Docker Compose (for Docker setup)
 
-*   **Git**: For cloning the repository.
-*   **Node.js** (v18 or higher) and **npm** (v8 or higher): For running the backend and frontend.
-*   **Docker** and **Docker Compose**: For containerized setup.
-
-### Local Setup with Docker Compose (Recommended)
-
-This is the easiest way to get the entire system running locally.
+### Local Development Setup (without Docker)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/task-management-system.git
-    cd task-management-system
+    git clone https://github.com/your-username/ecommerce-cpp.git
+    cd ecommerce-cpp
     ```
 
-2.  **Create environment files:**
-    *   Copy `backend/.env.example` to `backend/.env`
-    *   Copy `frontend/.env.example` to `frontend/.env.local`
-
-    **`backend/.env` example:**
+2.  **Install C++ Dependencies using vcpkg:**
+    ```bash
+    # Ensure VCPKG_ROOT is set, e.g., export VCPKG_ROOT=/path/to/vcpkg
+    vcpkg install --triplet=$(vcpkg_target_triplet) # e.g., x64-linux, x64-windows
     ```
-    NODE_ENV=development
-    PORT=5000
-    DB_HOST=db
+    *Note: `vcpkg_target_triplet` will automatically detect your system's triplet. You might need to specify it manually, e.g., `vcpkg install --triplet x64-linux`.*
+
+3.  **Set up PostgreSQL Database:**
+    *   Install PostgreSQL if you don't have it.
+    *   Create a new database and a user.
+        ```sql
+        CREATE USER ecommerce_user WITH PASSWORD 'ecommerce_password';
+        CREATE DATABASE ecommerce_db OWNER ecommerce_user;
+        GRANT ALL PRIVILEGES ON DATABASE ecommerce_db TO ecommerce_user;
+        ```
+    *   Apply the schema and seed data:
+        ```bash
+        psql -h localhost -U ecommerce_user -d ecommerce_db -f db/schema.sql
+        psql -h localhost -U ecommerce_user -d ecommerce_db -f db/seed.sql
+        ```
+
+4.  **Configure Environment Variables:**
+    *   Copy `config/.env.example` to `config/.env` and update with your database credentials.
+        ```
+        DB_HOST=localhost
+        DB_PORT=5432
+        DB_NAME=ecommerce_db
+        DB_USER=ecommerce_user
+        DB_PASSWORD=ecommerce_password
+        APP_PORT=8080
+        JWT_SECRET=your_super_secret_jwt_key_here_at_least_32_chars
+        ```
+
+5.  **Build the Project:**
+    ```bash
+    mkdir build
+    cd build
+    cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+    cmake --build .
+    ```
+
+### Docker Setup
+
+1.  **Build Docker Images:**
+    ```bash
+    docker-compose build
+    ```
+
+2.  **Run Services:**
+    ```bash
+    docker-compose up -d
+    ```
+    This will start the PostgreSQL database and the C++ backend application. The database will be initialized and seeded automatically (see `docker-entrypoint-initdb.d` in `Dockerfile`).
+
+## 5. Running the Application
+
+### Running the Backend (Local Dev)
+
+From the `build` directory:
+```bash
+cd build
+./src/backend/ecommerce_backend # Or `.\Debug\src\backend\ecommerce_backend.exe` on Windows
+```
+The backend will start on the port specified in `config/.env` (default 8080).
+
+### Running the Client (Local Dev)
+
+From the `build` directory:
+```bash
+cd build
+./src/client/ecommerce_client # Or `.\Debug\src\client\ecommerce_client.exe` on Windows
+```
+The client will connect to the backend running on `localhost:8080` (or `APP_PORT` from `.env`).
+
+## 6. Database Layer
+
+### Schema
+
+The `db/schema.sql` file defines the tables and their relationships:
+
+*   **`users`**: Stores user information, including roles (customer, admin).
+    *   `id`, `username`, `email`, `password_hash`, `role`, `created_at`, `updated_at`
+*   **`products`**: Stores product details.
+    *   `id`, `name`, `description`, `price`, `stock`, `image_url`, `created_at`, `updated_at`
+*   **`orders`**: Stores order information.
+    *   `id`, `user_id`, `total_amount`, `status`, `created_at`, `updated_at`
+*   **`order_items`**: Stores individual items within an order.
+    *   `id`, `order_id`, `product_id`, `quantity`, `price`
+*   **`carts`**: Stores user's active shopping cart. (One cart per user)
+    *   `id`, `user_id`, `created_at`, `updated_at`
+*   **`cart_items`**: Stores products within a shopping cart.
+    *   `id`, `cart_id`, `product_id`, `quantity`
+
+### Migrations & Seeding
+
+*   `db/schema.sql`: Contains `CREATE TABLE` statements for all necessary tables.
+*   `db/seed.sql`: Contains `INSERT` statements to populate the database with initial users and products for testing.
+    *   Default Admin User: `admin@example.com` / `password123`
+    *   Default Customer User: `user@example.com` / `password123`
+
+When running with Docker, these scripts are automatically executed during container startup. For local development, they need to be run manually as described in the [setup section](#local-development-setup-without-docker).
+
+### Query Optimization
+
+*   **Indexes:** Necessary indexes are defined in `schema.sql` (e.g., `users.email`, `products.name`, foreign keys).
+*   **Parameterized Queries:** All database interactions use `pqxx::connection::exec_params` to prevent SQL injection and allow the database to cache query plans.
+*   **Efficient Joins:** Queries are designed to use efficient joins when retrieving related data (e.g., `orders` with `order_items` and `products`).
+*   **Batch Operations:** For future high-throughput scenarios, batch `INSERT`/`UPDATE` operations could be implemented.
+*   **Caching:** An in-memory cache is implemented for frequently accessed product data to reduce database load.
+
+## 7. Configuration & Environment
+
+*   **`config/.env`**: Stores sensitive information and dynamic configuration (database credentials, application port, JWT secret). Loaded by the backend at startup.
+*   **`config/crow_config.json`**: Can be used for Crow-specific configurations (e.g., thread pool size, SSL settings). (Currently a placeholder, default Crow settings used).
+*   **`vcpkg.json`**: Manifest file for vcpkg, listing all C++ dependencies.
+
+## 8. Testing & Quality
+
+The project employs a multi-layered testing strategy using Google Test for C++ code.
+
+### Unit Tests
+
+Focus on individual functions, classes, and components in isolation.
+*   Located in `tests/unit/`.
+*   Aims for 80%+ coverage on core business logic services (e.g., `AuthService`, `ProductService`).
+*   Mocks database interactions where appropriate to ensure true isolation.
+
+To run unit tests:
+```bash
+cd build
+./tests/unit/ecommerce_unit_tests # Or `.\Debug\tests\unit\ecommerce_unit_tests.exe` on Windows
+```
+
+### Integration Tests
+
+Verify the interaction between different components, especially the backend services with the actual PostgreSQL database.
+*   Located in `tests/integration/`.
+*   These tests require a running PostgreSQL instance (either local or via Docker).
+*   They perform actual CRUD operations against a test database or a clean instance of the main database.
+
+To run integration tests:
+```bash
+cd build
+./tests/integration/ecommerce_integration_tests # Or `.\Debug\tests\integration\ecommerce_integration_tests.exe` on Windows
+```
+
+### API Tests
+
+These tests verify the behavior of the API endpoints, ensuring they return correct data and status codes.
+*   Not implemented directly in C++ within the `tests` directory.
+*   Can be performed using tools like `curl`, Postman, or a simple Python script (`api_test.py` provided as an example outside the C++ codebase).
+
+Example `api_test.py`:
+```python
+# api_test.py (outside C++ source, for demonstration)
+import requests
+import json
+
+BASE_URL = "http://localhost:8080/api/v1"
+
+def test_register_and_login():
+    print("--- Register User ---")
+    register_data = {"username": "testuser", "email": "test@example.com", "password": "testpassword"}
+    r = requests.post(f"{BASE_URL}/auth/register", json=register_data)
+    print(f"Register Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 201 or "User with this email already exists" in r.json().get("message", "") # Handle existing user
+
+    print("\n--- Login User ---")
+    login_data = {"email": "test@example.com", "password": "testpassword"}
+    r = requests.post(f"{BASE_URL}/auth/login", json=login_data)
+    print(f"Login Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 200
+    token = r.json()["token"]
+    print(f"Obtained Token: {token}")
+    return token
+
+def test_admin_login():
+    print("\n--- Admin Login ---")
+    login_data = {"email": "admin@example.com", "password": "password123"}
+    r = requests.post(f"{BASE_URL}/auth/login", json=login_data)
+    print(f"Admin Login Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 200
+    admin_token = r.json()["token"]
+    print(f"Obtained Admin Token: {admin_token}")
+    return admin_token
+
+def test_products(token, admin_token):
+    headers = {"Authorization": f"Bearer {token}"}
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    print("\n--- Get Products (User) ---")
+    r = requests.get(f"{BASE_URL}/products", headers=headers)
+    print(f"Get Products Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 200
+
+    print("\n--- Add Product (Admin) ---")
+    product_data = {"name": "Test Product", "description": "A product for testing", "price": 99.99, "stock": 10}
+    r = requests.post(f"{BASE_URL}/products", json=product_data, headers=admin_headers)
+    print(f"Add Product Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 201
+    new_product_id = r.json()["id"]
+
+    print("\n--- Get Product by ID (User) ---")
+    r = requests.get(f"{BASE_URL}/products/{new_product_id}", headers=headers)
+    print(f"Get Product by ID Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 200
+
+    print("\n--- Update Product (Admin) ---")
+    update_data = {"name": "Updated Test Product", "price": 109.99}
+    r = requests.put(f"{BASE_URL}/products/{new_product_id}", json=update_data, headers=admin_headers)
+    print(f"Update Product Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 200
+
+    print("\n--- Delete Product (Admin) ---")
+    r = requests.delete(f"{BASE_URL}/products/{new_product_id}", headers=admin_headers)
+    print(f"Delete Product Status: {r.status_code}, Response: {r.json()}")
+    assert r.status_code == 204 # No Content
+
+def run_all_api_tests():
+    user_token = test_register_and_login()
+    admin_token = test_admin_login()
+    test_products(user_token, admin_token)
+    print("\nAll API tests completed.")
+
+if __name__ == "__main__":
+    run_all_api_tests()
+```
+
+### Performance Testing (Conceptual)
+
+While not implemented with code, performance testing would involve:
+*   **Load Testing:** Using tools like ApacheBench (`ab`), JMeter, or `k6` to simulate high user traffic and measure response times, throughput, and error rates.
+*   **Stress Testing:** Pushing the system beyond its normal operating limits to find breaking points.
+*   **Scalability Testing:** Observing how the system performs as resources (CPU, RAM, database connections) are added or removed.
+*   **Monitoring:** Using tools like Prometheus/Grafana or cloud-native monitoring solutions to observe system metrics during tests.
+
+Key metrics to monitor:
+*   Response Latency (P95, P99)
+*   Requests Per Second (RPS)
+*   Error Rate
+*   CPU/Memory Utilization
+*   Database Connection Pool usage
+
+## 9. Documentation
+
+### API Documentation
+
+The `openapi.yaml` file defines the RESTful API using the OpenAPI Specification (Swagger). It details endpoints, request/response schemas, authentication methods, and error responses.
+
+*   You can use tools like Swagger UI or Postman to visualize and interact with the API based on this specification.
+
+### Architecture Documentation
+
+This `README.md` serves as the primary architecture documentation, detailing the system's structure, components, data flow, and key design decisions.
+
+### Deployment Guide
+
+The `Dockerfile` and `docker-compose.yml` provide a clear deployment guide for containerized environments.
+
+**Steps for Docker Deployment:**
+
+1.  **Ensure Docker and Docker Compose are installed** on your deployment server.
+2.  **Clone the repository:** `git clone https://github.com/your-username/ecommerce-cpp.git && cd ecommerce-cpp`
+3.  **Create a `.env` file** in the `config/` directory with production-ready credentials for your database and a strong JWT secret.
+    ```
+    DB_HOST=db       # 'db' because it's the service name in docker-compose
     DB_PORT=5432
-    DB_USER=admin
-    DB_PASSWORD=adminpassword
-    DB_NAME=task_manager_db
-    JWT_SECRET=supersecurejwtsecretkey
-    JWT_EXPIRES_IN=1d
-    REDIS_HOST=redis
-    REDIS_PORT=6379
-    RATE_LIMIT_WINDOW_MS=60000
-    RATE_LIMIT_MAX_REQUESTS=100
-    FRONTEND_URL=http://localhost:3000
+    DB_NAME=ecommerce_db
+    DB_USER=ecommerce_user
+    DB_PASSWORD=your_secure_db_password
+    APP_PORT=8080
+    JWT_SECRET=a_very_long_and_complex_secret_for_jwt_in_production
     ```
-    **`frontend/.env.local` example:**
-    ```
-    REACT_APP_API_BASE_URL=http://localhost:5000/api
-    ```
-    *Note: For `DB_HOST` and `REDIS_HOST` in `backend/.env`, use the service names defined in `docker-compose.yml` (e.g., `db`, `redis`).*
-
-3.  **Build and run the services:**
+4.  **Build and run the containers:**
     ```bash
-    docker-compose up --build -d
+    docker-compose -f docker-compose.yml up --build -d
     ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Start PostgreSQL, Redis, Backend, and Frontend services in detached mode.
-    *   Wait for PostgreSQL and Redis to be healthy before starting the backend.
-    *   The `server.js` script in the backend will automatically run `sequelize.sync({ alter: true })` to apply migrations and create tables if they don't exist.
-
-4.  **Run Database Migrations and Seeders (if not handled by `sequelize.sync` or for clean setup):**
-    You can run these manually inside the backend container if needed:
+    *   `--build`: Rebuilds images if changes were made. Omit if images are already built and up-to-date.
+    *   `-d`: Runs containers in detached mode.
+5.  **Verify services:**
     ```bash
-    docker-compose exec backend npx sequelize-cli db:migrate
-    docker-compose exec backend npx sequelize-cli db:seed:all
+    docker-compose ps
     ```
-    *Note: The `server.js` setup attempts to handle migrations automatically on startup for development convenience. Seeding must be run explicitly.*
-
-5.  **Access the application:**
-    *   Frontend: `http://localhost:3000`
-    *   Backend API: `http://localhost:5000/api`
-
-### Manual Backend Setup (without Docker)
-
-1.  **Navigate to the backend directory:**
+    You should see `ecommerce_backend` and `ecommerce_db` running.
+6.  **Access the API:** The backend will be accessible on port `8080` of the host machine (or the port you configured).
     ```bash
-    cd backend
+    curl http://localhost:8080/api/v1/health
     ```
+    (Replace `localhost` with your server's IP if deployed remotely).
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+**Scaling Considerations:**
+*   For horizontal scaling, use an orchestrator like Kubernetes to manage multiple instances of the `ecommerce_backend` service behind a load balancer.
+*   The database (`ecommerce_db`) would typically be managed as a separate, highly available service (e.g., AWS RDS, Azure Database for PostgreSQL, or a self-managed cluster with replication).
 
-3.  **Create `.env` file:**
-    Copy `.env.example` to `.env` and configure your PostgreSQL and Redis connections (e.g., `DB_HOST=localhost`, `REDIS_HOST=localhost` if they are running locally).
+## 10. Additional Features
 
-4.  **Start PostgreSQL and Redis manually:**
-    Ensure you have a PostgreSQL server running (e.g., via `brew services start postgresql` on macOS, or a Docker container `docker run -p 5432:5432 --name task-db -e POSTGRES_DB=task_manager_db -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=adminpassword -d postgres:13-alpine`).
-    Similarly, start a Redis server (`docker run -p 6379:6379 --name task-redis -d redis:6-alpine`).
+### Authentication & Authorization
 
-5.  **Run database migrations and seeders:**
-    ```bash
-    npx sequelize-cli db:migrate
-    npx sequelize-cli db:seed:all
-    ```
+*   **JWT (JSON Web Tokens):** Used for stateless authentication.
+    *   On successful login, a JWT containing `user_id`, `email`, `role`, and `exp` (expiration) claims is issued.
+    *   Clients include this token in the `Authorization: Bearer <token>` header for subsequent requests.
+*   **`AuthMiddleware`**: Intercepts requests, validates the JWT, extracts user information, and sets it in the request context.
+*   **Role-Based Authorization:** Endpoints are protected based on user roles (`admin`, `customer`). For example, product creation/update/deletion is restricted to `admin` users.
 
-6.  **Start the backend server:**
-    ```bash
-    npm run dev # for development with nodemon
-    # or
-    npm start # for production
-    ```
-    The backend API will be available at `http://localhost:5000/api`.
+### Logging & Monitoring
 
-### Manual Frontend Setup (without Docker)
+*   **`spdlog`**: Integrated for structured and efficient logging.
+*   **`LoggingMiddleware`**: Logs incoming requests and their key details (method, path, IP, user ID, status code, duration).
+*   **Log Levels**: Supports `debug`, `info`, `warn`, `error`, `critical`.
+*   **Output**: Logs are written to `stdout` and can be configured for file output or external log aggregators (e.g., ELK stack, Splunk).
+*   **Error Logging**: Uncaught exceptions or explicit error conditions are logged with `error` or `critical` levels.
 
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd frontend
-    ```
+### Error Handling
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+*   **`ErrorHandlingMiddleware`**: Catches exceptions thrown by route handlers or other middleware.
+*   **Standardized Error Responses**: Returns consistent JSON error objects (`{"message": "Error description", "code": 400}`).
+*   **Specific Error Types**: Custom exception classes for common errors (e.g., `NotFoundException`, `UnauthorizedException`, `ValidationException`).
 
-3.  **Create `.env.local` file:**
-    Copy `.env.example` to `.env.local` and ensure `REACT_APP_API_BASE_URL` points to your backend (e.g., `http://localhost:5000/api`).
+### Caching Layer
 
-4.  **Start the frontend development server:**
-    ```bash
-    npm start
-    ```
-    The frontend application will be available at `http://localhost:3000`.
+*   **In-Memory Cache**: A simple `std::unordered_map`-based cache is implemented in `CacheManager` for frequently accessed data.
+*   **TTL (Time-To-Live)**: Items in the cache can have an expiration time.
+*   **Use Case**: Currently applied to `ProductService` for `get_all_products` and `get_product_by_id` to reduce database load.
 
-## 5. API Documentation
+### Rate Limiting
 
-The backend API is designed as a RESTful service. Authentication is handled via JWT.
+*   **`RateLimitMiddleware`**: Implements a simple sliding window counter per IP address.
+*   **Configuration**: Configurable request limits (e.g., 100 requests per minute).
+*   **Response**: Sends a `429 Too Many Requests` status code with a `Retry-After` header when limits are exceeded.
+*   **Storage**: Uses an in-memory `std::unordered_map` to track request counts for demonstration. For production, a distributed cache like Redis would be used.
 
-**Base URL:** `/api`
+## 11. CI/CD Pipeline
 
-### Authentication
+A `.github/workflows/ci-cd.yml` file defines a GitHub Actions workflow for Continuous Integration and Continuous Deployment.
 
-*   `POST /api/auth/register`
-    *   **Body:** `{ username, email, password }`
-    *   **Response:** `{ message: "User registered successfully", user: { id, username, email, role } }` (201 Created)
-*   `POST /api/auth/login`
-    *   **Body:** `{ email, password }`
-    *   **Response:** `{ message: "Logged in successfully", token: "jwt_token", user: { id, username, email, role } }` (200 OK)
-*   `GET /api/auth/me` (Protected)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ user: { id, username, email, role } }` (200 OK)
+**Workflow Stages:**
 
-### User Management (Admin or Self-Management)
+1.  **Build:** Compiles the C++ backend and client applications.
+2.  **Test:** Runs unit and integration tests.
+3.  **Containerize (Optional/Conceptual):** Builds Docker images (can be extended to push to a container registry).
+4.  **Deploy (Conceptual):** (Placeholder) Demonstrates where deployment steps would go (e.g., deploying new Docker images to a Kubernetes cluster or a VM).
 
-*   `GET /api/users` (Protected, Admin-only initially, could be extended)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `[{ id, username, email, role, ... }]` (200 OK)
-*   `GET /api/users/:id` (Protected, Admin or self-access)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ id, username, email, role, ... }` (200 OK)
-*   `PUT /api/users/:id` (Protected, Admin or self-update)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Body:** `{ username?, email?, password?, role?, profilePicture?, bio? }`
-    *   **Response:** `{ message: "User updated successfully", user: { ... } }` (200 OK)
-*   `DELETE /api/users/:id` (Protected, Admin or self-delete)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ message: "User deleted successfully" }` (200 OK)
+This ensures that every code change is automatically built and tested, maintaining code quality and preventing regressions.
 
-### Project Management
+## 12. Future Enhancements
 
-*   `GET /api/projects` (Protected)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Query Params:** `status`, `ownerId` (optional filters)
-    *   **Response:** `[{ id, name, description, ownerId, ... }]` (200 OK)
-    *   *Caching*: Responses for this endpoint might be cached by Redis based on `userId` and query params.
-*   `GET /api/projects/:id` (Protected, Owner or Admin access)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ id, name, description, ownerId, ... }` (200 OK)
-    *   *Caching*: Individual project details might be cached.
-*   `POST /api/projects` (Protected)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Body:** `{ name, description?, status?, startDate?, endDate? }` (ownerId is taken from token)
-    *   **Response:** `{ message: "Project created successfully", project: { ... } }` (201 Created)
-*   `PUT /api/projects/:id` (Protected, Owner or Admin access)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Body:** `{ name?, description?, status?, startDate?, endDate? }`
-    *   **Response:** `{ message: "Project updated successfully", project: { ... } }` (200 OK)
-*   `DELETE /api/projects/:id` (Protected, Owner or Admin access)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ message: "Project deleted successfully" }` (200 OK)
+*   **Web-based Frontend:** Implement a modern web frontend using React, Vue, Angular, or a server-side rendered C++ framework like Wt.
+*   **Payment Gateway Integration:** Integrate with Stripe, PayPal, etc.
+*   **Search & Filtering:** Advanced product search, filtering, and sorting capabilities.
+*   **Recommendations Engine:** Implement a basic product recommendation system.
+*   **Admin Dashboard:** A dedicated web interface for administrators.
+*   **Asynchronous Operations:** Use Boost.ASIO or similar for non-blocking I/O in the backend.
+*   **Distributed Caching:** Integrate Redis for a shared, persistent cache.
+*   **Message Queues:** Use Kafka or RabbitMQ for decoupled processing (e.g., order fulfillment, notifications).
+*   **Observability:** More advanced metrics collection (Prometheus), distributed tracing (OpenTelemetry).
+*   **Full Text Search:** Integrate with Elasticsearch or PostgreSQL's built-in FTS.
+*   **Shopping Cart Persistence (Anonymous):** Allow unauthenticated users to maintain a cart.
 
-### Task Management
+## 13. Contributing
 
-*   `GET /api/tasks` (Protected)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Query Params:** `projectId`, `assignedToId`, `status`, `priority`, `dueDate` (optional filters)
-    *   **Response:** `[{ id, title, description, projectId, assignedToId, ... }]` (200 OK)
-    *   *Caching*: Responses for this endpoint might be cached.
-*   `GET /api/tasks/:id` (Protected, User involved in project or assigned to task, or Admin)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ id, title, description, projectId, assignedToId, ... }` (200 OK)
-    *   *Caching*: Individual task details might be cached.
-*   `POST /api/projects/:projectId/tasks` (Protected)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Body:** `{ title, description?, status?, priority?, dueDate?, assignedToId? }` (createdBy is taken from token)
-    *   **Response:** `{ message: "Task created successfully", task: { ... } }` (201 Created)
-*   `PUT /api/tasks/:id` (Protected, User involved in project or assigned to task, or Admin)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Body:** `{ title?, description?, status?, priority?, dueDate?, assignedToId? }`
-    *   **Response:** `{ message: "Task updated successfully", task: { ... } }` (200 OK)
-*   `DELETE /api/tasks/:id` (Protected, User involved in project or assigned to task, or Admin)
-    *   **Headers:** `Authorization: Bearer <jwt_token>`
-    *   **Response:** `{ message: "Task deleted successfully" }` (200 OK)
+Feel free to fork the repository, make improvements, and submit pull requests.
 
-## 6. Testing
+## 14. License
 
-The project emphasizes quality through a comprehensive testing suite.
-
-*   **Unit Tests:** Verify individual functions and components in isolation (e.g., `src/utils/jwt.js`, `src/utils/bcrypt.js`).
-*   **Integration Tests:** Test the interaction between different modules (e.g., services interacting with models, database operations).
-*   **API Tests:** Use `supertest` to simulate HTTP requests to API endpoints, covering authentication, CRUD operations, and error handling.
-*   **Frontend Tests:** Use Jest and React Testing Library to test React components and their interactions.
-*   **Performance Tests:** A basic `k6` script is provided to simulate user load and measure API response times and throughput.
-
-**To run tests:**
-
-*   **Backend Tests:**
-    ```bash
-    cd backend
-    npm test
-    ```
-    This will spin up a separate test database (`test_db`) and Redis instance using `docker-compose.test.yml`, run migrations and seeders for the test environment, then execute all backend tests.
-*   **Frontend Tests:**
-    ```bash
-    cd frontend
-    npm test -- --coverage
-    ```
-*   **Performance Tests (requires k6 installed):**
-    First, ensure your Docker Compose setup is running (`docker-compose up -d`).
-    ```bash
-    k6 run k6-performance-test.js
-    ```
-
-## 7. CI/CD
-
-A GitHub Actions workflow (`.github/workflows/main.yml`) is configured to automate the build, test, and deployment process:
-
-*   **On Push/Pull Request to `main` branch:**
-    *   **Build & Test Job:**
-        *   Checks out code.
-        *   Sets up Node.js for both backend and frontend.
-        *   Installs dependencies.
-        *   Sets up a temporary PostgreSQL and Redis for backend testing.
-        *   Runs database migrations and seeders for the test environment.
-        *   Executes all backend unit, integration, and API tests.
-        *   Executes all frontend tests.
-        *   Uploads coverage reports as artifacts.
-    *   **Deploy Job (only on `main` branch push, after tests pass):**
-        *   Logs into Docker Hub.
-        *   Builds and pushes Docker images for backend and frontend to Docker Hub.
-        *   (Example) Connects via SSH to a deployment server and pulls the latest images, then restarts containers using `docker-compose`.
-        *   **Note**: You'll need to set `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` as GitHub Secrets for the deploy step to work.
-
-## 8. Deployment Guide
-
-The application is designed for containerized deployment.
-
-1.  **Container Registry:**
-    Ensure you have a Docker Hub account (or another container registry like AWS ECR, GCP Container Registry) and are logged in. The CI/CD pipeline pushes images to `your_docker_username/task-manager-backend:latest` and `your_docker_username/task-manager-frontend:latest`. Update these paths in `.github/workflows/main.yml`.
-
-2.  **Server Preparation:**
-    *   Provision a Linux server (e.g., a DigitalOcean Droplet, AWS EC2 instance, or a VPS).
-    *   Install Docker and Docker Compose on the server.
-    *   Ensure necessary ports (e.g., 80/443 for frontend, 5000 for backend if directly exposed, 5432 for DB if local) are open in your firewall configuration.
-    *   Clone the repository onto your server.
-
-3.  **Environment Variables:**
-    *   On your production server, create `backend/.env` and `frontend/.env.local` files.
-    *   **Crucially**, configure `DB_HOST`, `REDIS_HOST`, and `FRONTEND_URL` correctly. If running `docker-compose` on a single server, `DB_HOST` will be `db` and `REDIS_HOST` will be `redis` (matching service names). If your database is external (e.g., AWS RDS), `DB_HOST` will be its public endpoint.
-    *   Set `NODE_ENV=production`.
-    *   Use strong, unique values for `JWT_SECRET` and database credentials.
-
-4.  **Database Setup:**
-    *   If using an external PostgreSQL database (recommended for production), connect to it and run migrations:
-        ```bash
-        docker-compose run backend npx sequelize-cli db:migrate
-        # Or, if you have a Node.js environment on your server:
-        # cd backend && npm install && npx sequelize-cli db:migrate
-        ```
-    *   If using the `db` service from `docker-compose.yml` locally on the server, the `sequelize.sync({ alter: true })` in `server.js` will handle initial schema creation, but dedicated migration runs are safer for controlled updates.
-
-5.  **Deployment:**
-    *   On your server, navigate to the project root:
-        ```bash
-        cd /path/to/your/app
-        # Pull the latest images
-        docker-compose pull
-        # Start the services (with -d for detached mode)
-        docker-compose up -d --remove-orphans
-        # Clean up old images (optional)
-        docker system prune -f
-        ```
-    *   Alternatively, the CI/CD pipeline can automate this step using SSH.
-
-6.  **HTTPS (Highly Recommended):**
-    For production, always use HTTPS. You can achieve this by:
-    *   Setting up an Nginx reverse proxy in front of your frontend (and optionally backend) containers.
-    *   Using Certbot to obtain and manage Let's Encrypt SSL certificates for Nginx.
-    *   Cloud providers often offer managed load balancers (e.g., AWS ALB) with SSL termination.
-
-## 9. Future Enhancements
-
-*   **Advanced UI/UX:** More polished design, drag-and-drop for tasks, rich text editor for descriptions.
-*   **Real-time Updates:** WebSocket integration (Socket.io) for live task/project updates across users.
-*   **Notifications:** Email/in-app notifications for task assignments, due dates.
-*   **Search & Filtering:** More advanced search capabilities and complex filters for tasks/projects.
-*   **File Uploads:** Attachments to tasks or projects.
-*   **Comments:** Commenting system for tasks.
-*   **Teams/Organizations:** Group users into teams or organizations.
-*   **Time Tracking:** Ability to log time spent on tasks.
-*   **Integration with Third-Party Services:** Calendar integration (Google Calendar), version control (GitHub).
-*   **Admin Dashboard:** Dedicated interface for managing users and system settings.
-*   **Observability:** Integrate Prometheus/Grafana for comprehensive monitoring and alerting.
-*   **Internationalization (i18n):** Support for multiple languages.
-*   **GraphQL API:** Consider a GraphQL API for more flexible data fetching.
-
-## 10. License
-
-This project is open-sourced under the MIT License. See the `LICENSE` file for more details.
+This project is licensed under the MIT License. See the `LICENSE` file for details (not included in this response, but would be in a real project).
