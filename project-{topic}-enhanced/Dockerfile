@@ -1,42 +1,30 @@
 ```dockerfile
-# Use a slim Python base image
-FROM python:3.11-slim-buster
-
-# Set environment variables for non-interactive execution
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONDONTWRITEBYTECODE 1
-
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Use an official Node.js runtime as a parent image
+FROM node:20-alpine
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy only requirements.txt first to leverage Docker cache
-COPY ./requirements.txt /app/requirements.txt
+# Install app dependencies
+# A wildcard is used to ensure both package.json and package-lock.json are copied
+COPY package*.json ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install dependencies, --omit=dev prevents dev dependencies from being installed in production
+RUN npm install --omit=dev
 
-# Copy the rest of the application code
-COPY ./app /app/app
-COPY ./alembic /app/alembic
-COPY ./scripts /app/scripts
-COPY ./alembic.ini /app/alembic.ini
+# Copy the entire application to the working directory
+COPY . .
 
-# Expose the port FastAPI runs on
-EXPOSE 8000
+# Expose the port the app runs on
+EXPOSE 5000
 
-# Command to run the application using Uvicorn
-# Using gunicorn as a process manager for uvicorn workers for production readiness
-# Replace with: CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-# for simple development setup without gunicorn.
-# For production, consider using a proper process manager like Gunicorn with Uvicorn workers.
-# Here we use a simpler command for clarity in this comprehensive example,
-# but for true enterprise-grade, Gunicorn setup (e.g., `gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 app.main:app`) is recommended.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run database migrations and seed data
+# In a real production scenario, migrations should be handled by your CI/CD or a dedicated migration job,
+# not directly in the Dockerfile, or as a separate entrypoint script.
+# For demonstration purposes, we include it here.
+# RUN npx sequelize db:migrate
+# RUN npx sequelize db:seed:all
+
+# Command to run the application
+CMD [ "npm", "start" ]
 ```

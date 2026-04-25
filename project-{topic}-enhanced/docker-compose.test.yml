@@ -1,0 +1,54 @@
+```yaml
+version: '3.8'
+
+# This file is for CI/CD test environment only.
+# It uses different ports to avoid conflicts with local development setup.
+
+services:
+  app-test:
+    image: node:20-alpine # No need to build the app, just run migrations/tests
+    container_name: enterprise-app-test
+    environment:
+      NODE_ENV: test
+      DB_DIALECT: postgres
+      DB_HOST: db-test
+      DB_PORT: 5432
+      DB_USER: test_user
+      DB_PASS: test_password
+      DB_NAME: enterprise_test_db
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
+      JWT_SECRET: ci_test_jwt_secret
+      JWT_EXPIRES_IN: 1h
+      JWT_REFRESH_SECRET: ci_test_jwt_refresh_secret
+      JWT_REFRESH_EXPIRES_IN: 7d
+    depends_on:
+      - db-test
+      - redis-test
+    networks:
+      - enterprise-test-network
+
+  db-test:
+    image: postgres:15-alpine
+    container_name: enterprise-db-test
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: enterprise_test_db
+    ports:
+      - "5433:5432" # Map to a different port for CI testing
+    networks:
+      - enterprise-test-network
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: enterprise-redis-test
+    ports:
+      - "6380:6379" # Map to a different port for CI testing
+    networks:
+      - enterprise-test-network
+
+networks:
+  enterprise-test-network:
+    driver: bridge
+```

@@ -1,5 +1,5 @@
 ```yaml
-name: DBOptiFlow CI/CD Pipeline
+name: Node.js CI/CD
 
 on:
   push:
@@ -12,8 +12,7 @@ on:
       - develop
 
 jobs:
-  build-and-test-backend:
-    name: Build & Test Backend
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -22,159 +21,91 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
 
-      - name: Install Backend dependencies
+      - name: Install dependencies
         run: npm install
-        working-directory: ./backend
 
-      - name: Build Backend
-        run: npm run build
-        working-directory: ./backend
+      - name: Run ESLint
+        run: npm run lint
 
-      - name: Start PostgreSQL for Backend Tests
-        run: docker run --name test-postgres -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -e POSTGRES_DB=test_db -d -p 5433:5432 postgres:16-alpine
-      - name: Wait for PostgreSQL
+      - name: Run tests
+        # Create a test .env file for the CI environment
         run: |
-          for i in `seq 1 10`; do
-            nc -z localhost 5433 && echo Success && break
-            echo -n .
-            sleep 1
-          done
-      - name: Run Backend Tests
-        run: npm test
-        working-directory: ./backend
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5433
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-          JWT_ACCESS_SECRET: test_access_secret
-          JWT_REFRESH_SECRET: test_refresh_secret
-          REDIS_HOST: localhost # Not strictly needed for unit tests, but good for consistency
-          REDIS_PORT: 6379
+          echo "NODE_ENV=test" > .env
+          echo "PORT=5000" >> .env
+          echo "APP_SECRET=ci_test_app_secret" >> .env
+          echo "DB_DIALECT=postgres" >> .env
+          echo "DB_HOST=localhost" >> .env
+          echo "DB_PORT=5433" >> .env # Use a different port to avoid conflict with local setup
+          echo "DB_USER=test_user" >> .env
+          echo "DB_PASS=test_password" >> .env
+          echo "DB_NAME=enterprise_test_db" >> .env
+          echo "REDIS_HOST=localhost" >> .env
+          echo "REDIS_PORT=6380" >> .env # Use a different port
+          echo "JWT_SECRET=ci_test_jwt_secret" >> .env
+          echo "JWT_EXPIRES_IN=1h" >> .env
+          echo "JWT_REFRESH_SECRET=ci_test_jwt_refresh_secret" >> .env
+          echo "JWT_REFRESH_EXPIRES_IN=7d" >> .env
+          echo "RATE_LIMIT_WINDOW_MS=1000" >> .env
+          echo "RATE_LIMIT_MAX_REQUESTS=10" >> .env
+          echo "CLIENT_URL=http://localhost:3000" >> .env
+          echo "LOG_LEVEL=error" >> .env
+          
+          # Start test database and redis
+          docker-compose -f docker-compose.test.yml up -d
+          
+          # Wait for services to be ready
+          sleep 10
+          
+          # Run migrations and seeds for the test database
+          npm run db:migrate -- --env test
+          npm run db:seed -- --env test
 
-      - name: Upload Backend Coverage Report
-        uses: actions/upload-artifact@v4
+          npm test
+          
+          # Stop test database and redis
+          docker-compose -f docker-compose.test.yml down
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
         with:
-          name: backend-coverage-report
-          path: backend/coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }} # Set CODECOV_TOKEN in GitHub secrets
+          files: ./coverage/lcov.info
+          fail_ci_if_error: true
+          verbose: true
 
-  build-and-test-frontend:
-    name: Build & Test Frontend
+  deploy:
     runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' # Deploy only on pushes to main branch
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Frontend dependencies
-        run: npm install
-        working-directory: ./frontend
-
-      - name: Build Frontend
-        run: npm run build
-        working-directory: ./frontend
-
-      - name: Run Frontend Tests
-        run: npm test
-        working-directory: ./frontend
-
-      - name: Upload Frontend Coverage Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage-report
-          path: frontend/coverage/lcov.info
-
-  docker-build-and-push:
-    name: Build & Push Docker Images
-    needs: [build-and-test-backend, build-and-test-frontend]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only push on main/develop
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Backend image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/db-optiflow-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: your-dockerhub-username/enterprise-security-app:latest
+          # Add build arguments if needed, e.g., for secrets not committed to git
 
-      - name: Build and push Frontend image
-        uses: docker/build-push-action@v5
+      - name: Deploy to Server (e.g., using SSH)
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/db-optiflow-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} # Pass frontend env var
-
-  deploy:
-    name: Deploy to Production/Staging
-    needs: [docker-build-and-push]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
-    environment: production # Use GitHub Environments for protected deployments
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to Server (e.g., via SSH)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_SSH_HOST }}
-          username: ${{ secrets.PROD_SSH_USER }}
-          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /path/to/your/db-optiflow-deployment
-            docker compose pull
-            docker compose down
-            docker compose up -d
-            echo "Deployment complete for main branch!"
-
-  deploy-staging:
-    name: Deploy to Staging
-    needs: [docker-build-and-push]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' # Deploy develop branch to staging
-    environment: staging
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to Staging Server (e.g., via SSH)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.STAGING_SSH_HOST }}
-          username: ${{ secrets.STAGING_SSH_USER }}
-          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
-          script: |
-            cd /path/to/your/db-optiflow-staging-deployment
-            docker compose pull
-            docker compose down
-            docker compose up -d
-            echo "Deployment complete for develop branch!"
+            cd /path/to/your/app/on/server
+            docker-compose pull
+            docker-compose up -d --build
+            docker system prune -f # Clean up old images
 ```

@@ -1,0 +1,133 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Security System Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        form div { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"], textarea, select {
+            width: calc(100% - 22px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 16px; margin-right: 10px;
+        }
+        button:hover { background-color: #0056b3; }
+        .output { background-color: #e2e6ea; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+        .section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enterprise Security System Client Demo</h1>
+        <p>This page demonstrates interaction with the backend API, focusing on authentication, authorization, and CRUD operations.</p>
+
+        <div class="section">
+            <h2>Authentication</h2>
+            <h3>Register User</h3>
+            <form id="registerForm">
+                <div>
+                    <label for="regUsername">Username:</label>
+                    <input type="text" id="regUsername" value="newuser" required>
+                </div>
+                <div>
+                    <label for="regEmail">Email:</label>
+                    <input type="email" id="regEmail" value="newuser@example.com" required>
+                </div>
+                <div>
+                    <label for="regPassword">Password:</label>
+                    <input type="password" id="regPassword" value="password123" required>
+                </div>
+                <div>
+                    <label for="regRole">Role:</label>
+                    <select id="regRole">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="submit">Register</button>
+            </form>
+            <div id="registerOutput" class="output"></div>
+
+            <h3>Login User</h3>
+            <form id="loginForm">
+                <div>
+                    <label for="loginEmail">Email:</label>
+                    <input type="email" id="loginEmail" value="admin@example.com" required>
+                </div>
+                <div>
+                    <label for="loginPassword">Password:</label>
+                    <input type="password" id="loginPassword" value="admin1234" required>
+                </div>
+                <button type="submit">Login</button>
+            </form>
+            <div id="loginOutput" class="output"></div>
+
+            <h3>Current Tokens</h3>
+            <p>Access Token: <span id="accessTokenDisplay">No token</span></p>
+            <p>Refresh Token: <span id="refreshTokenDisplay">No token</span></p>
+            <button id="refreshTokenBtn">Refresh Access Token</button>
+            <button id="logoutBtn">Logout</button>
+            <div id="tokenOutput" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>User Management (Admin Required)</h2>
+            <h3>Get All Users</h3>
+            <button id="getAllUsersBtn">Get All Users</button>
+            <div id="getAllUsersOutput" class="output"></div>
+
+            <h3>Get My Profile (Authenticated User)</h3>
+            <button id="getProfileBtn">Get My Profile</button>
+            <div id="getProfileOutput" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>Product Management (Authenticated Users, Admin for CRUD)</h2>
+            <h3>Create Product (Admin)</h3>
+            <form id="createProductForm">
+                <div>
+                    <label for="prodName">Name:</label>
+                    <input type="text" id="prodName" value="New Super Gadget" required>
+                </div>
+                <div>
+                    <label for="prodDescription">Description:</label>
+                    <textarea id="prodDescription" required>A brand new super gadget with enhanced features.</textarea>
+                </div>
+                <div>
+                    <label for="prodPrice">Price:</label>
+                    <input type="number" id="prodPrice" step="0.01" value="199.99" required>
+                </div>
+                <div>
+                    <label for="prodStock">Stock:</label>
+                    <input type="number" id="prodStock" value="50" required>
+                </div>
+                <button type="submit">Create Product</button>
+            </form>
+            <div id="createProductOutput" class="output"></div>
+
+            <h3>Get All Products (Public/Cached)</h3>
+            <button id="getAllProductsBtn">Get All Products</button>
+            <div id="getAllProductsOutput" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test Rate Limiting (Will eventually block after too many requests)</h2>
+            <button id="testRateLimitBtn">Send 100 requests to /health</button>
+            <div id="rateLimitOutput" class="output"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+```

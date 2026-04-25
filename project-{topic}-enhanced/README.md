@@ -1,435 +1,270 @@
 ```markdown
-# Personal Finance Tracker Backend
+# Enterprise Security System
 
-## Comprehensive, Production-Ready Mobile App Backend System
-
-This project provides a full-scale, enterprise-grade backend for a personal finance tracking mobile application. It's built with Python using FastAPI, SQLAlchemy, and PostgreSQL, incorporating best practices for development, testing, and deployment.
-
----
+A comprehensive, production-ready security implementation system built with Node.js (Express), PostgreSQL, Redis, Docker, and full CI/CD integration. This project focuses on demonstrating robust security practices, including authentication, authorization (RBAC), logging, error handling, caching, and rate limiting.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Project Structure](#project-structure)
-4.  [Local Setup & Development](#local-setup-&-development)
-    *   [Prerequisites](#prerequisites)
-    *   [Environment Variables](#environment-variables)
-    *   [Running with Docker Compose](#running-with-docker-compose)
-    *   [Running Natively (without Docker Compose)](#running-natively-without-docker-compose)
-    *   [Database Migrations](#database-migrations)
-    *   [Seeding Initial Data](#seeding-initial-data)
-5.  [API Documentation](#api-documentation)
-6.  [Testing](#testing)
-    *   [Unit, Integration & API Tests](#unit-integration-&-api-tests)
-    *   [Performance Tests (Locust)](#performance-tests-locust)
-7.  [Authentication & Authorization](#authentication-&-authorization)
-8.  [Logging & Monitoring](#logging-&-monitoring)
-9.  [Error Handling](#error-handling)
-10. [Caching](#caching)
-11. [Rate Limiting](#rate-limiting)
-12. [CI/CD (GitHub Actions)](#ci/cd-github-actions)
-13. [Deployment](#deployment)
-14. [Architecture Overview](ARCHITECTURE.md)
-15. [Deployment Guide](DEPLOYMENT.md)
+- [Features](#features)
+- [Technologies Used](#technologies-used)
+- [Project Structure](#project-structure)
+- [Setup Instructions](#setup-instructions)
+  - [Prerequisites](#prerequisites)
+  - [Local Setup (without Docker)](#local-setup-without-docker)
+  - [Local Setup (with Docker)](#local-setup-with-docker)
+- [Running the Application](#running-the-application)
+- [Testing](#testing)
+- [API Documentation](#api-documentation)
+- [Architecture Documentation](#architecture-documentation)
+- [CI/CD Pipeline](#ci-cd-pipeline)
+- [Additional Notes](#additional-notes)
+- [Contributing](#contributing)
+- [License](#license)
 
----
+## Features
 
-## 1. Features
+- **User Authentication**: JWT-based authentication (access and refresh tokens).
+- **Password Security**: `bcrypt.js` for password hashing.
+- **Role-Based Access Control (RBAC)**: Granular authorization middleware to restrict access based on user roles (`user`, `admin`).
+- **Input Validation**: `Joi` for validating API request payloads.
+- **Centralized Error Handling**: Custom `AppError` and global error handling middleware for consistent error responses.
+- **Logging and Monitoring**: `Winston` for structured logging (console, file), `Morgan` for HTTP request logging. Basic health check endpoint.
+- **Caching Layer**: `Redis` integration with `ioredis` for API response caching to improve performance.
+- **Rate Limiting**: `express-rate-limit` middleware to protect against brute-force attacks and DDoS.
+- **Security Headers**: `Helmet` middleware to set various HTTP headers for enhanced security.
+- **CORS**: Configured `cors` middleware for controlled cross-origin resource sharing.
+- **HTTP Parameter Pollution Protection**: `hpp` middleware.
+- **Compression**: `compression` middleware for efficient data transfer.
+- **Database Layer**: PostgreSQL with `Sequelize` ORM for schema definition, migrations, and seeding.
+- **Dockerization**: `Dockerfile` and `docker-compose.yml` for containerized development and deployment.
+- **CI/CD Pipeline**: Configuration for GitHub Actions (build, test, deploy).
+- **Comprehensive Testing**: Unit, Integration, and API tests using `Jest` and `Supertest` with `80%+` coverage target.
+- **Frontend Demo**: A minimal `index.html` with vanilla JS to interact with the API.
+- **Documentation**: Detailed README, API Documentation, and Architecture Documentation.
 
-This backend system provides the following core functionalities:
+## Technologies Used
 
-*   **User Management**: User registration, login, profile retrieval, and updates. (Admin functionalities for user listing, creation, update, and deletion).
-*   **Authentication & Authorization**: Secure JWT-based authentication for user access, role-based authorization (e.g., superuser vs. regular user).
-*   **Category Management**: CRUD operations for creating, reading, updating, and deleting financial categories (e.g., 'Food', 'Salary', 'Rent'). Categories can be `income` or `expense` types.
-*   **Transaction Management**: CRUD operations for recording income and expense transactions with descriptions, amounts, dates, and category associations.
-*   **Financial Overview**: Calculate a user's current net balance (total income - total expenses).
-*   **Budget Management**: CRUD operations for setting and tracking budgets against specific expense categories for defined periods.
-*   **Budget Progress**: Endpoint to calculate and display the progress of a budget (amount spent vs. budget amount).
-*   **Data Validation**: Robust input validation using Pydantic schemas.
-*   **Database Migrations**: Managed schema evolution using Alembic.
-*   **Caching Layer**: Redis-based caching for frequently accessed read-heavy endpoints to improve performance.
-*   **Rate Limiting**: Redis-based rate limiting to protect endpoints from abuse.
-*   **Comprehensive Logging**: Structured logging for application events, errors, and requests.
-*   **Centralized Error Handling**: Custom exception handling middleware.
-*   **Containerization**: Docker and Docker Compose setup for easy local development and deployment.
-*   **Automated Testing**: Unit, integration, and API tests with coverage reporting.
-*   **Performance Testing**: Basic load testing setup with Locust.
-*   **CI/CD**: GitHub Actions workflow for automated testing and deployment.
-*   **Extensive Documentation**: README, API docs (Swagger UI/ReDoc), Architecture, and Deployment guides.
+- **Backend**: Node.js, Express.js
+- **Database**: PostgreSQL
+- **ORM**: Sequelize
+- **Caching/Session**: Redis, ioredis
+- **Authentication**: JSON Web Tokens (JWT), bcrypt.js
+- **Validation**: Joi
+- **Logging**: Winston, Morgan
+- **Security**: Helmet, CORS, hpp, express-rate-limit
+- **Testing**: Jest, Supertest
+- **Containerization**: Docker, Docker Compose
+- **CI/CD**: GitHub Actions
 
----
-
-## 2. Technology Stack
-
-*   **Backend Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
-*   **Asynchronous ORM**: [SQLAlchemy 2.0](https://docs.sqlalchemy.org/en/20/) with [AsyncPG](https://magicstack.github.io/asyncpg/current/)
-*   **Database**: [PostgreSQL](https://www.postgresql.org/)
-*   **Database Migrations**: [Alembic](https://alembic.sqlalchemy.org/en/latest/)
-*   **Data Validation/Settings**: [Pydantic v2](https://pydantic.dev/) and `pydantic-settings`
-*   **Password Hashing**: [Passlib](https://passlib.readthedocs.io/en/stable/) (Bcrypt)
-*   **JSON Web Tokens (JWT)**: [Python-jose](https://python-jose.readthedocs.io/en/latest/)
-*   **Caching**: [FastAPI-Cache2](https://fastapi-cache.aerapi.dev/) with [Redis](https://redis.io/)
-*   **Rate Limiting**: [FastAPI-Limiter](https://github.com/long2ice/fastapi-limiter) with [Redis](https://redis.io/)
-*   **Containerization**: [Docker](https://www.docker.com/), [Docker Compose](https://docs.docker.com/compose/)
-*   **Testing**: [Pytest](https://docs.pytest.org/en/stable/), [HTTPX](https://www.python-httpx.org/), [Locust](https://locust.io/)
-*   **CI/CD**: [GitHub Actions](https://docs.github.com/en/actions)
-*   **Linting/Formatting**: (Implicitly assumed, e.g., Black, Flake8 - not explicitly configured in provided files but essential for production)
-
----
-
-## 3. Project Structure
+## Project Structure
 
 ```
-.
-├── app/
-│   ├── api/                      # API endpoint definitions (routers)
-│   │   ├── v1/                   # API version 1
-│   │   │   ├── endpoints/        # Specific resource endpoints (auth, users, categories, etc.)
-│   │   │   └── api.py            # Aggregates all v1 endpoints
-│   │   └── __init__.py
-│   ├── core/                     # Core application configurations and utilities
-│   │   ├── config.py             # Pydantic-based settings management
-│   │   ├── security.py           # JWT, password hashing
-│   │   ├── exceptions.py         # Custom exception classes and handlers
-│   │   ├── middlewares.py        # Custom FastAPI middleware (e.g., request logger)
-│   │   ├── rate_limiter.py       # Rate limiting setup with Redis
-│   │   ├── cache.py              # Caching decorators with Redis
-│   │   ├── logger.py             # Centralized logging configuration
-│   │   └── deps.py               # FastAPI dependency injection functions (e.g., DB session, current user)
-│   ├── crud/                     # CRUD (Create, Read, Update, Delete) operations for database models
-│   │   ├── base.py               # Generic CRUD base class
-│   │   ├── crud_user.py          # User-specific CRUD
-│   │   ├── ...                   # Other resource-specific CRUD files
-│   │   └── __init__.py
-│   ├── db/                       # Database-related configurations
-│   │   ├── base_class.py         # Base declarative class for SQLAlchemy models
-│   │   ├── session.py            # SQLAlchemy engine and session setup
-│   │   ├── models/               # SQLAlchemy ORM models (User, Category, Transaction, Budget)
-│   │   │   └── ...
-│   │   └── init_db.py            # Script for initial database seeding
-│   ├── schemas/                  # Pydantic schemas for request/response validation and serialization
-│   │   ├── msg.py                # Generic message schema
-│   │   ├── token.py              # JWT token schemas
-│   │   ├── ...                   # Other resource-specific schemas
-│   │   └── __init__.py
-│   ├── main.py                   # Main FastAPI application entry point
-│   └── __init__.py
-├── alembic/                      # Alembic migrations directory
-│   ├── versions/                 # Migration script files
-│   ├── env.py                    # Alembic environment configuration
-│   ├── script.py.mako            # Template for new migration files
-│   └── alembic.ini               # Alembic configuration file
-├── tests/
-│   ├── unit/                     # Unit tests for individual functions/classes
-│   │   └── ...
-│   ├── integration/              # Integration/API tests for endpoints and component interactions
-│   │   └── ...
-│   ├── performance/              # Performance/load tests (Locust)
-│   │   └── locustfile.py
-│   └── conftest.py               # Pytest fixtures and configurations
-├── scripts/
-│   ├── run_migrations.sh         # Script to run Alembic migrations
-│   └── seed_db.py                # Script to seed the database (callable standalone)
-├── .env.example                  # Example environment variables file
-├── Dockerfile                    # Docker build instructions for the application
-├── docker-compose.yml            # Docker Compose configuration for app, DB, and Redis
-├── requirements.txt              # Python dependency list
-├── .gitignore                    # Files/directories to ignore in Git
-├── README.md                     # This documentation
-├── ARCHITECTURE.md               # High-level architecture overview
-├── DEPLOYMENT.md                 # Guide for deploying the application
-└── .github/
-    └── workflows/
-        └── main.yml              # GitHub Actions CI/CD pipeline configuration
+├── .github/                       # GitHub Actions CI/CD workflows
+├── config/                        # Application configuration files
+├── controllers/                   # Request handling logic
+├── db/                            # Database setup (models, migrations, seeders)
+├── middleware/                    # Express middleware for security, caching, error handling
+├── public/                        # Simple HTML/JS frontend demo
+├── routes/                        # API route definitions
+├── services/                      # Business logic layer
+├── utils/                         # Utility functions (JWT, logger, cache)
+├── tests/                         # Unit, integration, and API tests
+├── .env.example                   # Environment variables template
+├── app.js                         # Express application setup
+├── server.js                      # Application entry point
+├── package.json                   # Project dependencies and scripts
+├── Dockerfile                     # Docker build instructions
+├── docker-compose.yml             # Docker Compose for multi-service setup
+├── README.md                      # This document
+├── API_DOCUMENTATION.md           # Detailed API reference
+└── ARCHITECTURE_DOCUMENTATION.md  # System architecture overview
 ```
 
----
-
-## 4. Local Setup & Development
+## Setup Instructions
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+- Node.js (v20 or higher) & npm (comes with Node.js)
+- Docker & Docker Compose (for containerized setup)
+- Git
 
-*   **Docker & Docker Compose**: Essential for containerized development and running the database/Redis easily. [Install Docker](https://docs.docker.com/get-docker/).
-*   **Python 3.11+**: If you plan to run natively.
-*   **Git**: For cloning the repository.
+### Local Setup (without Docker)
 
-### Environment Variables
+This setup requires you to have PostgreSQL and Redis installed and running directly on your machine.
 
-Create a `.env` file in the project root directory based on `.env.example`. This file contains sensitive information and configuration settings.
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/enterprise-security-system.git
+    cd enterprise-security-system
+    ```
 
-```bash
-cp .env.example .env
-```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-**Edit the `.env` file** and replace `YOUR_SUPER_SECRET_KEY_GOES_HERE_MAKE_IT_VERY_LONG_AND_RANDOM` with a strong, random string (e.g., generated with `openssl rand -hex 32`).
+3.  **Configure Environment Variables:**
+    Create a `.env` file in the root directory by copying from `.env.example`:
+    ```bash
+    cp .env.example .env
+    ```
+    Edit the `.env` file and fill in your PostgreSQL and Redis connection details, and set strong secrets for `APP_SECRET`, `JWT_SECRET`, `JWT_REFRESH_SECRET`.
 
-### Running with Docker Compose (Recommended)
+    **Example `.env` content:**
+    ```
+    NODE_ENV=development
+    PORT=5000
+    APP_SECRET=your_super_secret_app_key_for_jwt_signing
 
-Docker Compose simplifies running the application, PostgreSQL, and Redis in isolated containers.
+    DB_DIALECT=postgres
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_USER=postgres
+    DB_PASS=mysecretpassword
+    DB_NAME=enterprise_db
+    DB_TEST_NAME=enterprise_test_db # For Jest tests
 
-1.  **Build and Start Services**:
+    REDIS_HOST=localhost
+    REDIS_PORT=6379
+    REDIS_PASSWORD=
+
+    JWT_SECRET=your_jwt_secret_key_change_me
+    JWT_EXPIRES_IN=1d
+    JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_change_me
+    JWT_REFPIRES_IN=7d
+
+    RATE_LIMIT_WINDOW_MS=60000
+    RATE_LIMIT_MAX_REQUESTS=100
+
+    CLIENT_URL=http://localhost:5000 # Adjust if frontend is on different port
+    LOG_LEVEL=info
+    ```
+    **Important:** Ensure your PostgreSQL server is running and accessible with the specified credentials, and Redis server is running on `localhost:6379`.
+
+4.  **Database Setup:**
+    Run migrations and seed the database:
+    ```bash
+    npx sequelize db:migrate
+    npx sequelize db:seed:all
+    ```
+    *If you get an error about `uuid-ossp` extension*, you might need to enable it manually in your PostgreSQL database:
+    Connect to your `enterprise_db` (or `enterprise_test_db`) via `psql` or a client like DBeaver/PgAdmin and run:
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    ```
+    Then retry the migrations.
+
+### Local Setup (with Docker)
+
+This is the recommended way to set up the project, as it includes PostgreSQL and Redis as services.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/enterprise-security-system.git
+    cd enterprise-security-system
+    ```
+
+2.  **Configure Environment Variables:**
+    The `docker-compose.yml` file sets environment variables directly for the services. However, for secrets, it's better to use a `.env` file for docker compose.
+    Create a `.env` file in the root directory by copying from `.env.example`. Make sure to fill in `DB_USER`, `DB_PASS`, `APP_SECRET`, `JWT_SECRET`, `JWT_REFRESH_SECRET` matching the values in `docker-compose.yml` or override them there.
+
+3.  **Build and Run with Docker Compose:**
     ```bash
     docker-compose up --build -d
     ```
     This command will:
-    *   Build the `app` Docker image.
-    *   Start the `db` (PostgreSQL) and `redis` containers.
-    *   **Crucially, the `app` service's `command` in `docker-compose.yml` will automatically run Alembic migrations and seed the database (`app/db/init_db.py`) before starting the FastAPI server.**
+    - Build the Node.js application image.
+    - Pull PostgreSQL and Redis images.
+    - Create and start the `app`, `db`, and `redis` containers.
+    - Map port 5000 of the container to port 5000 on your host machine for the Node.js app.
+    - Map port 5432 for PostgreSQL and 6379 for Redis.
 
-2.  **Verify Services**:
+4.  **Run Database Migrations and Seeding (inside Docker):**
+    Once the containers are up, execute migrations and seeds within the `app` container:
     ```bash
-    docker-compose ps
+    docker exec -it enterprise-app npm run db:migrate
+    docker exec -it enterprise-app npm run db:seed
     ```
-    You should see `app`, `db`, and `redis` services running.
+    *Note:* If you encounter a UUID extension error, you might need to run `docker exec -it enterprise-db psql -U your_db_user -d enterprise_db -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"` (replace `your_db_user` and `enterprise_db` with your actual values) before running migrations.
 
-3.  **Access the API**:
-    The FastAPI application will be accessible at `http://localhost:8000`.
-    *   **Interactive API Docs (Swagger UI)**: `http://localhost:8000/v1/docs`
-    *   **Alternative API Docs (ReDoc)**: `http://localhost:8000/v1/redoc`
-    *   **Root Endpoint**: `http://localhost:8000/`
+## Running the Application
 
-4.  **Stop Services**:
+After setting up (either locally or with Docker):
+
+-   **Start the application (development mode with Nodemon):**
     ```bash
-    docker-compose down
+    npm run dev
     ```
-    This stops and removes the containers and networks. Add `-v` (`docker-compose down -v`) to also remove Docker volumes (which would delete your database data).
+    (This requires `nodemon` which is a dev dependency. For Docker, `docker-compose up` runs `npm start` which executes `node server.js`).
 
-### Running Natively (without Docker Compose)
+The API server will be running on `http://localhost:5000`.
 
-This approach requires you to manually manage PostgreSQL and Redis instances.
+-   **Access the Frontend Demo:**
+    Open `http://localhost:5000` in your web browser. This will serve `public/index.html` which contains a simple JavaScript client to interact with the API endpoints.
 
-1.  **Install Dependencies**:
+## Testing
+
+The project includes comprehensive tests: unit, integration, and API tests.
+
+1.  **Ensure Test Database and Redis are Ready:**
+    The `tests/setup.test.js` file handles connecting to a *separate test database* (`DB_TEST_NAME` from `.env`) and test Redis.
+    You need to manually prepare the test database and Redis before running tests locally (this is handled in the CI/CD pipeline).
+
+    If running locally, first make sure your `DB_TEST_NAME` database exists and your Redis test port (`REDIS_PORT=6380` by default in `docker-compose.test.yml`) is available.
+
+    A `docker-compose.test.yml` is provided for the CI environment but can be used locally for isolated testing:
     ```bash
-    pip install -r requirements.txt
-    ```
-
-2.  **Start PostgreSQL and Redis**:
-    Ensure you have PostgreSQL and Redis running locally or accessible. Update your `.env` file to point to their correct host and port (e.g., `POSTGRES_SERVER=localhost`, `REDIS_HOST=localhost`).
-
-3.  **Run Migrations**:
-    First, ensure your `DATABASE_URL` in `.env` points to your running PostgreSQL instance.
-    ```bash
-    alembic upgrade head
-    ```
-
-4.  **Seed Initial Data**:
-    ```bash
-    python -m app.db.init_db
-    ```
-    (This script needs a database session, so typically you'd run it within a context where `get_db` can provide one, or modify it to run standalone with a direct engine creation. For simplicity, it assumes the app's `get_db` dependency can be satisfied, or is called as part of `docker-compose up`.)
-
-5.  **Start the FastAPI Application**:
-    ```bash
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    ```
-    The `--reload` flag is useful for development as it automatically restarts the server on code changes.
-
-### Database Migrations (Alembic)
-
-*   **Generate a new migration script**:
-    ```bash
-    alembic revision --autogenerate -m "Add new feature X"
-    ```
-    Review the generated script in `alembic/versions/` and adjust if necessary.
-
-*   **Apply migrations**:
-    ```bash
-    alembic upgrade head
+    docker-compose -f docker-compose.test.yml up -d
+    # Wait a few seconds for services to start
+    docker exec -it enterprise-db-test psql -U test_user -d enterprise_test_db -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" # if needed
+    npm run db:migrate -- --env test # Apply migrations to test DB
+    npm run db:seed -- --env test # Seed test DB
     ```
 
-*   **Revert migrations (use with caution)**:
+2.  **Run all tests:**
     ```bash
-    alembic downgrade -1 # Revert last migration
-    alembic downgrade base # Revert all migrations
+    npm test
+    ```
+    This will run Jest, generate a coverage report, and exit.
+
+3.  **Run tests in watch mode:**
+    ```bash
+    npm run test:watch
     ```
 
-### Seeding Initial Data
+## API Documentation
 
-The `app/db/init_db.py` script automatically runs when you `docker-compose up --build -d`. It creates a superuser and some default categories, transactions, and budgets.
+Refer to `API_DOCUMENTATION.md` for a detailed breakdown of all API endpoints, including methods, URLs, request/response formats, and security requirements.
 
-*   **Superuser Credentials (from .env.example / .env)**:
-    *   **Email**: `user` (or `POSTGRES_USER` value)
-    *   **Password**: `password` (or `POSTGRES_PASSWORD` value)
+## Architecture Documentation
 
----
+Refer to `ARCHITECTURE_DOCUMENTATION.md` for an overview of the system's architecture, component interactions, data flow, and security considerations.
 
-## 5. API Documentation
+## CI/CD Pipeline
 
-Once the backend is running, FastAPI automatically generates interactive API documentation:
+The project includes a GitHub Actions workflow defined in `.github/workflows/ci-cd.yml`.
 
-*   **Swagger UI**: `http://localhost:8000/v1/docs`
-*   **ReDoc**: `http://localhost:8000/v1/redoc`
+-   **Build Job**: Installs dependencies, runs ESLint for code quality, and executes all tests. It also uploads a code coverage report to Codecov.
+-   **Deploy Job**: (Triggered on pushes to `main` branch, and only if `build` job passes). Logs into Docker Hub, builds and pushes the Docker image to a specified repository, and then deploys to a remote server via SSH (e.g., pulling the new image and restarting containers).
 
-These interfaces allow you to explore all available endpoints, their request/response schemas, and even try out API calls directly from your browser.
+**To enable the CI/CD pipeline:**
+1.  **Codecov**: Obtain a Codecov token and add it to your GitHub repository secrets as `CODECOV_TOKEN`.
+2.  **Docker Hub**: Add your Docker Hub username and password to GitHub repository secrets as `DOCKER_USERNAME` and `DOCKER_PASSWORD`. Update the Docker image tag in the workflow file to `your-dockerhub-username/enterprise-security-app:latest`.
+3.  **Deployment Server**: Configure SSH secrets (`SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`) for your deployment server. Update the `script` in the deploy job to match your server's deployment strategy and application path.
 
----
+## Additional Notes
 
-## 6. Testing
+-   **Secrets Management**: In a production environment, sensitive information like `APP_SECRET`, `JWT_SECRET`, `DB_PASS`, `REDIS_PASSWORD` should be managed using dedicated secret management services (e.g., AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets) rather than direct environment variables or `.env` files. Docker Compose values are for local development/testing convenience.
+-   **Scalability**: The current setup is a monolithic API. For higher scalability, consider microservices architecture, load balancers, and container orchestration (Kubernetes).
+-   **Observability**: Beyond basic logging and health checks, integrate with external monitoring tools (e.g., Prometheus, Grafana, ELK stack) for comprehensive metrics, tracing, and alerting.
+-   **Security Audits**: Regularly perform security audits, penetration testing, and vulnerability scanning.
+-   **HTTPS**: Always deploy with HTTPS in production. This is handled by a reverse proxy (like Nginx or Caddy) or a cloud load balancer, not directly by the Node.js application.
 
-The project includes unit, integration, and performance tests to ensure quality and reliability.
+## Contributing
 
-### Unit, Integration & API Tests
+Feel free to fork this repository, open issues, and submit pull requests. Adhere to code quality standards, write tests for new features, and update documentation.
 
-We use `pytest` with `httpx` for API testing and `pytest-asyncio` for asynchronous code. Test coverage is measured with `pytest-cov`.
+## License
 
-1.  **Install Test Dependencies**:
-    Ensure you have `pytest`, `pytest-asyncio`, `httpx`, and `pytest-cov` installed (they are in `requirements.txt`).
-
-2.  **Run Tests**:
-    ```bash
-    pytest
-    ```
-
-3.  **Run Tests with Coverage Report**:
-    ```bash
-    pytest --cov=app --cov-report=term-missing
-    ```
-    This will run all tests, show missing lines, and provide a summary. Aim for 80%+ coverage.
-
-    To generate an HTML coverage report:
-    ```bash
-    pytest --cov=app --cov-report=html
-    # Then open htmlcov/index.html in your browser
-    ```
-
-### Performance Tests (Locust)
-
-Locust is used for writing user-driven load tests.
-
-1.  **Start the Application**: Ensure your FastAPI application is running (e.g., via `docker-compose up -d`).
-
-2.  **Run Locust**:
-    ```bash
-    locust -f tests/performance/locustfile.py
-    ```
-
-3.  **Access Locust UI**:
-    Open your browser to `http://localhost:8089`.
-    *   Enter the number of users to simulate (`Number of users (peak concurrency)`).
-    *   Enter the spawn rate (`Spawn rate (users/second)`).
-    *   Enter the host of your running FastAPI app (e.g., `http://localhost:8000`).
-    *   Click "Start swarming".
-
-    The `locustfile.py` includes basic login, category creation, transaction posting, and balance retrieval tasks. You can adjust `TEST_USER_EMAIL` and `TEST_USER_PASSWORD` in `tests/performance/locustfile.py` or via environment variables if you want to use specific credentials.
-
----
-
-## 7. Authentication & Authorization
-
-The backend uses JWT (JSON Web Tokens) for authentication.
-
-*   **Login (`/v1/auth/login`)**: Users provide email/password to receive an `access_token` and `refresh_token`.
-*   **Access Token**: Short-lived, used for authenticating most API requests. Sent in the `Authorization` header as `Bearer <token>`.
-*   **Refresh Token (`/v1/auth/refresh-token`)**: Longer-lived, used to obtain a new `access_token` when the current one expires, without requiring re-authentication with credentials.
-*   **Roles**:
-    *   `is_active`: User can log in and access resources.
-    *   `is_superuser`: User has administrative privileges (e.g., accessing all users list, creating users via admin endpoints). This is enforced using FastAPI `Depends` for specific endpoints.
-
-Example of an authenticated request:
-```http
-GET /v1/users/me
-Authorization: Bearer <your_access_token>
+This project is licensed under the MIT License. See the `LICENSE` file for details (not included in this response, but implied).
 ```
-
----
-
-## 8. Logging & Monitoring
-
-The application uses Python's standard `logging` module.
-
-*   **Configuration**: `app/core/logger.py` configures logging to:
-    *   Console (standard output).
-    *   A rotating file (`app_logs.log`) to prevent log files from growing indefinitely.
-*   **Log Levels**: Configurable via `LOG_LEVEL` in `.env` (e.g., `INFO`, `DEBUG`, `WARNING`, `ERROR`).
-*   **Request Logging Middleware**: `app/core/middlewares.py` logs every incoming request and outgoing response, including processing time.
-*   **Integration**: For production, logs should be sent to a centralized logging system like ELK Stack (Elasticsearch, Logstash, Kibana), Grafana Loki, or cloud-specific logging services (e.g., AWS CloudWatch, Google Cloud Logging). This would involve configuring the `logging` handlers to send logs to these services.
-
----
-
-## 9. Error Handling
-
-A custom exception handling mechanism is implemented in `app/core/exceptions.py`.
-
-*   **`CustomException`**: A base class for application-specific HTTP errors (e.g., `HTTPException400`, `HTTPException401`, `HTTPException404`).
-*   **`custom_exception_handler`**: A FastAPI exception handler registered in `app/main.py` that catches `CustomException` instances and returns standardized JSON error responses with appropriate HTTP status codes.
-*   **Logging**: All `CustomException` instances are logged, providing visibility into errors occurring in the system.
-
-This approach ensures consistent error responses across the API and better debugging capabilities.
-
----
-
-## 10. Caching
-
-A caching layer using Redis and `FastAPI-Cache2` is integrated to improve the performance of read-heavy endpoints.
-
-*   **Configuration**: `app/core/cache.py` defines decorators for caching. Redis connection details are from `settings.REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`.
-*   **Usage**: The `@cache_1_minute` or `@cache_5_minutes` decorators are applied to FastAPI path operations.
-    *   Example: `app/api/v1/endpoints/users.py` uses `@cache_1_minute` for `read_users`.
-*   **Benefits**: Reduces database load and response times for frequently requested data.
-*   **Invalidation**: For critical data, consider strategies for cache invalidation (e.g., clearing cache entries when data changes). This project does not include explicit cache invalidation logic but it can be implemented using `FastAPICache.clear(namespace="...")`.
-
----
-
-## 11. Rate Limiting
-
-Rate limiting helps protect the API from excessive requests, preventing abuse and ensuring fair usage. `FastAPI-Limiter` with Redis is used.
-
-*   **Configuration**: `app/core/rate_limiter.py` defines `RateLimiter` instances. Redis connection is shared with caching.
-*   **Usage**: Rate limits are applied as FastAPI dependencies (`Depends(RateLimiter(...))`).
-    *   Example: `app/api/v1/endpoints/auth.py` applies `Depends(RateLimiter(times=5, seconds=60))` to the `/login` endpoint.
-*   **Behavior**: If a user (identified by IP address by default) exceeds the rate limit, the API returns a `429 Too Many Requests` status code.
-
----
-
-## 12. CI/CD (GitHub Actions)
-
-A GitHub Actions workflow (`.github/workflows/main.yml`) is provided for Continuous Integration and Continuous Deployment.
-
-*   **Triggers**: Runs on `push` to `main` or `develop` branches, and on `pull_request` to `main` or `develop`.
-*   **`build-and-test` Job**:
-    1.  **Checkout**: Clones the repository.
-    2.  **Setup Python**: Sets up Python 3.11 and caches pip dependencies.
-    3.  **Install Dependencies**: Installs `requirements.txt`.
-    4.  **Setup Docker Compose**: Starts PostgreSQL and Redis containers for testing.
-    5.  **Run Alembic Migrations**: Applies database migrations using Alembic.
-    6.  **Run Pytest**: Executes unit, integration, and API tests with coverage.
-    7.  **Upload Coverage**: Uploads the coverage report to Codecov (requires `CODECOV_TOKEN` secret).
-    8.  **Cleanup**: Tears down Docker containers.
-*   **`deploy` Job**:
-    1.  **Needs `build-and-test`**: Only runs if tests pass.
-    2.  **Conditional Execution**: Only runs on `push` to the `main` branch.
-    3.  **Docker Login**: Logs into Docker Hub (requires `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets).
-    4.  **Build and Push Docker Image**: Builds the application's Docker image and pushes it to Docker Hub with `latest` and `commit_sha` tags.
-    5.  **Deploy to Server**: (Placeholder) This step outlines how to deploy the new Docker image to a production server, typically involving SSH, pulling the new image, and restarting the application services. **You will need to implement this part based on your specific deployment environment (e.g., bare metal VM, Kubernetes, AWS ECS, GCP Cloud Run).**
-
-**Required GitHub Secrets**:
-*   `SECRET_KEY`: Your FastAPI application's secret key (must match `.env` on production).
-*   `DOCKER_USERNAME`: Your Docker Hub username.
-*   `DOCKER_PASSWORD`: Your Docker Hub access token or password.
-*   `CODECOV_TOKEN`: (Optional) Token for Codecov integration.
-*   `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEY`: (Optional, for example SSH deployment) Hostname, username, and SSH private key for your deployment server.
-
----
-
-## 13. Deployment
-
-Refer to the dedicated [DEPLOYMENT.md](DEPLOYMENT.md) guide for detailed instructions on deploying this backend system to a production environment. It covers considerations for:
-*   Cloud Providers (AWS, GCP, Azure)
-*   Container Orchestration (Kubernetes, Docker Swarm)
-*   Managed Services (AWS ECS, Google Cloud Run)
-*   Database Management
-*   Monitoring & Alerting
-*   Security Best Practices
-
----
-
-## 14. Architecture Overview
-
-For a detailed understanding of the system's architecture, including diagrams and data flow, please refer to the [ARCHITECTURE.md](ARCHITECTURE.md) file.
-
----
-
-**This completes the comprehensive mobile app backend system implementation.**
