@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout" layout:decorate="~{layout}">
+<head>
+    <title th:text="${'Job Details: ' + job.name}"></title>
+</head>
+<body>
+<div layout:fragment="content">
+    <a th:href="@{/dashboard}" class="btn btn-secondary mb-3">← Back to Dashboard</a>
+    <h1 th:text="${'Job: ' + job.name}">Job Details</h1>
+
+    <div class="card mb-4">
+        <div class="card-header">Job Information</div>
+        <div class="card-body">
+            <p><strong>ID:</strong> <span th:text="${job.id}"></span></p>
+            <p><strong>Target URL:</strong> <a th:href="${job.targetUrl}" target="_blank" th:text="${job.targetUrl}"></a></p>
+            <p><strong>CSS Selector:</strong> <span th:text="${job.cssSelector}"></span></p>
+            <p><strong>Schedule CRON:</strong> <span th:text="${job.scheduleCron ?: 'Manual'}"></span></p>
+            <p><strong>Status:</strong> <span th:text="${job.status}"></span></p>
+            <p><strong>Last Run At:</strong> <span th:text="${job.lastRunAt ?: 'Never'}"></span></p>
+            <p><strong>Created At:</strong> <span th:text="${job.createdAt}"></span></p>
+            <p><strong>Updated At:</strong> <span th:text="${job.updatedAt}"></span></p>
+
+            <form th:action="@{/jobs/{id}/trigger-ui(id=${job.id})}" method="post" style="display:inline-block;">
+                <button type="submit" class="btn btn-success me-2">Trigger Now</button>
+            </form>
+            <form th:action="@{/jobs/{id}/delete-ui(id=${job.id})}" method="post" style="display:inline-block;">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this job and all its scraped data?');">Delete Job</button>
+            </form>
+        </div>
+    </div>
+
+    <h2>Scraped Data</h2>
+    <div th:if="${scrapedData.empty}" class="alert alert-info" role="alert">
+        No scraped data available for this job yet. Trigger the job to start scraping!
+    </div>
+    <div th:unless="${scrapedData.empty}">
+        <div class="accordion" id="scrapedDataAccordion">
+            <div class="accordion-item" th:each="data, iterStat : ${scrapedData}">
+                <h2 class="accordion-header" th:id="${'heading' + iterStat.index}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" th:data-bs-target="${'#collapse' + iterStat.index}" aria-expanded="false" th:aria-controls="${'collapse' + iterStat.index}">
+                        Scraped Entry #<span th:text="${iterStat.size - iterStat.index}"></span> (Latest First)
+                    </button>
+                </h2>
+                <div th:id="${'collapse' + iterStat.index}" class="accordion-collapse collapse" th:aria-labelledby="${'heading' + iterStat.index}" data-bs-parent="#scrapedDataAccordion">
+                    <div class="accordion-body">
+                        <pre><code th:text="${data}"></code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p class="mt-3">Displaying latest 10 entries. For all data, use the API directly (<code>/api/jobs/<span th:text="${job.id}"></span>/data</code>).</p>
+    </div>
+</div>
+</body>
+</html>
+```
+
+#### `src/main/resources/static/css/style.css`
+
+```css

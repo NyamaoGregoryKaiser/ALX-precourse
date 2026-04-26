@@ -1,98 +1,82 @@
-```yaml
 spring:
   application:
-    name: ecommerce-system
-  profiles:
-    active: dev # Default profile
+    name: alx-scraper
+
+  # Database Configuration (PostgreSQL)
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:ecommerce_db}
-    username: ${DB_USER:ecommerce_user}
-    password: ${DB_PASSWORD:password}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:alx_scraper}
+    username: ${DB_USER:alx_user}
+    password: ${DB_PASSWORD:alx_password}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate # Should be 'none' or 'validate' in production
+      ddl-auto: validate # Use 'update' for development, 'validate' for production with Flyway
     show-sql: true
     properties:
-      hibernate.format_sql: true
-      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+      hibernate:
+        format_sql: true
+        jdbc.lob.non_contextual_creation: true # For PostgreSQL compatibility with LOBs
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: true # Only for dev, disable in prod for safety
+
+  # Spring Security and JWT Configuration
   security:
     user:
-      name: user
-      password: '{noop}password' # For basic auth if needed, but JWT will override
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      #password: ${REDIS_PASSWORD:} # Uncomment if Redis requires password
-  cache:
-    type: redis
-    redis:
-      cache-null-values: true
-      time-to-live: 60000ms # 1 minute cache for common items
-      key-prefix: ecommerce::
+      name: dummyuser # Placeholder, actual auth is JWT
+      password: dummypassword
+      roles: USER
 
-jwt:
-  secret: ${JWT_SECRET:yourStrongJwtSecretKeyThatIsAtLeast32BytesLongAndSecurelyStored} # **CHANGE THIS IN PRODUCTION**
-  expiration: 86400000 # 24 hours in milliseconds
+  # Caching Configuration (Caffeine)
+  cache:
+    cache-names: scrapingJobs # Define cache names used in @Cacheable
+    caffeine:
+      spec: expireAfterWrite=10m,maximumSize=500 # Default spec for Caffeine caches
+
+  # Thymeleaf Configuration for Frontend
+  thymeleaf:
+    cache: false # Set to true in production for better performance
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    servlet:
+      content-type: text/html
 
 server:
   port: 8080
-  servlet:
-    context-path: /api/v1
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health, info, prometheus # Expose health, info, and prometheus metrics
-  metrics:
-    tags:
-      application: ${spring.application.name}
+# Custom Application Properties
+alx:
+  app:
+    jwtSecret: ${JWT_SECRET:your_jwt_secret_key_that_is_at_least_256_bit_long_and_very_secure} # IMPORTANT: Change this in production
+    jwtExpirationMs: ${JWT_EXPIRATION_MS:86400000} # 24 hours in milliseconds (24 * 60 * 60 * 1000)
+  rate-limit:
+    max-requests: ${RATE_LIMIT_MAX_REQUESTS:100} # Max requests per client IP per time window
+    time-window-seconds: ${RATE_LIMIT_TIME_WINDOW_SECONDS:60} # Time window in seconds
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.alx.scraper: DEBUG # Set application specific logs to DEBUG
+    org.springframework.web: INFO
+    org.hibernate: INFO
+    org.flywaydb: INFO
+    com.github.benmanes.caffeine: DEBUG # To see cache activity
+  file:
+    name: logs/alx-scraper.log
+    max-size: 10MB
+    max-history: 7 # Keep 7 days of logs
 
 # Springdoc OpenAPI (Swagger UI) Configuration
 springdoc:
   api-docs:
-    path: /api-docs
+    path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
     tags-sorter: alpha
-    operations-sorter: method
+    operations-sorter: alpha
     disable-swagger-default-url: true
-    display-request-duration: true
-
-# Rate Limiting Configuration
-app:
-  rate-limit:
-    enabled: true
-    window-in-seconds: 60
-    max-requests: 100 # Max 100 requests per minute per IP
-
-# Logging configuration reference (actual config in logback-spring.xml)
-logging:
-  level:
-    root: INFO
-    org.springframework.web: DEBUG
-    com.alx.ecommerce: DEBUG # Adjust for your package
-    org.hibernate.SQL: DEBUG # To see generated SQL
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE # To see SQL parameters
-
----
-# Docker Profile
-spring:
-  config:
-    activate:
-      on-profile: docker
-  datasource:
-    url: jdbc:postgresql://ecommerce-db:5432/ecommerce_db
-    username: ecommerce_user
-    password: password
-  data:
-    redis:
-      host: redis
-      port: 6379
+    display-request-duration: true # Show execution time of requests in UI
 ```

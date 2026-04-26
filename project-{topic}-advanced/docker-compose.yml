@@ -1,85 +1,55 @@
-```yaml
 version: '3.8'
 
 services:
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: task_management_postgres
+    container_name: alx-scraper-db
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: alx_scraper
+      POSTGRES_USER: alx_user
+      POSTGRES_PASSWORD: alx_password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U alx_user -d alx_scraper"]
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s # Give postgres a bit more time to start up
 
-  redis:
-    image: redis:7-alpine
-    container_name: task_management_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-
-  backend:
+  app:
     build:
       context: .
-      dockerfile: Dockerfile.backend
-    container_name: task_management_backend
+      dockerfile: Dockerfile
+    container_name: alx-scraper-app
+    ports:
+      - "8080:8080"
     environment:
-      NODE_ENV: ${NODE_ENV}
-      PORT: 5000
-      DB_HOST: postgres # Service name in docker-compose for inter-container communication
+      DB_HOST: db # Connects to the 'db' service defined in this compose file
       DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      REDIS_HOST: redis # Service name in docker-compose
-      REDIS_PORT: 6379
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
-      FRONTEND_URL: ${FRONTEND_URL} # For CORS
-    ports:
-      - "5000:5000"
+      DB_NAME: alx_scraper
+      DB_USER: alx_user
+      DB_PASSWORD: alx_password
+      # IMPORTANT: Replace with a strong, random key in production
+      JWT_SECRET: your_super_secure_jwt_secret_key_for_production_use_alx_scraper_project_2024_05_14_long_enough
+      JWT_EXPIRATION_MS: 86400000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      RATE_LIMIT_TIME_WINDOW_SECONDS: 60
     depends_on:
-      postgres:
-        condition: service_healthy # Wait for postgres to be healthy
-      redis:
-        condition: service_healthy # Wait for redis to be healthy
-    restart: always
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: task_management_frontend
-    environment:
-      # VITE_API_BASE_URL is set during the build process in Dockerfile.frontend
-      # For local dev without Nginx, you'd set this to `http://localhost:5000/api/v1` in frontend/.env
-      # When using Nginx, it's set to `/api/v1` which Nginx proxies
-    ports:
-      - "${FRONTEND_PORT}:80" # Map host port to container's 80 (nginx)
-    depends_on:
-      backend:
-        condition: service_started # Frontend only needs backend to be accessible, not necessarily healthy at first request.
-    restart: always
+      db:
+        condition: service_healthy # Wait for the database to be healthy
+    # Optional: If you need to map local target directory to container for faster development iterations
+    # volumes:
+    #   - ./target/alx-scraper-0.0.1-SNAPSHOT.jar:/app/app.jar
+    #   - ./src/main/resources/db/migration:/app/src/main/resources/db/migration # For Flyway during dev
+    #   - ./logs:/app/logs # To persist logs outside container (adjust path as needed)
 
 volumes:
   postgres_data:
-  redis_data:
+
+# ALX Focus: Orchestrates multi-container applications. Sets up a database
+# and the application, manages environment variables, port mappings, and
+# defines service dependencies, crucial for local development and staging environments.
+# Health checks ensure services start in the correct order.
 ```

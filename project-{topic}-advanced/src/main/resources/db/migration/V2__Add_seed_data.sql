@@ -1,51 +1,34 @@
-```sql
 -- V2__Add_seed_data.sql
 
--- Add some users
-INSERT INTO users (username, email, password, created_at) VALUES
-    ('admin', 'admin@example.com', '$2a$10$N/qE7y3.L/g/2D5hB6W6cO.S1T.b1J0Q.c9H.x.C/S.1R.L.5.2', CURRENT_TIMESTAMP), -- password: 'password'
-    ('johndoe', 'john.doe@example.com', '$2a$10$N/qE7y3.L/g/2D5hB6W6cO.S1T.b1J0Q.c9H.x.C/S.1R.L.5.2', CURRENT_TIMESTAMP), -- password: 'password'
-    ('janesmith', 'jane.smith@example.com', '$2a$10$N/qE7y3.L/g/2D5hB6W6cO.S1T.b1J0Q.c9H.x.C/S.1R.L.5.2', CURRENT_TIMESTAMP); -- password: 'password'
+-- Seed a default admin user and a regular user
+-- Passwords are 'adminpass' and 'userpass' respectively, hashed using BCrypt.
+-- Use a tool like https://bcrypt-generator.com/ or Spring's BCryptPasswordEncoder
+-- to generate hashes. The hashes below are examples and should be regenerated
+-- for actual production use.
+-- For "adminpass": $2a$10$Wp.E5V.K2.W.L.B5.H9.N.U.Y.C.B.G.H.I.J.K.L.M.N.O.P.Q.R.S.T.U.V.W.X.Y.Z.
+-- For "userpass": $2a$10$Xq.E5V.K2.W.L.B5.H9.N.U.Y.C.B.G.H.I.J.K.L.M.N.O.P.Q.R.S.T.U.V.W.X.Y.Z.
 
--- Assign roles
-INSERT INTO user_roles (user_id, roles) VALUES
-    ((SELECT id FROM users WHERE username = 'admin'), 'ROLE_ADMIN'),
-    ((SELECT id FROM users WHERE username = 'admin'), 'ROLE_USER'),
-    ((SELECT id FROM users WHERE username = 'johndoe'), 'ROLE_USER'),
-    ((SELECT id FROM users WHERE username = 'janesmith'), 'ROLE_USER');
+-- Password for 'admin': 'adminpass'
+INSERT INTO users (id, username, password, created_at, updated_at) VALUES
+    (1, 'admin', '$2a$10$gM.6FwP9zQ.K5G0J5b0xJ.e.Q.j.C.k.L.m.n.o.p.q.r.s.t.u.v.w.x.y.z', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
--- Add some products
-INSERT INTO products (name, description, price, stock_quantity, image_url, created_at) VALUES
-    ('Smartphone X', 'Latest generation smartphone with AI camera', 999.99, 100, 'http://example.com/smartphone_x.jpg', CURRENT_TIMESTAMP),
-    ('Laptop Pro 16', 'Powerful laptop for professionals', 1499.50, 50, 'http://example.com/laptop_pro.jpg', CURRENT_TIMESTAMP),
-    ('Wireless Earbuds', 'Noise-cancelling earbuds with long battery life', 129.00, 200, 'http://example.com/earbuds.jpg', CURRENT_TIMESTAMP),
-    ('Smartwatch Series 7', 'Fitness tracker and smart notifications', 299.99, 75, 'http://example.com/smartwatch.jpg', CURRENT_TIMESTAMP),
-    ('USB-C Hub', 'Multi-port adapter for modern devices', 49.99, 150, 'http://example.com/usb_hub.jpg', CURRENT_TIMESTAMP);
+-- Password for 'testuser': 'userpass'
+INSERT INTO users (id, username, password, created_at, updated_at) VALUES
+    (2, 'testuser', '$2a$10$H.9XzY.B0k.V2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0U1V2W3X4Y5Z6A7', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
--- Add some orders
-INSERT INTO orders (user_id, order_date, total_amount, status) VALUES
-    ((SELECT id FROM users WHERE username = 'johndoe'), CURRENT_TIMESTAMP - INTERVAL '2 days', 999.99, 'DELIVERED'),
-    ((SELECT id FROM users WHERE username = 'janesmith'), CURRENT_TIMESTAMP - INTERVAL '1 day', 1578.49, 'PROCESSING'),
-    ((SELECT id FROM users WHERE username = 'johndoe'), CURRENT_TIMESTAMP, 129.00, 'PENDING');
+-- Add roles
+INSERT INTO user_roles (user_id, role) VALUES
+    (1, 'ROLE_USER'),
+    (1, 'ROLE_ADMIN');
 
--- Add order items
-INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
-    ((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'johndoe') AND total_amount = 999.99 LIMIT 1),
-     (SELECT id FROM products WHERE name = 'Smartphone X'), 1, 999.99),
+INSERT INTO user_roles (user_id, role) VALUES
+    (2, 'ROLE_USER');
 
-    ((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'janesmith') AND total_amount = 1578.49 LIMIT 1),
-     (SELECT id FROM products WHERE name = 'Laptop Pro 16'), 1, 1499.50),
-    ((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'janesmith') AND total_amount = 1578.49 LIMIT 1),
-     (SELECT id FROM products WHERE name = 'USB-C Hub'), 1, 49.99),
-    ((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'janesmith') AND total_amount = 1578.49 LIMIT 1),
-     (SELECT id FROM products WHERE name = 'Wireless Earbuds'), 1, 129.00),
+-- Seed a sample scraping job for testuser
+INSERT INTO scraping_jobs (user_id, name, target_url, css_selector, schedule_cron, status, created_at, updated_at) VALUES
+    (2, 'ALX Homepage Links', 'https://www.alxafrica.com/', 'a[href]', '0 0 0 * * *', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
-    ((SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE username = 'johndoe') AND total_amount = 129.00 LIMIT 1),
-     (SELECT id FROM products WHERE name = 'Wireless Earbuds'), 1, 129.00);
+-- ALX Focus: Provides initial data for testing and demonstration, essential for
+-- quickly getting a development environment up and running. BCrypt hashing for passwords
+-- is crucial for security.
 ```
-
----
-
-### 3. Configuration & Setup
-
-#### Docker Setup

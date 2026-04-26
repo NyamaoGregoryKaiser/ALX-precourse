@@ -1,47 +1,37 @@
-```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:20-alpine AS build
+# Use a lighter base image for Java 17
+FROM eclipse-temurin:17-jre-alpine
 
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package*.json ./
-RUN npm install
+# Copy the Flyway migration scripts
+COPY src/main/resources/db/migration ./src/main/resources/db/migration
 
-# Copy source code
-COPY . .
+# Copy the built JAR file from the Maven build stage (assuming a multi-stage build or local build)
+# For local build: After 'mvn clean package', the JAR will be in 'target/'
+# Replace 'alx-scraper-0.0.1-SNAPSHOT.jar' with your actual JAR name if it differs
+COPY target/alx-scraper-0.0.1-SNAPSHOT.jar app.jar
 
-# Build the TypeScript code
-RUN npm run build
+# Expose the port the application runs on
+EXPOSE 8080
 
-# Stage 2: Run the application
-FROM node:20-alpine
+# Define environment variables with default values.
+# These can be overridden when running the Docker container.
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=alx_scraper
+ENV DB_USER=alx_user
+ENV DB_PASSWORD=alx_password
+ENV JWT_SECRET=your_jwt_secret_key_that_is_at_least_256_bit_long_and_very_secure
+ENV JWT_EXPIRATION_MS=86400000
+ENV RATE_LIMIT_MAX_REQUESTS=100
+ENV RATE_LIMIT_TIME_WINDOW_SECONDS=60
 
-WORKDIR /app
+# Command to run the application
+# Use 'java -jar' to execute the Spring Boot application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 
-# Copy package.json and production dependencies
-COPY package*.json ./
-RUN npm install --only=production
-
-# Copy built application from the build stage
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/.env.example ./.env.example
-# Copy .env file if it exists, otherwise rely on env vars from docker-compose
-# For production, env vars should be passed directly or via secrets
-COPY --from=build /app/.env ./.env || true
-
-
-# Expose the port the app runs on
-EXPOSE 5000
-
-# Set environment variables for Prisma at runtime
-ENV DATABASE_URL=${DATABASE_URL}
-ENV NODE_ENV=production
-
-# Run database migrations (only on initial deployment or when schema changes)
-# In production, this might be run as a separate step or a dedicated migration container
-# Ensure your entrypoint script handles this carefully for zero-downtime deployments
-# ENTRYPOINT ["/usr/local/bin/node", "dist/server.js"]
-CMD npx prisma migrate deploy && npm start
+# ALX Focus: Dockerization for containerized deployment, ensuring environment
+# consistency and ease of deployment. Uses a small base image, clearly defines
+# dependencies, exposed ports, and environment variables for external configuration.
 ```

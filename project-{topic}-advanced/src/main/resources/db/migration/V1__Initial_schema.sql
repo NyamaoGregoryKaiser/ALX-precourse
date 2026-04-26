@@ -1,69 +1,54 @@
-```sql
 -- V1__Initial_schema.sql
 
--- Drop tables if they exist (for development/testing convenience, remove in strict production)
-DROP TABLE IF EXISTS order_items CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
-DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS user_roles CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-
--- Users Table
+-- Create users table
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    email VARCHAR(100) NOT NULL UNIQUE,
+    username VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- User Roles Table (for Many-to-Many with User)
+-- Create user_roles join table
 CREATE TABLE user_roles (
     user_id BIGINT NOT NULL,
-    roles VARCHAR(50) NOT NULL, -- Enum stored as string
-    PRIMARY KEY (user_id, roles),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    role VARCHAR(50) NOT NULL,
+    PRIMARY KEY (user_id, role),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
--- Products Table
-CREATE TABLE products (
+-- Create scraping_jobs table
+CREATE TABLE scraping_jobs (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
-    description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    stock_quantity INTEGER NOT NULL,
-    image_url VARCHAR(255),
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    user_id BIGINT NOT NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    target_url VARCHAR(2048) NOT NULL,
+    css_selector VARCHAR(512) NOT NULL,
+    schedule_cron VARCHAR(50),
+    status VARCHAR(20) NOT NULL, -- e.g., ACTIVE, INACTIVE, RUNNING, COMPLETED, FAILED
+    last_run_at TIMESTAMP WITHOUT TIME ZONE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
--- Orders Table
-CREATE TABLE orders (
+-- Create scraped_data table
+CREATE TABLE scraped_data (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    order_date TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(50) NOT NULL, -- PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    job_id BIGINT NOT NULL,
+    data_json TEXT NOT NULL, -- Storing JSON as TEXT, consider JSONB for more advanced querying in PostgreSQL
+    scraped_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (job_id) REFERENCES scraping_jobs (id) ON DELETE CASCADE
 );
 
--- Order Items Table (Many-to-Many with Products through Order)
-CREATE TABLE order_items (
-    id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    quantity INTEGER NOT NULL,
-    unit_price DECIMAL(10, 2) NOT NULL, -- Price at the time of order
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT -- Do not delete product if it's in an order
-);
-
--- Indexes for performance
+-- Create indexes for performance
 CREATE INDEX idx_users_username ON users (username);
-CREATE INDEX idx_users_email ON users (email);
-CREATE INDEX idx_products_name ON products (name);
-CREATE INDEX idx_orders_user_id ON orders (user_id);
-CREATE INDEX idx_order_items_order_id ON order_items (order_id);
-CREATE INDEX idx_order_items_product_id ON order_items (product_id);
+CREATE INDEX idx_scraping_jobs_user_id ON scraping_jobs (user_id);
+CREATE INDEX idx_scraping_jobs_status ON scraping_jobs (status);
+CREATE INDEX idx_scraped_data_job_id ON scraped_data (job_id);
+
+-- ALX Focus: Well-designed relational schema with proper data types, constraints,
+-- foreign keys for referential integrity, and indexes for query optimization.
+-- `TEXT` for `data_json` allows flexibility; `JSONB` in PostgreSQL would be
+-- more advanced for querying inside JSON.
 ```
