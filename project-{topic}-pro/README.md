@@ -1,51 +1,183 @@
-alxpay-system/
-├── backend/
-│   ├── src/
-│   │   ├── config/              # Environment variables, database config
-│   │   ├── controllers/         # Handles incoming requests, orchestrates services
-│   │   ├── entities/            # TypeORM entities (database schemas)
-│   │   ├── middlewares/         # Authentication, error handling, rate limiting, caching
-│   │   ├── repositories/        # TypeORM custom repositories (data access)
-│   │   ├── services/            # Business logic, interacts with repositories
-│   │   ├── utils/               # Helpers, token generation, logging
-│   │   ├── types/               # TypeScript custom types/interfaces
-│   │   ├── routes/              # API route definitions
-│   │   ├── subscribers/         # TypeORM event subscribers (e.g., for webhooks)
-│   │   ├── app.ts               # Express application setup
-│   │   └── server.ts            # Entry point, starts the server
-│   ├── tests/
-│   │   ├── unit/
-│   │   ├── integration/
-│   │   └── api/
-│   ├── .env.example
-│   ├── .eslintrc.js
-│   ├── jest.config.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── components/          # Reusable UI components
-│   │   ├── pages/               # Top-level page components
-│   │   ├── services/            # API interaction logic
-│   │   ├── context/             # React context for global state
-│   │   ├── hooks/               # Custom React hooks
-│   │   ├── App.tsx
-│   │   ├── index.tsx
-│   │   └── react-app-env.d.ts
-│   ├── .env.example
-│   ├── package.json
-│   └── tsconfig.json
-├── docs/
-│   ├── README.md
-│   ├── API.md
-│   ├── ARCHITECTURE.md
-│   └── DEPLOYMENT.md
-├── docker-compose.yml
-├── .github/
-│   └── workflows/
-│       └── main.yml             # CI/CD pipeline
-├── loadtest/
-│   └── k6_script.js             # Performance testing script
-└── seed.ts                      # Database seed script
+```markdown
+# Enterprise Task Management System
+
+A comprehensive, full-stack, production-ready Task Management System built with FastAPI (Python) for the backend and React for the frontend, utilizing PostgreSQL as the database. This project demonstrates best practices in software engineering, including modular design, robust API development, security, testing, and infrastructure automation.
+
+## Features
+
+**Core Application:**
+*   **User Management**: Register, Login, User Profiles, Role-Based Access Control (RBAC: Admin, Team Lead, Member).
+*   **Team Management**: Create teams, add/remove members.
+*   **Project Management**: Create projects, assign to teams, track creator.
+*   **Task Management**: Create, view, update, delete tasks. Assignees, due dates, priorities, statuses (Todo, In Progress, Review, Done).
+*   **Comment System**: Add comments to tasks.
+*   **CRUD Operations**: Full RESTful API for all resources.
+
+**Database Layer:**
+*   **PostgreSQL**: Robust relational database.
+*   **SQLAlchemy ORM**: Pythonic database interactions.
+*   **Alembic Migrations**: Schema evolution and management.
+*   **Seed Data**: Script to populate the database with initial development data.
+
+**Configuration & Setup:**
+*   **Dependency Management**: `requirements.txt` (Python) and `package.json` (Node.js).
+*   **Environment Variables**: Secure configuration using `.env` files and `pydantic-settings`.
+*   **Docker & Docker Compose**: Containerized setup for local development and deployment, orchestrating backend, frontend, database, and Redis.
+*   **CI/CD**: GitHub Actions workflow for automated testing and building Docker images.
+
+**Testing & Quality:**
+*   **Unit Tests**: `pytest` for backend logic (models, security, utilities).
+*   **Integration Tests**: `pytest` for API interactions with the database.
+*   **API Tests**: `httpx` to test API endpoint functionality and responses.
+*   **Performance Tests**: `Locust` for basic load testing of key API endpoints.
+*   **Code Coverage**: Aim for high test coverage for backend (demonstrated with `pytest-cov`).
+
+**Additional Features:**
+*   **Authentication**: JWT (JSON Web Token) based authentication.
+*   **Authorization**: Role-Based Access Control (RBAC) middleware for API endpoints.
+*   **Logging & Monitoring**: Structured logging with Python's `logging` module. Sentry integration (conceptual).
+*   **Error Handling**: Centralized exception handling middleware.
+*   **Caching Layer**: Redis integration with `fastapi-cache2` for API response caching.
+*   **Rate Limiting**: Redis integration with `fastapi-limiter` to protect API endpoints.
+*   **Automatic API Documentation**: OpenAPI (Swagger UI/ReDoc) generated by FastAPI.
+
+## Technologies Used
+
+*   **Backend**: Python 3.11, FastAPI, SQLAlchemy, Pydantic, Python-Jose, Passlib, Uvicorn, Gunicorn.
+*   **Frontend**: React.js, Axios, React Router DOM.
+*   **Database**: PostgreSQL.
+*   **Caching/Rate Limiting**: Redis.
+*   **Containerization**: Docker, Docker Compose.
+*   **Testing**: Pytest, httpx, Locust, React Testing Library, Jest.
+*   **CI/CD**: GitHub Actions.
+
+## Setup and Installation
+
+### Prerequisites
+
+*   Docker & Docker Compose
+*   Git
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-username/task-management-system.git
+cd task-management-system
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env` file in the root directory of the project, based on `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your specific configurations. Ensure you change the `SECRET_KEY` to a strong, random string.
+
+```ini
+# .env content example (adjust as needed)
+DATABASE_URL="postgresql://user:password@db:5432/taskdb"
+ASYNC_DATABASE_URL="postgresql+asyncpg://user:password@db:5432/taskdb"
+SECRET_KEY="your-super-secret-key-please-change-this-in-production"
+BACKEND_CORS_ORIGINS='["http://localhost:3000", "http://localhost:8000"]' # Adjust frontend URL if different
+REDIS_URL="redis://redis:6379/0"
+LOG_LEVEL="INFO"
+SENTRY_DSN=""
+
+REACT_APP_API_BASE_URL="http://localhost:8000/api/v1"
+```
+
+### 3. Build and Run with Docker Compose
+
+Navigate to the root directory where `docker-compose.yml` is located:
+
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+This command will:
+*   Build the `backend` and `frontend` Docker images.
+*   Start the `db` (PostgreSQL), `redis`, `backend`, and `frontend` services.
+*   The `backend` service will automatically run the `seed.py` script to populate the database with initial data (users, teams, projects, tasks) on first startup.
+
+### 4. Access the Application
+
+*   **Frontend**: Open your browser and go to `http://localhost:3000`
+*   **Backend API Documentation (Swagger UI)**: `http://localhost:8000/docs`
+*   **Backend API Documentation (ReDoc)**: `http://localhost:8000/redoc`
+
+You can log in to the frontend using the seed data credentials (e.g., `admin@example.com` / `securepassword`).
+
+## Development
+
+### Backend (FastAPI)
+
+```bash
+cd backend
+pip install -r requirements.txt
+# Run migrations (after db is up)
+# alembic revision --autogenerate -m "Initial migration" # First time
+# alembic upgrade head
+python seed.py # Optional: to re-seed data without docker-compose up
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend (React)
+
+```bash
+cd frontend
+npm install # or yarn install
+npm start # or yarn start
+```
+
+## Testing
+
+### Backend Tests
+
+From the `backend/` directory:
+
+```bash
+pytest --cov=app --cov-report=term-missing tests/
+```
+
+This runs unit, integration, and API tests and reports code coverage.
+
+### Frontend Tests
+
+From the `frontend/` directory:
+
+```bash
+npm test
+```
+
+### Performance Tests (Locust)
+
+1.  Ensure your backend services are running (`docker-compose up -d`).
+2.  From the `backend/` directory:
+    ```bash
+    locust -f locustfile.py
+    ```
+3.  Open your browser to `http://localhost:8089` to access the Locust web UI.
+4.  Configure the number of users and spawn rate, then start the test.
+
+## Contributing
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Commit your changes (`git commit -m 'Add new feature'`).
+5.  Push to the branch (`git push origin feature/your-feature-name`).
+6.  Open a Pull Request.
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+```
+
+**API Documentation**:
+FastAPI automatically generates OpenAPI documentation (Swagger UI and ReDoc) based on your Pydantic schemas and route decorators. This is accessible at `http://localhost:8000/docs` and `http://localhost:8000/redoc` once the backend is running.
+The schemas, models, and routes provided earlier form the basis of this documentation.
+
+**Architecture Documentation**:

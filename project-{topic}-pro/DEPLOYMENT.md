@@ -1,134 +1,371 @@
-# Deployment Guide
+```markdown
+# Enterprise Task Management System - Deployment Guide
 
-This document outlines the steps for deploying the Task Management System, covering both local development with Docker Compose and a high-level overview for production environments using cloud services.
+This document provides instructions for deploying the Task Management System to a production environment using Docker and Docker Compose. While Docker Compose is excellent for local development and smaller deployments, for large-scale production, consider Kubernetes or cloud-specific deployment services.
 
-## 1. Local Deployment with Docker Compose (Recommended for Development)
+## Table of Contents
 
-This method provides a quick and consistent way to run all services (backend, frontend, database) locally within Docker containers.
+1.  [Prerequisites](#1-prerequisites)
+2.  [Production Environment Setup](#2-production-environment-setup)
+3.  [Environment Variables](#3-environment-variables)
+4.  [Database Migrations](#4-database-migrations)
+5.  [Building and Deploying Docker Images](#5-building-and-deploying-docker-images)
+    *   [Backend Image](#backend-image)
+    *   [Frontend Image](#frontend-image)
+6.  [Running with Docker Compose for Production](#6-running-with-docker-compose-for-production)
+7.  [Post-Deployment Checks](#7-post-deployment-checks)
+8.  [Scaling and High Availability](#8-scaling-and-high-availability)
+9.  [CI/CD Integration](#9-cicd-integration)
+10. [Troubleshooting](#10-troubleshooting)
 
-**Prerequisites:**
-*   Docker Desktop installed and running.
+---
 
-**Steps:**
+## 1. Prerequisites
 
-1.  **Navigate to the project root directory:**
-    ```bash
-    cd task-management-system
-    ```
+*   A Linux server (e.g., Ubuntu, CentOS)
+*   Docker installed (`sudo apt-get install docker.io`)
+*   Docker Compose installed (`sudo apt-get install docker-compose`)
+*   Git installed
+*   SSH access to the server
 
-2.  **Create a `.env` file:**
-    In the project root, create a file named `.env` and populate it with the following environment variables. **Ensure to replace placeholders with strong, secure values.**
+## 2. Production Environment Setup
 
-    ```env
-    # .env
-    DB_NAME=taskmgrdb
-    DB_USERNAME=taskmgruser
-    DB_PASSWORD=a_very_secure_db_password_here # Use a strong password!
-    JWT_SECRET=YOUR_VERY_LONG_AND_SECURE_JWT_SECRET_KEY_HERE_MIN_32_BYTES_BASE64_ENCODED # Generate a long random string (e.g., openssl rand -base64 32)
-    SERVER_PORT=8080
-    ```
+### 2.1. Server Setup
 
-3.  **Build and Start Services:**
-    ```bash
-    docker-compose up --build
-    ```
-    *   `--build`: This flag tells Docker Compose to build images from the Dockerfiles (if they don't exist or if the `Dockerfile` has changed) before starting the containers.
-    *   This command will:
-        *   Build the `backend` image from `backend/Dockerfile`.
-        *   Build the `frontend` image from `frontend/Dockerfile` (if you implement it).
-        *   Pull the `postgres:15-alpine` image.
-        *   Create a Docker network.
-        *   Start the `db`, `backend`, and `frontend` services in detached mode (you'll see logs directly in the terminal).
+Ensure your server is updated and secured.
 
-4.  **Verify Services:**
-    *   **Backend API:** `http://localhost:8080` (Swagger UI at `http://localhost:8080/swagger-ui/index.html`)
-    *   **Frontend UI:** `http://localhost:3000` (if implemented and running)
-    *   **PostgreSQL:** Accessible on `localhost:5432` from your host machine.
-
-5.  **Stop Services:**
-    To stop and remove all services, networks, and volumes created by `docker-compose`:
-    ```bash
-    docker-compose down -v
-    ```
-    *   `-v`: Removes named volumes declared in the `volumes` section of the `docker-compose.yml`. This will delete your database data. Omit `-v` if you want to preserve data.
-
-## 2. Production Deployment (High-Level Overview)
-
-Deploying to production involves ensuring scalability, reliability, security, and observability. This guide provides a general roadmap. Specific steps will vary based on your chosen cloud provider and infrastructure.
-
-**Key Principles for Production Deployment:**
-*   **Infrastructure as Code (IaC):** Use tools like Terraform or CloudFormation to define and manage your infrastructure.
-*   **Managed Services:** Leverage cloud provider's managed services (DB, Load Balancers, Container Orchestration) to reduce operational overhead.
-*   **Secrets Management:** Never hardcode secrets. Use dedicated secret management services.
-*   **Monitoring & Alerting:** Implement comprehensive monitoring and alerting for all components.
-*   **Automated CI/CD:** Automate the entire deployment pipeline.
-
-### 2.1 Choose Your Cloud Provider and Services
-
-Common choices include AWS, Azure, Google Cloud Platform (GCP).
-
-*   **Database:** Use a managed relational database service (e.g., AWS RDS PostgreSQL, Azure Database for PostgreSQL, Google Cloud SQL for PostgreSQL).
-    *   Configure automated backups, multi-AZ deployment for high availability, and appropriate sizing.
-*   **Container Registry:** A secure place to store your Docker images (e.g., AWS ECR, Azure Container Registry, Google Container Registry, Docker Hub).
-*   **Compute (Container Orchestration):**
-    *   **Kubernetes (AWS EKS, Azure AKS, Google GKE):** For advanced scalability, self-healing, and complex deployments. Requires more setup.
-    *   **Serverless Containers (AWS Fargate, Azure Container Apps, Google Cloud Run):** Simpler, scales automatically, pay-per-use.
-    *   **Container Instances (AWS ECS, Azure Container Instances):** Good balance for simpler container deployments.
-*   **Load Balancer:** To distribute traffic across multiple backend instances and handle SSL termination (e.g., AWS Application Load Balancer, Azure Application Gateway, Google Cloud Load Balancing).
-*   **Content Delivery Network (CDN):** For caching static frontend assets and improving global performance (e.g., AWS CloudFront, Azure CDN, Google Cloud CDN).
-
-### 2.2 Build and Push Docker Images
-
-Your CI/CD pipeline (e.g., GitHub Actions as defined in `.github/workflows/main.yml`) should automate this.
-
-1.  **Build Backend and Frontend:** The CI/CD workflow compiles your application code (Maven for Java, npm/yarn for React).
-2.  **Create Docker Images:** Dockerfiles for backend and frontend are used to build production-ready Docker images.
-3.  **Push to Registry:** The built images are tagged (e.g., `latest`, `git_sha`) and pushed to your chosen container registry.
-
-    ```bash
-    # Example for pushing backend to Docker Hub (handled by GitHub Actions)
-    docker push your_docker_username/task-management-backend:latest
-    docker push your_docker_username/task-management-backend:git_sha
-    ```
-
-### 2.3 Database Setup and Migration
-
-1.  **Provision Managed Database:** Set up your chosen managed PostgreSQL instance (e.g., AWS RDS).
-2.  **Configure Access:** Ensure your backend service can connect to the database (e.g., using security groups, VPC peering).
-3.  **Run Migrations:** Flyway is configured to run automatically when the Spring Boot backend starts. Ensure your production database is initially empty or only contains the `flyway_schema_history` table. The first deployment of the backend will create the schema and seed data.
-
-### 2.4 Deploy Backend Service
-
-1.  **Environment Variables / Secrets:**
-    *   **Database Credentials:** Use your cloud provider's secrets manager (e.g., AWS Secrets Manager, Azure Key Vault, Google Secret Manager) to store and inject database credentials into your backend containers.
-    *   **JWT Secret:** Store your `JWT_SECRET` securely in the secrets manager.
-    *   Other configurations (e.g., `SERVER_PORT`) can be injected as standard environment variables.
-2.  **Deployment Configuration:**
-    *   **Kubernetes:** Create `Deployment` (for backend pods), `Service` (for internal access), and `Ingress` (for external HTTP/HTTPS access) YAML manifests.
-    *   **AWS ECS/Fargate:** Define an `ECS Task Definition` specifying the Docker image, environment variables, resource limits, and port mappings.
-3.  **Deploy:** Use `kubectl apply -f your_manifests.yaml` for Kubernetes or equivalent commands/APIs for other services.
-4.  **Health Checks:** Configure health checks (e.g., `/actuator/health` endpoint) to allow your orchestration platform to monitor the backend's status and automatically restart unhealthy instances.
-
-### 2.5 Deploy Frontend Service (SPA)
-
-1.  **Build Production Assets:** The frontend CI/CD step should run `npm run build` to generate optimized static files (HTML, CSS, JS).
-2.  **Deployment:**
-    *   **Object Storage (Recommended):** Deploy static frontend assets to a cloud object storage bucket (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage). Configure the bucket for static website hosting.
-    *   **CDN Integration:** Integrate a CDN (CloudFront, Azure CDN) in front of your object storage bucket for faster global delivery and SSL.
-    *   **Container:** If deploying frontend as a Docker container, deploy it to your chosen compute service similar to the backend. Ensure it's configured to serve static files (e.g., using NGINX inside the container).
-
-### 2.6 Networking and Domain Configuration
-
-1.  **Load Balancer:** Configure a Load Balancer to direct traffic to your backend service. It should handle SSL termination (HTTPS) and forward requests to your backend instances.
-2.  **Domain Name:** Register a domain name for your application.
-3.  **DNS Configuration:** Update your domain's DNS records to point to your Load Balancer or CDN.
-4.  **SSL/TLS Certificates:** Obtain and configure SSL certificates for HTTPS (e.g., AWS Certificate Manager, Let's Encrypt). The Load Balancer typically handles certificate management.
-
-### 2.7 Monitoring, Logging, and Alerting
-
-*   **Logs:** Configure your backend (Spring Boot) logs to be sent to a centralized logging system (e.g., AWS CloudWatch Logs, Azure Monitor, Google Cloud Logging, or an ELK/EFK stack).
-*   **Metrics:** Collect application metrics (e.g., JVM, HTTP requests, custom business metrics from Spring Boot Actuator) and send them to a monitoring system (e.g., Prometheus with Grafana, Datadog).
-*   **Alerting:** Set up alerts for critical events (e.g., high error rates, low disk space, unresponsive services) to notify your team.
-
-By following these guidelines, you can establish a robust and scalable production environment for your Task Management System.
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install git -y
 ```
+
+### 2.2. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/task-management-system.git
+cd task-management-system
+```
+
+## 3. Environment Variables
+
+Create a strong and secure `.env` file for your production environment. This file should be placed in the root directory of your project (where `docker-compose.yml` resides).
+
+**Crucial Production Considerations:**
+
+*   **`SECRET_KEY`**: Generate a very strong, long, random string. **Never use the default or a weak key in production.**
+    *   Example: `python -c "import os; print(os.urandom(32).hex())"`
+*   **`DATABASE_URL` / `ASYNC_DATABASE_URL`**: Use strong credentials and potentially connect to an external managed PostgreSQL service for better reliability and scaling.
+*   **`REDIS_URL`**: Use strong credentials if Redis is exposed or an external managed Redis service.
+*   **`BACKEND_CORS_ORIGINS`**: Set this to the exact production URL(s) of your frontend application (e.g., `https://your-task-app.com`). Do not use `*` or `http://localhost`.
+*   **`LOG_LEVEL`**: Typically `INFO` or `WARNING` for production, `DEBUG` can be too verbose.
+*   **`SENTRY_DSN`**: If using Sentry, provide your production DSN.
+
+Example `.env` (production variant):
+
+```ini
+# Backend Configuration
+DATABASE_URL="postgresql://prod_user:prod_strong_password@prod_db_host:5432/prod_taskdb"
+ASYNC_DATABASE_URL="postgresql+asyncpg://prod_user:prod_strong_password@prod_db_host:5432/prod_taskdb"
+SECRET_KEY="a-very-long-and-complex-production-secret-key-much-longer-than-this-example"
+BACKEND_CORS_ORIGINS='["https://your-task-app.com"]'
+REDIS_URL="redis://prod_redis_host:6379/0"
+LOG_LEVEL="INFO"
+SENTRY_DSN="https://examplePublicKey@o0.ingest.sentry.io/exampleProjectId"
+
+# Frontend Configuration
+REACT_APP_API_BASE_URL="https://api.your-task-app.com/api/v1"
+```
+
+**Security Best Practice**: Keep your `.env` file secure. Do not commit it to version control. Use environment variables injected by your hosting provider or a secrets management service.
+
+## 4. Database Migrations
+
+In a production environment, you should apply database migrations before starting the application, rather than relying on `Base.metadata.create_all` or `seed.py` in the Docker entrypoint.
+
+### 4.1. Access the Backend Container (or run locally)
+
+If your `db` service is already running, you can run migrations from within the backend container.
+
+```bash
+docker-compose up -d db # Start just the database
+docker-compose run backend alembic upgrade head
+```
+
+If you prefer to run migrations locally without building the backend image, ensure Python and dependencies are installed in your local `backend/` directory, and your local `.env` points to the production DB.
+
+```bash
+cd backend
+pip install -r requirements.txt
+alembic upgrade head
+```
+
+**Note**: `seed.py` is primarily for development and demo purposes. In production, you would manually add initial admin users or have a more controlled seeding process.
+
+## 5. Building and Deploying Docker Images
+
+### Backend Image
+
+For production, modify `backend/Dockerfile` to remove the source code mounting and ensure `uvicorn` is run with Gunicorn for robustness and parallelism.
+
+**Modified `backend/Dockerfile` for Production (Example with Gunicorn):**
+
+```dockerfile
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim-buster
+
+# Set environment variables for non-root user (good security practice)
+ENV HOME=/home/appuser
+ENV APP_HOME=/home/appuser/app
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+WORKDIR $APP_HOME
+
+# Install system dependencies for psycopg2-binary and Gunicorn
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    gcc \
+    # libpq-dev is often needed for psycopg2-binary if pre-compiled wheels aren't sufficient
+    libpq-dev \
+    # Add any other build dependencies
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the requirements file into the working directory
+COPY requirements.txt .
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+# Copy the rest of the application code into the container
+COPY --chown=appuser:appuser . .
+
+# Set permissions for the app directory
+RUN chmod -R 755 $APP_HOME
+
+# Switch to non-root user
+USER appuser
+
+# Expose port 8000 for FastAPI
+EXPOSE 8000
+
+# Command to run the application using Gunicorn with Uvicorn workers
+CMD ["gunicorn", "main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--log-level", "info"]
+```
+
+Build and push your backend image to a Docker registry (e.g., Docker Hub, GitHub Container Registry).
+
+```bash
+cd backend
+docker build -t your-dockerhub-username/task-manager-backend:latest .
+docker push your-dockerhub-username/task-manager-backend:latest
+```
+
+### Frontend Image
+
+For production, the frontend should be built and served as static files, potentially by a web server like Nginx or directly by the backend (if configured to serve static files).
+
+**Modified `frontend/Dockerfile` for Production (Example serving with Nginx):**
+
+```dockerfile
+# Stage 1: Build the React application
+FROM node:18-alpine as builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Build the app with production environment variables
+# REACT_APP_API_BASE_URL should point to your public API gateway/backend URL
+ARG REACT_APP_API_BASE_URL
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+RUN npm run build
+
+# Stage 2: Serve the built application with Nginx
+FROM nginx:alpine
+
+# Copy the Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the built React app from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+**`frontend/nginx.conf` (Example):**
+
+```nginx
+server {
+    listen 80;
+    server_name localhost; # Replace with your domain in production
+
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API requests to the backend service
+    location /api {
+        proxy_pass http://backend:8000; # 'backend' is the service name in docker-compose
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Build and push your frontend image:
+
+```bash
+cd frontend
+docker build --build-arg REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL} -t your-dockerhub-username/task-manager-frontend:latest .
+docker push your-dockerhub-username/task-manager-frontend:latest
+```
+
+**Important**: In the `docker-compose.yml` (production version), you would update the `image` fields for `backend` and `frontend` to point to these pushed images, and ensure the frontend serves the static build.
+
+## 6. Running with Docker Compose for Production
+
+Adjust your `docker-compose.yml` for production:
+
+*   Use `image` instead of `build`.
+*   Remove volume mounts for source code (`./backend:/app`, `./frontend:/app`).
+*   Remove `--reload` from backend command.
+*   Ensure proper network configuration if using external DB/Redis.
+*   Implement `restart: always` for all services.
+*   Consider resource limits (`deploy: resources:`).
+
+**Example `docker-compose.yml` for Production:**
+
+```yaml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    # No port mapping if only accessed internally by backend/migrations
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # For managed cloud databases, you might remove this service and point backend to external host
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # No port mapping if only accessed internally by backend
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # For managed cloud Redis, you might remove this service and point backend to external host
+
+  backend:
+    image: your-dockerhub-username/task-manager-backend:latest # Use your pushed image
+    restart: always
+    env_file:
+      - .env
+    # Only map if you need direct access to backend API from outside (e.g. for API consumers)
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Production command, apply migrations before starting
+    command: ["/bin/sh", "-c", "alembic upgrade head && gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --log-level info"]
+
+  frontend:
+    image: your-dockerhub-username/task-manager-frontend:latest # Use your pushed Nginx image
+    restart: always
+    ports:
+      - "80:80" # Map to port 80 for public access
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+Once your production `docker-compose.yml` is ready and your `.env` is secure:
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d # Using a separate prod file
+```
+Or if you named it `docker-compose.yml`, just:
+```bash
+docker-compose up -d
+```
+
+## 7. Post-Deployment Checks
+
+*   **Access Frontend**: Navigate to your server's public IP or domain name.
+*   **API Healthcheck**: `curl http://your-server-ip:8000/api/v1/healthcheck` (or `https://your-domain/api/v1/healthcheck` if using a reverse proxy/frontend for API routes).
+*   **Container Logs**: `docker-compose logs -f` to monitor all service logs for errors.
+*   **Database Check**: Connect to your PostgreSQL database to ensure tables are created and data (if seeded) exists.
+*   **Sentry/Monitoring**: Verify that errors are being reported to your monitoring system (e.g., Sentry).
+
+## 8. Scaling and High Availability
+
+For serious production deployments, consider:
+
+*   **Load Balancer**: Distribute traffic across multiple instances of your frontend and backend.
+*   **Kubernetes**: An orchestration platform for deploying, managing, and scaling containerized applications.
+*   **Managed Services**: Use cloud provider's managed PostgreSQL, Redis, and container services (ECS, EKS, Azure Container Apps, Google Cloud Run) for automatic scaling, backups, and high availability.
+*   **Horizontal Scaling**: Run multiple instances of your backend service behind a load balancer.
+
+## 9. CI/CD Integration
+
+Integrate your Docker image builds and pushes into your CI/CD pipeline (e.g., GitHub Actions, GitLab CI, Jenkins). This ensures that every successful merge to your main branch automatically builds and pushes the latest images, ready for deployment. The `ci.yml` in `.github/workflows/` provides a starting point.
+
+## 10. Troubleshooting
+
+*   **`docker-compose logs <service_name>`**: Check logs for specific services (e.g., `docker-compose logs backend`).
+*   **`docker-compose exec <service_name> bash`**: Access a running container's shell for debugging.
+*   **Firewall**: Ensure necessary ports (80/443 for frontend, 8000 for backend if directly exposed) are open on your server.
+*   **Environment Variables**: Double-check that all required environment variables are correctly set in your `.env` file and are being picked up by Docker Compose.
+*   **Network Issues**: Ensure containers can communicate with each other (e.g., backend reaching `db` and `redis` via their service names).
+
+By following these guidelines, you can successfully deploy your Enterprise Task Management System to a production environment.
+```
+
+---
+
+### 6. Additional Features
+
+These features are integrated into the backend implementation provided in `main.py`, `config.py`, `app/security.py`, `app/dependencies.py`, `app/middleware/error_handler.py`, and `app/utils/caching.py`.
+
+**Authentication/Authorization (JWT & RBAC)**
+*   `app/security.py`: Handles `create_access_token`, `verify_password`, `get_password_hash`.
+*   `app/dependencies.py`: `get_current_user`, `get_current_active_user`, `get_current_active_admin`, `HasRole` (for RBAC).
+*   `app/api/v1/auth.py`: Login/registration endpoints.
+*   API routes use `Depends(dependencies.get_current_active_user)` or `Depends(dependencies.HasRole([UserRole.ADMIN]))`.
+
+**Logging and Monitoring**
+*   `backend/app/utils/logging.py`: Centralized logger configuration.
+*   `backend/main.py`: Basic request logging middleware.
+*   `config.py`: Placeholder for `SENTRY_DSN`.

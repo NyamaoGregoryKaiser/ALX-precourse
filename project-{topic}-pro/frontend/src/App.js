@@ -1,80 +1,71 @@
+```javascript
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import Navbar from './components/common/Navbar';
-import AuthPage from './pages/Auth';
-import Dashboard from './pages/Dashboard';
-import ScraperDetail from './pages/ScraperDetail';
-import ScraperEdit from './pages/ScraperEdit';
-import JobDetail from './pages/JobDetail';
-import './App.css';
-
-// ProtectedRoute component
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <div className="loading-spinner">Loading application...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-};
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import AuthGuard from './components/AuthGuard';
+import LoginPage from './pages/Login';
+import RegisterPage from './pages/Register';
+import DashboardPage from './pages/Dashboard';
+import ProjectsPage from './pages/Projects';
+import ProjectDetailPage from './pages/ProjectDetail';
+import TasksPage from './pages/Tasks';
+import TaskDetailPage from './pages/TaskDetail';
 
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <div className="App">
-          <Navbar />
-          <main>
-            <Routes>
-              <Route path="/login" element={<AuthPage type="login" />} />
-              <Route path="/register" element={<AuthPage type="register" />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/scrapers/:scraperId"
-                element={
-                  <ProtectedRoute>
-                    <ScraperDetail />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/scrapers/:scraperId/edit"
-                element={
-                  <ProtectedRoute>
-                    <ScraperEdit />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/jobs/:jobId"
-                element={
-                  <ProtectedRoute>
-                    <JobDetail />
-                  </ProtectedRoute>
-                }
-              />
-              {/* Add a generic 404 page */}
-              <Route path="*" element={<h1 style={{ textAlign: 'center', marginTop: '50px' }}>404 - Page Not Found</h1>} />
-            </Routes>
-          </main>
-        </div>
-      </AuthProvider>
+      <Navbar />
+      <div className="container mx-auto p-4">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <AuthGuard>
+                <DashboardPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/projects"
+            element={
+              <AuthGuard>
+                <ProjectsPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/projects/:projectId"
+            element={
+              <AuthGuard>
+                <ProjectDetailPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <AuthGuard>
+                <TasksPage />
+              </AuthGuard>
+            }
+          />
+           <Route
+            path="/tasks/:taskId"
+            element={
+              <AuthGuard>
+                <TaskDetailPage />
+              </AuthGuard>
+            }
+          />
+          {/* Default route / redirect */}
+          <Route path="/" element={<AuthGuard><DashboardPage /></AuthGuard>} />
+        </Routes>
+      </div>
     </Router>
   );
 }
 
 export default App;
+```

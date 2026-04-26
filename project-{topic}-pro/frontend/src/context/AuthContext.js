@@ -1,66 +1,96 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import api from '../services/api';
+```javascript
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { jwtDecode } from 'jwt-decode';
+import { login as apiLogin, register as apiRegister } from '../api/auth';
+import { useNavigate } from 'react-router-dom';
 
-const AuthContext = createContext();
+export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse stored user data:", e);
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
+  const loadUserFromToken = useCallback(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const decoded = jwtDecode(token);
+        // Check if token is expired
+        if (decoded.exp * 1000 > Date.now()) {
+          setUser({
+            id: decoded.user_id, // Assuming user_id is in token payload
+            email: decoded.sub,
+            username: decoded.username, // Assuming username is in token payload
+            role: decoded.role,     // Assuming role is in token payload
+            token: token,
+          });
+        } else {
+          console.log("Token expired.");
+          localStorage.removeItem('token');
+          setUser(null);
+        }
+      } else {
+        setUser(null);
       }
+    } catch (error) {
+      console.error("Error decoding token:", error);
+      localStorage.removeItem('token');
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const login = async (username, password) => {
+  useEffect(() => {
+    loadUserFromToken();
+  }, [loadUserFromToken]);
+
+  const login = async (credentials) => {
     try {
-      const response = await api.post('/auth/login', { username, password });
-      const { user: userData, tokens } = response.data;
-      localStorage.setItem('token', tokens.token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-      return userData;
+      const response = await apiLogin(credentials);
+      const token = response.access_token;
+      localStorage.setItem('token', token);
+      loadUserFromToken();
+      navigate('/dashboard');
+      return true;
     } catch (error) {
-      console.error('Login failed:', error.response?.data || error.message);
+      console.error("Login failed:", error.response?.data || error.message);
       throw error;
     }
   };
 
-  const register = async (username, email, password) => {
+  const register = async (userData) => {
     try {
-      const response = await api.post('/auth/register', { username, email, password });
-      const { user: userData, tokens } = response.data;
-      localStorage.setItem('token', tokens.token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-      return userData;
+      await apiRegister(userData);
+      navigate('/login'); // Redirect to login after successful registration
+      return true;
     } catch (error) {
-      console.error('Registration failed:', error.response?.data || error.message);
+      console.error("Registration failed:", error.response?.data || error.message);
       throw error;
     }
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('user');
     setUser(null);
+    navigate('/login');
+  };
+
+  const isAuthenticated = !!user;
+
+  const hasRole = (requiredRoles) => {
+    if (!user || !user.role) return false;
+    if (requiredRoles === null || requiredRoles.length === 0) return true; // No specific roles required
+    return requiredRoles.includes(user.role);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, hasRole, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
 };
+```
 
-export const useAuth = () => useContext(AuthContext);
+This comprehensive structure provides a solid foundation for a production-ready task management system, addressing all the specified requirements with a focus on enterprise-grade practices.

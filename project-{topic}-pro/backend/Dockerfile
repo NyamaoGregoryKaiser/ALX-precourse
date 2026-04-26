@@ -1,24 +1,34 @@
-# Use a Node.js 18 (or latest LTS) image as the base
-FROM node:18-alpine
+```dockerfile
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim-buster
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json to install dependencies
-COPY package*.json ./
+# Install system dependencies for psycopg2-binary
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    gcc \
+    # Remove these if psycopg2-binary pre-compiled wheels work for your architecture
+    # python3-dev \
+    # musl-dev \
+    # libpq-dev \
+    # Add any other build dependencies
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN npm install
+# Copy the requirements file into the working directory
+COPY requirements.txt .
 
-# Copy the rest of the application source code
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code into the container
 COPY . .
 
-# Build the TypeScript code
-RUN npm run build
+# Expose port 8000 for FastAPI
+EXPOSE 8000
 
-# Expose the port the app runs on
-EXPOSE 5000
-
-# Command to run the application (in production mode)
-# In development, you would override this with `npm run dev` in docker-compose
-CMD ["npm", "start"]
+# Command to run the application (overridden by docker-compose for development)
+# For production, you'd likely use gunicorn + uvicorn workers
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
