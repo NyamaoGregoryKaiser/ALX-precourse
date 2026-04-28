@@ -1,51 +1,83 @@
-```yaml
 version: '3.8'
 
 services:
-  ecommerce_db:
-    image: postgres:13
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: mlu-sys-postgres
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # Mount schema and seed data for the entrypoint script
-      - ./db/schema.sql:/app/db/schema.sql
-      - ./db/seed.sql:/app/db/seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME} -d ${DATABASE_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  ecommerce_backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mlu-sys-redis
     restart: always
     ports:
-      - "${APP_PORT}:${APP_PORT}"
-    environment:
-      DB_HOST: ecommerce_db # Service name in docker-compose
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      APP_PORT: ${APP_PORT}
-      JWT_SECRET: ${JWT_SECRET}
-    depends_on:
-      ecommerce_db:
-        condition: service_healthy
+      - "6379:6379"
     volumes:
-      # Mount .env for runtime configuration
-      - ./config/.env:/app/config/.env
-      # Mount db scripts for backend to run them if needed (though docker-entrypoint handles it)
-      - ./db:/app/db
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mlu-sys-backend
+    restart: always
+    env_file:
+      - ./backend/.env.development # Use .env.development or .env.production as needed
+    environment:
+      DATABASE_HOST: db # Use service name instead of localhost
+      REDIS_HOST: redis # Use service name instead of localhost
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/uploads:/app/uploads # Persist uploaded files
+      - ./backend/logs:/app/logs     # Persist logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run migration:run && npm run seed:run && npm run start:prod"]
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mlu-sys-frontend
+    restart: always
+    env_file:
+      - ./frontend/.env.example # Or .env.production
+    ports:
+      - "3001:80" # Map to port 80 inside the container
+    depends_on:
+      - backend
 
 volumes:
-  db_data:
+  postgres_data:
+  redis_data:
 ```
+
+### `backend/Dockerfile`
+
+```dockerfile

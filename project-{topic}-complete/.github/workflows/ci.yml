@@ -1,5 +1,4 @@
-```yaml
-name: C++ Task Management API CI/CD
+name: MLU-Sys CI/CD
 
 on:
   push:
@@ -10,59 +9,232 @@ on:
       - main
 
 jobs:
-  build_and_test:
+  build-and-test:
     runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Install vcpkg
-      run: |
-        git clone https://github.com/microsoft/vcpkg.git
-        ./vcpkg/bootstrap-vcpkg.sh
-        ./vcpkg/vcpkg integrate install
-
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-
-    - name: Build Application and Tests
-      run: cmake --build build
-
-    - name: Set up Database for Tests
-      run: |
-        mkdir -p build/database
-        sqlite3 build/database/test_db.sqlite < migrations/001_initial_schema.sql
-        sqlite3 build/database/test_db.sqlite < migrations/seed_data.sql
-      working-directory: ${{ github.workspace }}
-
-    - name: Run Tests
-      run: ./build/task_management_api_tests
-      working-directory: ${{ github.workspace }}
-
-  docker_build_and_push:
-    needs: build_and_test
-    if: github.ref == 'refs/heads/main' # Only run on pushes to main branch
-    runs-on: ubuntu-latest
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }} # e.g., your-org/your-repo-name
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install wait-for-it
+        run: |
+          wget https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh
+          chmod +x wait-for-it.sh
+          sudo mv wait-for-it.sh /usr/local/bin/
+
+      - name: Set up Docker Compose for local services
+        run: |
+          # Create dummy .env files for services in test environment
+          echo "DATABASE_USERNAME=testuser" >> backend/.env.test
+          echo "DATABASE_PASSWORD=testpassword" >> backend/.env.test
+          echo "DATABASE_NAME=test_db" >> backend/.env.test
+          echo "JWT_SECRET=testsecret" >> backend/.env.test
+          echo "REDIS_HOST=redis" >> backend/.env.test
+          echo "REDIS_PORT=6379" >> backend/.env.test
+          echo "UPLOAD_PATH=./uploads" >> backend/.env.test
+          echo "ADMIN_EMAIL=testadmin@example.com" >> backend/.env.test
+          echo "ADMIN_PASSWORD=testpassword123" >> backend/.env.test
+
+          echo "VITE_API_BASE_URL=http://localhost:3000/api/v1" >> frontend/.env.test
+
+          docker-compose -f docker-compose.yml --profile test-services up -d db redis # Only bring up DB and Redis
+
+      - name: Wait for services
+        run: |
+          wait-for-it.sh localhost:5432 -t 60 -- echo "PostgreSQL ready!"
+          wait-for-it.sh localhost:6379 -t 60 -- echo "Redis ready!"
+
+      - name: Build and Test Backend
+        run: |
+          cd backend
+          npm install
+          npm run build
+          npm run typeorm migration:run -d dist/src/database/typeorm.config.js # Run migrations against test DB
+          npm run test:cov
+          npm run test:e2e
+          cd ..
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+
+      - name: Docker Login (if pushing to private registry)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD
         uses: docker/login-action@v2
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
-        run: docker build . --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      - name: Build and Push Backend Docker Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/mlu-sys-backend:latest
+          build-args: |
+            NODE_ENV=production
 
-      - name: Push Docker image
-        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      - name: Build and Push Frontend Docker Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/mlu-sys-frontend:latest
+          build-args: |
+            NODE_ENV=production
+
+      # Example: Deploy to Kubernetes (requires Kubeconfig setup andkubectl)
+      # - name: Deploy to Kubernetes
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      #   uses: akhileshns/kubectl-deploy@v1.0
+      #   with:
+      #     kubectl-config: ${{ secrets.KUBECONFIG }}
+      #     args: apply -f k8s/
+      #   env:
+      #     IMAGE_BACKEND: ${{ secrets.DOCKER_USERNAME }}/mlu-sys-backend:latest
+      #     IMAGE_FRONTEND: ${{ secrets.DOCKER_USERNAME }}/mlu-sys-frontend:latest
+
+    # Cleanup Docker Compose services
+    # - name: Stop Docker Compose services
+    #   if: always()
+    #   run: docker-compose -f docker-compose.yml --profile test-services down
+```
+
+*(Note: The CI/CD workflow is illustrative. For local testing during CI, a special Docker Compose profile `test-services` would be beneficial to only bring up the DB/Redis, not the app services. `wait-for-it.sh` is used to ensure services are ready. For actual deployment to K8s/ECS, specific secrets and deployment scripts would be needed.)*
+
+## 4. Deployment to a Cloud Provider (Conceptual)
+
+### 4.1. General Steps
+
+1.  **Container Registry**: Ensure your Docker images are pushed to a public or private container registry (e.g., Docker Hub, AWS ECR, Google Container Registry). The CI/CD pipeline should handle this.
+2.  **Infrastructure Provisioning**:
+    *   **Networking**: Set up a VPC, subnets, internet gateways, NAT gateways (if needed).
+    *   **Managed Database**: PostgreSQL (e.g., AWS RDS, Google Cloud SQL).
+    *   **Managed Cache**: Redis (e.g., AWS ElastiCache, Google Cloud Memorystore).
+    *   **Object Storage**: S3/GCS for files.
+    *   **Compute**: Kubernetes cluster (AWS EKS, GKE, Azure AKS) or a managed container service (AWS ECS, Google Cloud Run).
+    *   **Load Balancer**: Application Load Balancer (ALB) or equivalent.
+    *   **DNS**: Register your domain and point it to the load balancer.
+    *   **SSL/TLS**: Provision SSL certificates (e.g., AWS Certificate Manager, Let's Encrypt).
+3.  **Deployment Configuration**:
+    *   **Kubernetes**: Write `Deployment`, `Service`, `Ingress`, `Secret`, `ConfigMap`, `PersistentVolumeClaim` manifests.
+    *   **AWS ECS**: Define `Task Definitions`, `Services`, `Cluster`.
+    *   **Environment Variables & Secrets**: Inject production secrets and environment variables securely into your containers (e.g., Kubernetes Secrets, AWS Secrets Manager).
+4.  **Database Seeding & Migrations**:
+    *   **Initial Setup**: After provisioning, connect to the production database and run `npm run typeorm migration:run` and `npm run seed:run` for the backend. This can be part of a `initContainer` in Kubernetes or a one-off task.
+    *   **Ongoing**: Integrate migration steps into your CD pipeline for schema updates.
+5.  **Monitoring & Logging**:
+    *   Configure container logs to be sent to a centralized logging solution.
+    *   Set up metrics collection for CPU, memory, network, and application-specific metrics.
+    *   Configure alerts for critical errors or performance degradation.
+
+### 4.2. Example: Deploying to Kubernetes
+
+This would involve creating `YAML` files for each component:
+
+*   **`k8s/database-secret.yaml`**: Store database credentials securely.
+*   **`k8s/redis-secret.yaml`**: Store Redis credentials securely.
+*   **`k8s/backend-configmap.yaml`**: Store non-sensitive backend environment variables.
+*   **`k8s/backend-deployment.yaml`**: Define the backend service deployment (e.g., 3 replicas, resource limits).
+    *   Includes `initContainers` for migrations and seeding.
+    *   Mounts a Persistent Volume for local file uploads (if not using S3/GCS).
+*   **`k8s/backend-service.yaml`**: Expose the backend deployment internally within the cluster.
+*   **`k8s/frontend-deployment.yaml`**: Define the frontend service deployment.
+*   **`k8s/frontend-service.yaml`**: Expose the frontend deployment internally.
+*   **`k8s/ingress.yaml`**: Define external access to frontend (root path) and backend (`/api/v1` path) via an Ingress controller (e.g., Nginx Ingress Controller, AWS ALB Ingress Controller). Handles domain routing and SSL.
+*   **`k8s/volumes.yaml`**: Define PersistentVolume and PersistentVolumeClaim for backend uploads if using local storage.
+
+**(Example snippet for a backend Deployment in Kubernetes)**
+
+```yaml
+# k8s/backend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlu-sys-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mlu-sys-backend
+  template:
+    metadata:
+      labels:
+        app: mlu-sys-backend
+    spec:
+      initContainers:
+        - name: migrate-db
+          image: your-docker-registry/mlu-sys-backend:latest # Use the same backend image
+          command: ["sh", "-c", "npm run typeorm migration:run -d dist/src/database/typeorm.config.js"]
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: database-secret
+        - name: seed-db
+          image: your-docker-registry/mlu-sys-backend:latest
+          command: ["sh", "-c", "npm run seed:run"]
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: database-secret
+      containers:
+        - name: backend
+          image: your-docker-registry/mlu-sys-backend:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: database-secret
+            - secretRef:
+                name: jwt-secret
+            - secretRef:
+                name: redis-secret
+          volumeMounts:
+            - name: uploads-volume
+              mountPath: /app/uploads
+            - name: logs-volume
+              mountPath: /app/logs
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health # A simple health check endpoint
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: uploads-volume
+          persistentVolumeClaim:
+            claimName: mlu-sys-uploads-pvc # Defined in k8s/volumes.yaml
+        - name: logs-volume
+          emptyDir: {} # Logs can be ephemeral if pushed to centralized logging
+```
+
+This guide covers the essential steps and considerations for deploying the ML Utilities System. Each cloud provider will have specific commands and tooling, but the underlying architectural principles remain the same.
 ```

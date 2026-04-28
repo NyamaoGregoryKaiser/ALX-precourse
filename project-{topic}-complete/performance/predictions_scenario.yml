@@ -1,0 +1,58 @@
+config:
+  target: "http://localhost:3000/api/v1"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Warmup"
+    - duration: 120
+      arrivalRate: 50
+      rampTo: 100
+      name: "High Load"
+  plugins:
+    metrics: {}
+    expect: {}
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  payload:
+    # Dummy login to get a token for testing. In a real scenario, you'd manage tokens more robustly.
+    # For a simple load test, you might pre-generate tokens or use a dedicated login flow.
+    # This example assumes a token is manually obtained for the test run.
+    - path: "./data/input_data.csv" # CSV file with various input_data payloads
+      fields: ["feature1", "feature2", "feature_a", "feature_b"]
+      skipHeader: true
+
+scenarios:
+  - name: "Predict with Model"
+    flow:
+      - get: # Assuming you have a way to get a valid model ID, replace {{modelId}}
+          url: "/models"
+          headers:
+            Authorization: "Bearer {{access_token}}" # Replace with a valid token
+        capture:
+          json: "$[0].id"
+          as: "modelId"
+      - post:
+          url: "/predictions/{{modelId}}"
+          headers:
+            Authorization: "Bearer {{access_token}}" # Replace with a valid token
+          json:
+            inputData:
+              feature1: "{{ feature1 }}" # From CSV payload
+              feature2: "{{ feature2 }}"
+              # ... other features if needed
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "result" # Assuming your simulatePrediction returns this
+```
+
+*(Note: The Artillery setup above needs `access_token` and `modelId` to be dynamic. For a real test, you would integrate a login step to get `access_token` and a lookup step to get a valid `modelId`. The CSV payload file `data/input_data.csv` would contain sample prediction inputs.)*
+
+---
+
+## 5. Documentation
+
+### `README.md` (Self-referential, as this is part of the output)
+
+```markdown
