@@ -1,37 +1,31 @@
-# Use a lighter base image for Java 17
-FROM eclipse-temurin:17-jre-alpine
+# Base image
+FROM python:3.9-slim-buster
 
-# Set the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy the Flyway migration scripts
-COPY src/main/resources/db/migration ./src/main/resources/db/migration
+# Install system dependencies required for psycopg2-binary
+# and potentially other libraries (like building wheels)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the built JAR file from the Maven build stage (assuming a multi-stage build or local build)
-# For local build: After 'mvn clean package', the JAR will be in 'target/'
-# Replace 'alx-scraper-0.0.1-SNAPSHOT.jar' with your actual JAR name if it differs
-COPY target/alx-scraper-0.0.1-SNAPSHOT.jar app.jar
+# Copy requirements file and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port the application runs on
-EXPOSE 8080
+# Copy the application code
+COPY . .
 
-# Define environment variables with default values.
-# These can be overridden when running the Docker container.
-ENV DB_HOST=localhost
-ENV DB_PORT=5432
-ENV DB_NAME=alx_scraper
-ENV DB_USER=alx_user
-ENV DB_PASSWORD=alx_password
-ENV JWT_SECRET=your_jwt_secret_key_that_is_at_least_256_bit_long_and_very_secure
-ENV JWT_EXPIRATION_MS=86400000
-ENV RATE_LIMIT_MAX_REQUESTS=100
-ENV RATE_LIMIT_TIME_WINDOW_SECONDS=60
+# Expose the port the app runs on
+EXPOSE 5000
 
-# Command to run the application
-# Use 'java -jar' to execute the Spring Boot application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-
-# ALX Focus: Dockerization for containerized deployment, ensuring environment
-# consistency and ease of deployment. Uses a small base image, clearly defines
-# dependencies, exposed ports, and environment variables for external configuration.
+# Command to run the application using Gunicorn for production
+# Gunicorn is a WSGI HTTP Server for UNIX. It's stable and widely used.
+# The `manage.py` file is our Flask entry point, and `app` is the Flask app instance.
+# -w: number of worker processes
+# -b: bind to host:port
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "manage:app"]
 ```
