@@ -1,32 +1,52 @@
+```typescript
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, JwtPayload } from '../utils/jwt';
-import { AppError } from './errorHandler';
-import { UserRole } from '../entities/User';
+import jwt from 'jsonwebtoken';
+import { config } from '../config';
+import { AppDataSource } from '../config/data-source';
+import { User } from '../database/entities/User';
+import { UnauthorizedError } from '../utils/appErrors';
 
-export const protect = (req: Request, res: Response, next: NextFunction) => {
-  let token: string | undefined;
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (!token) {
-    return next(new AppError('You are not logged in! Please log in to get access.', 401));
-  }
-
-  try {
-    const decoded = verifyToken(token) as JwtPayload;
-    req.user = decoded; // Attach user info to request
-    next();
-  } catch (err) {
-    return next(new AppError('Invalid token or token expired. Please log in again.', 401));
-  }
-};
-
-export const authorize = (...roles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return next(new AppError('You do not have permission to perform this action', 403));
+// Extend the Request object to include userId
+declare global {
+    namespace Express {
+        interface Request {
+            userId?: string;
+        }
     }
-    next();
-  };
+}
+
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return next(new UnauthorizedError('No token provided.'));
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!token) {
+        return next(new UnauthorizedError('No token provided.'));
+    }
+
+    try {
+        const decoded = jwt.verify(token, config.jwt.secret) as { id: string };
+        
+        // Check if user still exists in DB
+        const user = await AppDataSource.getRepository(User).findOneBy({ id: decoded.id });
+        if (!user) {
+            return next(new UnauthorizedError('User associated with token no longer exists.'));
+        }
+
+        req.userId = decoded.id;
+        next();
+    } catch (error) {
+        if (error instanceof jwt.TokenExpiredError) {
+            return next(new UnauthorizedError('Token expired.'));
+        }
+        if (error instanceof jwt.JsonWebTokenError) {
+            return next(new UnauthorizedError('Invalid token.'));
+        }
+        next(new UnauthorizedError('Authentication failed.'));
+    }
 };
+```

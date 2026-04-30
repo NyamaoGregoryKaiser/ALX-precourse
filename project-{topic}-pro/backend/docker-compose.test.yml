@@ -1,0 +1,35 @@
+```yaml
+# docker-compose.test.yml
+# This file is specifically for running tests in CI/CD or locally
+# It creates isolated DB and Redis containers for testing purposes.
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: task-manager-test-db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_password
+      POSTGRES_DB: task_manager_test_db # Unique DB name for tests
+    ports:
+      - "5433:5432" # Use a different port to avoid conflict with main db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:6-alpine
+    container_name: task-manager-test-redis
+    ports:
+      - "6380:6379" # Use a different port
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+# No backend service here; tests run directly in the CI/CD runner or locally
+```

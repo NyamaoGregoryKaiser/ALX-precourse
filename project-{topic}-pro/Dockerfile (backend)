@@ -1,0 +1,42 @@
+```dockerfile
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package.json ./
+COPY tsconfig.json ./
+COPY .env.example .env # Copy .env.example, actual .env will be mounted or passed
+RUN npm install
+
+# Copy the rest of the application code
+COPY src ./src
+COPY __tests__ ./__tests__ # Include tests for build/test stage if needed, can be excluded in final image
+COPY jest.config.js ./ # For local testing
+
+# Build the TypeScript code
+RUN npm run build
+
+# Stage 2: Create the production-ready image
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install production dependencies only
+COPY package.json ./
+RUN npm install --only=production
+
+# Copy built JavaScript files from the builder stage
+COPY --from=builder /app/dist ./dist
+
+# Copy .env.example for reference, actual .env will be mounted
+COPY .env.example ./.env
+
+EXPOSE 5000
+
+# Health check (optional but good for orchestration)
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 CMD curl -f http://localhost:5000/api/v1/health || exit 1
+
+CMD ["node", "dist/server.js"]
+```

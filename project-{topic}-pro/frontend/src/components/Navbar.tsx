@@ -1,39 +1,48 @@
-```typescript
+```tsx
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const Navbar: React.FC = () => {
-    const { isAuthenticated, user, logout } = useAuth();
-    const navigate = useNavigate();
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
 
-    const handleLogout = () => {
-        logout();
-        navigate('/login');
-    };
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
-    return (
-        <nav className="bg-gray-800 p-4 text-white">
-            <div className="container mx-auto flex justify-between items-center">
-                <Link to="/" className="text-2xl font-bold">DataVizApp</Link>
-                <div>
-                    {isAuthenticated ? (
-                        <ul className="flex space-x-4">
-                            <li>Welcome, {user?.email} ({user?.role})</li>
-                            <li><Link to="/dashboards" className="hover:text-gray-300">Dashboards</Link></li>
-                            <li><Link to="/data-sources" className="hover:text-gray-300">Data Sources</Link></li>
-                            <li><button onClick={handleLogout} className="hover:text-gray-300">Logout</button></li>
-                        </ul>
-                    ) : (
-                        <ul className="flex space-x-4">
-                            <li><Link to="/login" className="hover:text-gray-300">Login</Link></li>
-                            <li><Link to="/register" className="hover:text-gray-300">Register</Link></li>
-                        </ul>
-                    )}
-                </div>
+  return (
+    <nav className="bg-gray-800 p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <Link to="/" className="text-white text-2xl font-bold">
+          TaskFlow
+        </Link>
+        <div>
+          {isAuthenticated ? (
+            <div className="flex items-center space-x-4">
+              <span className="text-white text-lg">Welcome, {user?.username || 'User'}!</span>
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+              >
+                Logout
+              </button>
             </div>
-        </nav>
-    );
+          ) : (
+            <div className="space-x-4">
+              <Link to="/login" className="text-white hover:text-gray-300">
+                Login
+              </Link>
+              <Link to="/register" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Register
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
 };
 
 export default Navbar;

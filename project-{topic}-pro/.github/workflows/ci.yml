@@ -5,122 +5,127 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  backend-test-and-build:
+  backend-build-test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15-alpine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Backend Dependencies
+        run: npm install
+        working-directory: ./backend
+
+      - name: Build Backend (TypeScript compilation)
+        run: npm run build
+        working-directory: ./backend
+
+      - name: Set up Docker Compose for Backend Tests
+        run: |
+          docker-compose -f docker-compose.test.yml up -d db redis
+        working-directory: ./backend
+
+      - name: Wait for DB and Redis to be healthy
+        run: |
+          ./wait-for-it.sh db:5432 --timeout=60 --strict -- echo "PostgreSQL is up"
+          ./wait-for-it.sh redis:6379 --timeout=60 --strict -- echo "Redis is up"
+        working-directory: ./backend
         env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: taskdb_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+          WAIT_FOR_IT_FILE: ./wait-for-it.sh # Assuming wait-for-it.sh is present
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Run Backend Tests
+        run: npm test -- --coverage
+        working-directory: ./backend
+        env:
+          # Use test environment variables
+          NODE_ENV: test
+          DB_HOST: db
+          DB_PORT: 5432
+          DB_USERNAME: admin
+          DB_PASSWORD: admin_password
+          DB_DATABASE: task_manager_test_db
+          JWT_SECRET: test_jwt_secret
+          REDIS_HOST: redis
+          REDIS_PORT: 6379
+          LOG_LEVEL: error # Suppress logs during tests
 
-    - name: Install backend dependencies
-      working-directory: ./backend
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage-report
+          path: backend/coverage
 
-    - name: Load environment variables for tests
-      run: |
-        echo "DATABASE_URL=postgresql://user:password@localhost:5432/taskdb_test" >> $GITHUB_ENV
-        echo "ASYNC_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/taskdb_test" >> $GITHUB_ENV
-        echo "SECRET_KEY=test-secret-key" >> $GITHUB_ENV
-        echo "BACKEND_CORS_ORIGINS=['http://localhost:3000']" >> $GITHUB_ENV
-        echo "REDIS_URL=redis://localhost:6379/0" >> $GITHUB_ENV
+      - name: Stop Docker Compose for Backend Tests
+        run: docker-compose -f docker-compose.test.yml down
+        working-directory: ./backend
+        if: always() # Ensure this runs even if tests fail
 
-    - name: Wait for PostgreSQL and Redis to be ready
-      run: |
-        sudo apt-get update && sudo apt-get install -y postgresql-client
-        for i in `seq 1 10`; do pg_isready -h localhost -p 5432 -U user -d taskdb_test && break || sleep 5; done
-        for i in `seq 1 10`; do redis-cli -h localhost -p 6379 ping && break || sleep 5; done
-
-    - name: Run backend tests
-      working-directory: ./backend
-      run: |
-        pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
-
-    - name: Upload coverage report
-      uses: codecov/codecov-action@v3
-      with:
-        files: ./backend/coverage.xml
-        fail_ci_if_error: true
-
-    - name: Build and push backend Docker image (on main/develop branch push)
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-      uses: docker/build-push-action@v4
-      with:
-        context: ./backend
-        push: false # Set to true to push to Docker Hub/GHCR
-        tags: your-dockerhub-username/task-manager-backend:${{ github.sha }}
-        secrets: |
-          REDIS_URL=${{ env.REDIS_URL }}
-          DATABASE_URL=${{ env.DATABASE_URL }}
-          ASYNC_DATABASE_URL=${{ env.ASYNC_DATABASE_URL }}
-          SECRET_KEY=${{ env.SECRET_KEY }}
-          BACKEND_CORS_ORIGINS=${{ env.BACKEND_CORS_ORIGINS }}
-
-  frontend-test-and-build:
+  frontend-build-lint:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Install frontend dependencies
-      working-directory: ./frontend
-      run: npm install
+      - name: Install Frontend Dependencies
+        run: npm install
+        working-directory: ./frontend
 
-    - name: Run frontend tests
-      working-directory: ./frontend
-      run: npm test -- --coverage --watchAll=false # `--watchAll=false` for CI
+      - name: Lint Frontend
+        run: npm run lint
+        working-directory: ./frontend
 
-    - name: Build frontend for production (on main/develop branch push)
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-      working-directory: ./frontend
-      env:
-        # Pass environment variables needed during build
-        REACT_APP_API_BASE_URL: http://localhost:8000/api/v1 # Placeholder for build env
-      run: npm run build
+      - name: Build Frontend
+        run: npm run build
+        working-directory: ./frontend
+
+  # Placeholder for Deployment Stage (e.g., to Docker Hub, AWS ECR, etc.)
+  # This stage would typically run after successful build and test stages.
+  # deployment:
+  #   needs: [backend-build-test, frontend-build-lint]
+  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+
+  #     - name: Docker Login (e.g., to Docker Hub)
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
+
+  #     - name: Build and Push Backend Docker image
+  #       run: |
+  #         docker build ./backend -t yourusername/task-manager-backend:latest
+  #         docker push yourusername/task-manager-backend:latest
+  #     - name: Build and Push Frontend Docker image
+  #       run: |
+  #         docker build ./frontend -t yourusername/task-manager-frontend:latest
+  #         docker push yourusername/task-manager-frontend:latest
+
+  #     - name: Deploy to Server (e.g., SSH into server and run docker-compose pull/up)
+  #       uses: appleboy/ssh-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         script: |
+  #           cd /path/to/your/app
+  #           docker-compose pull
+  #           docker-compose up -d --build
+  #           docker system prune -f # Clean up old images
 ```
-
----
-
-### 4. Testing & Quality
-
-**Backend Tests (Pytest)**:

@@ -1,32 +1,28 @@
 ```typescript
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
-import { Dashboard } from "./Dashboard";
-import { DataSource } from "./DataSource";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BaseEntity, OneToMany } from 'typeorm';
+import { Task } from './Task';
 
-@Entity("users")
-export class User {
-    @PrimaryGeneratedColumn("uuid")
-    id!: string;
+@Entity()
+export class User extends BaseEntity {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-    @Column({ unique: true })
-    email!: string;
+    @Column({ unique: true, length: 50 })
+    username: string;
+
+    @Column({ unique: true, length: 100 })
+    email: string;
 
     @Column()
-    password!: string; // Hashed password
+    password: string;
 
-    @Column({ default: "user" })
-    role!: string; // e.g., 'user', 'admin'
+    @OneToMany(() => Task, task => task.user)
+    tasks: Task[];
 
-    @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
-    createdAt!: Date;
+    @CreateDateColumn()
+    createdAt: Date;
 
-    @UpdateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP" })
-    updatedAt!: Date;
-
-    @OneToMany(() => Dashboard, dashboard => dashboard.user)
-    dashboards!: Dashboard[];
-
-    @OneToMany(() => DataSource, dataSource => dataSource.user)
-    dataSources!: DataSource[];
+    @UpdateDateColumn()
+    updatedAt: Date;
 }
 ```

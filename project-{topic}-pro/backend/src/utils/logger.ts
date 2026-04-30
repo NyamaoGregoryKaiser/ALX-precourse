@@ -1,41 +1,45 @@
+```typescript
 import winston from 'winston';
 import { config } from '../config';
 
-const transports = [
-  new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.timestamp(),
-      winston.format.printf(({ timestamp, level, message, ...meta }) => {
-        return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
-      })
-    ),
-  }),
-];
+const { combine, timestamp, printf, colorize, align } = winston.format;
 
-// In production, add file transports, external log services etc.
-if (config.env === 'production') {
-  transports.push(
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  );
-}
-
-const logger = winston.createLogger({
-  level: config.env === 'development' ? 'debug' : 'info',
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.errors({ stack: true }),
-    winston.format.splat(),
-    winston.format.json()
-  ),
-  transports,
-  exceptionHandlers: [
-    new winston.transports.File({ filename: 'logs/exceptions.log' }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ filename: 'logs/rejections.log' }),
-  ],
+const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
+    let logMessage = `${timestamp} [${level}] ${message}`;
+    if (Object.keys(metadata).length) {
+        logMessage += ` ${JSON.stringify(metadata)}`;
+    }
+    return logMessage;
 });
 
-export default logger;
+export const logger = winston.createLogger({
+    level: config.logLevel, // debug, info, warn, error
+    format: combine(
+        colorize({ all: true }),
+        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        align(),
+        logFormat
+    ),
+    transports: [
+        new winston.transports.Console(),
+        // Uncomment and configure for file logging in production
+        // new winston.transports.File({
+        //     filename: 'logs/error.log',
+        //     level: 'error',
+        //     format: combine(timestamp(), logFormat)
+        // }),
+        // new winston.transports.File({
+        //     filename: 'logs/combined.log',
+        //     format: combine(timestamp(), logFormat)
+        // })
+    ],
+    exceptionHandlers: [
+        new winston.transports.Console(),
+        // new winston.transports.File({ filename: 'logs/exceptions.log' })
+    ],
+    rejectionHandlers: [
+        new winston.transports.Console(),
+        // new winston.transports.File({ filename: 'logs/rejections.log' })
+    ]
+});
+```

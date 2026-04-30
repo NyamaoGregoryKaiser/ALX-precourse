@@ -1,0 +1,465 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: Task Management API
+  version: 1.0.0
+  description: Enterprise-grade API for managing tasks with authentication, authorization, and advanced features.
+  contact:
+    name: ALX Software Engineering
+    url: https://www.alxafrica.com
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Development Server
+tags:
+  - name: Auth
+    description: User authentication and registration
+  - name: Users
+    description: User profile management
+  - name: Tasks
+    description: Task management operations
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: 'User ID', example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef' }
+        username: { type: string, description: 'User''s username', example: 'johndoe' }
+        email: { type: string, format: email, description: 'User''s email', example: 'john.doe@example.com' }
+        createdAt: { type: string, format: 'date-time', description: 'Creation timestamp', example: '2023-01-01T12:00:00Z' }
+        updatedAt: { type: string, format: 'date-time', description: 'Last update timestamp', example: '2023-01-01T12:00:00Z' }
+      required: ['id', 'username', 'email']
+    TaskInput:
+      type: object
+      properties:
+        title: { type: string, description: 'Title of the task', example: 'Buy groceries' }
+        description: { type: string, nullable: true, description: 'Detailed description of the task', example: 'Milk, eggs, bread, fruits' }
+        status: { type: string, enum: ['pending', 'in-progress', 'completed'], default: 'pending', description: 'Current status of the task', example: 'pending' }
+        dueDate: { type: string, format: 'date-time', nullable: true, description: 'Optional due date for the task', example: '2024-12-31T23:59:59Z' }
+      required: ['title']
+    TaskUpdateInput:
+      type: object
+      properties:
+        title: { type: string, description: 'Title of the task', example: 'Buy groceries' }
+        description: { type: string, nullable: true, description: 'Detailed description of the task', example: 'Milk, eggs, bread, fruits' }
+        status: { type: string, enum: ['pending', 'in-progress', 'completed'], description: 'Current status of the task', example: 'in-progress' }
+        dueDate: { type: string, format: 'date-time', nullable: true, description: 'Optional due date for the task', example: '2024-12-31T23:59:59Z' }
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: 'Task ID', example: 'f1g2h3i4-j5k6-7890-1234-567890mnopqr' }
+        title: { type: string, description: 'Task title', example: 'Buy groceries' }
+        description: { type: string, nullable: true, description: 'Task description', example: 'Milk, eggs, bread, fruits' }
+        status: { type: string, enum: ['pending', 'in-progress', 'completed'], description: 'Task status', example: 'pending' }
+        dueDate: { type: string, format: 'date-time', nullable: true, description: 'Task due date', example: '2024-12-31T23:59:59Z' }
+        userId: { type: string, format: uuid, description: 'ID of the user who owns the task', example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef' }
+        createdAt: { type: string, format: 'date-time', description: 'Creation timestamp', example: '2023-01-01T12:00:00Z' }
+        updatedAt: { type: string, format: 'date-time', description: 'Last update timestamp', example: '2023-01-01T12:00:00Z' }
+      required: ['id', 'title', 'status', 'userId']
+    Responses:
+      BadRequest:
+        description: 'Bad Request / Validation Error'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'Validation failed.' }
+                errors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field: { type: string, example: 'email' }
+                      message: { type: string, example: 'Invalid email format.' }
+      Unauthorized:
+        description: 'Unauthorized - Authentication required or token invalid/expired'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'Unauthorized.' }
+      Forbidden:
+        description: 'Forbidden - User does not have permission'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'Forbidden.' }
+      NotFound:
+        description: 'Not Found - Resource not found'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'Resource not found.' }
+      TooManyRequests:
+        description: 'Too Many Requests - Rate limit exceeded'
+        headers:
+          Retry-After:
+            schema: { type: integer }
+            description: 'Number of seconds to wait before retrying'
+          X-RateLimit-Limit:
+            schema: { type: integer }
+            description: 'The maximum number of requests that the consumer is permitted to make per hour.'
+          X-RateLimit-Remaining:
+            schema: { type: integer }
+            description: 'The number of requests remaining in the current rate limit window.'
+          X-RateLimit-Reset:
+            schema: { type: integer }
+            description: 'The time at which the current rate limit window resets in UTC epoch seconds.'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'Too many requests, please try again later.' }
+      ServerError:
+        description: 'Internal Server Error'
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                success: { type: boolean, example: false }
+                message: { type: string, example: 'An unexpected error occurred.' }
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  description: User's chosen username
+                  example: johndoe
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                  example: john.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  description: User's password (min 6 characters)
+                  example: securePassword123
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: 'User registered successfully.' }
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      username: { type: string }
+                      email: { type: string }
+                      createdAt: { type: string, format: 'date-time' }
+                      updatedAt: { type: string, format: 'date-time' }
+                  token: { type: string, description: 'JWT authentication token' }
+        400:
+          $ref: '#/components/schemas/Responses/BadRequest'
+        429:
+          $ref: '#/components/schemas/Responses/TooManyRequests'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+  /auth/login:
+    post:
+      summary: Authenticate and log in a user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                  example: john.doe@example.com
+                password:
+                  type: string
+                  format: password
+                  description: User's password
+                  example: securePassword123
+      responses:
+        200:
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: 'Logged in successfully.' }
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      username: { type: string }
+                      email: { type: string }
+                      createdAt: { type: string, format: 'date-time' }
+                      updatedAt: { type: string, format: 'date-time' }
+                  token: { type: string, description: 'JWT authentication token' }
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        400:
+          $ref: '#/components/schemas/Responses/BadRequest'
+        429:
+          $ref: '#/components/schemas/Responses/TooManyRequests'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+  /users/me:
+    get:
+      summary: Get authenticated user's profile
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  user:
+                    $ref: '#/components/schemas/User'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        404:
+          $ref: '#/components/schemas/Responses/NotFound'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+    put:
+      summary: Update authenticated user's profile
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: New username
+                  example: jane_doe
+                email:
+                  type: string
+                  format: email
+                  description: New email address
+                  example: jane.doe@example.com
+      responses:
+        200:
+          description: User profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: 'Profile updated successfully.' }
+                  user:
+                    $ref: '#/components/schemas/User'
+        400:
+          $ref: '#/components/schemas/Responses/BadRequest'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        404:
+          $ref: '#/components/schemas/Responses/NotFound'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+  /tasks:
+    post:
+      summary: Create a new task
+      tags: [Tasks]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+      responses:
+        201:
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: 'Task created successfully.' }
+                  task:
+                    $ref: '#/components/schemas/Task'
+        400:
+          $ref: '#/components/schemas/Responses/BadRequest'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+    get:
+      summary: Get all tasks for the authenticated user
+      tags: [Tasks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, in-progress, completed]
+          description: Filter tasks by status
+      responses:
+        200:
+          description: List of user's tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+  /tasks/{id}:
+    get:
+      summary: Get a task by ID for the authenticated user
+      tags: [Tasks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: The ID of the task to retrieve
+      responses:
+        200:
+          description: Task details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  task:
+                    $ref: '#/components/schemas/Task'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        403:
+          $ref: '#/components/schemas/Responses/Forbidden'
+        404:
+          $ref: '#/components/schemas/Responses/NotFound'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+    put:
+      summary: Update a task by ID for the authenticated user
+      tags: [Tasks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: The ID of the task to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateInput'
+      responses:
+        200:
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: 'Task updated successfully.' }
+                  task:
+                    $ref: '#/components/schemas/Task'
+        400:
+          $ref: '#/components/schemas/Responses/BadRequest'
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        403:
+          $ref: '#/components/schemas/Responses/Forbidden'
+        404:
+          $ref: '#/components/schemas/Responses/NotFound'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+    delete:
+      summary: Delete a task by ID for the authenticated user
+      tags: [Tasks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: The ID of the task to delete
+      responses:
+        204:
+          description: Task deleted successfully (No Content)
+        401:
+          $ref: '#/components/schemas/Responses/Unauthorized'
+        403:
+          $ref: '#/components/schemas/Responses/Forbidden'
+        404:
+          $ref: '#/components/schemas/Responses/NotFound'
+        500:
+          $ref: '#/components/schemas/Responses/ServerError'
+```

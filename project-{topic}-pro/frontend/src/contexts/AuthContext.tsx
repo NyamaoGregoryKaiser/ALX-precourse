@@ -1,78 +1,74 @@
-```typescript
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, AuthTokens } from '../types';
-import { authService } from '../services/api';
+```tsx
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { fetchUserProfile } from '../api/auth';
+
+interface User {
+  id: string;
+  username: string;
+  email: string;
+}
 
 interface AuthContextType {
-  user: User | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (tokens: AuthTokens, userData: User) => void;
+  user: User | null;
+  token: string | null;
+  loading: boolean;
+  login: (token: string, userData: User) => void;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const storedAccessToken = localStorage.getItem('accessToken');
-      const storedUser = localStorage.getItem('user');
-
-      if (storedAccessToken && storedUser) {
-        try {
-          // In a real app, you might want to verify the access token on the backend
-          // or at least decode it to check expiration and get user data.
-          // For simplicity, we assume stored token and user are valid here.
-          setUser(JSON.parse(storedUser));
-          setIsAuthenticated(true);
-        } catch (error) {
-          console.error("Failed to parse stored user data:", error);
-          // Clear invalid data
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          localStorage.removeItem('user');
-        }
-      }
-      setIsLoading(false);
-    };
-
-    loadUser();
-  }, []);
-
-  const login = (tokens: AuthTokens, userData: User) => {
-    localStorage.setItem('accessToken', tokens.accessToken);
-    localStorage.setItem('refreshToken', tokens.refreshToken);
-    localStorage.setItem('user', JSON.stringify(userData));
+  const login = useCallback((newToken: string, userData: User) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
     setUser(userData);
     setIsAuthenticated(true);
-  };
+  }, []);
 
-  const logout = async () => {
-    try {
-      await authService.logout(); // Inform backend if it has logout logic
-    } catch (error) {
-      console.error("Logout failed on backend:", error);
-    } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-      setUser(null);
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (token) {
+      try {
+        setLoading(true);
+        const response = await fetchUserProfile(token);
+        if (response.success && response.user) {
+          setUser(response.user as User);
+          setIsAuthenticated(true);
+        } else {
+          logout(); // Token might be invalid or expired
+        }
+      } catch (error) {
+        console.error('Failed to refresh user profile:', error);
+        logout();
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setLoading(false);
       setIsAuthenticated(false);
-      window.location.href = '/login'; // Redirect to login
     }
-  };
+  }, [token, logout]);
+
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, token, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
