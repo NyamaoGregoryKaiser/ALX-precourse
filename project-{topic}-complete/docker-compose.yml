@@ -1,83 +1,43 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
-    container_name: mlu-sys-postgres
-    restart: always
+    container_name: scraper_db
     environment:
-      POSTGRES_USER: ${DATABASE_USERNAME}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-      POSTGRES_DB: ${DATABASE_NAME}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_DB: scraper_db
+      POSTGRES_USER: scraper_user
+      POSTGRES_PASSWORD: scraper_password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME} -d ${DATABASE_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U scraper_user -d scraper_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: mlu-sys-redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # Backend Service
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    container_name: mlu-sys-backend
-    restart: always
-    env_file:
-      - ./backend/.env.development # Use .env.development or .env.production as needed
-    environment:
-      DATABASE_HOST: db # Use service name instead of localhost
-      REDIS_HOST: redis # Use service name instead of localhost
+    container_name: web_scraper_app
     ports:
-      - "3000:3000"
-    volumes:
-      - ./backend/uploads:/app/uploads # Persist uploaded files
-      - ./backend/logs:/app/logs     # Persist logs
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/scraper_db
+      SPRING_DATASOURCE_USERNAME: scraper_user
+      SPRING_DATASOURCE_PASSWORD: scraper_password
+      # IMPORTANT: Change this for production!
+      APP_JWT_SECRET: yourSuperSecretJwtKeyForALXProjectThatIsLongEnoughAndSecurePleaseChangeThisInProd!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: ["sh", "-c", "npm run migration:run && npm run seed:run && npm run start:prod"]
-
-  # Frontend Service
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: mlu-sys-frontend
-    restart: always
-    env_file:
-      - ./frontend/.env.example # Or .env.production
-    ports:
-      - "3001:80" # Map to port 80 inside the container
-    depends_on:
-      - backend
+    # Optional: If you need to map logs out of the container
+    # volumes:
+    #   - ./logs:/app/logs
 
 volumes:
   postgres_data:
-  redis_data:
 ```
-
-### `backend/Dockerfile`
-
-```dockerfile

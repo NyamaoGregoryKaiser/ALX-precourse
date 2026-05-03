@@ -1,78 +1,30 @@
-```dockerfile
-# Stage 1: Build the C++ application
-FROM mcr.microsoft.com/vcpkg/github/actions/debian-stable AS builder
+# Use a slimmed-down OpenJDK image for Java 17
+FROM openjdk:17-jdk-slim AS build
 
-# Set VCPKG_ROOT for consistency
-ENV VCPKG_ROOT=/vcpkg
-ENV PATH="${VCPKG_ROOT}:${PATH}"
-
-# Install essential build tools
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    libpq-dev \
-    libcurl4-openssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clone vcpkg if not already present (might be in actions runner, but safer)
-# This part might be skipped if using a vcpkg pre-installed image or multi-stage from specific vcpkg base
-# If you run into issues, consider a direct vcpkg install:
-# RUN git clone https://github.com/microsoft/vcpkg.git /vcpkg && \
-#     /vcpkg/bootstrap-vcpkg.sh -disableMetrics && \
-#     /vcpkg/vcpkg integrate install
-
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy vcpkg.json and CMakeLists.txt first to leverage Docker cache
-COPY vcpkg.json CMakeLists.txt ./
-# Copy C++ source code
-COPY src src/
-COPY tests tests/
-COPY config config/
+# Copy the Maven project files
+COPY pom.xml .
+COPY src ./src
 
-# Install dependencies specified in vcpkg.json
-# Ensure correct triplet is used, e.g., x64-linux
-# vcpkg.json should be installed via --recurse if there are transitive deps
-# The vcpkg base image typically has vcpkg itself pre-built.
-RUN $VCPKG_ROOT/vcpkg install --triplet=x64-linux --recurse
+# Build the application using Maven
+# The --no-transfer-progress flag hides the download progress bars
+# The -Dmaven.test.skip=true flag skips tests during the build stage for faster image creation
+RUN --mount=type=cache,target=/root/.m2 ./mvnw clean package -Dmaven.test.skip=true
 
-# Configure and build the project
-RUN cmake -B build -S . \
-    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-    -DVCPKG_TARGET_TRIPLET=x64-linux \
-    -DCROW_BUILD_EXAMPLES=OFF \
-    -DCROW_BUILD_TESTS=OFF \
-    -DCROW_AMALGAMATION=OFF \
-    -DCROW_MSVC_USE_LIBCPP=OFF
+# --- Second Stage: Create a smaller runtime image ---
+FROM openjdk:17-jre-slim
 
-RUN cmake --build build --config Release
-
-# --- Stage 2: Create a minimal runtime image ---
-FROM debian:stable-slim
-
-# Install necessary runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    libcurl4 \
-    && rm -rf /var/lib/apt/lists/*
-
+# Set the working directory
 WORKDIR /app
 
-# Copy the built backend executable from the builder stage
-COPY --from=builder /app/build/src/backend/ecommerce_backend ./ecommerce_backend
+# Copy the built JAR file from the build stage
+COPY --from=build /app/target/*.jar app.jar
 
-# Copy environment config (production settings would be injected)
-COPY config/.env.example ./config/.env
-
-# Make the startup script executable
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# Expose the application port
+# Expose the port the Spring Boot application runs on
 EXPOSE 8080
 
-# Run the entrypoint script
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Define the command to run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```

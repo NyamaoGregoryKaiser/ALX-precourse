@@ -1,227 +1,460 @@
-# ML Utilities System
+# ALX Web Scraping Tools System
 
-## Project Overview
+This project is an enterprise-grade, full-scale web scraping tools system built with Java, Spring Boot, and PostgreSQL. It's designed to be production-ready, featuring robust architecture, comprehensive testing, secure authentication, caching, rate limiting, and extensive documentation.
 
-The ML Utilities System is a comprehensive, production-ready backend application built with Java Spring Boot, designed to provide core machine learning functionalities such as data management, preprocessing, and model evaluation. It emphasizes robust engineering practices, including strong authentication, error handling, performance optimization, extensive testing, and thorough documentation.
+## Table of Contents
 
-**Key Features:**
-*   **Dataset Management:** Upload, list, retrieve, download, and delete CSV datasets.
-*   **Data Preprocessing:** Apply various transformations like Min-Max Scaling, Standard Scaling, One-Hot Encoding, Mean Imputation, and Median Imputation.
-*   **Model Evaluation:** Calculate common classification (Accuracy, Precision, Recall, F1-Score) and regression (MSE, RMSE, MAE, R-squared) metrics.
-*   **Authentication & Authorization:** Secure JWT-based authentication with role-based access control (`ROLE_USER`, `ROLE_ADMIN`).
-*   **Persistence:** PostgreSQL database managed with Flyway migrations.
-*   **Performance:** Caching (Caffeine) for frequently accessed data and API rate limiting.
-*   **Observability:** Structured logging with Logback.
-*   **Containerization:** Docker support for easy deployment.
-*   **Quality Assurance:** High test coverage with unit, integration, and API tests.
-*   **Documentation:** Comprehensive setup, API, architecture, and deployment guides.
+1.  [Features](#features)
+2.  [Core Technologies](#core-technologies)
+3.  [Project Structure](#project-structure)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup Instructions](#setup-instructions)
+    *   [Local Development](#local-development)
+    *   [Docker with Docker Compose](#docker-with-docker-compose)
+6.  [API Documentation](#api-documentation)
+7.  [Authentication & Authorization](#authentication--authorization)
+8.  [Web Scraping Logic](#web-scraping-logic)
+9.  [Testing](#testing)
+    *   [Running Tests](#running-tests)
+    *   [Code Coverage](#code-coverage)
+    *   [Performance Testing (Conceptual)](#performance-testing-conceptual)
+10. [Architecture Overview](#architecture-overview)
+11. [Deployment Guide](#deployment-guide)
+12. [CI/CD Pipeline](#cicd-pipeline)
+13. [Logging and Monitoring](#logging-and-monitoring)
+14. [Caching and Rate Limiting](#caching-and-rate-limiting)
+15. [Error Handling](#error-handling)
+16. [Future Enhancements](#future-enhancements)
+17. [License](#license)
 
-## Technologies Used
+---
 
-*   **Backend:** Java 17, Spring Boot 3.2.x
-    *   Spring Web, Spring Data JPA, Spring Security
-    *   JWT (jjwt)
-    *   Lombok
-    *   Flyway (Database Migrations)
-    *   Caffeine (Caching)
-    *   Springdoc-openapi (Swagger UI for API Documentation)
-    *   Apache Commons CSV (CSV parsing/writing)
-    *   Guava (for Rate Limiter)
+## 1. Features
+
+*   **User Management:** Register, login, and manage user accounts with role-based access control (User, Admin).
+*   **Scraping Job Management:**
+    *   Create, retrieve, update, and delete scraping jobs.
+    *   Define target URLs and multiple CSS selectors for data extraction.
+    *   Configure multi-page scraping with a "next page" selector and maximum page limits.
+    *   Start and stop scraping jobs asynchronously.
+*   **Data Storage:** Persist scraped structured data in a PostgreSQL database.
+*   **API Endpoints:** Full CRUD operations exposed via RESTful APIs.
+*   **Authentication & Authorization:** Secure access using JWT (JSON Web Tokens) and Spring Security.
+*   **Caching:** Improve performance with a Caffeine-based caching layer for fetched HTML documents and job data.
+*   **Rate Limiting:** Protect API endpoints from abuse with an IP-based rate limiting mechanism.
+*   **Error Handling:** Centralized exception handling for consistent API responses.
+*   **Logging:** Comprehensive logging with Logback, configured for console and file output.
+*   **Monitoring:** Basic monitoring capabilities via Spring Boot Actuator endpoints.
+*   **Database Migrations:** Manage schema evolution with Flyway.
+*   **Containerization:** Dockerize the application for easy deployment.
+*   **CI/CD:** Basic GitHub Actions workflow for automated build, test, and Docker image creation.
+*   **Testing:** Extensive unit, integration, and API tests with high code coverage.
+
+## 2. Core Technologies
+
+*   **Backend:** Java 17+, Spring Boot 3+
 *   **Database:** PostgreSQL
+*   **ORM:** Spring Data JPA, Hibernate
+*   **Web Scraping:** [Jsoup](https://jsoup.org/)
+*   **Security:** Spring Security, JWT
+*   **Database Migrations:** [Flyway](https://flywaydb.org/)
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, [Testcontainers](https://www.testcontainers.org/)
+*   **API Documentation:** [Springdoc-openapi (Swagger UI)](https://springdoc.org/)
+*   **Caching:** [Caffeine](https://github.com/ben-manes/caffeine)
 *   **Containerization:** Docker, Docker Compose
-*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo (Code Coverage)
-*   **Frontend (Minimal):** HTML, CSS, JavaScript (for API interaction demonstration)
-*   **CI/CD:** GitHub Actions (example configuration)
+*   **Build Tool:** Maven
 
-## Getting Started
+## 3. Project Structure
 
-Follow these instructions to set up and run the ML Utilities System on your local machine.
-
-### Prerequisites
-
-*   Java 17 Development Kit (JDK)
-*   Maven 3.x
-*   Docker and Docker Compose (recommended for easy setup)
-*   Git
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/ml-utilities-system.git
-cd ml-utilities-system
+```
+.
+├── .github/                      # GitHub Actions CI/CD workflows
+│   └── workflows/
+│       └── maven.yml             # CI/CD pipeline for build and test
+├── .dockerignore                 # Files to ignore when building Docker image
+├── .gitignore                    # Standard Git ignore file
+├── Dockerfile                    # Docker build instructions for the application
+├── docker-compose.yml            # Docker Compose configuration for app and database
+├── pom.xml                       # Maven Project Object Model (dependencies, build config)
+├── README.md                     # This documentation file
+└── src/
+    ├── main/
+    │   ├── java/com/alx/scraper/   # Main application source code
+    │   │   ├── ScraperApplication.java # Main Spring Boot entry point
+    │   │   ├── config/             # Spring configurations (Security, OpenAPI, Cache)
+    │   │   ├── controller/         # REST API endpoints
+    │   │   ├── dto/                # Data Transfer Objects for API requests/responses
+    │   │   ├── entity/             # JPA Entities (database models)
+    │   │   ├── exception/          # Custom exceptions and global error handler
+    │   │   ├── repository/         # Spring Data JPA repositories for database access
+    │   │   ├── security/           # JWT and Spring Security components
+    │   │   ├── service/            # Business logic and core scraping services
+    │   │   └── util/               # Utility classes (Jsoup, Rate Limiting)
+    │   └── resources/
+    │       ├── application.properties    # Default application properties
+    │       ├── application-dev.properties # Development-specific properties
+    │       ├── db/migration/             # Flyway migration scripts
+    │       │   ├── V1__initial_schema.sql  # Initial database schema
+    │       │   └── V2__add_seed_data.sql   # Seed data (default users, roles)
+    │       └── logback-spring.xml        # Logback configuration for logging
+    └── test/
+        ├── java/com/alx/scraper/   # Test source code
+        │   ├── controller/         # Unit tests for controllers
+        │   ├── integration/        # Integration tests (e.g., API, database, full flow)
+        │   ├── repository/         # Unit tests for repositories
+        │   ├── service/            # Unit tests for services
+        │   └── util/               # Unit tests for utility classes
+        └── resources/
+            └── application-test.properties # Test-specific application properties
 ```
 
-### 2. Backend Setup (Spring Boot)
+## 4. Prerequisites
 
-#### 2.1. Configure `application.properties`
+Before you begin, ensure you have the following installed:
 
-Navigate to `backend/src/main/resources/application.properties`.
-Ensure the database and JWT secret key configurations are set.
-**Note:** For local development, `localhost:5432` is assumed for PostgreSQL. If using Docker Compose, the `db` service name will resolve correctly within Docker network.
+*   **Java Development Kit (JDK) 17 or higher**
+*   **Maven 3.6.3 or higher**
+*   **Docker Desktop** (includes Docker Engine and Docker Compose) - Required for Docker-based setup.
+*   **PostgreSQL** (Optional, if running locally without Docker Compose)
 
-```properties
-# Example snippet for application.properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/ml_utilities_db
-spring.datasource.username=mluser
-spring.datasource.password=mlpassword
+## 5. Setup Instructions
 
-application.security.jwt.secret-key=YOUR_SUPER_SECRET_JWT_KEY_HERE_MIN_32_BYTES_BASE64_ENCODED # IMPORTANT: Change this in production!
-application.dataset.upload-dir=./data/datasets # Directory for storing uploaded CSV files
-application.dataset.temp-dir=./data/temp # Directory for temporary processed files
-```
-*   **`application.security.jwt.secret-key`**: **CRITICAL!** Replace the placeholder with a long, random, base64-encoded string (e.g., generated by `java.util.Base64.getEncoder().encodeToString(Keys.secretKeyFor(SignatureAlgorithm.HS256).getEncoded())`). This must be at least 32 bytes long for HS256.
-*   **`application.dataset.upload-dir`**: This is where your uploaded CSVs will be stored. It will be created if it doesn't exist.
+You can run the application either locally (requires local PostgreSQL) or using Docker Compose (recommended for ease of setup).
 
-#### 2.2. Build the Backend
+### Local Development
 
-Navigate to the `backend` directory and build the project using Maven:
-
-```bash
-cd backend
-mvn clean install -DskipTests # Skip tests during initial build to speed it up
-```
-
-### 3. Database Setup (PostgreSQL with Docker Compose)
-
-The easiest way to get the database running is using Docker Compose.
-
-1.  Navigate to the `docker` directory:
+1.  **Clone the repository:**
     ```bash
-    cd ../docker
+    git clone https://github.com/alx/web-scraper-system.git # Replace with actual repo URL
+    cd web-scraper-system
     ```
-2.  Start the PostgreSQL database:
+
+2.  **Set up PostgreSQL Database:**
+    *   Ensure a PostgreSQL server is running locally (e.g., on port `5432`).
+    *   Create a database named `scraper_db`.
+    *   Create a user `scraper_user` with password `scraper_password` and grant privileges to `scraper_db`.
+    *   Alternatively, you can modify `src/main/resources/application.properties` with your PostgreSQL credentials.
+
+3.  **Run Flyway Migrations (Manual - if not relying on Spring Boot auto-run):**
+    When Spring Boot starts, Flyway will automatically run the migrations defined in `src/main/resources/db/migration/`.
+
+4.  **Build the application:**
     ```bash
-    docker-compose up -d db
+    mvn clean install -DskipTests
     ```
-    This will start a PostgreSQL container. Flyway migrations in the Spring Boot application will automatically apply `V1__initial_schema.sql` and `V2__seed_data.sql` when the Spring Boot app starts.
 
-### 4. Run the Application
-
-#### 4.1. Run Backend with Docker Compose (Recommended)
-
-After building the backend JAR (`mvn clean install` from `backend` directory) and starting the `db` service:
-
-1.  Navigate to the `docker` directory:
-    ```bash
-    cd docker
-    ```
-2.  Start both the database and the application:
-    ```bash
-    docker-compose up --build -d
-    ```
-    The `--build` flag ensures your application image is rebuilt if changes occurred. The `-d` flag runs containers in detached mode.
-
-    The application will be accessible at `http://localhost:8080`.
-
-#### 4.2. Run Backend Locally (Alternative)
-
-If you prefer to run the Spring Boot application directly on your machine:
-
-1.  Ensure a PostgreSQL database is running (either via `docker-compose up -d db` or a local installation) and accessible on `localhost:5432` with the configured credentials.
-2.  Navigate to the `backend` directory.
-3.  Run the Spring Boot application:
+5.  **Run the application:**
     ```bash
     mvn spring-boot:run
     ```
-    or, if you prefer to run the JAR:
+    The application will start on `http://localhost:8080`.
+
+### Docker with Docker Compose (Recommended)
+
+This method provides a fully containerized environment including the PostgreSQL database.
+
+1.  **Clone the repository:**
     ```bash
-    java -jar target/ml_utilities_system-0.0.1-SNAPSHOT.jar
+    git clone https://github.com/alx/web-scraper-system.git # Replace with actual repo URL
+    cd web-scraper-system
     ```
-    The application will be accessible at `http://localhost:8080`.
 
-### 5. Frontend Usage (Minimal)
+2.  **Build and run the containers:**
+    ```bash
+    docker-compose up --build
+    ```
+    This command will:
+    *   Build the Docker image for the Spring Boot application.
+    *   Start a PostgreSQL container (`db`).
+    *   Start the Spring Boot application container (`app`).
+    *   Flyway migrations will automatically run on the `app` container startup.
 
-The `frontend/index.html` file provides a basic user interface to interact with the backend APIs.
+3.  **Verify services:**
+    *   The PostgreSQL database will be accessible on `localhost:5432`.
+    *   The Spring Boot application will be accessible on `http://localhost:8080`.
 
-1.  Open `frontend/index.html` in your web browser. You can typically do this by right-clicking the file and selecting "Open with Browser" or by navigating to `file:///path/to/ml-utilities-system/frontend/index.html`.
-2.  The JavaScript (`script.js`) will make API calls to `http://localhost:8080`. Ensure your browser allows CORS requests (modern browsers in `file://` context might restrict this, consider running a simple local web server like `python -m http.server 8000` from the `frontend` directory).
+4.  **Stop and clean up (optional):**
+    ```bash
+    docker-compose down
+    # To remove volumes (database data), add -v
+    # docker-compose down -v
+    ```
 
-### 6. Accessing API Documentation (Swagger UI)
+## 6. API Documentation
 
-Once the backend is running, you can access the interactive API documentation at:
-`http://localhost:8080/swagger-ui.html`
+The API documentation is generated using Springdoc-openapi and is accessible via Swagger UI.
 
-Here, you can:
-1.  **Authenticate:** Use the "Authorize" button and provide a JWT token obtained from the `/api/auth/login` endpoint.
-    *   **Default Users:**
-        *   `admin` / `adminpass` (ROLE_ADMIN)
-        *   `user` / `userpass` (ROLE_USER)
-2.  Explore and test all API endpoints directly.
+*   Once the application is running (either locally or via Docker), open your browser and navigate to:
+    **`http://localhost:8080/swagger-ui.html`**
 
-## Default Credentials
+You can use the Swagger UI to explore all available API endpoints, their request/response schemas, and even test them directly (after authenticating to get a JWT token).
+
+## 7. Authentication & Authorization
+
+The system uses JWT (JSON Web Tokens) for authentication and Spring Security for authorization.
+
+**Default Users (created by `V2__add_seed_data.sql`):**
 
 *   **Admin User:**
-    *   Username: `admin`
-    *   Password: `adminpass`
+    *   **Username:** `admin`
+    *   **Password:** `adminpass`
+    *   **Roles:** `ROLE_USER`, `ROLE_ADMIN`
 *   **Regular User:**
-    *   Username: `user`
-    *   Password: `userpass`
+    *   **Username:** `user`
+    *   **Password:** `userpass`
+    *   **Roles:** `ROLE_USER`
 
-**NOTE:** These credentials are for development and testing only. **Change them immediately in any production environment.**
+**Authentication Flow:**
 
-## Project Structure
+1.  **Register:** Use `POST /api/auth/register` to create a new user.
+2.  **Login:** Use `POST /api/auth/login` with username/email and password.
+3.  **Get JWT:** The login endpoint will return a JWT `accessToken`.
+4.  **Authorize Requests:** Include this token in the `Authorization` header of subsequent requests: `Authorization: Bearer <your_jwt_token>`.
 
-Refer to the "Project Structure Overview" at the beginning of this document for a detailed breakdown of directories and their contents.
+**Roles:**
+*   `ROLE_USER`: Can manage their own scraping jobs and view their scraped data.
+*   `ROLE_ADMIN`: Can do everything a `ROLE_USER` can, plus access administrative endpoints (e.g., `/api/admin/users`).
 
-## Core Business Logic & Algorithms
+## 8. Web Scraping Logic
 
-The heart of the ML utilities lies in `backend/src/main/java/com/mlutil/ml_utilities_system/util/DataProcessor.java`. This class implements fundamental ML algorithms from scratch, demonstrating core programming logic:
+The core scraping logic resides in `com.alx.scraper.service.ScraperService` and `com.alx.scraper.service.DataExtractionService`.
 
-*   **CSV Handling:** `loadCsv`, `writeCsv` using `Apache Commons CSV`.
-*   **Feature Scaling:** `minMaxScale`, `standardScale`.
-*   **Categorical Encoding:** `oneHotEncode`.
-*   **Missing Value Imputation:** `imputeMissing` with `MEAN` and `MEDIAN` strategies.
-*   **Model Evaluation:** `calculateClassificationMetrics` (Accuracy, Precision, Recall, F1-Score), `calculateRegressionMetrics` (MSE, RMSE, MAE, R-squared).
+*   **`ScraperService`**: Handles fetching HTML documents using `Jsoup`, managing proxies, and coordinating multi-page scraping. It includes a polite delay (2 seconds) between page fetches to avoid overloading target servers.
+*   **`DataExtractionService`**: Uses CSS selectors (provided in the `ScrapingJob`) to extract specific data fields from the `Jsoup.Document`.
+*   **`JsoupUtil`**: A utility class wrapping common Jsoup operations.
 
-These methods are designed to be generic, operating on `List<Map<String, String>>` representing tabular data, making them reusable across different datasets.
+**Example Scraping Job Configuration (in `ScrapingJobCreateDTO`):**
 
-## Testing Strategy
+```json
+{
+  "jobName": "Books Scraper",
+  "targetUrl": "https://books.toscrape.com/",
+  "description": "Scrapes book titles and prices from a demo e-commerce site.",
+  "selectors": {
+    "bookTitle": "article.product_pod h3 a",
+    "bookPrice": "article.product_pod .price_color",
+    "availability": "article.product_pod .availability"
+  },
+  "maxPagesToScrape": 2,
+  "nextPageSelector": "li.next a"
+}
+```
 
-The project adopts a multi-layered testing strategy to ensure high quality:
+## 9. Testing
 
-*   **Unit Tests:** Focus on individual components (services, utility classes like `DataProcessor`).
-    *   Technologies: JUnit 5, Mockito.
-    *   Coverage: Aim for 80%+ line coverage (tracked by JaCoCo).
-*   **Integration Tests:** Verify interactions between components (e.g., repository-service, controller-service).
-    *   Technologies: Spring Boot Test, Testcontainers (for real database context).
-*   **API Tests:** Validate the behavior of REST endpoints.
-    *   Technologies: MockMvc (for controller layer), Spring Boot Test (for full application context).
-*   **Performance Tests (Outline):** Instructions for setting up basic performance tests using JMeter.
+The project has a strong focus on testing to ensure quality and reliability.
+
+*   **Unit Tests:** Focus on individual components (services, utilities, repositories) in isolation using Mockito. Aim for `80%+` code coverage.
+*   **Integration Tests:** Test interactions between multiple components (e.g., API controllers with services and database). Uses Spring Boot Test and Testcontainers for a real database environment.
+*   **API Tests:** Covered by the integration tests using `MockMvc` to simulate HTTP requests.
 
 ### Running Tests
 
+To run all tests (unit, integration, and API tests) and generate a code coverage report:
+
 ```bash
-cd backend
-mvn test # Runs all unit and integration tests
+mvn clean verify
 ```
 
-To generate a JaCoCo code coverage report:
-```bash
-cd backend
-mvn clean verify # Runs tests and generates report
-```
-The report can be found at `backend/target/site/jacoco/index.html`.
+### Code Coverage
 
-## Additional Features Implemented
+After running `mvn clean verify`, a JaCoCo report will be generated. You can view it by opening:
 
-*   **Authentication/Authorization:** Implemented using Spring Security with JWT. User registration and login generate JWTs. Endpoints are secured with `@PreAuthorize` based on `ROLE_USER` and `ROLE_ADMIN`.
-*   **Logging & Monitoring:** SLF4J with Logback configured via `application.properties` for structured logging, including debug messages for application logic.
-*   **Error Handling Middleware:** Global exception handler (`GlobalExceptionHandler.java`) catches various exceptions (e.g., `ResourceNotFoundException`, `InvalidDataException`, `BadCredentialsException`, `MethodArgumentNotValidException`) and returns consistent JSON error responses.
-*   **Caching Layer:** Spring's caching abstraction with Caffeine as the backing store (`CachingConfig.java`). `@Cacheable` and `@CacheEvict` annotations are used in `DatasetService` to cache dataset metadata.
-*   **Rate Limiting:** A simple in-memory rate limiter (`RateLimiterInterceptor.java`) using Google Guava's `RateLimiter` is applied to most API endpoints to prevent abuse, with separate limits for authenticated users and anonymous IPs.
+`target/site/jacoco/index.html`
 
-## Frontend (Minimal Implementation)
+### Performance Testing (Conceptual)
 
-The `frontend` directory contains a minimal HTML/CSS/JS application to demonstrate interaction with the backend. It's not a full-fledged SPA framework but rather a direct client for the APIs.
+While performance tests are not directly implemented within the Java codebase (except for potential JMH benchmarks for critical paths), the architecture is designed with performance considerations.
 
-*   `index.html`: Main page with forms for login, dataset upload, and options for preprocessing/evaluation.
-*   `script.js`: Handles fetching, displaying data, and making API calls using `fetch()`.
-*   `style.css`: Basic styling.
+For comprehensive performance testing, you would typically use external tools:
 
-To use:
-1.  Open `index.html` in your browser.
-2.  Log in using default credentials (`admin/adminpass` or `user/userpass`). The JWT token will be stored in `localStorage`.
-3.  Use the forms to upload datasets, select transformations, and perform evaluations.
+*   **JMeter:** To simulate high load on API endpoints (login, job creation, data retrieval).
+*   **k6 / Gatling:** For more modern script-based load testing.
 
----
+Focus areas for performance testing would include:
+*   API endpoint response times under various load conditions.
+*   Database performance (query times, connection pooling).
+*   Scalability of the asynchronous scraping task execution.
+
+## 10. Architecture Overview
+
+The application follows a layered, modular architecture common in Spring Boot applications:
+
+*   **Presentation Layer (`controller`):** Exposes RESTful APIs, handles HTTP requests, and maps them to DTOs.
+*   **Service Layer (`service`):** Contains the core business logic, orchestrates interactions between repositories and external services, and manages transactions. This includes `AuthService`, `ScrapingJobService`, `ScraperService`, `DataExtractionService`, and `UserService`.
+*   **Data Access Layer (`repository`):** Handles persistence logic, interacting with the database via Spring Data JPA.
+*   **Domain Layer (`entity`):** Defines the core business objects and their relationships (e.g., `User`, `ScrapingJob`, `ScrapedData`).
+*   **Security Layer (`security`):** Implements authentication (JWT) and authorization (Spring Security).
+*   **Configuration Layer (`config`):** Centralized configuration for various aspects like security, caching, and OpenAPI.
+*   **Utility Layer (`util`):** Helper classes for common tasks (e.g., `JsoupUtil`, `RateLimitInterceptor`).
+
+**Key Architectural Decisions:**
+
+*   **Asynchronous Scraping:** Scraping jobs are executed in a separate `TaskExecutor` thread pool, preventing blocking of the main API threads.
+*   **Stateless API:** JWT-based authentication ensures the API remains stateless, improving scalability.
+*   **Database Schema Design:** Uses `JSONB` for flexible storage of `selectors` and `extractedData`, allowing dynamic scraping configurations without schema changes. Indexes are used for query optimization.
+*   **Caching:** Leverages Spring's caching abstraction with Caffeine for improved performance of frequently accessed data (e.g., `htmlDocuments`, `scrapingJob` details).
+*   **Rate Limiting:** A simple `HandlerInterceptor` provides basic API rate limiting per IP. For a highly scalable solution, this would typically involve an external store like Redis.
+
+## 11. Deployment Guide
+
+The application is containerized using Docker, making deployment straightforward.
+
+1.  **Build the Docker Image:**
+    ```bash
+    docker build -t alx-scraper-system .
+    ```
+    This creates a Docker image tagged `alx-scraper-system:latest`. You can specify a version tag instead of `latest` (e.g., `alx-scraper-system:1.0.0`).
+
+2.  **Push to Container Registry (Optional):**
+    If deploying to a cloud environment (e.g., AWS ECR, Docker Hub, Google Container Registry), you'll need to tag the image and push it:
+    ```bash
+    docker tag alx-scraper-system:latest your_registry_url/alx-scraper-system:latest
+    docker push your_registry_url/alx-scraper-system:latest
+    ```
+    (Replace `your_registry_url` with your actual registry address).
+
+3.  **Deployment Options:**
+
+    *   **Docker Compose (for single-server deployments or testing):**
+        Use the provided `docker-compose.yml` file on your target server. Ensure `docker` and `docker-compose` are installed.
+        ```bash
+        docker-compose up -d # -d for detached mode
+        ```
+
+    *   **Kubernetes (for production, highly scalable environments):**
+        You would create Kubernetes deployment and service YAMLs.
+        *   **Deployment:** Define your application container (using the image pushed to a registry), resource limits, health probes, etc.
+        *   **Service:** Expose your deployment internally or externally (e.g., LoadBalancer or NodePort).
+        *   **Persistent Volume:** For the PostgreSQL database, ensure a Persistent Volume and Persistent Volume Claim are configured.
+        *   **Secrets:** Manage sensitive information (like JWT secret, database credentials) using Kubernetes Secrets.
+        *   **Ingress:** For external access with hostname routing and TLS.
+
+        ```yaml
+        # Example Kubernetes Deployment (simplified)
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: scraper-app
+        spec:
+          replicas: 3
+          selector:
+            matchLabels:
+              app: scraper-app
+          template:
+            metadata:
+              labels:
+                app: scraper-app
+            spec:
+              containers:
+              - name: scraper-app
+                image: your_registry_url/alx-scraper-system:latest
+                ports:
+                - containerPort: 8080
+                env:
+                - name: SPRING_DATASOURCE_URL
+                  value: jdbc:postgresql://db-service:5432/scraper_db # Assuming a 'db-service' K8s service for Postgres
+                - name: SPRING_DATASOURCE_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: username
+                - name: SPRING_DATASOURCE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: password
+                - name: APP_JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: jwt-secret
+                # Add resource limits, liveness/readiness probes, etc.
+        ---
+        # Example Kubernetes Service (simplified)
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: scraper-app-service
+        spec:
+          selector:
+            app: scraper-app
+          ports:
+            - protocol: TCP
+              port: 80
+              targetPort: 8080
+          type: LoadBalancer # Or ClusterIP, NodePort
+        ```
+    *   **Cloud Platforms (AWS ECS, Google Cloud Run, Azure Container Apps):**
+        These platforms provide managed container orchestration. You would push your Docker image to their respective registries and configure the service to run from there, handling scaling, networking, and environment variables.
+
+## 12. CI/CD Pipeline
+
+A basic GitHub Actions workflow (`.github/workflows/maven.yml`) is provided for Continuous Integration and Continuous Delivery.
+
+**Workflow Steps:**
+
+1.  **Checkout Code:** Retrieves the source code from the repository.
+2.  **Setup JDK 17:** Configures the Java environment.
+3.  **Build with Maven:** Compiles the project and packages it into a JAR file.
+4.  **Run Unit and Integration Tests:** Executes all tests and fails the build if any test fails.
+5.  **Collect JaCoCo Coverage Report:** Generates a code coverage report.
+6.  **Upload JaCoCo report to Codecov (Optional):** Integrates with Codecov for coverage reporting (requires `CODECOV_TOKEN` secret).
+7.  **Build Docker Image:** Creates a Docker image of the application.
+8.  **Push Docker Image (Commented out):** Example step to push the Docker image to a container registry (requires Docker Hub credentials in GitHub Secrets).
+9.  **Deploy to Server (Commented out):** Placeholder for a deployment step (e.g., via SSH to a server, or to a Kubernetes cluster).
+
+**To enable Codecov integration:**
+1.  Sign up for Codecov.
+2.  Add a repository secret named `CODECOV_TOKEN` in your GitHub repository settings, with the token provided by Codecov.
+
+## 13. Logging and Monitoring
+
+*   **Logging:** The application uses SLF4J with Logback.
+    *   `src/main/resources/logback-spring.xml` configures logging to the console, an `application-info.log` file, and an `application-error.log` file.
+    *   Log levels can be configured in `application.properties` or `logback-spring.xml`.
+*   **Monitoring:** Spring Boot Actuator is enabled to expose operational information.
+    *   Access Actuator endpoints at `http://localhost:8080/actuator`.
+    *   Key endpoints: `health`, `info`, `metrics`, `prometheus`, `caches`, `beans`.
+    *   `prometheus` endpoint provides metrics in a format easily scraped by Prometheus, which can then be visualized with Grafana.
+
+## 14. Caching and Rate Limiting
+
+*   **Caching (`config/CacheConfig.java`, `@Cacheable`, `@CacheEvict`, `@CachePut`):**
+    *   Uses Spring's caching abstraction with [Caffeine](https://github.com/ben-manes/caffeine) as the cache provider.
+    *   **`htmlDocuments`:** Caches fetched HTML documents (`ScraperService.fetchDocument`) to avoid re-fetching the same URL within a short period.
+    *   **`extractedData`:** Caches extracted data from a document if the same document hash is provided.
+    *   **`scrapingJob`:** Caches individual scraping job details.
+    *   **`allScrapingJobsForUser`:** Caches the list of jobs for a specific user.
+    *   `@CacheEvict` annotations ensure caches are invalidated when data changes (e.g., job update/delete).
+
+*   **Rate Limiting (`util/RateLimitInterceptor.java`):**
+    *   A simple IP-based rate limiter is implemented as a Spring `HandlerInterceptor`.
+    *   It allows `5` requests per `10` seconds per IP address to all `/api/**` endpoints.
+    *   If the limit is exceeded, it returns `HTTP 429 Too Many Requests`.
+    *   **Note:** For a truly production-ready, distributed rate limiting solution, consider using a shared store like Redis.
+
+## 15. Error Handling
+
+*   **`exception/GlobalExceptionHandler.java`:** This `@ControllerAdvice` class provides centralized error handling across the application.
+    *   It catches specific exceptions (`ResourceNotFoundException`, `UnauthorizedException`, `MethodArgumentNotValidException`, `AccessDeniedException`, `AuthenticationException`) and generic `Exception`.
+    *   It returns consistent JSON error responses with status codes and detailed messages, improving API robustness and user experience.
+
+## 16. Future Enhancements
+
+*   **Advanced Scheduling:** Integrate with a more robust scheduler (e.g., Quartz) for complex job scheduling (daily, weekly, specific times).
+*   **Distributed Scraping:** For large-scale operations, integrate with a distributed queue (e.g., RabbitMQ, Kafka) and multiple worker instances.
+*   **Headless Browser Support:** Integrate with Selenium or Playwright for scraping JavaScript-rendered content.
+*   **CAPTCHA/Anti-Bot Bypass:** Implement strategies for handling CAPTCHAs, IP bans, and other anti-bot mechanisms.
+*   **Proxy Health Checks:** Implement health checks and intelligent rotation for proxies.
+*   **User Interface:** Develop a dedicated frontend (React, Angular, Vue.js) for a richer user experience.
+*   **Notifications:** Add email/webhook notifications for job completion or failure.
+*   **Data Export:** Allow exporting scraped data in various formats (CSV, JSON, Excel).
+*   **Tenant Separation:** For multi-tenant applications, ensure strict data isolation between users.
+*   **More Granular Rate Limiting:** Implement per-user or per-endpoint rate limiting using a distributed cache (e.g., Redis).
+*   **Circuit Breaker:** Implement a circuit breaker pattern (e.g., Resilience4j) for external calls (like proxy services, target URLs) to prevent cascading failures.
+
+## 17. License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ```
