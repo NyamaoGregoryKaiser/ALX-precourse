@@ -1,216 +1,235 @@
-# Project Management API
+```markdown
+# ALX-Shop: Enterprise-Grade E-commerce Automation Platform
 
-A comprehensive, production-ready API development system for managing projects, tasks, users, and teams. Built with C++ using the Crow framework, PostgreSQL, Docker, and JWT authentication.
+## Project Overview
 
-## Table of Contents
+ALX-Shop is a comprehensive, production-ready DevOps automation system for an e-commerce platform. This project demonstrates a full-stack Python application (FastAPI backend) with a robust database layer (PostgreSQL, SQLAlchemy, Alembic), essential DevOps tooling (Docker, CI/CD with GitHub Actions), extensive testing, and critical enterprise features like authentication/authorization, caching, rate limiting, logging, and error handling.
 
-1.  [Features](#features)
-2.  [Project Structure](#project-structure)
-3.  [Technologies Used](#technologies-used)
-4.  [Prerequisites](#prerequisites)
-5.  [Setup and Installation](#setup-and-installation)
-    *   [Using Docker Compose (Recommended)](#using-docker-compose-recommended)
-    *   [Manual Setup](#manual-setup)
-6.  [Database Setup](#database-setup)
-7.  [Running the Application](#running-the-application)
-8.  [Testing](#testing)
-9.  [API Documentation](#api-documentation)
-10. [Architecture Documentation](#architecture-documentation)
-11. [Deployment Guide](#deployment-guide)
-12. [CI/CD](#cicd)
-13. [Future Enhancements](#future-enhancements)
-14. [License](#license)
+The architecture emphasizes modularity, scalability, and maintainability, aligning with ALX Software Engineering principles.
 
 ## Features
 
-*   **User Management**: Register, Login, Get Profile, Update Profile.
-*   **Project Management**: Create, Read (single, all), Update, Delete projects. Associate projects with teams and owners.
-*   **Task Management**: Create, Read (single, by project), Update, Delete tasks. Assign tasks to users.
-*   **Team Management**: Create, Read, Update, Delete teams. Add/remove users from teams.
-*   **Authentication**: JWT-based authentication for secure API access.
-*   **Authorization**: Role-based access control (owner, member).
-*   **Database Layer**: PostgreSQL with schema definitions, migrations, and seed data.
-*   **Configuration**: Environment-based configuration.
-*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
-*   **Logging**: Centralized, structured logging with `spdlog`.
-*   **Error Handling**: Global error handling middleware for consistent API responses.
-*   **Testing**: Unit and Integration tests using Google Test.
-*   **Documentation**: Comprehensive README, API docs, Architecture docs, Deployment guide.
-*   **CI/CD**: GitHub Actions workflow for automated testing and building.
+### Core Application (FastAPI Backend)
+*   **Modular Design**: Structured into API routes, services, schemas, and models.
+*   **CRUD Operations**: Full Create, Read, Update, Delete for Users, Products, and Orders.
+*   **Business Logic**: Product availability checks, order total calculations, inventory management.
+*   **API Endpoints**: RESTful API with clear request/response models.
 
-## Project Structure
+### Database Layer (PostgreSQL with SQLAlchemy & Alembic)
+*   **Schema Definitions**: `User`, `Product`, `Order`, `OrderItem` models.
+*   **Migrations**: Database schema management using Alembic.
+*   **Seed Data**: Script to populate the database with initial users (admin, customer) and products.
+*   **Query Optimization**: Indexing, eager loading (`lazy="selectin"`), pagination, and server-side filtering.
 
-Refer to the project structure section above or browse the repository for a detailed file layout.
+### Configuration & Setup
+*   **Dependency Management**: `requirements.txt` for Python packages.
+*   **Environment Configuration**: `.env` file support using `pydantic-settings`.
+*   **Docker Setup**: `Dockerfile` for the application, `docker-compose.yml` for local orchestration of app, PostgreSQL, and Redis.
+*   **CI/CD Pipeline**: GitHub Actions workflow for linting, testing, building, and pushing Docker images.
+
+### Testing & Quality
+*   **Unit Tests**: `pytest` for isolated testing of service logic and security functions (aiming for high coverage).
+*   **Integration Tests**: `httpx` and `pytest-asyncio` for testing API endpoints against a live test database.
+*   **API Tests**: Covered by integration tests.
+*   **Performance Tests**: `locust` script for load testing API endpoints.
+
+### Additional Features
+*   **Authentication & Authorization**: JWT-based (access and refresh tokens), role-based access control (Admin, Customer).
+*   **Logging & Monitoring**: Structured logging with `logging` module.
+*   **Error Handling**: Custom exception middleware for consistent API error responses.
+*   **Caching Layer**: Redis integration with `fastapi-cache2` for API response caching.
+*   **Rate Limiting**: Redis-backed `fastapi-limiter` for protecting API endpoints against abuse.
 
 ## Technologies Used
 
-*   **Backend**: C++17/20
-    *   **Web Framework**: Crow
-    *   **Database Driver**: libpqxx
-    *   **JSON**: nlohmann/json
-    *   **Logging**: spdlog
-    *   **JWT**: jwt-cpp
+*   **Backend**: Python 3.11+, FastAPI
 *   **Database**: PostgreSQL
+*   **ORM**: SQLAlchemy 2.0+
+*   **Migrations**: Alembic
+*   **Data Validation**: Pydantic 2.0+
+*   **Authentication**: PyJWT, python-jose, passlib
+*   **Caching/Rate Limiting**: Redis, fastapi-cache2, fastapi-limiter
 *   **Containerization**: Docker, Docker Compose
-*   **Testing**: Google Test, Google Mock
-*   **Build System**: CMake
 *   **CI/CD**: GitHub Actions
+*   **Testing**: Pytest, httpx, pytest-asyncio, pytest-cov, Locust
+*   **Linting/Formatting**: Flake8, Black, isort, Mypy
 
-## Prerequisites
+## Getting Started
 
-*   Git
-*   Docker and Docker Compose (recommended)
-*   OR (for manual setup):
-    *   C++ Compiler (GCC 10+ or Clang 10+)
-    *   CMake 3.10+
-    *   PostgreSQL client libraries (`libpq-dev` or equivalent)
-    *   `libpqxx` development headers
-    *   `nlohmann/json` headers
-    *   `spdlog` headers
-    *   `jwt-cpp` headers
-    *   `crow` headers
-    *   `Google Test` headers and libraries
+Follow these steps to set up and run the ALX-Shop API locally.
 
-## Setup and Installation
+### Prerequisites
 
-### Using Docker Compose (Recommended)
+*   Docker and Docker Compose installed
+*   Python 3.11+ (if running outside Docker for development/testing)
 
-This is the easiest way to get the entire system up and running.
+### 1. Clone the Repository
 
-1.  **Clone the repository**:
+```bash
+git clone https://github.com/your-username/alx-shop.git
+cd alx-shop
+```
+
+### 2. Environment Configuration
+
+Create a `.env` file in the project root by copying `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+**Edit `.env`**:
+Adjust the values as needed. Key variables:
+*   `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_NAME`: For PostgreSQL.
+*   `SECRET_KEY`: **Crucial for JWT security**. Generate a strong, random key (e.g., `openssl rand -hex 32`).
+*   `BACKEND_CORS_ORIGINS`: Set to `["*"]` for development or specific frontend URLs.
+
+### 3. Run with Docker Compose (Recommended for Local Development)
+
+This will start the FastAPI application, PostgreSQL database, and Redis cache/rate limit server.
+
+```bash
+docker-compose up --build -d
+```
+
+*   `--build`: Builds the Docker image for your application (needed on first run or after Dockerfile changes).
+*   `-d`: Runs the services in detached mode (in the background).
+
+Wait a few moments for the services to initialize.
+
+### 4. Database Migrations
+
+Once the `app` and `db` containers are running:
+
+```bash
+docker-compose exec app alembic upgrade head
+```
+This applies all pending database migrations using Alembic.
+
+### 5. Seed Initial Data (Optional, but Recommended for Development)
+
+Populate the database with a default admin user, some customer users, and sample products:
+
+```bash
+docker-compose exec app python seed_data.py
+```
+
+### 6. Access the API
+
+The API should now be running at `http://localhost:8000`.
+
+*   **Swagger UI (API Docs)**: `http://localhost:8000/docs`
+*   **Redoc (API Docs)**: `http://localhost:8000/redoc`
+*   **Health Check**: `http://localhost:8000/api/v1/healthcheck`
+
+You can use the Swagger UI to interact with the API endpoints. For authenticated endpoints, use the "Authorize" button and provide a Bearer token (you can obtain one by logging in via the `/api/v1/login` endpoint using `admin@alx.com` / `adminpassword` or one of the seeded customer accounts).
+
+## Development
+
+### Running outside Docker (Optional)
+
+If you prefer to run the FastAPI app directly for faster iteration (requires local PostgreSQL and Redis):
+
+1.  **Install Python dependencies**:
     ```bash
-    git clone https://github.com/your-username/project-management-api.git
-    cd project-management-api
+    pip install -r requirements.txt
     ```
-
-2.  **Create `.env` file**:
-    Copy the example environment file:
+2.  **Ensure PostgreSQL and Redis are running locally.**
+    *   Make sure your `.env` `DATABASE_HOST` points to `localhost` or your local PostgreSQL host.
+    *   Ensure your `.env` `REDIS_URI` points to your local Redis.
+3.  **Run migrations**:
     ```bash
-    cp .env.example .env
+    # Ensure your DATABASE_URL in .env is configured for a sync driver like psycopg2 or alembic env.py is setup for async
+    alembic upgrade head
     ```
-    Review and update the variables in `.env` as needed (e.g., `POSTGRES_PASSWORD`, `JWT_SECRET`).
-
-3.  **Build and run the services**:
+4.  **Seed data**:
     ```bash
-    docker-compose up --build
+    python seed_data.py
     ```
-    This will:
-    *   Build the C++ application Docker image.
-    *   Start a PostgreSQL container.
-    *   Apply database migrations and seed data.
-    *   Start the C++ API server.
-
-    The API will be accessible at `http://localhost:18080`.
-
-### Manual Setup
-
-If you prefer to run the application directly on your machine without Docker:
-
-1.  **Install dependencies**:
-    *   **C++ Libraries**: You'll need `libpqxx`, `nlohmann/json`, `spdlog`, `jwt-cpp`, and `Crow`. The easiest way is often to install them via your system's package manager (e.g., `sudo apt-get install libpqxx-dev libjson-dev libspdlog-dev libjwt-cpp-dev` on Debian/Ubuntu, though some might require manual installation from source or `vcpkg`). `Crow` is typically header-only, just clone it.
-    *   **PostgreSQL**: Install PostgreSQL server and client libraries.
-
-2.  **Build the application**:
+5.  **Start the FastAPI app**:
     ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ```
-
-3.  **Database Setup**:
-    Follow the [Database Setup](#database-setup) instructions below to manually set up your PostgreSQL database.
-
-4.  **Run the application**:
-    First, ensure your environment variables are set according to `.env.example`.
-    ```bash
-    cd build
-    ./project_management_api
-    ```
-
-## Database Setup
-
-The `docker-compose.yml` automatically handles migrations and seeding upon startup. If running manually:
-
-1.  **Create a PostgreSQL database**:
-    ```bash
-    psql -U postgres
-    CREATE DATABASE project_management_db;
-    CREATE USER pma_user WITH PASSWORD 'pma_password';
-    GRANT ALL PRIVILEGES ON DATABASE project_management_db TO pma_user;
-    \q
-    ```
-    (Replace `pma_password` with the one from your `.env`)
-
-2.  **Apply migrations**:
-    ```bash
-    psql -U pma_user -d project_management_db -f database/migrations/V1__create_tables.sql
-    psql -U pma_user -d project_management_db -f database/migrations/V2__add_roles_and_seed_data.sql
-    ```
-
-3.  **Seed initial data**:
-    ```bash
-    psql -U pma_user -d project_management_db -f database/seed/seed.sql
-    ```
-
-## Running the Application
-
-Once built and configured (either via Docker Compose or manually), the API server will listen on `http://localhost:18080` (or the port configured in `.env`).
 
 ## Testing
 
-The project includes unit and integration tests using Google Test.
+### Linting and Formatting
 
-1.  **Build tests**:
-    If you've followed the manual build steps:
+```bash
+flake8 app/ tests/
+black --check app/ tests/
+isort --check-only app/ tests/
+mypy app/
+```
+To automatically fix formatting issues (do this before committing):
+```bash
+black app/ tests/
+isort app/ tests/
+```
+
+### Unit and Integration Tests
+
+The test suite uses `pytest`. Ensure your Docker containers are running (especially the `db` and `redis` services, or you have local instances). The `conftest.py` sets up a dedicated test database and mocks the database session where appropriate.
+
+```bash
+# Run all tests with coverage report
+pytest --cov=app --cov-report=term-missing --cov-report=xml tests/
+```
+This command will:
+*   Run tests in the `tests/` directory.
+*   Collect code coverage for the `app/` directory.
+*   Print a coverage report to the terminal, highlighting missing lines.
+*   Generate `coverage.xml` for CI/CD tools.
+
+### Performance Testing (Locust)
+
+1.  **Ensure your API is running**.
+2.  **Run Locust**:
     ```bash
-    cd build
-    make tests
+    locust -f tests/performance/locust_script.py
     ```
-    If using Docker, you can build a separate test image or run tests within the main app container:
-    ```bash
-    docker-compose run --rm app /bin/bash -c "mkdir -p build && cd build && cmake .. -DBUILD_TESTS=ON && make && ./tests/run_tests"
-    ```
+3.  Open your browser to `http://localhost:8089` to access the Locust web UI.
+4.  Enter the host (e.g., `http://localhost:8000`), number of users, and spawn rate to start your load test.
 
-2.  **Run tests**:
-    ```bash
-    cd build
-    ./tests/run_tests # or the specific test executable, e.g., ./tests/unit/unit_tests
-    ```
-    *Unit tests aim for 80%+ coverage on core logic.*
+## CI/CD Pipeline (GitHub Actions)
 
-## API Documentation
+The `.github/workflows/ci-cd.yml` file defines the CI/CD pipeline:
 
-Refer to [docs/api.md](docs/api.md) for a detailed list of all API endpoints, their methods, request/response formats, and authentication requirements.
+*   **Triggers**: Pushes to `main`, `develop` branches, or tags `v*.*.*`, and pull requests to `main`, `develop`.
+*   **`build_and_test` Job**:
+    *   Sets up a dedicated PostgreSQL and Redis service in GitHub Actions.
+    *   Installs Python dependencies.
+    *   Runs Alembic migrations and seed data on the test database.
+    *   Executes linting checks (flake8, black, isort, mypy).
+    *   Runs `pytest` with code coverage.
+    *   Uploads coverage report to Codecov (if configured).
+*   **`build_and_push_docker` Job**:
+    *   Depends on `build_and_test` succeeding.
+    *   Logs in to Docker Hub using secrets.
+    *   Builds the Docker image for the application.
+    *   Pushes the image to Docker Hub with relevant tags (branch name, commit SHA, `latest` for `main`).
+*   **(Conceptual) `deploy` Job**:
+    *   Placeholder for deploying the Docker image to a production environment (e.g., Kubernetes, AWS ECS, Azure App Service). This would require cloud-specific credentials and tooling.
 
-## Architecture Documentation
+**To enable the CI/CD pipeline**:
+1.  **GitHub Repository**: Push your code to a GitHub repository.
+2.  **GitHub Secrets**: In your GitHub repository settings, under "Secrets and variables" -> "Actions", add the following secrets:
+    *   `JWT_SECRET_KEY`: Your strong secret key for JWT (same as in `.env`).
+    *   `DOCKER_USERNAME`: Your Docker Hub username.
+    *   `DOCKER_PASSWORD`: Your Docker Hub access token or password.
+    *   `CODECOV_TOKEN` (Optional): If you integrate with Codecov.
 
-Refer to [docs/architecture.md](docs/architecture.md) for an overview of the system's design, component interactions, and data flow.
+## Architecture
+
+See `ARCHITECTURE.md` for a detailed overview of the system design.
 
 ## Deployment Guide
 
-Refer to [docs/deployment.md](docs/deployment.md) for instructions on deploying the application to a production environment.
+See `DEPLOYMENT.md` for instructions and considerations for deploying the application to production.
 
-## CI/CD
-
-The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that automates the following:
-*   Building the C++ application.
-*   Running unit and integration tests.
-*   (Optional) Building a Docker image and pushing it to a registry.
-
-## Future Enhancements
-
-*   **Advanced Authorization**: Fine-grained permissions (e.g., project-specific roles).
-*   **Websockets**: Real-time updates for tasks or project changes.
-*   **Search**: Full-text search capabilities for projects and tasks.
-*   **Audit Logging**: Track all changes made to resources.
-*   **Background Jobs**: Asynchronous processing for long-running tasks.
-*   **Frontend Application**: Build a client-side application (React, Vue, Angular) to consume the API.
-*   **Performance Monitoring**: Integrate with tools like Prometheus/Grafana.
-*   **Caching**: Implement Redis for frequently accessed data.
-*   **Rate Limiting**: Implement a more robust rate-limiting mechanism (e.g., using Nginx or a dedicated middleware).
+---
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ```

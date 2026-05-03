@@ -1,46 +1,99 @@
 ```python
-from fastapi import status
+"""
+Custom exception definitions and handlers for the ALX-Shop application.
 
-class CustomException(Exception):
-    """Base class for custom application exceptions."""
-    def __init__(self, status_code: int, message: str = "An unexpected error occurred", name: str = "ServerError"):
-        self.status_code = status_code
-        self.message = message
-        self.name = name
-        super().__init__(self.message)
+This module provides:
+- `CustomException`: A base class for application-specific HTTP exceptions.
+- `custom_exception_handler`: A global FastAPI exception handler that
+  converts `CustomException`, `HTTPException`, and `RequestValidationError`
+  into standardized JSON error responses.
+"""
 
-class UnauthorizedException(CustomException):
-    """Exception for unauthorized access (e.g., invalid or missing token)."""
-    def __init__(self, message: str = "Not authenticated", name: str = "Unauthorized"):
-        super().__init__(status.HTTP_401_UNAUTHORIZED, message, name)
+import logging
+from typing import Dict, Any, Optional
 
-class ForbiddenException(CustomException):
-    """Exception for authorized but not permitted access (e.g., wrong role)."""
-    def __init__(self, message: str = "Not authorized to perform this action", name: str = "Forbidden"):
-        super().__init__(status.HTTP_403_FORBIDDEN, message, name)
+from fastapi import Request, HTTPException, status
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-class NotFoundException(CustomException):
-    """Exception for resource not found."""
-    def __init__(self, message: str = "Resource not found", name: str = "NotFound"):
-        super().__init__(status.HTTP_404_NOT_FOUND, message, name)
+logger = logging.getLogger(__name__)
 
-class BadRequestException(CustomException):
-    """Exception for invalid request payload or parameters."""
-    def __init__(self, message: str = "Bad request", name: str = "BadRequest"):
-        super().__init__(status.HTTP_400_BAD_REQUEST, message, name)
+class CustomException(HTTPException):
+    """
+    Base class for custom application-specific HTTP exceptions.
 
-class ConflictException(CustomException):
-    """Exception for conflicting resource creation (e.g., duplicate unique field)."""
-    def __init__(self, message: str = "Resource already exists", name: str = "Conflict"):
-        super().__init__(status.HTTP_409_CONFLICT, message, name)
+    Inherits from FastAPI's HTTPException to allow direct raising
+    in API endpoints and automatic handling by FastAPI, but also
+    provides a consistent structure for custom error responses.
+    """
+    def __init__(
+        self,
+        status_code: int,
+        detail: Any = None,
+        headers: Optional[Dict[str, str]] = None,
+        error_code: Optional[str] = None
+    ):
+        super().__init__(status_code=status_code, detail=detail, headers=headers)
+        self.error_code = error_code if error_code else f"ERR-{status_code}"
 
-class UnprocessableEntityException(CustomException):
-    """Exception for unprocessable entity (e.g., semantic errors in request)."""
-    def __init__(self, message: str = "Unprocessable entity", name: str = "UnprocessableEntity"):
-        super().__init__(status.HTTP_422_UNPROCESSABLE_ENTITY, message, name)
 
-class ServiceUnavailableException(CustomException):
-    """Exception for when an external service is unavailable."""
-    def __init__(self, message: str = "Service unavailable", name: str = "ServiceUnavailable"):
-        super().__init__(status.HTTP_503_SERVICE_UNAVAILABLE, message, name)
+async def custom_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    Global exception handler for the FastAPI application.
+
+    This handler catches various types of exceptions (CustomException, HTTPException,
+    RequestValidationError) and formats them into a consistent JSON error response.
+    It also logs the exceptions appropriately.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+        exc (Exception): The exception that was raised.
+
+    Returns:
+        JSONResponse: A standardized JSON error response.
+    """
+    error_detail = "An unexpected error occurred."
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_code = "ERR-500"
+    headers: Optional[Dict[str, str]] = None
+
+    if isinstance(exc, CustomException):
+        status_code = exc.status_code
+        error_detail = exc.detail
+        error_code = exc.error_code
+        headers = exc.headers
+        log_func = logger.warning if status_code < 500 else logger.error
+        log_func(f"CustomException handled: {exc.error_code} - {exc.detail} (Status: {exc.status_code}) for {request.url}")
+
+    elif isinstance(exc, StarletteHTTPException):
+        status_code = exc.status_code
+        error_detail = exc.detail
+        error_code = f"HTTP-ERR-{status_code}"
+        headers = exc.headers
+        log_func = logger.warning if status_code < 500 else logger.error
+        log_func(f"HTTPException handled: {exc.detail} (Status: {exc.status_code}) for {request.url}")
+
+    elif isinstance(exc, RequestValidationError) or isinstance(exc, ValidationError):
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        error_detail = exc.errors() # Pydantic's error messages
+        error_code = "VALIDATION-ERROR"
+        logger.warning(f"RequestValidationError handled: {error_detail} for {request.url}")
+
+    else:
+        # Catch-all for any other unhandled exceptions
+        logger.exception(f"Unhandled exception: {exc} for {request.url}") # Use exception for full traceback
+
+    response_content = {
+        "error_code": error_code,
+        "message": error_detail,
+        "timestamp": request.state.start_time.isoformat() if hasattr(request.state, 'start_time') else datetime.now().isoformat()
+    }
+    return JSONResponse(
+        status_code=status_code,
+        content=response_content,
+        headers=headers
+    )
+
 ```

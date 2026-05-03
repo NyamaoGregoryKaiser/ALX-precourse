@@ -1,69 +1,63 @@
+```yaml
+# docker-compose.yml for ALX-Shop development environment
+
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    restart: always
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # Mount migration scripts to be executed by initdb if they are executable
-      # For a more robust migration system, you'd use a dedicated migration tool (e.g., Flyway, Liquibase, or a custom script)
-      # For this example, we'll run them from the app container.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
-    environment:
-      APP_PORT: ${APP_PORT}
-      APP_ENV: ${APP_ENV}
-      LOG_LEVEL: ${LOG_LEVEL}
-      DB_HOST: db # Use the service name for inter-container communication
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS}
+    # Command to run the application, overrides CMD in Dockerfile for development
+    # Reload allows code changes to take effect without restarting the container.
+    # We use 1 worker for development for simplicity and easier debugging.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
     ports:
-      - "${APP_PORT}:${APP_PORT}"
-    depends_on:
-      db:
-        condition: service_healthy
+      - "8000:8000"
     volumes:
-      # Mount the database scripts to apply migrations and seed data on startup
-      - ./database/migrations:/app/database/migrations
-      - ./database/seed:/app/database/seed
-    command: >
-      /bin/sh -c "
-        echo 'Waiting for database to be ready...' &&
-        until PGPASSWORD=${DB_PASSWORD} psql -h db -U ${DB_USER} -d ${DB_NAME} -c '\q'; do
-          >&2 echo 'Postgres is unavailable - sleeping'
-          sleep 1
-        done &&
-        >&2 echo 'Postgres is up - applying migrations and seeding data!' &&
-        # Apply migrations
-        PGPASSWORD=${DB_PASSWORD} psql -h db -U ${DB_USER} -d ${DB_NAME} -f /app/database/migrations/V1__create_tables.sql &&
-        PGPASSWORD=${DB_PASSWORD} psql -h db -U ${DB_USER} -d ${DB_NAME} -f /app/database/migrations/V2__add_roles_and_seed_data.sql &&
-        # Seed data
-        PGPASSWORD=${DB_PASSWORD} psql -h db -U ${DB_USER} -d ${DB_NAME} -f /app/database/seed/seed.sql &&
-        >&2 echo 'Migrations and seed data applied!' &&
-        # Start the application
-        /usr/local/bin/project_management_api
-      "
+      - .:/app  # Mount current directory into /app for live code changes
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env # Load environment variables from .env file
+    environment:
+      # Override specific variables from .env for Docker environment if needed
+      # Ensure DATABASE_HOST points to the service name 'db'
+      DATABASE_HOST: db
+      REDIS_URI: redis://redis:6379/0
+      # Use the test database for development if needed, or explicitly set for local dev DB
+      # ENVIRONMENT: development # Ensure consistent environment setting
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    ports:
+      - "5432:5432" # Expose DB port for local access if needed (e.g., using pgAdmin)
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Persistent data volume
+    env_file:
+      - .env # Load DB credentials from .env
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME} # Main database name
+      # Optional: Test database for running tests within a separate container/setup
+      POSTGRES_TEST_DB: ${TEST_DATABASE_NAME} # If you need a separate DB for tests
+                                              # You'd typically create this in your CI/CD setup
+                                              # or have a separate docker-compose for testing.
+                                              # For this setup, we configure app to use TEST_DATABASE_URL
+                                              # if ENVIRONMENT is "testing".
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379" # Expose Redis port for local access if needed
+    volumes:
+      - redisdata:/data # Persistent data volume
 
 volumes:
-  db_data:
+  pgdata:
+  redisdata:
 ```

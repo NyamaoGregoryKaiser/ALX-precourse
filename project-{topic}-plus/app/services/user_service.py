@@ -1,132 +1,186 @@
+```python
+"""
+User service module for ALX-Shop.
+
+This module encapsulates the business logic for managing users, including:
+- CRUD operations for users.
+- Querying users by various criteria.
+- Ensuring data integrity and applying business rules related to users.
+- Interacting with the database via SQLAlchemy.
+"""
+
 import logging
-from app import db
-from app.models import User, Role
-from app.utils.exceptions import NotFoundError, ConflictError, UnauthorizedError, ForbiddenError
+from typing import List, Optional, Dict, Any
+
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+
+from app.core.database import get_db_session
+from app.models.user import User # Import the SQLAlchemy ORM model
+from app.schemas.user import UserCreate, UserUpdate, UserRead, UserRole
+from app.core.security import get_password_hash
 
 logger = logging.getLogger(__name__)
 
-class UserService:
+async def get_user_by_id(user_id: int, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
     """
-    Service layer for managing user-related business logic.
-    Handles CRUD operations for users and role management.
+    Retrieves a user by their ID.
+
+    Args:
+        user_id (int): The ID of the user to retrieve.
+        db (AsyncSession): The database session.
+
+    Returns:
+        Optional[UserRead]: The user's data if found, else None.
     """
+    logger.debug(f"Fetching user with ID: {user_id}")
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user_orm = result.scalar_one_or_none()
+    if user_orm:
+        logger.debug(f"Found user: {user_orm.email}")
+        return UserRead.model_validate(user_orm)
+    logger.debug(f"User with ID {user_id} not found.")
+    return None
 
-    @staticmethod
-    def get_user_by_id(user_id):
-        """
-        Retrieves a user by their ID.
-        Args:
-            user_id (int): The ID of the user.
-        Returns:
-            User: The user object.
-        Raises:
-            NotFoundError: If the user does not exist.
-        """
-        user = User.query.get(user_id)
-        if not user:
-            logger.warning(f"User with ID {user_id} not found.")
-            raise NotFoundError("User not found.")
-        logger.debug(f"Retrieved user: {user.username} (ID: {user.id})")
-        return user
+async def get_user_by_email(email: str, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
+    """
+    Retrieves a user by their email address.
 
-    @staticmethod
-    def get_all_users():
-        """
-        Retrieves all users in the system.
-        Returns:
-            list[User]: A list of all user objects.
-        """
-        users = User.query.all()
-        logger.debug(f"Retrieved {len(users)} users.")
-        return users
+    Args:
+        email (str): The email address of the user to retrieve.
+        db (AsyncSession): The database session.
 
-    @staticmethod
-    def update_user(user_id, current_user_id, current_user_role, data):
-        """
-        Updates an existing user's details.
-        Args:
-            user_id (int): The ID of the user to update.
-            current_user_id (int): The ID of the user performing the update.
-            current_user_role (Role): The role of the user performing the update.
-            data (dict): Dictionary containing fields to update (username, email, role).
-        Returns:
-            User: The updated user object.
-        Raises:
-            NotFoundError: If the user does not exist.
-            ForbiddenError: If current user tries to update another user's role or updates another user without admin rights.
-            ConflictError: If username or email already exists for another user.
-        """
-        user = UserService.get_user_by_id(user_id)
+    Returns:
+        Optional[UserRead]: The user's data if found, else None.
+    """
+    logger.debug(f"Fetching user with email: {email}")
+    result = await db.execute(select(User).filter(User.email == email))
+    user_orm = result.scalar_one_or_none()
+    if user_orm:
+        logger.debug(f"Found user: {user_orm.email}")
+        return UserRead.model_validate(user_orm)
+    logger.debug(f"User with email {email} not found.")
+    return None
 
-        # Authorization check:
-        # 1. Non-admin users can only update their own profile.
-        # 2. Admins can update any profile.
-        # 3. Non-admin users cannot change their own role.
-        # 4. Admins can change any role, but cannot demote themselves.
+async def get_users(
+    skip: int = 0,
+    limit: int = 100,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_session)
+) -> List[UserRead]:
+    """
+    Retrieves a paginated list of users, with optional search functionality.
 
-        if current_user_id != user.id and current_user_role != Role.ADMIN:
-            logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to update user {user_id} without admin privileges.")
-            raise ForbiddenError("You are not authorized to update other users' profiles.")
+    Args:
+        skip (int): The number of records to skip.
+        limit (int): The maximum number of records to return.
+        search (Optional[str]): A search term to filter users by email or full name.
+        db (AsyncSession): The database session.
 
-        # Handle username update
-        if 'username' in data and data['username'] != user.username:
-            if User.query.filter_by(username=data['username']).first():
-                logger.warning(f"Update failed for user {user_id}: Username '{data['username']}' already taken.")
-                raise ConflictError("Username already exists.")
-            user.username = data['username']
+    Returns:
+        List[UserRead]: A list of user data.
+    """
+    logger.debug(f"Fetching users with skip={skip}, limit={limit}, search='{search}'")
+    query = select(User)
+    if search:
+        search_pattern = f"%{search.lower()}%"
+        query = query.filter(
+            (func.lower(User.email).like(search_pattern)) |
+            (func.lower(User.full_name).like(search_pattern))
+        )
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    users_orm = result.scalars().all()
+    logger.debug(f"Retrieved {len(users_orm)} users.")
+    return [UserRead.model_validate(user) for user in users_orm]
 
-        # Handle email update
-        if 'email' in data and data['email'] != user.email:
-            if User.query.filter_by(email=data['email']).first():
-                logger.warning(f"Update failed for user {user_id}: Email '{data['email']}' already taken.")
-                raise ConflictError("Email already exists.")
-            user.email = data['email']
+async def create_user(user_data: Dict[str, Any], db: AsyncSession = Depends(get_db_session)) -> UserRead:
+    """
+    Creates a new user in the database.
 
-        # Handle role update (only for admins)
-        if 'role' in data:
-            new_role = data['role']
-            if current_user_role != Role.ADMIN:
-                logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to change role without admin privileges.")
-                raise ForbiddenError("Only administrators can change user roles.")
-            
-            # Admin cannot demote themselves
-            if current_user_id == user.id and new_role != Role.ADMIN:
-                logger.warning(f"Admin user {current_user_id} attempted to demote self to {new_role.value}.")
-                raise ForbiddenError("Administrators cannot demote themselves.")
-            
-            user.role = new_role
-            logger.info(f"User {user.id} role changed to {new_role.value} by Admin {current_user_id}.")
+    Args:
+        user_data (Dict[str, Any]): A dictionary containing user data,
+                                     including 'email', 'hashed_password', etc.
+                                     This dictionary should already have the password hashed.
+        db (AsyncSession): The database session.
 
-        db.session.commit()
-        logger.info(f"User {user.id} updated successfully by {current_user_id}.")
-        return user
+    Returns:
+        UserRead: The newly created user's data.
+    """
+    logger.info(f"Creating user with email: {user_data.get('email')}")
+    # Ensure role is converted to enum if passed as string
+    if isinstance(user_data.get('role'), str):
+        user_data['role'] = UserRole(user_data['role'])
 
-    @staticmethod
-    def delete_user(user_id, current_user_id, current_user_role):
-        """
-        Deletes a user from the system.
-        Args:
-            user_id (int): The ID of the user to delete.
-            current_user_id (int): The ID of the user performing the deletion.
-            current_user_role (Role): The role of the user performing the deletion.
-        Raises:
-            NotFoundError: If the user does not exist.
-            ForbiddenError: If the user tries to delete themselves or deletes another user without admin rights.
-        """
-        user = UserService.get_user_by_id(user_id)
+    db_user = User(**user_data)
+    db.add(db_user)
+    await db.flush() # Flush to get the ID for relationships if needed later, before commit
+    await db.refresh(db_user) # Refresh to load default values like created_at, updated_at, and ID
+    logger.info(f"User {db_user.email} created successfully with ID: {db_user.id}")
+    return UserRead.model_validate(db_user)
 
-        # Authorization check:
-        # 1. Only admins can delete users.
-        # 2. Admins cannot delete themselves.
-        if current_user_role != Role.ADMIN:
-            logger.warning(f"User {current_user_id} (Role: {current_user_role.value}) attempted to delete user {user_id} without admin privileges.")
-            raise ForbiddenError("Only administrators can delete users.")
-        
-        if current_user_id == user.id:
-            logger.warning(f"Admin user {current_user_id} attempted to delete self.")
-            raise ForbiddenError("Administrators cannot delete themselves.")
 
-        db.session.delete(user)
-        db.session.commit()
-        logger.info(f"User {user_id} deleted successfully by Admin {current_user_id}.")
+async def update_user(user_id: int, user_in: UserUpdate, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
+    """
+    Updates an existing user's details.
+
+    Args:
+        user_id (int): The ID of the user to update.
+        user_in (UserUpdate): The Pydantic model with updated user data.
+        db (AsyncSession): The database session.
+
+    Returns:
+        Optional[UserRead]: The updated user's data if found and updated, else None.
+    """
+    logger.info(f"Updating user with ID: {user_id}")
+    result = await db.execute(select(User).filter(User.id == user_id))
+    db_user = result.scalar_one_or_none()
+
+    if not db_user:
+        logger.warning(f"User with ID {user_id} not found for update.")
+        return None
+
+    update_data = user_in.model_dump(exclude_unset=True)
+
+    if "password" in update_data:
+        update_data["hashed_password"] = get_password_hash(update_data["password"])
+        del update_data["password"]
+
+    for field, value in update_data.items():
+        if field == "role" and isinstance(value, str):
+            setattr(db_user, field, UserRole(value)) # Convert string to Enum
+        else:
+            setattr(db_user, field, value)
+
+    db.add(db_user)
+    await db.flush()
+    await db.refresh(db_user)
+    logger.info(f"User {user_id} updated successfully.")
+    return UserRead.model_validate(db_user)
+
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db_session)) -> bool:
+    """
+    Deletes a user from the database.
+
+    Args:
+        user_id (int): The ID of the user to delete.
+        db (AsyncSession): The database session.
+
+    Returns:
+        bool: True if the user was deleted, False if not found.
+    """
+    logger.info(f"Attempting to delete user with ID: {user_id}")
+    result = await db.execute(select(User).filter(User.id == user_id))
+    db_user = result.scalar_one_or_none()
+
+    if not db_user:
+        logger.warning(f"User with ID {user_id} not found for deletion.")
+        return False
+
+    await db.delete(db_user)
+    # The session commit in `get_db_session` will finalize the deletion
+    logger.info(f"User {user_id} deleted successfully.")
+    return True
+
 ```

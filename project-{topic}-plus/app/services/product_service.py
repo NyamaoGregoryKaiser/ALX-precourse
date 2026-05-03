@@ -1,259 +1,187 @@
 ```python
-import slugify
-from sqlalchemy.exc import IntegrityError
-from app import db, cache
-from app.models import Product, Category
-from app.schemas import ProductSchema
-from flask import current_app
+"""
+Product service module for ALX-Shop.
 
-class ProductService:
-    product_schema = ProductSchema()
-    products_schema = ProductSchema(many=True)
+This module encapsulates the business logic for managing products, including:
+- CRUD operations for products.
+- Querying products by various criteria (e.g., search, pagination).
+- Updating product stock.
+- Interacting with the database via SQLAlchemy.
+"""
 
-    @classmethod
-    def create_product(cls, data):
-        """Creates a new product."""
-        try:
-            # Generate a unique slug for the product
-            base_slug = slugify.slugify(data['name'])
-            slug = base_slug
-            counter = 1
-            while Product.query.filter_by(slug=slug).first():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
+import logging
+from typing import List, Optional, Dict, Any
 
-            category = Category.query.get(data['category_id'])
-            if not category:
-                raise ValueError("Category not found.")
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
 
-            product = Product(
-                name=data['name'],
-                slug=slug,
-                description=data.get('description'),
-                price=data['price'],
-                stock=data.get('stock', 0),
-                image_url=data.get('image_url'),
-                category_id=data['category_id']
-            )
-            db.session.add(product)
-            db.session.commit()
-            cache.delete_memoized(cls.get_all_products) # Clear cache for all products
-            cache.delete_memoized(cls.get_product_by_slug, slug) # Clear cache for specific product slug
-            return cls.product_schema.dump(product)
-        except IntegrityError:
-            db.session.rollback()
-            raise ValueError("A product with this name already exists or category ID is invalid.")
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error creating product: {e}")
-            raise
+from app.core.database import get_db_session
+from app.models.product import Product # Import the SQLAlchemy ORM model
+from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
 
-    @classmethod
-    @cache.memoize(timeout=60) # Cache results for 60 seconds
-    def get_all_products(cls, page=1, per_page=10, category_id=None, search=None, min_price=None, max_price=None):
-        """Retrieves all products with optional filters, pagination, and caching."""
-        query = Product.query.order_by(Product.name.asc())
+logger = logging.getLogger(__name__)
 
-        if category_id:
-            query = query.filter_by(category_id=category_id)
-        if search:
-            query = query.filter(Product.name.ilike(f'%{search}%') | Product.description.ilike(f'%{search}%'))
-        if min_price is not None:
-            query = query.filter(Product.price >= min_price)
-        if max_price is not None:
-            query = query.filter(Product.price <= max_price)
+async def get_product_by_id(product_id: int, db: AsyncSession = Depends(get_db_session)) -> Optional[ProductRead]:
+    """
+    Retrieves a product by its ID.
 
-        paginated_products = query.paginate(page=page, per_page=per_page, error_out=False)
-        products_data = cls.products_schema.dump(paginated_products.items)
-        return {
-            "products": products_data,
-            "total_items": paginated_products.total,
-            "total_pages": paginated_products.pages,
-            "current_page": paginated_products.page,
-            "per_page": paginated_products.per_page
-        }
+    Args:
+        product_id (int): The ID of the product to retrieve.
+        db (AsyncSession): The database session.
 
-    @classmethod
-    @cache.memoize(timeout=60)
-    def get_product_by_id(cls, product_id):
-        """Retrieves a product by its ID."""
-        product = Product.query.get(product_id)
-        if not product:
-            return None
-        return cls.product_schema.dump(product)
+    Returns:
+        Optional[ProductRead]: The product's data if found, else None.
+    """
+    logger.debug(f"Fetching product with ID: {product_id}")
+    result = await db.execute(select(Product).filter(Product.id == product_id))
+    product_orm = result.scalar_one_or_none()
+    if product_orm:
+        logger.debug(f"Found product: {product_orm.name}")
+        return ProductRead.model_validate(product_orm)
+    logger.debug(f"Product with ID {product_id} not found.")
+    return None
 
-    @classmethod
-    @cache.memoize(timeout=60)
-    def get_product_by_slug(cls, slug):
-        """Retrieves a product by its slug."""
-        product = Product.query.filter_by(slug=slug).first()
-        if not product:
-            return None
-        return cls.product_schema.dump(product)
+async def get_products(
+    skip: int = 0,
+    limit: int = 100,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_session)
+) -> List[ProductRead]:
+    """
+    Retrieves a paginated list of products, with optional search functionality.
 
-    @classmethod
-    def update_product(cls, product_id, data):
-        """Updates an existing product."""
-        product = Product.query.get(product_id)
-        if not product:
-            return None
+    Args:
+        skip (int): The number of records to skip.
+        limit (int): The maximum number of records to return.
+        search (Optional[str]): A search term to filter products by name or description.
+        db (AsyncSession): The database session.
 
-        for key, value in data.items():
-            if key == 'name' and value != product.name:
-                # Update slug if name changes
-                base_slug = slugify.slugify(value)
-                slug = base_slug
-                counter = 1
-                while Product.query.filter(Product.slug == slug, Product.id != product_id).first():
-                    slug = f"{base_slug}-{counter}"
-                    counter += 1
-                setattr(product, 'slug', slug)
-            elif key == 'category_id':
-                category = Category.query.get(value)
-                if not category:
-                    raise ValueError("Category not found.")
-                setattr(product, key, value)
-            else:
-                setattr(product, key, value)
+    Returns:
+        List[ProductRead]: A list of product data.
+    """
+    logger.debug(f"Fetching products with skip={skip}, limit={limit}, search='{search}'")
+    query = select(Product).filter(Product.is_active == True) # Only active products for general listing
+    if search:
+        search_pattern = f"%{search.lower()}%"
+        query = query.filter(
+            (func.lower(Product.name).like(search_pattern)) |
+            (func.lower(Product.description).like(search_pattern))
+        )
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    products_orm = result.scalars().all()
+    logger.debug(f"Retrieved {len(products_orm)} products.")
+    return [ProductRead.model_validate(product) for product in products_orm]
 
-        db.session.commit()
-        cache.delete_memoized(cls.get_all_products) # Clear cache for all products
-        cache.delete_memoized(cls.get_product_by_id, product_id) # Clear cache for specific product ID
-        cache.delete_memoized(cls.get_product_by_slug, product.slug) # Clear cache for specific product slug
-        return cls.product_schema.dump(product)
+async def create_product(product_in: ProductCreate, db: AsyncSession = Depends(get_db_session)) -> ProductRead:
+    """
+    Creates a new product in the database.
 
-    @classmethod
-    def delete_product(cls, product_id):
-        """Deletes a product."""
-        product = Product.query.get(product_id)
-        if not product:
-            return False
+    Args:
+        product_in (ProductCreate): The Pydantic model with product data.
+        db (AsyncSession): The database session.
 
-        db.session.delete(product)
-        db.session.commit()
-        cache.delete_memoized(cls.get_all_products) # Clear cache for all products
-        cache.delete_memoized(cls.get_product_by_id, product_id) # Clear cache for specific product ID
-        cache.delete_memoized(cls.get_product_by_slug, product.slug) # Clear cache for specific product slug
-        return True
+    Returns:
+        ProductRead: The newly created product's data.
+    """
+    logger.info(f"Creating product: {product_in.name}")
+    db_product = Product(**product_in.model_dump())
+    db.add(db_product)
+    await db.flush()
+    await db.refresh(db_product)
+    logger.info(f"Product '{db_product.name}' created successfully with ID: {db_product.id}")
+    return ProductRead.model_validate(db_product)
 
-    @classmethod
-    def update_product_stock(cls, product_id, quantity, decrement=True):
-        """Updates the stock of a product."""
-        product = Product.query.get(product_id)
-        if not product:
-            raise ValueError("Product not found.")
+async def update_product(product_id: int, product_in: ProductUpdate, db: AsyncSession = Depends(get_db_session)) -> Optional[ProductRead]:
+    """
+    Updates an existing product's details.
 
-        if decrement:
-            if product.stock < quantity:
-                raise ValueError("Not enough stock available.")
-            product.stock -= quantity
-        else: # Increment
-            product.stock += quantity
+    Args:
+        product_id (int): The ID of the product to update.
+        product_in (ProductUpdate): The Pydantic model with updated product data.
+        db (AsyncSession): The database session.
 
-        db.session.commit()
-        cache.delete_memoized(cls.get_product_by_id, product_id) # Invalidate product cache
-        cache.delete_memoized(cls.get_product_by_slug, product.slug) # Invalidate product cache
-        return cls.product_schema.dump(product)
+    Returns:
+        Optional[ProductRead]: The updated product's data if found and updated, else None.
+    """
+    logger.info(f"Updating product with ID: {product_id}")
+    result = await db.execute(select(Product).filter(Product.id == product_id))
+    db_product = result.scalar_one_or_none()
 
-class CategoryService:
-    category_schema = ProductSchema()
-    categories_schema = CategorySchema(many=True)
+    if not db_product:
+        logger.warning(f"Product with ID {product_id} not found for update.")
+        return None
 
-    @classmethod
-    def create_category(cls, data):
-        """Creates a new category."""
-        try:
-            # Generate a unique slug for the category
-            base_slug = slugify.slugify(data['name'])
-            slug = base_slug
-            counter = 1
-            while Category.query.filter_by(slug=slug).first():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
+    update_data = product_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_product, field, value)
 
-            category = Category(
-                name=data['name'],
-                slug=slug,
-                description=data.get('description')
-            )
-            db.session.add(category)
-            db.session.commit()
-            cache.delete_memoized(cls.get_all_categories)
-            return cls.category_schema.dump(category)
-        except IntegrityError:
-            db.session.rollback()
-            raise ValueError("A category with this name already exists.")
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error creating category: {e}")
-            raise
+    db.add(db_product)
+    await db.flush()
+    await db.refresh(db_product)
+    logger.info(f"Product {product_id} updated successfully.")
+    return ProductRead.model_validate(db_product)
 
-    @classmethod
-    @cache.memoize(timeout=3600) # Cache for 1 hour as categories don't change often
-    def get_all_categories(cls):
-        """Retrieves all categories."""
-        categories = Category.query.order_by(Category.name.asc()).all()
-        return cls.categories_schema.dump(categories)
+async def update_product_stock(product_id: int, quantity_change: int, db: AsyncSession = Depends(get_db_session)) -> Optional[ProductRead]:
+    """
+    Updates the stock of a product.
+    Can be used to decrement (negative quantity_change) or increment (positive quantity_change) stock.
 
-    @classmethod
-    @cache.memoize(timeout=3600)
-    def get_category_by_id(cls, category_id):
-        """Retrieves a category by its ID."""
-        category = Category.query.get(category_id)
-        if not category:
-            return None
-        return cls.category_schema.dump(category)
+    Args:
+        product_id (int): The ID of the product to update.
+        quantity_change (int): The amount to add to the current stock (can be negative for reduction).
+        db (AsyncSession): The database session.
 
-    @classmethod
-    @cache.memoize(timeout=3600)
-    def get_category_by_slug(cls, slug):
-        """Retrieves a category by its slug."""
-        category = Category.query.filter_by(slug=slug).first()
-        if not category:
-            return None
-        return cls.category_schema.dump(category)
+    Returns:
+        Optional[ProductRead]: The updated product's data if found and updated, else None.
 
-    @classmethod
-    def update_category(cls, category_id, data):
-        """Updates an existing category."""
-        category = Category.query.get(category_id)
-        if not category:
-            return None
+    Raises:
+        ValueError: If the stock would become negative.
+    """
+    logger.info(f"Updating stock for product ID {product_id} by {quantity_change}.")
+    result = await db.execute(select(Product).filter(Product.id == product_id))
+    db_product = result.scalar_one_or_none()
 
-        for key, value in data.items():
-            if key == 'name' and value != category.name:
-                # Update slug if name changes
-                base_slug = slugify.slugify(value)
-                slug = base_slug
-                counter = 1
-                while Category.query.filter(Category.slug == slug, Category.id != category_id).first():
-                    slug = f"{base_slug}-{counter}"
-                    counter += 1
-                setattr(category, 'slug', slug)
-            else:
-                setattr(category, key, value)
+    if not db_product:
+        logger.warning(f"Product with ID {product_id} not found for stock update.")
+        return None
 
-        db.session.commit()
-        cache.delete_memoized(cls.get_all_categories)
-        cache.delete_memoized(cls.get_category_by_id, category_id)
-        cache.delete_memoized(cls.get_category_by_slug, category.slug)
-        return cls.category_schema.dump(category)
+    new_stock = db_product.stock + quantity_change
+    if new_stock < 0:
+        logger.error(f"Cannot update stock for product {product_id}: resulting stock would be {new_stock}. Current stock: {db_product.stock}, change: {quantity_change}.")
+        raise ValueError(f"Not enough stock for product {db_product.name}. Current: {db_product.stock}, trying to reduce by {-quantity_change}.")
 
-    @classmethod
-    def delete_category(cls, category_id):
-        """Deletes a category."""
-        category = Category.query.get(category_id)
-        if not category:
-            return False
+    db_product.stock = new_stock
+    db.add(db_product)
+    await db.flush()
+    await db.refresh(db_product)
+    logger.info(f"Stock for product {product_id} updated to {db_product.stock}.")
+    return ProductRead.model_validate(db_product)
 
-        # Check if there are any products associated with this category
-        if category.products:
-            raise ValueError("Cannot delete category with associated products.")
 
-        db.session.delete(category)
-        db.session.commit()
-        cache.delete_memoized(cls.get_all_categories)
-        cache.delete_memoized(cls.get_category_by_id, category_id)
-        cache.delete_memoized(cls.get_category_by_slug, category.slug)
-        return True
+async def delete_product(product_id: int, db: AsyncSession = Depends(get_db_session)) -> bool:
+    """
+    Deletes a product from the database.
+
+    Args:
+        product_id (int): The ID of the product to delete.
+        db (AsyncSession): The database session.
+
+    Returns:
+        bool: True if the product was deleted, False if not found.
+    """
+    logger.info(f"Attempting to delete product with ID: {product_id}")
+    result = await db.execute(select(Product).filter(Product.id == product_id))
+    db_product = result.scalar_one_or_none()
+
+    if not db_product:
+        logger.warning(f"Product with ID {product_id} not found for deletion.")
+        return False
+
+    await db.delete(db_product)
+    # The session commit in `get_db_session` will finalize the deletion
+    logger.info(f"Product {product_id} deleted successfully.")
+    return True
+
 ```

@@ -1,25 +1,36 @@
 ```python
-import logging
+"""
+Main entry point for the ALX-Shop FastAPI application.
+
+This file sets up the FastAPI application instance, includes all API routes,
+configures global exception handlers, middleware, caching, and rate limiting.
+It also manages startup and shutdown events for database connections, Redis, etc.
+"""
+
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, Depends, Request
 from fastapi.responses import JSONResponse
-from fastapi_limiter import FastAPILimiter
-import uvicorn
-import redis.asyncio as redis
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.v1.endpoints import users, items, orders
 from app.core.config import settings
-from app.core.exceptions import CustomException, UnauthorizedException, ForbiddenException, NotFoundException
-from app.core.middleware import (
-    exception_handling_middleware, logging_middleware, rate_limit_middleware,
-    AUTH_HEADER_KEY, get_request_id
-)
-from app.core.cache import get_redis_client
+from app.core.database import database_engine, close_db_connection
+from app.core.exceptions import CustomException, custom_exception_handler
+from app.core.middlewares import LoggingMiddleware
+from app.core.logging_config import setup_logging
+from app.api.v1 import auth, products, users, orders
+from app.core.rate_limiter import setup_rate_limiter, limiter
+from app.core.security import get_current_active_user
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis import asyncio as aioredis
 
-# Configure basic logging
-logging.basicConfig(level=settings.LOG_LEVEL,
-                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+# Initialize logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -27,101 +38,111 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     Handles startup and shutdown events for the application.
-    Initializes FastAPILimiter and Redis client on startup.
+
+    - On startup:
+        - Logs application start.
+        - Initializes the rate limiter.
+        - Connects to Redis for caching.
+        - Sets up database connection (though SQLAlchemy engine handles pooling).
+    - On shutdown:
+        - Logs application shutdown.
+        - Closes Redis connection.
+        - Closes database connections.
     """
-    logger.info("Application startup event triggered.")
+    logger.info("Application starting up...")
+
+    # Initialize Rate Limiter
+    await setup_rate_limiter()
+    logger.info("Rate limiter initialized.")
+
+    # Initialize Redis for caching
     try:
-        # Initialize Redis for caching and rate limiting
-        # Ensure that the redis client can connect, if not, log and proceed without it
-        try:
-            redis_client = await get_redis_client()
-            await FastAPILimiter.init(redis_client)
-            app.state.redis = redis_client # Store redis client in app state
-            logger.info("FastAPILimiter and Redis client initialized successfully.")
-        except Exception as e:
-            logger.error(f"Failed to initialize Redis or FastAPILimiter: {e}. Caching and rate limiting will be disabled.")
-            app.state.redis = None # Set to None if initialization fails
+        redis = aioredis.from_url(
+            settings.REDIS_URI,
+            encoding="utf8",
+            decode_responses=True
+        )
+        FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+        logger.info(f"FastAPI Cache initialized with Redis at {settings.REDIS_URI}")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis for caching: {e}")
+        # Optionally, raise the exception or fallback to no caching
 
-        # You can add other startup logic here, e.g., connecting to other services
-        yield # Application runs
-    finally:
-        logger.info("Application shutdown event triggered.")
-        # Clean up resources
-        if app.state.redis:
-            await app.state.redis.close()
-            logger.info("Redis client closed.")
-        # FastAPILimiter does not have an explicit shutdown method, relies on redis client closing
+    # Database connection - SQLAlchemy engine manages connection pool
+    # No explicit `connect()` call needed here, but good to ensure engine is set up
+    logger.info(f"Database engine initialized for {settings.DATABASE_URL.split('@')[-1]}")
+
+    yield  # Application runs here
+
+    logger.info("Application shutting down...")
+    # Close Redis connection if it was opened
+    if FastAPICache.get_backend():
+        await FastAPICache.get_backend().close()
+        logger.info("FastAPI Cache Redis backend closed.")
+
+    # Close database connections
+    await close_db_connection(database_engine)
+    logger.info("Database connection pool closed.")
 
 
+# Create the FastAPI application instance
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version=settings.API_VERSION,
-    description="Mobile App Backend System with FastAPI, PostgreSQL, and Docker.",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan,
+    description="An enterprise-grade e-commerce backend with DevOps automation.",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    lifespan=lifespan, # Attach the lifespan context manager
 )
 
-# --- Global Middleware ---
-# Order of middleware matters: logging -> exception handling -> rate limiting -> actual request processing
-app.middleware("http")(logging_middleware)
-app.middleware("http")(exception_handling_middleware) # Custom exception handling
-app.middleware("http")(rate_limit_middleware) # Rate limiting
+# Apply rate limiting middleware globally
+app.state.limiter = limiter
+app.add_exception_handler(StarletteHTTPException, limiter.http_exception_handler)
 
 
-# --- Global Exception Handlers ---
-@app.exception_handler(CustomException)
-async def custom_exception_handler(request: Request, exc: CustomException):
-    request_id = get_request_id(request)
-    logger.error(f"Request ID: {request_id} - Custom exception caught: {exc.name} - {exc.message}", exc_info=True)
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message, "name": exc.name},
-        headers={AUTH_HEADER_KEY: request_id}
-    )
+# Add custom middlewares
+app.add_middleware(LoggingMiddleware)
 
-@app.exception_handler(UnauthorizedException)
-async def unauthorized_exception_handler(request: Request, exc: UnauthorizedException):
-    request_id = get_request_id(request)
-    logger.warning(f"Request ID: {request_id} - Unauthorized access attempt: {exc.message}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-        headers={AUTH_HEADER_KEY: request_id, "WWW-Authenticate": "Bearer"}
-    )
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS] if settings.BACKEND_CORS_ORIGINS else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.exception_handler(ForbiddenException)
-async def forbidden_exception_handler(request: Request, exc: ForbiddenException):
-    request_id = get_request_id(request)
-    logger.warning(f"Request ID: {request_id} - Forbidden access attempt: {exc.message}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-        headers={AUTH_HEADER_KEY: request_id}
-    )
-
-@app.exception_handler(NotFoundException)
-async def not_found_exception_handler(request: Request, exc: NotFoundException):
-    request_id = get_request_id(request)
-    logger.info(f"Request ID: {request_id} - Resource not found: {exc.message}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-        headers={AUTH_HEADER_KEY: request_id}
-    )
-
-# --- API Routers ---
-app.include_router(users.router, prefix=settings.API_V1_STR, tags=["users"])
-app.include_router(items.router, prefix=settings.API_V1_STR, tags=["items"])
-app.include_router(orders.router, prefix=settings.API_V1_STR, tags=["orders"])
+# Register custom exception handlers
+app.add_exception_handler(CustomException, custom_exception_handler)
+app.add_exception_handler(RequestValidationError, custom_exception_handler)
+app.add_exception_handler(StarletteHTTPException, custom_exception_handler)
 
 
-@app.get("/", summary="Root endpoint for API status check", include_in_schema=False)
-async def root():
-    return {"message": "Mobile App Backend is running!"}
+# Include API routers
+# All API endpoints are prefixed with /api/v1
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/v1", tags=["Users"])
+app.include_router(products.router, prefix="/api/v1", tags=["Products"])
+app.include_router(orders.router, prefix="/api/v1", tags=["Orders"])
 
 
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=settings.DEBUG)
+@app.get("/api/v1/healthcheck", summary="Health Check", description="Checks the health of the API.")
+async def healthcheck():
+    """
+    Endpoint to check the health status of the API.
+    Returns a simple success message if the application is running.
+    """
+    logger.info("Health check endpoint accessed.")
+    return {"status": "ok", "message": "ALX-Shop API is running!"}
+
+@app.get("/api/v1/protected-test", summary="Protected Test Endpoint", description="A test endpoint requiring authentication.")
+async def protected_test(current_user: dict = Depends(get_current_active_user)):
+    """
+    A simple endpoint to demonstrate authentication and authorization.
+    Only authenticated and active users can access this.
+    """
+    logger.info(f"Protected test endpoint accessed by user: {current_user['email']}")
+    return {"message": f"Welcome, {current_user['email']}! You are authenticated."}
+
 ```

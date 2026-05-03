@@ -1,137 +1,78 @@
+```python
+"""
+Authentication service module for ALX-Shop.
+
+This module encapsulates the business logic for user authentication,
+including:
+- Registering new users.
+- Authenticating users with email and password.
+- Creating access and refresh tokens.
+- Interacting with the `user_service` and `security` modules.
+"""
+
 import logging
-from datetime import timedelta
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, decode_token
-from app import db, jwt
-from app.models import User, REVOKED_TOKENS
-from app.utils.exceptions import ConflictError, NotFoundError, UnauthorizedError, ForbiddenError
+from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db_session
+from fastapi import Depends
+
+from app.schemas.user import UserCreate, UserRead, UserRole
+from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
+from app.services import user_service
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-class AuthService:
+# Constants for token expiration, imported from settings
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+ALGORITHM = settings.ALGORITHM
+
+
+async def register_new_user(user_in: UserCreate, db: AsyncSession = Depends(get_db_session)) -> UserRead:
     """
-    Service layer for user authentication and authorization.
-    Handles user registration, login, token management, and revocation.
+    Registers a new user in the system.
+
+    Args:
+        user_in (UserCreate): The user data including email, password, full_name, role.
+        db (AsyncSession): The database session.
+
+    Returns:
+        UserRead: The newly created user's data (excluding hashed password).
     """
+    logger.info(f"Attempting to register new user: {user_in.email}")
+    hashed_password = get_password_hash(user_in.password)
+    user_data = user_in.model_dump()
+    user_data["hashed_password"] = hashed_password
+    del user_data["password"] # Remove plain password before passing to service
 
-    @staticmethod
-    def register_user(username, email, password, role=None):
-        """
-        Registers a new user in the system.
-        Args:
-            username (str): The user's chosen username.
-            email (str): The user's email address.
-            password (str): The user's password (will be hashed).
-            role (Role, optional): The user's role. Defaults to Role.USER.
-        Returns:
-            User: The newly created user object.
-        Raises:
-            ConflictError: If username or email already exists.
-        """
-        if User.query.filter_by(username=username).first():
-            logger.warning(f"Registration failed: Username '{username}' already exists.")
-            raise ConflictError("Username already exists.")
-        if User.query.filter_by(email=email).first():
-            logger.warning(f"Registration failed: Email '{email}' already exists.")
-            raise ConflictError("Email already exists.")
+    # Create user via user_service
+    created_user = await user_service.create_user(user_data, db=db)
+    logger.info(f"User {created_user.email} registered successfully with role {created_user.role.value}.")
+    return created_user
 
-        new_user = User(username=username, email=email, role=role)
-        new_user.set_password(password)
+async def authenticate_user(email: str, password: str, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
+    """
+    Authenticates a user by email and password.
 
-        db.session.add(new_user)
-        db.session.commit()
-        logger.info(f"User '{username}' registered successfully with ID: {new_user.id}")
-        return new_user
+    Args:
+        email (str): The user's email address.
+        password (str): The user's plain-text password.
+        db (AsyncSession): The database session.
 
-    @staticmethod
-    def authenticate_user(username, password):
-        """
-        Authenticates a user and generates JWT tokens.
-        Args:
-            username (str): The user's username.
-            password (str): The user's password.
-        Returns:
-            tuple: (access_token, refresh_token)
-        Raises:
-            UnauthorizedError: If authentication fails.
-        """
-        user = User.query.filter_by(username=username).first()
-        if not user or not user.check_password(password):
-            logger.warning(f"Authentication failed for user '{username}'.")
-            raise UnauthorizedError("Invalid credentials.")
+    Returns:
+        Optional[UserRead]: The authenticated user's data if credentials are valid, else None.
+    """
+    logger.debug(f"Attempting to authenticate user: {email}")
+    user = await user_service.get_user_by_email(email, db=db)
+    if not user:
+        logger.debug(f"Authentication failed: User {email} not found.")
+        return None
+    if not verify_password(password, user.hashed_password):
+        logger.debug(f"Authentication failed: Invalid password for user {email}.")
+        return None
+    logger.info(f"User {email} authenticated successfully.")
+    return user
 
-        # Create JWT tokens
-        identity = user.id
-        access_token = create_access_token(identity=identity, fresh=True)
-        refresh_token = create_refresh_token(identity=identity)
-
-        logger.info(f"User '{username}' authenticated successfully.")
-        return access_token, refresh_token
-
-    @staticmethod
-    def refresh_access_token(refresh_token):
-        """
-        Refreshes an access token using a valid refresh token.
-        Args:
-            refresh_token (str): The refresh token.
-        Returns:
-            str: A new access token.
-        Raises:
-            UnauthorizedError: If the refresh token is invalid or revoked.
-        """
-        try:
-            decoded_token = decode_token(refresh_token)
-            if decoded_token['jti'] in REVOKED_TOKENS:
-                logger.warning(f"Attempted refresh with revoked refresh token: {decoded_token['jti']}")
-                raise UnauthorizedError("Refresh token has been revoked.")
-
-            identity = get_jwt_identity() # Identity should be extracted by @jwt_required(refresh=True) decorator
-            new_access_token = create_access_token(identity=identity, fresh=False)
-            logger.info(f"Access token refreshed for user ID: {identity}")
-            return new_access_token
-        except Exception as e:
-            logger.error(f"Error refreshing access token: {e}")
-            raise UnauthorizedError("Invalid refresh token.")
-
-    @staticmethod
-    @jwt.token_in_blocklist_loader
-    def check_if_token_is_revoked(jwt_header, jwt_payload):
-        """
-        Callback function to check if a JWT has been revoked.
-        This is used by Flask-JWT-Extended.
-        """
-        jti = jwt_payload["jti"]
-        is_revoked = jti in REVOKED_TOKENS
-        logger.debug(f"Checking revocation for JTI {jti}: {is_revoked}")
-        return is_revoked
-
-    @staticmethod
-    def revoke_token(jti):
-        """
-        Adds a token's JTI to the revoked tokens list.
-        Args:
-            jti (str): The JWT ID of the token to revoke.
-        """
-        REVOKED_TOKENS.add(jti)
-        logger.info(f"Token with JTI '{jti}' revoked.")
-
-    @staticmethod
-    def get_current_user_id():
-        """
-        Retrieves the current user's ID from the JWT payload.
-        Assumes `jwt_required()` has been called.
-        """
-        return get_jwt_identity()
-
-    @staticmethod
-    def get_current_user_role():
-        """
-        Retrieves the current user's role from the database.
-        Assumes `jwt_required()` has been called.
-        """
-        user_id = AuthService.get_current_user_id()
-        user = User.query.get(user_id)
-        if not user:
-            logger.error(f"User with ID {user_id} not found when fetching role.")
-            raise NotFoundError("User not found.")
-        return user.role
 ```

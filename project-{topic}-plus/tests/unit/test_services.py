@@ -1,234 +1,193 @@
 ```python
+"""
+Unit tests for the ALX-Shop service layer.
+
+These tests focus on the business logic within the service functions,
+mocking database interactions to ensure isolation and speed.
+"""
+
 import pytest
 from unittest.mock import AsyncMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-import uuid
+from app.services import user_service, product_service, order_service
+from app.schemas.user import UserCreate, UserUpdate, UserRead, UserRole
+from app.schemas.product import ProductCreate, ProductUpdate, ProductRead
+from app.schemas.order import OrderCreate, OrderUpdate, OrderRead, OrderItemCreate, OrderStatus
+from app.models.user import User as ORMUser
+from app.models.product import Product as ORMProduct
+from app.models.order import Order as ORMOrder, OrderItem as ORMOrderItem
+from app.core.security import get_password_hash # For user service internal calls
 
-from app.services import user as user_service
-from app.services import item as item_service
-from app.services import order as order_service
-from app.schemas.user import UserCreate, UserUpdate
-from app.schemas.item import ItemCreate, ItemUpdate
-from app.schemas.order import OrderCreate, OrderUpdateStatus
-from app.db.models.user import User
-from app.db.models.item import Item
-from app.db.models.order import Order, OrderItem, OrderStatus
-from app.core.exceptions import NotFoundException, ConflictException, ForbiddenException, BadRequestException
-from app.core.security import get_password_hash, verify_password
+@pytest.fixture
+def mock_db_session():
+    """
+    Fixture to provide a mock AsyncSession for service tests.
+    """
+    session = AsyncMock(spec=AsyncSession)
+    session.execute.return_value.scalar_one_or_none.return_value = None
+    session.execute.return_value.scalars.return_value.all.return_value = []
+    session.add.return_value = None
+    session.flush.return_value = None
+    session.refresh.return_value = None
+    session.delete.return_value = None
+    return session
 
 # --- User Service Tests ---
-@pytest.mark.asyncio
-async def test_create_user(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    user_data = UserCreate(email="newuser@example.com", password="securepassword", full_name="New User")
-
-    mocker.patch("app.db.models.user.User.__init__", return_value=None)
-    mocker.patch("app.core.security.get_password_hash", return_value="hashed_password")
-
-    user_result = await user_service.create_user(session=mock_session, user_create=user_data)
-
-    mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
-    assert user_result.email == user_data.email
-    assert user_result.hashed_password == "hashed_password"
 
 @pytest.mark.asyncio
-async def test_create_user_email_conflict(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    user_data = UserCreate(email="existing@example.com", password="securepassword")
-
-    mock_session.commit.side_effect = IntegrityError("duplicate key", {}, {})
-    mocker.patch("app.db.models.user.User.__init__", return_value=None)
-    mocker.patch("app.core.security.get_password_hash", return_value="hashed_password")
-
-    with pytest.raises(ConflictException, match="Email already registered"):
-        await user_service.create_user(session=mock_session, user_create=user_data)
+async def test_get_user_by_id_found(mock_db_session):
+    mock_user_orm = ORMUser(id=1, email="test@example.com", hashed_password="hashed", full_name="Test User", role=ORMUser.UserRole.CUSTOMER)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_user_orm
+    user = await user_service.get_user_by_id(1, db=mock_db_session)
+    assert user is not None
+    assert user.id == 1
+    assert user.email == "test@example.com"
 
 @pytest.mark.asyncio
-async def test_get_user_by_email(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    expected_user = User(id=uuid.uuid4(), email="test@example.com", hashed_password="hashed")
-
-    mock_session.execute.return_value.scalar_one_or_none.return_value = expected_user
-
-    user = await user_service.get_user_by_email(mock_session, "test@example.com")
-
-    assert user.email == expected_user.email
-    mock_session.execute.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_get_user_by_email_not_found(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    mock_session.execute.return_value.scalar_one_or_none.return_value = None
-
-    user = await user_service.get_user_by_email(mock_session, "nonexistent@example.com")
-
+async def test_get_user_by_id_not_found(mock_db_session):
+    user = await user_service.get_user_by_id(999, db=mock_db_session)
     assert user is None
 
-# --- Item Service Tests ---
 @pytest.mark.asyncio
-async def test_create_item(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    user_id = uuid.uuid4()
-    item_data = ItemCreate(name="New Item", description="Description", price=10.0)
+async def test_create_user(mock_db_session):
+    user_create = UserCreate(email="new@example.com", password="password", full_name="New User", role=UserRole.CUSTOMER)
+    with patch('app.services.user_service.get_password_hash', return_value='hashed_password') as mock_hash:
+        # Mocking the ORM object creation and behavior after add/flush/refresh
+        mock_db_session.add.side_effect = lambda x: setattr(x, 'id', 1)
+        mock_db_session.refresh.side_effect = lambda x, **kwargs: x # Simulate refresh for defaults like id/timestamps
 
-    mocker.patch("app.db.models.item.Item.__init__", return_value=None)
-
-    item_result = await item_service.create_item(mock_session, item_create=item_data, owner_id=user_id)
-
-    mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
-    assert item_result.name == item_data.name
-    assert item_result.owner_id == user_id
-
-@pytest.mark.asyncio
-async def test_get_item_by_id(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    item_id = uuid.uuid4()
-    expected_item = Item(id=item_id, name="Test Item", price=10.0, owner_id=uuid.uuid4())
-    
-    mock_session.execute.return_value.scalar_one_or_none.return_value = expected_item
-
-    item = await item_service.get_item_by_id(mock_session, item_id)
-    
-    assert item.id == item_id
-    mock_session.execute.assert_called_once()
+        user = await user_service.create_user(user_create.model_dump(), db=mock_db_session)
+        
+        mock_hash.assert_called_once_with(user_create.password)
+        mock_db_session.add.assert_called_once()
+        mock_db_session.flush.assert_called_once()
+        mock_db_session.refresh.assert_called_once()
+        assert user.email == user_create.email
+        assert user.id == 1 # Check if ID was set by mock
+        assert user.role == UserRole.CUSTOMER
 
 @pytest.mark.asyncio
-async def test_update_item(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    item_id = uuid.uuid4()
-    owner_id = uuid.uuid4()
-    existing_item = Item(id=item_id, name="Old Item", price=5.0, owner_id=owner_id)
-    
-    mocker.patch("app.services.item.get_item_by_id", return_value=existing_item)
-    
-    item_update_data = ItemUpdate(name="Updated Item", price=15.0)
-    
-    updated_item = await item_service.update_item(
-        mock_session, item_id=item_id, item_update=item_update_data, current_user_id=owner_id
-    )
-    
-    mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
-    assert updated_item.name == "Updated Item"
-    assert updated_item.price == 15.0
+async def test_update_user(mock_db_session):
+    existing_user_orm = ORMUser(id=1, email="old@example.com", hashed_password="old_hashed", full_name="Old User", role=ORMUser.UserRole.CUSTOMER)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_user_orm
+
+    user_update = UserUpdate(full_name="Updated User", email="updated@example.com")
+    with patch('app.services.user_service.get_password_hash', return_value='new_hashed') as mock_hash:
+        user = await user_service.update_user(1, user_update, db=mock_db_session)
+        
+        assert user is not None
+        assert user.full_name == "Updated User"
+        assert user.email == "updated@example.com"
+        mock_db_session.add.assert_called_once_with(existing_user_orm)
+        mock_db_session.refresh.assert_called_once()
+        mock_hash.assert_not_called() # No password update
 
 @pytest.mark.asyncio
-async def test_update_item_not_owner(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    item_id = uuid.uuid4()
-    owner_id = uuid.uuid4()
-    other_user_id = uuid.uuid4()
-    existing_item = Item(id=item_id, name="Old Item", price=5.0, owner_id=owner_id)
+async def test_delete_user(mock_db_session):
+    existing_user_orm = ORMUser(id=1, email="delete@example.com", hashed_password="hashed")
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_user_orm
+    result = await user_service.delete_user(1, db=mock_db_session)
+    assert result is True
+    mock_db_session.delete.assert_called_once_with(existing_user_orm)
+
+# --- Product Service Tests ---
+
+@pytest.mark.asyncio
+async def test_get_product_by_id_found(mock_db_session):
+    mock_product_orm = ORMProduct(id=1, name="Product A", price=10.0, stock=5)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_product_orm
+    product = await product_service.get_product_by_id(1, db=mock_db_session)
+    assert product is not None
+    assert product.id == 1
+    assert product.name == "Product A"
+
+@pytest.mark.asyncio
+async def test_create_product(mock_db_session):
+    product_create = ProductCreate(name="New Product", description="Desc", price=100.0, stock=10)
+    mock_db_session.add.side_effect = lambda x: setattr(x, 'id', 1)
+    mock_db_session.refresh.side_effect = lambda x, **kwargs: x
+    product = await product_service.create_product(product_create, db=mock_db_session)
+    assert product.name == "New Product"
+    assert product.id == 1
+    mock_db_session.add.assert_called_once()
+    mock_db_session.flush.assert_called_once()
+    mock_db_session.refresh.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_update_product_stock_decrement(mock_db_session):
+    existing_product_orm = ORMProduct(id=1, name="Item", price=10.0, stock=10)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_product_orm
+    mock_db_session.refresh.side_effect = lambda x, **kwargs: x
+
+    updated_product = await product_service.update_product_stock(1, -3, db=mock_db_session)
+    assert updated_product.stock == 7
+    mock_db_session.add.assert_called_once_with(existing_product_orm)
+    mock_db_session.flush.assert_called_once()
+    mock_db_session.refresh.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_update_product_stock_negative_fail(mock_db_session):
+    existing_product_orm = ORMProduct(id=1, name="Item", price=10.0, stock=2)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_product_orm
     
-    mocker.patch("app.services.item.get_item_by_id", return_value=existing_item)
-    
-    item_update_data = ItemUpdate(name="Updated Item")
-    
-    with pytest.raises(ForbiddenException):
-        await item_service.update_item(
-            mock_session, item_id=item_id, item_update=item_update_data, current_user_id=other_user_id
-        )
+    with pytest.raises(ValueError, match="Not enough stock"):
+        await product_service.update_product_stock(1, -3, db=mock_db_session)
+    mock_db_session.add.assert_not_called() # No database write should happen
 
 # --- Order Service Tests ---
-@pytest.mark.asyncio
-async def test_create_order(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    customer_id = uuid.uuid4()
-    item_id_1 = uuid.uuid4()
-    item_id_2 = uuid.uuid4()
-    
-    # Mock items that would be fetched from the DB
-    item_1 = Item(id=item_id_1, name="Item A", description="", price=10.0, owner_id=uuid.uuid4())
-    item_2 = Item(id=item_id_2, name="Item B", description="", price=20.0, owner_id=uuid.uuid4())
-    
-    mocker.patch("app.services.item.get_item_by_id", side_effect=[item_1, item_2])
-    
-    order_create_data = OrderCreate(
-        shipping_address="123 Street",
-        items=[
-            {"item_id": item_id_1, "quantity": 1},
-            {"item_id": item_id_2, "quantity": 2},
-        ]
-    )
-    
-    # Mock Order and OrderItem creation
-    order_mock = AsyncMock(spec=Order)
-    order_mock.id = uuid.uuid4()
-    order_mock.order_items = []
-    
-    # Patch the constructor calls directly
-    mocker.patch("app.db.models.order.Order.__init__", return_value=None)
-    mocker.patch("app.db.models.order.OrderItem.__init__", return_value=None)
-    
-    # Ensure add, commit, refresh are called
-    mock_session.add.side_effect = lambda obj: None # Prevent actual __init__ call for added objects
-    mock_session.commit.return_value = None
-    mock_session.refresh.return_value = None
-    
-    order_result = await order_service.create_order(mock_session, order_create=order_create_data, customer_id=customer_id)
-    
-    assert order_result.customer_id == customer_id
-    assert order_result.total_amount == (10.0 * 1) + (20.0 * 2) # 10 + 40 = 50.0
-    assert mock_session.add.call_count >= 3 # 1 for order, 2 for order_items
-    mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
-    
-@pytest.mark.asyncio
-async def test_create_order_item_not_found(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    customer_id = uuid.uuid4()
-    non_existent_item_id = uuid.uuid4()
-    
-    mocker.patch("app.services.item.get_item_by_id", return_value=None) # Item not found
-    
-    order_create_data = OrderCreate(
-        shipping_address="123 Street",
-        items=[{"item_id": non_existent_item_id, "quantity": 1}]
-    )
-    
-    with pytest.raises(NotFoundException, match=f"Item with ID {non_existent_item_id} not found."):
-        await order_service.create_order(mock_session, order_create=order_create_data, customer_id=customer_id)
 
 @pytest.mark.asyncio
-async def test_update_order_status(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    order_id = uuid.uuid4()
-    customer_id = uuid.uuid4()
-    
-    existing_order = Order(id=order_id, customer_id=customer_id, status=OrderStatus.PENDING, total_amount=100.0)
-    
-    mocker.patch("app.services.order.get_order_by_id", return_value=existing_order)
-    
-    status_update_data = OrderUpdateStatus(status=OrderStatus.SHIPPED)
-    
-    updated_order = await order_service.update_order_status(
-        mock_session, order_id=order_id, order_status_update=status_update_data
-    )
-    
-    mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
+async def test_create_order(mock_db_session):
+    order_items_in = [
+        OrderItemCreate(product_id=1, quantity=2, price_at_purchase=10.0),
+        OrderItemCreate(product_id=2, quantity=1, price_at_purchase=20.0)
+    ]
+    total_price = 40.0
+    user_id = 1
+
+    mock_db_session.add.side_effect = lambda x: setattr(x, 'id', 101 if isinstance(x, ORMOrder) else 201)
+    mock_db_session.refresh.side_effect = lambda x, **kwargs: x
+
+    order = await order_service.create_order(user_id, order_items_in, total_price, db=mock_db_session)
+
+    assert order is not None
+    assert order.user_id == user_id
+    assert order.total_price == total_price
+    assert order.status == OrderStatus.PENDING
+    assert len(order.items) == 2
+    mock_db_session.add.call_count == 3 # 1 for order, 2 for order items
+    mock_db_session.flush.call_count == 2
+    mock_db_session.refresh.call_count >= 1 # At least one for the order
+
+@pytest.mark.asyncio
+async def test_get_order_by_id_found(mock_db_session):
+    mock_order_orm = ORMOrder(id=1, user_id=1, total_price=30.0, status=ORMOrder.OrderStatus.PENDING)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = mock_order_orm
+    order = await order_service.get_order_by_id(1, db=mock_db_session)
+    assert order is not None
+    assert order.id == 1
+
+@pytest.mark.asyncio
+async def test_update_order_status(mock_db_session):
+    existing_order_orm = ORMOrder(id=1, user_id=1, total_price=30.0, status=ORMOrder.OrderStatus.PENDING)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_order_orm
+    mock_db_session.refresh.side_effect = lambda x, **kwargs: x
+
+    order_update = OrderUpdate(status=OrderStatus.SHIPPED)
+    updated_order = await order_service.update_order(1, order_update, db=mock_db_session)
+
+    assert updated_order is not None
     assert updated_order.status == OrderStatus.SHIPPED
+    mock_db_session.add.assert_called_once_with(existing_order_orm)
+    mock_db_session.flush.assert_called_once()
+    mock_db_session.refresh.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_update_order_status_invalid_transition(mocker):
-    mock_session = AsyncMock(spec=AsyncSession)
-    order_id = uuid.uuid4()
-    customer_id = uuid.uuid4()
-    
-    existing_order = Order(id=order_id, customer_id=customer_id, status=OrderStatus.DELIVERED, total_amount=100.0)
-    
-    mocker.patch("app.services.order.get_order_by_id", return_value=existing_order)
-    
-    status_update_data = OrderUpdateStatus(status=OrderStatus.PENDING) # Cannot go from DELIVERED to PENDING
-    
-    with pytest.raises(BadRequestException, match="Invalid status transition"):
-        await order_service.update_order_status(
-            mock_session, order_id=order_id, order_status_update=status_update_data
-        )
+async def test_delete_order(mock_db_session):
+    existing_order_orm = ORMOrder(id=1, user_id=1, total_price=30.0, status=ORMOrder.OrderStatus.PENDING)
+    mock_db_session.execute.return_value.scalar_one_or_none.return_value = existing_order_orm
+    result = await order_service.delete_order(1, db=mock_db_session)
+    assert result is True
+    mock_db_session.delete.assert_called_once_with(existing_order_orm)
 
 ```

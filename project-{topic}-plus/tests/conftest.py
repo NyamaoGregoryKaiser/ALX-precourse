@@ -1,99 +1,158 @@
 ```python
+"""
+Pytest configuration file for ALX-Shop tests.
+
+This module defines fixtures to set up the test environment:
+- `test_db`: Provides an isolated, in-memory (or temporary file-based) database for each test.
+- `async_client`: Provides an asynchronous test client for making API requests.
+- `test_admin_user` and `test_customer_user`: Pre-registered users for authentication tests.
+- `admin_auth_headers` and `customer_auth_headers`: Authorization headers for test users.
+"""
+
+import asyncio
 import pytest
-from performance_monitor import create_app
-from performance_monitor.extensions import db
-from performance_monitor.models import User, Service, Endpoint, Metric
-from performance_monitor.auth import REVOKED_TOKENS
-from flask_jwt_extended import create_access_token, JWTManager
-import os
-import alembic.command
-import alembic.config
+import pytest_asyncio
+from typing import AsyncGenerator
+from httpx import AsyncClient
 
-@pytest.fixture(scope='session')
-def app():
-    """Create and configure a new app instance for each test session."""
-    os.environ['FLASK_CONFIG'] = 'testing' # Ensure testing config is loaded
-    app = create_app('testing')
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-    with app.app_context():
-        # Setup Alembic configuration for testing database
-        alembic_cfg = alembic.config.Config("alembic.ini")
-        alembic_cfg.set_main_option("script_location", "migrations")
-        alembic_cfg.set_main_option("sqlalchemy.url", app.config['SQLALCHEMY_DATABASE_URI'])
+from app.main import app
+from app.core.database import Base, get_db_session # Import Base and get_db_session
+from app.core.config import settings
+from app.schemas.user import UserCreate, UserRead, UserRole
+from app.services.auth_service import register_new_user, authenticate_user
+from app.services.user_service import get_user_by_email
+from app.core.security import create_access_token
+from datetime import timedelta
 
-        # Drop and re-create all tables using Alembic for a clean slate
-        # This ensures the test DB schema is always up-to-date and clean
-        alembic.command.downgrade(alembic_cfg, "base")
-        alembic.command.upgrade(alembic_cfg, "head")
+# Override the database URL for tests to use a dedicated test database
+# This ensures tests are isolated and don't affect development data.
+TEST_DATABASE_URL = settings.TEST_DATABASE_URL or settings.ASYNC_DATABASE_URL
+print(f"Using test database URL: {TEST_DATABASE_URL}")
 
-        # Clear revoked tokens for a clean start
-        REVOKED_TOKENS.clear()
-
-        yield app
-
-        # Teardown: drop all tables after tests
-        alembic.command.downgrade(alembic_cfg, "base")
-        db.session.remove() # Close session
-
-@pytest.fixture(scope='function')
-def client(app):
-    """A test client for the app."""
-    return app.test_client()
-
-@pytest.fixture(scope='function')
-def runner(app):
-    """A cli runner for the app."""
-    return app.test_cli_runner()
-
-@pytest.fixture(scope='function')
-def db_session(app):
-    """Provides a fresh database session for each test function."""
-    with app.app_context():
-        connection = db.engine.connect()
-        transaction = connection.begin()
-        db.session.configure(bind=connection)
-        
-        # Optionally clean up data created during the test if not rolling back
-        # For simplicity, we rollback everything.
-        
-        yield db.session
-
-        transaction.rollback() # Rollback all changes
-        connection.close()
-        db.session.remove()
-
-@pytest.fixture(scope='function')
-def auth_tokens(app, db_session):
+@pytest_asyncio.fixture(scope="session")
+async def test_engine():
     """
-    Fixture to create and authenticate a test user, returning their tokens.
-    Creates an admin and a regular user.
+    Fixture for creating an asynchronous SQLAlchemy engine for tests.
     """
-    with app.app_context():
-        # Clear existing users to ensure fresh start
-        db_session.query(User).delete()
-        db_session.commit()
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    yield engine
+    await engine.dispose() # Close all connections after tests
 
-        # Create an admin user
-        admin_user = User(username='admin_test', email='admin_test@example.com', is_admin=True)
-        admin_user.set_password('admin_password')
-        db_session.add(admin_user)
+@pytest_asyncio.fixture(scope="session")
+async def test_db_session_factory(test_engine):
+    """
+    Fixture for creating an asynchronous sessionmaker for tests.
+    """
+    # Create tables once per session (faster than once per test)
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-        # Create a regular user
-        regular_user = User(username='user_test', email='user_test@example.com', is_admin=False)
-        regular_user.set_password('user_password')
-        db_session.add(regular_user)
-        db_session.commit()
+    # Use sessionmaker with expire_on_commit=False for easier access to relationships
+    AsyncSessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    yield AsyncSessionLocal
 
-        # Generate tokens for both users
-        with app.test_request_context():
-            admin_access_token = create_access_token(identity=admin_user.id, user_claims={'is_admin': admin_user.is_admin})
-            regular_access_token = create_access_token(identity=regular_user.id, user_claims={'is_admin': regular_user.is_admin})
+    # Drop all tables after all tests in the session are done
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
-        return {
-            'admin_user': admin_user,
-            'admin_headers': {'Authorization': f'Bearer {admin_access_token}'},
-            'regular_user': regular_user,
-            'regular_headers': {'Authorization': f'Bearer {regular_access_token}'},
-        }
+@pytest_asyncio.fixture(scope="function")
+async def test_db(test_db_session_factory) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Fixture for providing an isolated database session for each test function.
+    Rolls back transactions after each test to ensure a clean state.
+    """
+    async with test_db_session_factory() as session:
+        await session.begin_nested() # Start a nested transaction
+        yield session
+        await session.rollback() # Rollback the nested transaction after test
+        await session.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_client(test_db) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Fixture for providing an asynchronous test client for FastAPI.
+    Overrides the app's get_db_session dependency to use the test_db fixture.
+    """
+    # Override get_db_session to use our test session
+    app.dependency_overrides[get_db_session] = lambda: test_db
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides = {} # Clear overrides after test
+
+# --- User fixtures for authentication tests ---
+
+@pytest_asyncio.fixture(scope="function")
+async def test_admin_user(test_db: AsyncSession) -> UserRead:
+    """Fixture to create and return an admin user."""
+    admin_data = UserCreate(
+        email="admin_test@alx.com",
+        password="testpassword",
+        full_name="Test Admin",
+        role=UserRole.ADMIN,
+        is_active=True
+    )
+    admin_user = await get_user_by_email(admin_data.email, db=test_db)
+    if not admin_user:
+        admin_user = await register_new_user(admin_data, db=test_db)
+    return admin_user
+
+@pytest_asyncio.fixture(scope="function")
+async def test_customer_user(test_db: AsyncSession) -> UserRead:
+    """Fixture to create and return a customer user."""
+    customer_data = UserCreate(
+        email="customer_test@alx.com",
+        password="testpassword",
+        full_name="Test Customer",
+        role=UserRole.CUSTOMER,
+        is_active=True
+    )
+    customer_user = await get_user_by_email(customer_data.email, db=test_db)
+    if not customer_user:
+        customer_user = await register_new_user(customer_data, db=test_db)
+    return customer_user
+
+@pytest_asyncio.fixture(scope="function")
+async def inactive_customer_user(test_db: AsyncSession) -> UserRead:
+    """Fixture to create and return an inactive customer user."""
+    inactive_data = UserCreate(
+        email="inactive_test@alx.com",
+        password="testpassword",
+        full_name="Inactive User",
+        role=UserRole.CUSTOMER,
+        is_active=False
+    )
+    inactive_user = await get_user_by_email(inactive_data.email, db=test_db)
+    if not inactive_user:
+        inactive_user = await register_new_user(inactive_data, db=test_db)
+    return inactive_user
+
+
+@pytest_asyncio.fixture(scope="function")
+async def admin_auth_headers(test_admin_user: UserRead) -> dict:
+    """Fixture to return authorization headers for the admin user."""
+    token = create_access_token(
+        data={"sub": test_admin_user.email, "scopes": [test_admin_user.role]},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+@pytest_asyncio.fixture(scope="function")
+async def customer_auth_headers(test_customer_user: UserRead) -> dict:
+    """Fixture to return authorization headers for the customer user."""
+    token = create_access_token(
+        data={"sub": test_customer_user.email, "scopes": [test_customer_user.role]},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 ```

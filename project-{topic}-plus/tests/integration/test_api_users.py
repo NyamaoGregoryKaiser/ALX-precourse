@@ -1,307 +1,186 @@
+```python
+"""
+Integration tests for the User API endpoints.
+
+These tests cover:
+- CRUD operations for users (`/api/v1/users`).
+- Authorization checks for user management (admin vs. regular user).
+- Pagination and search for user listings.
+"""
+
 import pytest
 from httpx import AsyncClient
-from app.main import app
-from app.core.database import Base, async_session, engine
-from app.core.deps import get_db, get_current_active_user, get_current_active_superuser
-from app.core.security import get_password_hash
-from app.models.user import User as DBUser
-from app.schemas.user import UserCreate, UserUpdate
-from sqlalchemy.orm import sessionmaker
-from typing import AsyncGenerator
+from fastapi import status
+from app.schemas.user import UserCreate, UserUpdate, UserRead, UserRole
+from app.services import user_service
+from app.core.database import AsyncSessionLocal
+import asyncio
+import time
 
-# Use an in-memory SQLite database for integration tests (simpler for example)
-# In a real project, you'd use a dedicated PostgreSQL test database
-SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+@pytest.fixture(scope="function")
+async def seed_users(test_db):
+    """Fixture to seed some users for testing."""
+    async with AsyncSessionLocal() as session:
+        user1 = await user_service.create_user(
+            UserCreate(email="user1@test.com", password="password1", full_name="User One", role=UserRole.CUSTOMER).model_dump(), db=session
+        )
+        user2 = await user_service.create_user(
+            UserCreate(email="user2@test.com", password="password2", full_name="User Two", role=UserRole.CUSTOMER).model_dump(), db=session
+        )
+        user3 = await user_service.create_user(
+            UserCreate(email="user3@test.com", password="password3", full_name="User Three", role=UserRole.CUSTOMER, is_active=False).model_dump(), db=session
+        )
+        await session.commit()
+        return [user1, user2, user3]
 
-@pytest.fixture(name="test_db_session")
-async def test_db_session_fixture():
-    test_engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=False)
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=test_engine, class_=AsyncSession
-    )
-
-    async def override_get_db():
-        async with TestingSessionLocal() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = override_get_db
-    
-    async with TestingSessionLocal() as session:
-        yield session
-
-    app.dependency_overrides.clear()
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await test_engine.dispose()
-
-@pytest.fixture(name="client")
-async def client_fixture(test_db_session: AsyncSession):
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
-
-@pytest.fixture(name="superuser_token")
-async def superuser_token_fixture(client: AsyncClient, test_db_session: AsyncSession):
-    hashed_password = get_password_hash("adminpassword")
-    superuser = DBUser(
-        email="admin@example.com",
-        hashed_password=hashed_password,
-        full_name="Admin User",
-        is_active=True,
-        is_superuser=True,
-    )
-    test_db_session.add(superuser)
-    await test_db_session.commit()
-    await test_db_session.refresh(superuser)
-
-    response = await client.post(
-        "/api/v1/auth/token",
-        data={"username": superuser.email, "password": "adminpassword"}
-    )
-    return response.json()["access_token"]
-
-@pytest.fixture(name="normal_user_token")
-async def normal_user_token_fixture(client: AsyncClient, test_db_session: AsyncSession):
-    hashed_password = get_password_hash("userpassword")
-    normal_user = DBUser(
-        email="user@example.com",
-        hashed_password=hashed_password,
-        full_name="Normal User",
-        is_active=True,
-        is_superuser=False,
-    )
-    test_db_session.add(normal_user)
-    await test_db_session.commit()
-    await test_db_session.refresh(normal_user)
-
-    response = await client.post(
-        "/api/v1/auth/token",
-        data={"username": normal_user.email, "password": "userpassword"}
-    )
-    return response.json()["access_token"]
-
-@pytest.fixture(name="inactive_user")
-async def inactive_user_fixture(test_db_session: AsyncSession):
-    hashed_password = get_password_hash("inactivepassword")
-    user = DBUser(
-        email="inactive@example.com",
-        hashed_password=hashed_password,
-        full_name="Inactive User",
-        is_active=False,
-        is_superuser=False,
-    )
-    test_db_session.add(user)
-    await test_db_session.commit()
-    await test_db_session.refresh(user)
-    return user
-
-# Helper to get user by email for assertions
-async def get_user_by_email(db: AsyncSession, email: str):
-    return (await db.execute(select(DBUser).where(DBUser.email == email))).scalar_one_or_none()
-
-
-# --- Test /api/v1/users/ (GET) ---
-@pytest.mark.asyncio
-async def test_read_users_as_superuser(client: AsyncClient, superuser_token: str, normal_user_token: str, test_db_session: AsyncSession):
-    # Ensure there's more than one user for multi-user test
-    response = await client.get(
-        "/api/v1/users/",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 200
-    users = response.json()
-    assert len(users) >= 2 # superuser + normal_user
-    assert any(user["email"] == "admin@example.com" for user in users)
-    assert any(user["email"] == "user@example.com" for user in users)
+# --- Read Users Tests ---
 
 @pytest.mark.asyncio
-async def test_read_users_as_normal_user_forbidden(client: AsyncClient, normal_user_token: str):
-    response = await client.get(
-        "/api/v1/users/",
-        headers={"Authorization": f"Bearer {normal_user_token}"}
-    )
-    assert response.status_code == 403
-    assert response.json() == {"detail": "The user doesn't have enough privileges"}
-
-# --- Test /api/v1/users/ (POST) ---
-@pytest.mark.asyncio
-async def test_create_user_as_superuser_success(client: AsyncClient, superuser_token: str):
-    user_data = {"email": "newuser@example.com", "password": "newpassword123", "full_name": "New User"}
-    response = await client.post(
-        "/api/v1/users/",
-        json=user_data,
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 201
-    created_user = response.json()
-    assert created_user["email"] == user_data["email"]
-    assert created_user["is_superuser"] is False # Default for created user
+async def test_read_users_list_by_admin(async_client: AsyncClient, seed_users, admin_auth_headers: dict):
+    """Test retrieving a list of all users by an admin."""
+    response = await async_client.get("/api/v1/users", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    users = [UserRead.model_validate(u) for u in response.json()]
+    assert len(users) >= 3 # Expect at least 3 users from seed_users
+    assert any(u.email == "user1@test.com" for u in users)
+    assert any(u.email == "user3@test.com" for u in users) # Inactive user should also be visible to admin
 
 @pytest.mark.asyncio
-async def test_create_user_as_superuser_duplicate_email(client: AsyncClient, superuser_token: str):
-    user_data = {"email": "admin@example.com", "password": "newpassword123"} # admin already exists
-    response = await client.post(
-        "/api/v1/users/",
-        json=user_data,
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 409
-    assert response.json() == {"detail": "The user with this username already exists in the system."}
-
-# --- Test /api/v1/users/me (GET) ---
-@pytest.mark.asyncio
-async def test_read_user_me_success(client: AsyncClient, normal_user_token: str):
-    response = await client.get(
-        "/api/v1/users/me",
-        headers={"Authorization": f"Bearer {normal_user_token}"}
-    )
-    assert response.status_code == 200
-    user = response.json()
-    assert user["email"] == "user@example.com"
-    assert user["is_superuser"] is False
+async def test_read_users_list_by_customer_unauthorized(async_client: AsyncClient, seed_users, customer_auth_headers: dict):
+    """Test retrieving a list of all users by a regular user (should fail)."""
+    response = await async_client.get("/api/v1/users", headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "administrative privileges" in response.json()["message"]
 
 @pytest.mark.asyncio
-async def test_read_user_me_inactive(client: AsyncClient, inactive_user: DBUser):
-    # Get token for inactive user (need to simulate token generation before `get_current_active_user` check)
-    response = await client.post(
-        "/api/v1/auth/token",
-        data={"username": inactive_user.email, "password": "inactivepassword"}
-    )
-    inactive_token = response.json()["access_token"]
-
-    response = await client.get(
-        "/api/v1/users/me",
-        headers={"Authorization": f"Bearer {inactive_token}"}
-    )
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Inactive user"}
-
-# --- Test /api/v1/users/me (PUT) ---
-@pytest.mark.asyncio
-async def test_update_user_me_success(client: AsyncClient, normal_user_token: str, test_db_session: AsyncSession):
-    update_data = {"full_name": "Updated Normal User", "password": "newuserpassword"}
-    response = await client.put(
-        "/api/v1/users/me",
-        json=update_data,
-        headers={"Authorization": f"Bearer {normal_user_token}"}
-    )
-    assert response.status_code == 200
-    updated_user = response.json()
-    assert updated_user["full_name"] == "Updated Normal User"
-
-    # Verify password change (cannot directly assert hash from API)
-    db_user = (await test_db_session.execute(select(DBUser).where(DBUser.email == updated_user["email"]))).scalar_one()
-    assert verify_password("newuserpassword", db_user.hashed_password)
+async def test_read_user_by_id_self_success(async_client: AsyncClient, test_customer_user: UserRead, customer_auth_headers: dict):
+    """Test retrieving own user details by a regular user."""
+    response = await async_client.get(f"/api/v1/users/{test_customer_user.id}", headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    user = UserRead.model_validate(response.json())
+    assert user.id == test_customer_user.id
+    assert user.email == test_customer_user.email
 
 @pytest.mark.asyncio
-async def test_update_user_me_cannot_change_superuser_status(client: AsyncClient, normal_user_token: str):
-    update_data = {"is_superuser": True}
-    response = await client.put(
-        "/api/v1/users/me",
-        json=update_data,
-        headers={"Authorization": f"Bearer {normal_user_token}"}
-    )
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Not enough privileges to change superuser status."}
-
-# --- Test /api/v1/users/{user_id} (GET) ---
-@pytest.mark.asyncio
-async def test_read_user_by_id_as_superuser(client: AsyncClient, superuser_token: str, normal_user_token: str, test_db_session: AsyncSession):
-    # Fetch a user's ID
-    user_response = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {normal_user_token}"})
-    normal_user_id = user_response.json()["id"]
-
-    response = await client.get(
-        f"/api/v1/users/{normal_user_id}",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 200
-    user = response.json()
-    assert user["id"] == normal_user_id
+async def test_read_user_by_id_admin_success(async_client: AsyncClient, seed_users, admin_auth_headers: dict):
+    """Test retrieving any user details by an admin."""
+    user_id = seed_users[0].id
+    response = await async_client.get(f"/api/v1/users/{user_id}", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    user = UserRead.model_validate(response.json())
+    assert user.id == user_id
+    assert user.email == seed_users[0].email
 
 @pytest.mark.asyncio
-async def test_read_user_by_id_not_found(client: AsyncClient, superuser_token: str):
-    response = await client.get(
-        "/api/v1/users/9999",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 404
-    assert response.json() == {"detail": "User not found"}
-
-# --- Test /api/v1/users/{user_id} (PUT) ---
-@pytest.mark.asyncio
-async def test_update_user_by_id_as_superuser(client: AsyncClient, superuser_token: str, test_db_session: AsyncSession):
-    # Create another user to update
-    user_data = {"email": "updateme@example.com", "password": "oldpassword", "full_name": "User To Update"}
-    create_response = await client.post(
-        "/api/v1/users/",
-        json=user_data,
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    user_id_to_update = create_response.json()["id"]
-
-    update_data = {"full_name": "Updated By Admin", "is_active": False}
-    response = await client.put(
-        f"/api/v1/users/{user_id_to_update}",
-        json=update_data,
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 200
-    updated_user = response.json()
-    assert updated_user["full_name"] == "Updated By Admin"
-    assert updated_user["is_active"] is False
-
-    # Check email duplicate for another user
-    response_duplicate_email = await client.put(
-        f"/api/v1/users/{user_id_to_update}",
-        json={"email": "admin@example.com"}, # Admin user email
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response_duplicate_email.status_code == 409
-    assert response_duplicate_email.json() == {"detail": "This email is already registered by another user."}
-
-
-# --- Test /api/v1/users/{user_id} (DELETE) ---
-@pytest.mark.asyncio
-async def test_delete_user_as_superuser_success(client: AsyncClient, superuser_token: str, test_db_session: AsyncSession):
-    # Create a user to delete
-    user_data = {"email": "deleteme@example.com", "password": "deletepassword", "full_name": "User To Delete"}
-    create_response = await client.post(
-        "/api/v1/users/",
-        json=user_data,
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    user_id_to_delete = create_response.json()["id"]
-
-    response = await client.delete(
-        f"/api/v1/users/{user_id_to_delete}",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 200
-    deleted_user = response.json()
-    assert deleted_user["id"] == user_id_to_delete
-
-    # Verify user is truly deleted
-    check_response = await client.get(
-        f"/api/v1/users/{user_id_to_delete}",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert check_response.status_code == 404
+async def test_read_user_by_id_other_customer_unauthorized(async_client: AsyncClient, seed_users, customer_auth_headers: dict):
+    """Test retrieving another user's details by a regular user (should fail)."""
+    other_user_id = seed_users[0].id # Assume seed_users[0] is not the test_customer_user
+    response = await async_client.get(f"/api/v1/users/{other_user_id}", headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "Not authorized to view this user's details" in response.json()["message"]
 
 @pytest.mark.asyncio
-async def test_delete_own_user_as_superuser_forbidden(client: AsyncClient, superuser_token: str, test_db_session: AsyncSession):
-    # Get superuser's own ID
-    me_response = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {superuser_token}"})
-    superuser_id = me_response.json()["id"]
+async def test_read_user_by_id_not_found(async_client: AsyncClient, admin_auth_headers: dict):
+    """Test retrieving a non-existent user."""
+    response = await async_client.get("/api/v1/users/9999", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "User not found" in response.json()["message"]
 
-    response = await client.delete(
-        f"/api/v1/users/{superuser_id}",
-        headers={"Authorization": f"Bearer {superuser_token}"}
-    )
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Cannot delete your own user account."}
+# --- Update User Tests ---
 
-from sqlalchemy.future import select
-from app.core.security import verify_password
+@pytest.mark.asyncio
+async def test_update_user_self_success(async_client: AsyncClient, test_customer_user: UserRead, customer_auth_headers: dict):
+    """Test a regular user updating their own details."""
+    update_data = UserUpdate(full_name="Updated Customer Name")
+    response = await async_client.put(f"/api/v1/users/{test_customer_user.id}", json=update_data.model_dump(), headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    user = UserRead.model_validate(response.json())
+    assert user.id == test_customer_user.id
+    assert user.full_name == update_data.full_name
+
+@pytest.mark.asyncio
+async def test_update_user_admin_success(async_client: AsyncClient, seed_users, admin_auth_headers: dict):
+    """Test an admin updating another user's details."""
+    user_id = seed_users[0].id
+    update_data = UserUpdate(full_name="Admin Changed Name", is_active=False, role=UserRole.ADMIN)
+    response = await async_client.put(f"/api/v1/users/{user_id}", json=update_data.model_dump(), headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    user = UserRead.model_validate(response.json())
+    assert user.id == user_id
+    assert user.full_name == update_data.full_name
+    assert user.is_active == update_data.is_active
+    assert user.role == update_data.role
+
+@pytest.mark.asyncio
+async def test_update_user_self_change_role_fail(async_client: AsyncClient, test_customer_user: UserRead, customer_auth_headers: dict):
+    """Test a regular user trying to change their own role (should fail)."""
+    update_data = UserUpdate(role=UserRole.ADMIN)
+    response = await async_client.put(f"/api/v1/users/{test_customer_user.id}", json=update_data.model_dump(), headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "Not authorized to change user role" in response.json()["message"]
+
+@pytest.mark.asyncio
+async def test_update_user_other_customer_unauthorized(async_client: AsyncClient, seed_users, customer_auth_headers: dict):
+    """Test a regular user trying to update another user's details (should fail)."""
+    other_user_id = seed_users[0].id
+    update_data = UserUpdate(full_name="Hacker Name")
+    response = await async_client.put(f"/api/v1/users/{other_user_id}", json=update_data.model_dump(), headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "Not authorized to update this user's details" in response.json()["message"]
+
+@pytest.mark.asyncio
+async def test_update_user_not_found(async_client: AsyncClient, admin_auth_headers: dict):
+    """Test updating a non-existent user."""
+    update_data = UserUpdate(full_name="Non Existent")
+    response = await async_client.put("/api/v1/users/9999", json=update_data.model_dump(), headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "User not found" in response.json()["message"]
+
+# --- Delete User Tests ---
+
+@pytest.mark.asyncio
+async def test_delete_user_admin_success(async_client: AsyncClient, seed_users, admin_auth_headers: dict):
+    """Test an admin deleting a user."""
+    user_id_to_delete = seed_users[1].id
+    response = await async_client.delete(f"/api/v1/users/{user_id_to_delete}", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+
+    # Verify deletion in DB
+    check_response = await async_client.get(f"/api/v1/users/{user_id_to_delete}", headers=admin_auth_headers)
+    assert check_response.status_code == status.HTTP_404_NOT_FOUND
+
+@pytest.mark.asyncio
+async def test_delete_user_customer_unauthorized(async_client: AsyncClient, seed_users, customer_auth_headers: dict):
+    """Test a regular user trying to delete a user (should fail)."""
+    user_id_to_delete = seed_users[0].id
+    response = await async_client.delete(f"/api/v1/users/{user_id_to_delete}", headers=customer_auth_headers)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "administrative privileges" in response.json()["message"]
+
+@pytest.mark.asyncio
+async def test_delete_user_not_found(async_client: AsyncClient, admin_auth_headers: dict):
+    """Test deleting a non-existent user."""
+    response = await async_client.delete("/api/v1/users/9999", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "User not found" in response.json()["message"]
+
+@pytest.mark.asyncio
+async def test_user_list_rate_limiting(async_client: AsyncClient, admin_auth_headers: dict):
+    """Test if /users endpoint applies rate limiting."""
+    # The /users GET endpoint has a limit of 10 requests per minute
+    for i in range(10):
+        response = await async_client.get("/api/v1/users", headers=admin_auth_headers)
+        assert response.status_code == status.HTTP_200_OK
+
+    # The 11th request should be rate-limited
+    response = await async_client.get("/api/v1/users", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert "Rate limit exceeded" in response.json()["message"]
+    assert "Retry-After" in response.headers
+
+    # Wait for the limit to reset and try again
+    time.sleep(60)
+    response = await async_client.get("/api/v1/users", headers=admin_auth_headers)
+    assert response.status_code == status.HTTP_200_OK # Should succeed after reset
+
+```

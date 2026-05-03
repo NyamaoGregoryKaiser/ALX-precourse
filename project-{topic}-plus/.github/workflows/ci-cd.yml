@@ -1,13 +1,16 @@
+```yaml
 # .github/workflows/ci-cd.yml
-# GitHub Actions CI/CD Pipeline for C++ DevOps System
+# GitHub Actions CI/CD Pipeline for ALX-Shop
 
-name: CI/CD Pipeline
+name: ALX-Shop CI/CD
 
 on:
   push:
     branches:
       - main
       - develop
+    tags:
+      - 'v*.*.*' # Trigger on version tags like v1.0.0
   pull_request:
     branches:
       - main
@@ -15,163 +18,179 @@ on:
 
 jobs:
   build_and_test:
-    name: Build & Test
+    name: Build and Test
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }} # Conditional environment for secrets
+    env:
+      # Environment variables for tests - adjust as necessary
+      DATABASE_USER: alxuser_test
+      DATABASE_PASSWORD: alxpassword_test
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+      DATABASE_NAME: alxshop_test_db # Use a dedicated test database
+      ASYNC_DATABASE_URL: postgresql+asyncpg://${{ env.DATABASE_USER }}:${{ env.DATABASE_PASSWORD }}@${{ env.DATABASE_HOST }}:${{ env.DATABASE_PORT }}/${{ env.DATABASE_NAME }}
+      TEST_DATABASE_URL: postgresql+asyncpg://${{ env.DATABASE_USER }}:${{ env.DATABASE_PASSWORD }}@${{ env.DATABASE_HOST }}:${{ env.DATABASE_PORT }}/${{ env.DATABASE_NAME }}
+      SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }} # Use GitHub Secrets for sensitive data
+      REDIS_URI: redis://localhost:6379/0
+      LOG_LEVEL: DEBUG # Verbose logging for CI
+      ENVIRONMENT: testing # Crucial to tell app/core/config.py to use TEST_DATABASE_URL
+
+    services:
+      # Setup PostgreSQL for testing
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: ${{ env.DATABASE_USER }}
+          POSTGRES_PASSWORD: ${{ env.DATABASE_PASSWORD }}
+          POSTGRES_DB: ${{ env.DATABASE_NAME }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Setup Redis for caching/rate limiting tests
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive' # If using git submodules
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up environment variables
-      id: env_vars
-      run: |
-        echo "APP_PORT=8080" >> $GITHUB_ENV
-        echo "JWT_SECRET_KEY=ci_test_secret_key" >> $GITHUB_ENV
-        echo "DATABASE_PATH=/github/workspace/app/data/app.db" >> $GITHUB_ENV
-        echo "TEST_DATABASE_PATH=/github/workspace/app/data/test_app.db" >> $GITHUB_ENV
-        echo "LOG_FILE_PATH=/github/workspace/app/logs/ci_app.log" >> $GITHUB_ENV
-        echo "LOG_LEVEL=debug" >> $GITHUB_ENV
-      shell: bash
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install Conan
-      run: |
-        pip install conan
-        conan profile detect --force
+      - name: Cache Python dependencies
+        id: cache-pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-    - name: Configure CMake
-      run: |
-        mkdir -p app/build app/data app/logs
-        conan install app --output-folder=app/build --build=missing -s build_type=Debug
-        cmake app -B app/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=app/build/conan_toolchain.cmake
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-    - name: Build application and tests
-      run: cmake --build app/build --config Debug --target all
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
+          # Wait for PostgreSQL
+          for i in `seq 1 10`; do
+            nc -z localhost 5432 && echo "PostgreSQL is up!" && break
+            echo "Waiting for PostgreSQL..."
+            sleep 5
+          done
+          # Wait for Redis
+          for i in `seq 1 10`; do
+            nc -z localhost 6379 && echo "Redis is up!" && break
+            echo "Waiting for Redis..."
+            sleep 5
+          done
 
-    - name: Initialize test database
-      run: |
-        sqlite3 "$TEST_DATABASE_PATH" < db/schema.sql
-        sqlite3 "$TEST_DATABASE_PATH" < db/seed.sql
-      working-directory: .
+      - name: Run Alembic Migrations
+        # Apply migrations to the test database
+        run: |
+          export DATABASE_URL=${{ env.ASYNC_DATABASE_URL }}
+          alembic upgrade head
+        working-directory: .
 
-    - name: Run Unit & Integration tests
-      run: ./app/build/bin/cpp_devops_system_tests
-      working-directory: .
+      - name: Run Seed Data (Optional for tests if needed for initial state)
+        run: |
+          export ASYNC_DATABASE_URL=${{ env.ASYNC_DATABASE_URL }}
+          python seed_data.py
+        working-directory: .
 
-    - name: Start application in background for API tests
-      run: |
-        ./app/build/bin/cpp_devops_system_app &
-        echo "Waiting for app to start..."
-        sleep 5 # Give the app some time to initialize
-        curl -f http://localhost:8080/health || exit 1 # Health check
-        echo "App started successfully on port 8080."
-      working-directory: .
-      env:
-        # Pass environment variables to the running app for API tests
-        APP_PORT: ${{ env.APP_PORT }}
-        JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
-        DATABASE_PATH: ${{ env.DATABASE_PATH }} # Use the main DB path for running app
-        LOG_FILE_PATH: ${{ env.LOG_FILE_PATH }}
-        LOG_LEVEL: ${{ env.LOG_LEVEL }}
-        # Caching and Rate limiting can be enabled/disabled for CI as needed
-        CACHE_TTL_SECONDS: 1
-        RATE_LIMIT_ENABLED: true
-        RATE_LIMIT_MAX_REQUESTS: 1000 # High limit for CI to avoid false positives
-        RATE_LIMIT_WINDOW_SECONDS: 1
+      - name: Run Linting (flake8, black, isort, mypy)
+        run: |
+          flake8 app/ tests/
+          black --check app/ tests/
+          isort --check-only app/ tests/
+          mypy app/
 
-    - name: Run API tests
-      run: ./app/tests/api/api_test.sh
-      working-directory: .
+      - name: Run Pytest with Coverage
+        run: |
+          # Set PYTHONPATH to ensure modules are found correctly
+          export PYTHONPATH=$(pwd)
+          pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
 
-    - name: Install hey for performance tests
-      run: go install github.com/rakyll/hey@latest
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # If using Codecov, store token in secrets
+          directory: ./coverage/
+          fail_ci_if_error: true # Set to true to fail CI if Codecov upload fails
+          files: ./coverage.xml # The generated coverage report
+          verbose: true # Optional: enable verbose logging for debug
 
-    - name: Run Performance tests
-      run: ./app/tests/performance/performance_test.sh
-      working-directory: .
-
-    - name: Upload Logs (on failure)
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-logs
-        path: app/logs/*.log
-
-  docker_build_and_push:
-    name: Docker Build & Push
+  build_and_push_docker:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: build_and_test # Only run if build and tests pass
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' # Only push for main/develop branches
-
+    needs: build_and_test # This job depends on successful completion of build_and_test
+    if: success() && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) # Only push on main branch or tags
+    environment:
+      name: production
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Docker login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/alx-shop-api
+          tags: |
+            type=schedule
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,format=short,prefix=
+            # Additional tag for main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-    - name: Determine image tag
-      id: get_tag
-      run: |
-        BRANCH_NAME=${GITHUB_REF##*/}
-        if [[ "$BRANCH_NAME" == "main" ]]; then
-          echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
-        else
-          # Use short commit SHA for develop branch
-          echo "IMAGE_TAG=${BRANCH_SHA_SHORT}" >> $GITHUB_OUTPUT
-        fi
-        echo "COMMIT_SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.IMAGE_TAG }}
-          ${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.COMMIT_SHA_SHORT }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+  # conceptual deploy job
+  # deploy:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: build_and_push_docker
+  #   if: success() && github.ref == 'refs/heads/main'
+  #   environment:
+  #     name: production
+  #     url: https://api.your-alx-shop.com # Link to your deployed application
+  #   steps:
+  #     - name: Deploy to Kubernetes / Cloud Provider
+  #       # This step would typically involve using kubectl, AWS CLI, Azure CLI, Helm, etc.
+  #       # For example, updating a Kubernetes deployment:
+  #       run: |
+  #         # echo "Deploying image ${{ secrets.DOCKER_USERNAME }}/alx-shop-api:${{ steps.meta.outputs.tag }}"
+  #         # kubectl set image deployment/alx-shop-api alx-shop-api=${{ secrets.DOCKER_USERNAME }}/alx-shop-api:${{ steps.meta.outputs.tag }} -n alx-shop-namespace
+  #         echo "Deployment step placeholder - Integrate with your cloud provider's deployment tools."
+  #         echo "Successfully deployed version ${{ steps.meta.outputs.version }} to production!"
 
-  deploy:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: docker_build_and_push # Only deploy if build and push succeed
-    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Get image tag for deployment
-      id: get_tag
-      run: echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
-
-    - name: Deploy to Kubernetes (Example - using kubectl)
-      uses: azure/k8s-set-context@v3 # Use appropriate action for your cloud provider
-      with:
-        method: kubeconfig
-        kubeconfig: ${{ secrets.KUBECONFIG_BASE64 }} # Base64 encoded kubeconfig
-    - run: |
-        # Replace image in your K8s manifest and apply
-        kubectl set image deployment/cpp-devops-app cpp-devops-app=${{ secrets.DOCKER_USERNAME }}/cpp-devops-system:${{ steps.get_tag.outputs.IMAGE_TAG }} -n production-namespace
-        kubectl rollout status deployment/cpp-devops-app -n production-namespace
-      env:
-        KUBECONFIG_FILE_PATH: ${{ runner.temp }}/kubeconfig # For the previous step
-      shell: bash
-
-    - name: Verify Deployment (Example)
-      run: |
-        echo "Deployment triggered. Verifying service availability..."
-        # Add actual verification steps, e.g., curl to deployed endpoint, check logs, etc.
-        # Example: curl -f https://api.yourdomain.com/health
-        echo "Deployment verification steps here..."
-      # This step should ideally use specific cloud provider tools or kubectl commands
-      # to ensure the new deployment is healthy.
+```
