@@ -1,157 +1,142 @@
-```markdown
-# DB-Optimizer: Deployment Guide
+# ML Utilities System: Deployment Guide
 
-This guide outlines the steps to deploy the DB-Optimizer system to a production environment using Docker and Docker Compose. For more complex production setups (e.g., Kubernetes), this serves as a foundation.
+This document provides instructions for deploying the ML Utilities System using Docker and Docker Compose for local environments, and outlines considerations for production deployment.
 
-## 1. Production Environment Setup
+## 1. Local Deployment with Docker Compose
 
-### 1.1. Server Requirements
-*   **Operating System:** Linux (e.g., Ubuntu, Debian, CentOS).
-*   **Resources:**
-    *   **CPU:** At least 2 cores (more for higher traffic/monitoring load).
-    *   **RAM:** Minimum 4GB (8GB recommended for concurrent monitoring and API traffic).
-    *   **Disk:** Sufficient space for Docker images, containers, and PostgreSQL data (consider persistent storage).
-*   **Software:**
-    *   Docker Engine (latest stable version)
-    *   Docker Compose (latest stable version)
-    *   Git
+The easiest way to run the entire system (backend and PostgreSQL database) locally is using Docker Compose.
 
-### 1.2. Firewall Configuration
-Ensure the following ports are open on your server's firewall:
-*   `8080` (or your configured `DB_OPTIMIZER_SERVER_PORT`): For the DB-Optimizer API.
-*   `5432` (or your configured `DB_OPTIMIZER_DB_PORT`): For the DB-Optimizer's internal PostgreSQL database (if accessed externally, though often restricted to `localhost` or Docker network).
-*   **For Monitored Databases:** Ensure the DB-Optimizer server can reach the host:port of your external databases.
+### Prerequisites:
 
-## 2. Deployment Steps
+*   **Docker Desktop** (or Docker Engine and Docker Compose installed separately)
+*   **Maven** (to build the Java backend JAR)
 
-### 2.1. Clone the Repository
-On your deployment server, clone the DB-Optimizer repository:
-```bash
-git clone https://github.com/yourusername/db-optimizer.git
-cd db_optimizer
-```
+### Steps:
 
-### 2.2. Configure Environment Variables
-Create a `.env` file in the project root directory. This file will override default settings in `config.json.example` and will be used by Docker Compose.
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/ml-utilities-system.git
+    cd ml-utilities-system
+    ```
 
-**Strongly Recommended:**
-*   **Generate Strong Secrets:**
-    *   `DB_OPTIMIZER_JWT_SECRET`: Generate a long, random string (e.g., using `openssl rand -base64 32`). **NEVER commit this secret to source control.**
-    *   `DB_OPTIMIZER_DB_PASSWORD`: Use a strong, unique password for the DB-Optimizer's internal database.
+2.  **Build the Spring Boot Backend JAR:**
+    Navigate to the `backend` directory and build the executable JAR. This JAR will be copied into the Docker image.
+    ```bash
+    cd backend
+    mvn clean install -DskipTests # -DskipTests to skip running tests during build
+    ```
+    Ensure the JAR file `ml_utilities_system-0.0.1-SNAPSHOT.jar` is created in `backend/target/`.
 
-*   **Review `docker-compose.yml` and `config.json.example`:**
-    *   Adjust ports if `8080` or `5432` are already in use.
-    *   Customize `DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS` based on your monitoring frequency needs.
+3.  **Navigate to the Docker directory:**
+    ```bash
+    cd ../docker
+    ```
 
-Example `.env` (adjust values for your production environment):
-```
-# Application Server Configuration
-DB_OPTIMIZER_SERVER_PORT=8080
+4.  **Start the services using Docker Compose:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    *   `--build`: Rebuilds the `app` Docker image. This is important if you made changes to the Java code.
+    *   `-d`: Runs the containers in detached mode (in the background).
 
-# DB-Optimizer's Internal Database Configuration
-DB_OPTIMIZER_DB_HOST=db_optimizer_postgres # Internal Docker Compose service name
-DB_OPTIMIZER_DB_PORT=5432
-DB_OPTIMIZER_DB_NAME=db_optimizer_db
-DB_OPTIMIZER_DB_USER=db_optimizer_user
-DB_OPTIMIZER_DB_PASSWORD=YOUR_STRONG_DB_PASSWORD
+### What `docker-compose up` does:
 
-# JWT Authentication
-DB_OPTIMIZER_JWT_SECRET=YOUR_VERY_LONG_AND_RANDOM_JWT_SECRET
+*   **`db` service:**
+    *   Pulls the `postgres:15-alpine` Docker image.
+    *   Creates a container named `ml-utilities-db`.
+    *   Sets up environment variables for the PostgreSQL database (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`).
+    *   Maps port `5432` from the host to the container.
+    *   Creates a named volume `ml-utilities-db-data` for persistent database storage.
+    *   Includes a `healthcheck` to ensure the database is ready before the application tries to connect.
+*   **`app` service:**
+    *   Builds the Docker image for the Spring Boot application using the `Dockerfile` in the `docker` directory. The build context is set to the project root (`..`) to access the `backend/target/` directory.
+    *   Creates a container named `ml-utilities-app`.
+    *   Maps port `8080` from the host to the container.
+    *   Passes essential Spring Boot and application-specific environment variables (`SPRING_DATASOURCE_URL`, `APPLICATION_SECURITY_JWT_SECRET_KEY`, etc.) to override values in `application.properties`.
+        *   **Important:** The `SPRING_DATASOURCE_URL` uses `db` as the hostname, which is the service name defined in `docker-compose.yml`, allowing containers to communicate by service name within the Docker network.
+    *   Creates named volumes for `/app/data/datasets`, `/app/data/temp`, and `/app/logs` to ensure persistent storage for uploaded datasets, temporary files, and application logs even if the container is removed.
+    *   `depends_on: db: { condition: service_healthy }` ensures the application container only starts once the `db` container reports healthy.
 
-# Logging
-DB_OPTIMIZER_LOG_LEVEL=info # Set to 'warn' or 'error' for less verbosity in production
+### Verify Deployment:
 
-# Monitoring Interval (in seconds)
-DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS=300 # Monitor every 5 minutes
-```
-
-### 2.3. Persistent Data Storage
-For the DB-Optimizer's internal PostgreSQL database, it's crucial to use Docker volumes for persistent storage. The `docker-compose.yml` already defines a named volume `db_optimizer_data`.
-
-```yaml
-volumes:
-  db_optimizer_data:
-  target_db_data: # For the example target DB
-```
-This ensures your database data persists even if the `db_optimizer_postgres` container is removed or recreated.
-
-### 2.4. Build and Deploy
-From the project root directory, build and start the services using Docker Compose:
-```bash
-docker-compose up --build -d
-```
-*   `--build`: Forces Docker to rebuild the images. Useful for ensuring the latest code changes are included. In production, you might pull pre-built images from a registry.
-*   `-d`: Runs the containers in detached mode (in the background).
-
-### 2.5. Verify Deployment
-*   **Check container status:**
+1.  **Check running containers:**
     ```bash
     docker-compose ps
     ```
-    Ensure all containers (e.g., `db_optimizer_postgres`, `db_optimizer_app`) are `Up` and `healthy`.
+    You should see `ml-utilities-db` and `ml-utilities-app` in a healthy state.
 
-*   **View application logs:**
+2.  **Access the application:**
+    *   Swagger UI: `http://localhost:8080/swagger-ui.html`
+    *   Frontend (basic): Open `frontend/index.html` in your browser.
+
+3.  **View logs:**
     ```bash
-    docker-compose logs db_optimizer_app
+    docker-compose logs -f app
     ```
-    Look for messages indicating successful startup, migrations, seeding, and that the "Application running."
 
-*   **Test API endpoint:**
-    ```bash
-    curl http://localhost:8080/health
-    # Expected: {"status":"UP"}
-    ```
-    Replace `localhost` with your server's public IP or domain name if accessing remotely.
+### Stop and Clean Up:
 
-### 2.6. PostgreSQL `pg_stat_statements` for Monitored DBs
-For the DB-Optimizer to effectively monitor your external PostgreSQL databases, `pg_stat_statements` *must* be enabled on those target databases.
+To stop and remove the containers, networks, and volumes created by Docker Compose:
+```bash
+docker-compose down -v
+```
+*   `-v`: Removes named volumes, which is useful for starting fresh. Be cautious if you have important data in `ml-utilities-db-data`.
 
-**Steps for External PostgreSQL Databases:**
-1.  **Edit `postgresql.conf`:**
-    *   Find the `shared_preload_libraries` setting.
-    *   Add `pg_stat_statements` to it. It should look like:
-        ```
-        shared_preload_libraries = 'pg_stat_statements'
-        ```
-    *   (Optional but recommended for detailed stats) Adjust `pg_stat_statements.max` and `pg_stat_statements.track`.
-        ```
-        pg_stat_statements.max = 10000 # Max number of statements to track
-        pg_stat_statements.track = all # Track all statements (top-level + nested)
-        ```
-2.  **Restart PostgreSQL Server:** Changes to `shared_preload_libraries` require a server restart.
-3.  **Create Extension:**
-    Connect to each database you want to monitor (e.g., `ecommerce_db`) as a superuser and run:
-    ```sql
-    CREATE EXTENSION pg_stat_statements;
-    ```
-    The `db_optimizer_app` can then connect using a user with `SELECT` permissions on `pg_stat_statements` view and potentially `pg_settings` for configuration info.
+## 2. Production Deployment Considerations
 
-## 3. Operations and Maintenance
+Deploying to production requires more robust strategies than local Docker Compose. Here are key considerations:
 
-### 3.1. Updating the Application
-1.  Pull latest changes: `git pull origin main`
-2.  Stop and remove old containers: `docker-compose down`
-3.  Rebuild and restart: `docker-compose up --build -d`
+### Infrastructure:
 
-### 3.2. Backups
-Regularly back up the `db_optimizer_data` volume and your external monitored databases.
-*   **For Docker volumes:** Use `docker cp` to copy data out, or integrate with a volume backup solution.
-*   **For PostgreSQL:** Use `pg_dump` or `pg_basebackup`.
+*   **Container Orchestration:** Use a container orchestration platform like **Kubernetes (AWS EKS, GCP GKE, Azure AKS)**, Docker Swarm, or HashiCorp Nomad for managing containerized applications at scale.
+*   **Managed Database:** Use a managed database service (e.g., AWS RDS PostgreSQL, Google Cloud SQL, Azure Database for PostgreSQL) for high availability, backups, and easier management. Avoid running the database directly in a container orchestrator for production.
+*   **Object Storage for Datasets:** Store uploaded datasets in cloud object storage (e.g., **AWS S3, Google Cloud Storage, Azure Blob Storage**) instead of local filesystem volumes. This provides scalability, durability, and easier access from multiple application instances. Update `application.dataset.upload-dir` to use appropriate cloud storage configurations or libraries.
+*   **Centralized Logging:** Integrate with a centralized logging solution (e.g., **ELK Stack (Elasticsearch, Logstash, Kibana)**, Splunk, Datadog) to aggregate logs from multiple application instances.
+*   **Monitoring & Alerting:** Implement robust monitoring for application performance, resource utilization, and error rates (e.g., Prometheus, Grafana, CloudWatch, Stackdriver). Set up alerts for critical issues.
+*   **Distributed Caching & Rate Limiting:** For multiple application instances, replace in-memory Caffeine cache and Guava RateLimiter with distributed solutions like **Redis** or Memcached.
+*   **Load Balancing:** Place a load balancer (e.g., AWS ALB, Nginx, HAProxy) in front of your application instances to distribute traffic and provide high availability.
 
-### 3.3. Monitoring and Logging
-*   **Application Logs:** `docker-compose logs db_optimizer_app`
-*   **Container Metrics:** Use Docker's built-in `docker stats` or integrate with a monitoring system like Prometheus/Grafana.
-*   **Alerting:** Set up alerts for critical errors in application logs or for API endpoint health checks.
+### Security:
 
-### 3.4. Scaling
-*   **Database:** Scale the `db_optimizer_postgres` independently (vertical scaling, or consider a managed PostgreSQL service).
-*   **Application:** For high availability and load, you can run multiple instances of `db_optimizer_app` behind a load balancer. Ensure your `DBConnectionPool` and `DBMonitorService` are designed for distributed execution if running multiple instances of the optimizer (e.g., using a distributed lock for `DBMonitorService` to avoid redundant monitoring tasks). For this project, a single instance is assumed.
+*   **Network Security:** Implement strict firewall rules, security groups, and Network ACLs to limit access to your application and database.
+*   **Secrets Management:** Use a secrets management service (e.g., **AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets**) for sensitive information like API keys, database credentials, and JWT secret key. Never hardcode them.
+*   **HTTPS:** Always use HTTPS for all communication between clients, load balancers, and the application.
+*   **Vulnerability Scanning:** Regularly scan your Docker images and application dependencies for known vulnerabilities.
+*   **Principle of Least Privilege:** Configure IAM roles/service accounts with the minimum necessary permissions for your application to interact with cloud services.
 
-### 3.5. Security Best Practices
-*   **Secrets Management:** Never hardcode sensitive credentials. Use environment variables (as in `.env`), and for robust production, integrate with a secrets management service (e.g., HashiCorp Vault, AWS Secrets Manager, Azure Key Vault).
-*   **Network Security:** Restrict network access to the DB-Optimizer API and its internal database.
-*   **Regular Updates:** Keep Docker, Docker Compose, and base images updated. Regularly rebuild your application image to include security patches.
-*   **Least Privilege:** Configure database users for monitored systems with only the necessary `SELECT` permissions.
+### CI/CD:
 
-By following this guide, you can successfully deploy the DB-Optimizer system in a production-ready manner, enabling you to gain valuable insights into your database performance.
+*   **Automated Pipelines:** Leverage the provided `cicd/github-actions-ci.yml` (or similar for Jenkins, GitLab CI, Azure DevOps) to automate:
+    *   Code build and testing.
+    *   Docker image building and pushing to a container registry (e.g., Docker Hub, AWS ECR, GCP Container Registry).
+    *   Deployment to staging and production environments (e.g., using Kubernetes manifests, Helm charts, Terraform, Ansible).
+*   **Deployment Strategies:** Implement blue/green deployments or canary releases to minimize downtime and risk during updates.
+
+### Scalability:
+
+*   **Horizontal Scaling:** Configure your container orchestrator to automatically scale the number of application instances based on CPU utilization, request load, or custom metrics.
+*   **Database Scaling:** Utilize database read replicas for read-heavy workloads. Consider sharding if your data volume becomes extremely large.
+
+### Example Production Architecture (Kubernetes with AWS):
+
+```mermaid
+graph TD
+    A[Clients] --> B(Route 53)
+    B --> C(AWS ALB - Load Balancer)
+    C --> D(AWS EKS - Kubernetes Cluster)
+
+    subgraph AWS EKS Cluster
+        D --> E(Application Pods - ML Utilities System)
+        D --> F(Ingress Controller)
+        E --o G(AWS S3 - Object Storage for Datasets)
+        E --o H(AWS ElastiCache - Redis for Caching/Rate Limiting)
+        E --o I(AWS CloudWatch/Fluentd - Logging)
+    end
+
+    J(AWS RDS PostgreSQL) --o E
+    K(AWS Secrets Manager) --o E
+    L(AWS ECR - Container Registry) --o D
+```
+
+This guide provides a starting point for deploying the ML Utilities System. Adapting it to a full production environment will involve choosing specific cloud providers and services, and implementing robust operations best practices.
 ```

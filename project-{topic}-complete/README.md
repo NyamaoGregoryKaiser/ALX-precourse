@@ -1,193 +1,227 @@
-```markdown
-# ML-Toolkit: Enterprise ML Utilities System
+# ML Utilities System
 
-## Overview
-ML-Toolkit is a comprehensive, production-ready Machine Learning Utilities System designed to streamline common ML operations such as data preprocessing, feature engineering, model management, and evaluation. Built with a high-performance C++ backend, it exposes a RESTful API for seamless integration with various client applications, along with robust database management, configuration, testing, and deployment features.
+## Project Overview
 
-### Key Features
-- **High-Performance C++ Backend**: Utilizes C++ with Eigen for efficient numerical operations.
-- **RESTful API**: Exposes CRUD operations for datasets, models, and processing pipelines.
-- **ML Utility Modules**: Includes data scaling (MinMax, Standard), imputation (Mean), and feature engineering (Polynomial Features).
-- **Database Management**: PostgreSQL for metadata storage, with `pqxx` for C++ interaction.
-- **Authentication & Authorization**: JWT-based token verification for API security.
-- **Robust Error Handling**: Centralized exception handling and consistent API error responses.
-- **Logging & Monitoring**: Structured logging using `spdlog`.
-- **Caching Layer**: In-memory LRU cache for frequently accessed pipeline results.
-- **Rate Limiting**: Token bucket algorithm to protect API endpoints from abuse.
-- **Configuration**: Flexible configuration via `.conf` files and environment variables.
-- **Containerization**: Docker and Docker Compose setup for easy deployment.
-- **CI/CD Integration**: GitHub Actions pipeline for automated testing and deployment.
-- **Comprehensive Testing**: Unit tests (Google Test), Integration tests (Python `requests`), Performance tests (Locust).
-- **Extensive Documentation**: This README, API docs, Architecture docs, and Deployment guide.
+The ML Utilities System is a comprehensive, production-ready backend application built with Java Spring Boot, designed to provide core machine learning functionalities such as data management, preprocessing, and model evaluation. It emphasizes robust engineering practices, including strong authentication, error handling, performance optimization, extensive testing, and thorough documentation.
 
-## Architecture
-The system employs a multi-layered architecture:
-1.  **Client Layer**: A conceptual web frontend (e.g., React/Vue) or a CLI client interacts with the API.
-2.  **API Layer (C++)**: Built using the Crow microframework, handling HTTP requests, authentication, authorization, rate limiting, and caching. It orchestrates calls to the business logic layer.
-3.  **Business Logic Layer (C++)**: Contains core ML utility modules (preprocessing, feature engineering, evaluation) and model/dataset management logic. Utilizes Eigen for efficient numerical operations.
-4.  **Database Layer**: PostgreSQL for persistent storage of metadata (datasets, models, pipelines). `pqxx` library handles C++ interaction.
-5.  **Common Services**: Logging (`spdlog`), configuration management, error handling, and utility functions.
+**Key Features:**
+*   **Dataset Management:** Upload, list, retrieve, download, and delete CSV datasets.
+*   **Data Preprocessing:** Apply various transformations like Min-Max Scaling, Standard Scaling, One-Hot Encoding, Mean Imputation, and Median Imputation.
+*   **Model Evaluation:** Calculate common classification (Accuracy, Precision, Recall, F1-Score) and regression (MSE, RMSE, MAE, R-squared) metrics.
+*   **Authentication & Authorization:** Secure JWT-based authentication with role-based access control (`ROLE_USER`, `ROLE_ADMIN`).
+*   **Persistence:** PostgreSQL database managed with Flyway migrations.
+*   **Performance:** Caching (Caffeine) for frequently accessed data and API rate limiting.
+*   **Observability:** Structured logging with Logback.
+*   **Containerization:** Docker support for easy deployment.
+*   **Quality Assurance:** High test coverage with unit, integration, and API tests.
+*   **Documentation:** Comprehensive setup, API, architecture, and deployment guides.
 
-For a detailed architectural overview, see [Architecture.md](docs/Architecture.md).
+## Technologies Used
 
-## Setup and Installation
+*   **Backend:** Java 17, Spring Boot 3.2.x
+    *   Spring Web, Spring Data JPA, Spring Security
+    *   JWT (jjwt)
+    *   Lombok
+    *   Flyway (Database Migrations)
+    *   Caffeine (Caching)
+    *   Springdoc-openapi (Swagger UI for API Documentation)
+    *   Apache Commons CSV (CSV parsing/writing)
+    *   Guava (for Rate Limiter)
+*   **Database:** PostgreSQL
+*   **Containerization:** Docker, Docker Compose
+*   **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers, JaCoCo (Code Coverage)
+*   **Frontend (Minimal):** HTML, CSS, JavaScript (for API interaction demonstration)
+*   **CI/CD:** GitHub Actions (example configuration)
+
+## Getting Started
+
+Follow these instructions to set up and run the ML Utilities System on your local machine.
 
 ### Prerequisites
--   **Docker** and **Docker Compose**: For easy setup of the database and API server.
--   **C++ Development Environment**:
-    -   `g++` (C++17 compliant compiler)
-    -   `CMake` (version 3.10+)
-    -   `libpq-dev` and `libpqxx-dev` (PostgreSQL C++ client libraries)
-    -   `libboost-dev` (Crow might depend on some Boost modules, though it tries to minimize)
-    -   `git`
--   **Python (for testing)**:
-    -   `pip`
-    -   `psycopg2-binary` (for DB cleanup in Python tests)
-    -   `requests`, `PyJWT`, `pytest`, `locust` (install via `requirements.txt`)
+
+*   Java 17 Development Kit (JDK)
+*   Maven 3.x
+*   Docker and Docker Compose (recommended for easy setup)
+*   Git
 
 ### 1. Clone the Repository
+
 ```bash
-git clone https://github.com/your-username/ML-Toolkit.git
-cd ML-Toolkit
+git clone https://github.com/your-username/ml-utilities-system.git
+cd ml-utilities-system
 ```
 
-### 2. Prepare Vendor Dependencies
-The `CMakeLists.txt` uses `FetchContent` for Eigen. For Crow, nlohmann/json, spdlog, and jwt-cpp, you need to clone them into the `vendor/` directory:
+### 2. Backend Setup (Spring Boot)
+
+#### 2.1. Configure `application.properties`
+
+Navigate to `backend/src/main/resources/application.properties`.
+Ensure the database and JWT secret key configurations are set.
+**Note:** For local development, `localhost:5432` is assumed for PostgreSQL. If using Docker Compose, the `db` service name will resolve correctly within Docker network.
+
+```properties
+# Example snippet for application.properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/ml_utilities_db
+spring.datasource.username=mluser
+spring.datasource.password=mlpassword
+
+application.security.jwt.secret-key=YOUR_SUPER_SECRET_JWT_KEY_HERE_MIN_32_BYTES_BASE64_ENCODED # IMPORTANT: Change this in production!
+application.dataset.upload-dir=./data/datasets # Directory for storing uploaded CSV files
+application.dataset.temp-dir=./data/temp # Directory for temporary processed files
+```
+*   **`application.security.jwt.secret-key`**: **CRITICAL!** Replace the placeholder with a long, random, base64-encoded string (e.g., generated by `java.util.Base64.getEncoder().encodeToString(Keys.secretKeyFor(SignatureAlgorithm.HS256).getEncoded())`). This must be at least 32 bytes long for HS256.
+*   **`application.dataset.upload-dir`**: This is where your uploaded CSVs will be stored. It will be created if it doesn't exist.
+
+#### 2.2. Build the Backend
+
+Navigate to the `backend` directory and build the project using Maven:
+
 ```bash
-mkdir -p vendor
-git clone https://github.com/CrowCpp/Crow.git vendor/Crow
-git clone https://github.com/nlohmann/json.git vendor/nlohmann_json
-git clone https://github.com/gabime/spdlog.git vendor/spdlog
-git clone https://github.com/Thalhammer/jwt-cpp.git vendor/jwt-cpp
+cd backend
+mvn clean install -DskipTests # Skip tests during initial build to speed it up
 ```
 
-### 3. Database & Server Setup with Docker Compose
-1.  **Environment Configuration**: Create a `.env` file in the project root by copying `config/.env.example` and filling in your desired values (especially for `ML_DB_PASSWORD` and `ML_JWT_SECRET` in production).
-    ```bash
-    cp config/.env.example .env
-    # Edit .env to set your secrets
-    ```
-2.  **Build and Run**: Use Docker Compose to start the PostgreSQL database and the ML-Toolkit API server.
-    ```bash
-    docker-compose build
-    docker-compose up -d
-    ```
-    This will:
-    -   Build the `mltoolkit_server` Docker image.
-    -   Start a PostgreSQL container (`mltoolkit_db`).
-    -   Run database migrations and seed data using scripts in `database/migrations` and `database/seed_data.sql`.
-    -   Start the `mltoolkit_server` container, which will wait for the database to be healthy, then run the C++ API server.
+### 3. Database Setup (PostgreSQL with Docker Compose)
 
-    The API server will be accessible at `http://localhost:8080`.
+The easiest way to get the database running is using Docker Compose.
 
-### 4. Local C++ Build (Alternative to Docker)
-If you prefer to build and run the C++ application directly on your host machine:
-1.  **Install C++ Dependencies**:
+1.  Navigate to the `docker` directory:
     ```bash
-    sudo apt-get update
-    sudo apt-get install -y build-essential cmake git libpq-dev libpqxx-dev libboost-dev
+    cd ../docker
     ```
-2.  **Configure and Build**:
+2.  Start the PostgreSQL database:
     ```bash
-    mkdir build
-    cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
-    make
+    docker-compose up -d db
     ```
-3.  **Run**:
-    ```bash
-    ./MLToolkit_Server
-    ```
-    Ensure your PostgreSQL database is running and accessible from `localhost` with the credentials specified in `config/default.conf` or your environment variables.
+    This will start a PostgreSQL container. Flyway migrations in the Spring Boot application will automatically apply `V1__initial_schema.sql` and `V2__seed_data.sql` when the Spring Boot app starts.
 
-### 5. Python Test Dependencies
+### 4. Run the Application
+
+#### 4.1. Run Backend with Docker Compose (Recommended)
+
+After building the backend JAR (`mvn clean install` from `backend` directory) and starting the `db` service:
+
+1.  Navigate to the `docker` directory:
+    ```bash
+    cd docker
+    ```
+2.  Start both the database and the application:
+    ```bash
+    docker-compose up --build -d
+    ```
+    The `--build` flag ensures your application image is rebuilt if changes occurred. The `-d` flag runs containers in detached mode.
+
+    The application will be accessible at `http://localhost:8080`.
+
+#### 4.2. Run Backend Locally (Alternative)
+
+If you prefer to run the Spring Boot application directly on your machine:
+
+1.  Ensure a PostgreSQL database is running (either via `docker-compose up -d db` or a local installation) and accessible on `localhost:5432` with the configured credentials.
+2.  Navigate to the `backend` directory.
+3.  Run the Spring Boot application:
+    ```bash
+    mvn spring-boot:run
+    ```
+    or, if you prefer to run the JAR:
+    ```bash
+    java -jar target/ml_utilities_system-0.0.1-SNAPSHOT.jar
+    ```
+    The application will be accessible at `http://localhost:8080`.
+
+### 5. Frontend Usage (Minimal)
+
+The `frontend/index.html` file provides a basic user interface to interact with the backend APIs.
+
+1.  Open `frontend/index.html` in your web browser. You can typically do this by right-clicking the file and selecting "Open with Browser" or by navigating to `file:///path/to/ml-utilities-system/frontend/index.html`.
+2.  The JavaScript (`script.js`) will make API calls to `http://localhost:8080`. Ensure your browser allows CORS requests (modern browsers in `file://` context might restrict this, consider running a simple local web server like `python -m http.server 8000` from the `frontend` directory).
+
+### 6. Accessing API Documentation (Swagger UI)
+
+Once the backend is running, you can access the interactive API documentation at:
+`http://localhost:8080/swagger-ui.html`
+
+Here, you can:
+1.  **Authenticate:** Use the "Authorize" button and provide a JWT token obtained from the `/api/auth/login` endpoint.
+    *   **Default Users:**
+        *   `admin` / `adminpass` (ROLE_ADMIN)
+        *   `user` / `userpass` (ROLE_USER)
+2.  Explore and test all API endpoints directly.
+
+## Default Credentials
+
+*   **Admin User:**
+    *   Username: `admin`
+    *   Password: `adminpass`
+*   **Regular User:**
+    *   Username: `user`
+    *   Password: `userpass`
+
+**NOTE:** These credentials are for development and testing only. **Change them immediately in any production environment.**
+
+## Project Structure
+
+Refer to the "Project Structure Overview" at the beginning of this document for a detailed breakdown of directories and their contents.
+
+## Core Business Logic & Algorithms
+
+The heart of the ML utilities lies in `backend/src/main/java/com/mlutil/ml_utilities_system/util/DataProcessor.java`. This class implements fundamental ML algorithms from scratch, demonstrating core programming logic:
+
+*   **CSV Handling:** `loadCsv`, `writeCsv` using `Apache Commons CSV`.
+*   **Feature Scaling:** `minMaxScale`, `standardScale`.
+*   **Categorical Encoding:** `oneHotEncode`.
+*   **Missing Value Imputation:** `imputeMissing` with `MEAN` and `MEDIAN` strategies.
+*   **Model Evaluation:** `calculateClassificationMetrics` (Accuracy, Precision, Recall, F1-Score), `calculateRegressionMetrics` (MSE, RMSE, MAE, R-squared).
+
+These methods are designed to be generic, operating on `List<Map<String, String>>` representing tabular data, making them reusable across different datasets.
+
+## Testing Strategy
+
+The project adopts a multi-layered testing strategy to ensure high quality:
+
+*   **Unit Tests:** Focus on individual components (services, utility classes like `DataProcessor`).
+    *   Technologies: JUnit 5, Mockito.
+    *   Coverage: Aim for 80%+ line coverage (tracked by JaCoCo).
+*   **Integration Tests:** Verify interactions between components (e.g., repository-service, controller-service).
+    *   Technologies: Spring Boot Test, Testcontainers (for real database context).
+*   **API Tests:** Validate the behavior of REST endpoints.
+    *   Technologies: MockMvc (for controller layer), Spring Boot Test (for full application context).
+*   **Performance Tests (Outline):** Instructions for setting up basic performance tests using JMeter.
+
+### Running Tests
+
 ```bash
-pip install -r requirements.txt
+cd backend
+mvn test # Runs all unit and integration tests
 ```
 
-## Usage
-
-### API Endpoints
-The API is served at `http://localhost:8080/api/v1`.
-
-**Authentication**:
--   `POST /api/v1/auth/login`: Authenticate and get a JWT token.
-    ```json
-    { "username": "admin", "password": "adminpass" }
-    ```
-    Use the returned `token` in the `Authorization: Bearer <token>` header for all protected endpoints.
-
-**Datasets**:
--   `POST /api/v1/datasets`: Create a new dataset.
--   `GET /api/v1/datasets`: Get all datasets.
--   `GET /api/v1/datasets/{id}`: Get a dataset by ID.
--   `PUT /api/v1/datasets/{id}`: Update a dataset.
--   `DELETE /api/v1/datasets/{id}`: Delete a dataset.
-
-**Models**:
--   `POST /api/v1/models`: Create a new ML model entry.
--   `GET /api/v1/models`: Get all models.
--   `GET /api/v1/models/{id}`: Get a model by ID.
--   `PUT /api/v1/models/{id}`: Update a model.
--   `DELETE /api/v1/models/{id}`: Delete a model.
-
-**Pipelines**:
--   `POST /api/v1/pipelines`: Create a new processing pipeline.
--   `GET /api/v1/pipelines`: Get all pipelines.
--   `GET /api/v1/pipelines/{id}`: Get a pipeline by ID.
--   `PUT /api/v1/pipelines/{id}`: Update a pipeline.
--   `DELETE /api/v1/pipelines/{id}`: Delete a pipeline.
--   `POST /api/v1/pipelines/{id}/execute`: Execute a pipeline with input data.
--   `POST /api/v1/models/{model_id}/evaluate`: Evaluate a model using a pipeline and true labels.
-
-For detailed API specifications, refer to [API.md](docs/API.md).
-
-## Testing
-
-### Running Unit Tests (C++)
+To generate a JaCoCo code coverage report:
 ```bash
-cd build
-make MLToolkit_Server_Tests # Ensure test executable is built
-./MLToolkit_Server_Tests
+cd backend
+mvn clean verify # Runs tests and generates report
 ```
-Or, if using CTest:
-```bash
-cd build
-ctest
-```
+The report can be found at `backend/target/site/jacoco/index.html`.
 
-### Running Integration Tests (Python)
-Ensure the Docker Compose services are running (`docker-compose up -d`).
-```bash
-pytest tests/integration/test_api_integration.py
-```
+## Additional Features Implemented
 
-### Running Performance Tests (Locust)
-Ensure the Docker Compose services are running (`docker-compose up -d`).
-1.  Start Locust UI:
-    ```bash
-    locust -f tests/performance/locustfile.py
-    ```
-2.  Open your browser to `http://localhost:8089` (or the address Locust indicates).
-3.  Enter the number of users, spawn rate, and host (`http://localhost:8080`), then start swarming.
+*   **Authentication/Authorization:** Implemented using Spring Security with JWT. User registration and login generate JWTs. Endpoints are secured with `@PreAuthorize` based on `ROLE_USER` and `ROLE_ADMIN`.
+*   **Logging & Monitoring:** SLF4J with Logback configured via `application.properties` for structured logging, including debug messages for application logic.
+*   **Error Handling Middleware:** Global exception handler (`GlobalExceptionHandler.java`) catches various exceptions (e.g., `ResourceNotFoundException`, `InvalidDataException`, `BadCredentialsException`, `MethodArgumentNotValidException`) and returns consistent JSON error responses.
+*   **Caching Layer:** Spring's caching abstraction with Caffeine as the backing store (`CachingConfig.java`). `@Cacheable` and `@CacheEvict` annotations are used in `DatasetService` to cache dataset metadata.
+*   **Rate Limiting:** A simple in-memory rate limiter (`RateLimiterInterceptor.java`) using Google Guava's `RateLimiter` is applied to most API endpoints to prevent abuse, with separate limits for authenticated users and anonymous IPs.
 
-## Documentation
--   **README.md**: Current file, project overview, setup, usage.
--   **API.md**: Detailed API endpoint descriptions, request/response examples.
--   **Architecture.md**: In-depth explanation of the system's design and components.
--   **Deployment.md**: Guide for deploying the application to various environments (Docker, Kubernetes, etc.).
+## Frontend (Minimal Implementation)
 
-## Contributing
-Contributions are welcome! Please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Write comprehensive tests.
-5.  Ensure all tests pass (`pytest` and `ctest`).
-6.  Commit your changes (`git commit -am 'Add new feature'`).
-7.  Push to the branch (`git push origin feature/your-feature-name`).
-8.  Create a new Pull Request.
+The `frontend` directory contains a minimal HTML/CSS/JS application to demonstrate interaction with the backend. It's not a full-fledged SPA framework but rather a direct client for the APIs.
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+*   `index.html`: Main page with forms for login, dataset upload, and options for preprocessing/evaluation.
+*   `script.js`: Handles fetching, displaying data, and making API calls using `fetch()`.
+*   `style.css`: Basic styling.
+
+To use:
+1.  Open `index.html` in your browser.
+2.  Log in using default credentials (`admin/adminpass` or `user/userpass`). The JWT token will be stored in `localStorage`.
+3.  Use the forms to upload datasets, select transformations, and perform evaluations.
+
+---
 ```

@@ -1,155 +1,152 @@
-```markdown
-# DB-Optimizer: Architecture Documentation
+# ML Utilities System: Architecture Documentation
+
+This document outlines the architectural design of the ML Utilities System, focusing on its components, their interactions, and the underlying infrastructure.
 
 ## 1. High-Level Architecture
 
-The DB-Optimizer is designed as a microservice-oriented application, consisting primarily of a C++ backend service that exposes a RESTful API. It interacts with its own PostgreSQL database for internal data storage and connects to external PostgreSQL databases for monitoring and analysis.
+The system follows a typical **client-server architecture** with a **microservices-oriented approach** (though implemented as a monolith for simplicity in this example, it's designed with modularity in mind for potential future decomposition).
 
-```
-+------------------+     +--------------------------+
-|  User (Web/CLI)  |<----+      DB-Optimizer        |
-|                  |     |     (C++ Backend)        |
-+------------------+     |                          |
-       ^                   |  +-------------------+ |
-       | HTTP/REST         |  | HTTP Server       |<--+ API Endpoints
-       v                   |  | (Poco::Net)       | |   (Auth, Users, DBs, Reports)
-+--------------------+     |  +---------+---------+ |
-|   API Gateway      |<------- Router, Middleware  |
-| (Optional, for     |     |  +---------+---------+ |
-| Production Deploy) |     |  | Controllers       | |
-+--------------------+     |  | (Auth, User, DB,  | |
-                             |  |  Optimization)    | |
-                             |  +---------+---------+ |
-                             |  | Services          | |
-                             |  | (Auth, DBMonitor, | |
-                             |  |  QueryAnalyzer,   | |
-                             |  |  IndexRecommender)| |
-                             |  +---------+---------+ |
-                             |  | DB Connection Pool| |<-- (Optimizer's DB)
-                             |  |  (Poco::Data)     | |
-                             |  +-------------------+ |
-                             +-----------|------------+
-                                         | PostgreSQL Adapter
-                                         | (for target DBs)
-                                         v
-                      +-----------------------------------+
-                      |   External Monitored Databases    |
-                      |   (e.g., PostgreSQL instances)    |
-                      +-----------------------------------+
+```mermaid
+graph TD
+    A[User/Client] -->|HTTP/HTTPS| B(Frontend: HTML/JS)
+    B -->|REST API (HTTP/HTTPS)| C(Backend: Spring Boot Application)
+    C -->|JDBC| D(Database: PostgreSQL)
+    C -->|Filesystem I/O| E(File Storage: Local/NFS/S3)
+    C --o|Logs| F(Logging System)
+    C --o|Cache Read/Write| G(Caching Layer: Caffeine)
+
+    subgraph Infrastructure
+        D
+        E
+        F
+        G
+    end
 ```
 
-## 2. Core Modules and Components
+### Components:
 
-### 2.1. `app/core/Application`
-*   **Entry Point:** The main application class, inheriting from `Poco::Util::ServerApplication`.
-*   **Initialization:** Responsible for loading configurations, initializing logging, setting up the internal database connection pool, configuring the HTTP server, registering routes, and starting background services (like `DBMonitorService`).
-*   **Lifecycle Management:** Manages the startup and shutdown sequence of all components.
+*   **User/Client:** Interacts with the system via a web browser.
+*   **Frontend:** A lightweight HTML/CSS/JavaScript client that consumes the backend REST APIs. In a production environment, this would typically be a more robust Single Page Application (SPA) built with frameworks like React, Angular, or Vue.js.
+*   **Backend (Spring Boot Application):** The core of the system. A Java-based RESTful API server responsible for business logic, data processing, security, and interaction with persistent storage.
+*   **Database (PostgreSQL):** Relational database for storing metadata about users, datasets, and configuration.
+*   **File Storage:** A local file system (or network file system / cloud storage like S3 in production) used to store the actual uploaded dataset CSV files.
+*   **Logging System:** Integrated logging (SLF4J + Logback) for monitoring application behavior and debugging.
+*   **Caching Layer (Caffeine):** In-memory cache to improve performance by reducing database load for frequently accessed data.
 
-### 2.2. `app/config/ConfigManager`
-*   **Configuration Management:** Loads application settings from `config.json` and overrides them with environment variables, providing a unified access point for all configurations.
+## 2. Backend Architecture (Spring Boot)
 
-### 2.3. `app/utils/Logger`
-*   **Logging:** Centralized logging utility based on `spdlog`, providing different log levels (debug, info, warn, error, critical) and output to console and file.
+The Spring Boot application is structured into several logical layers, adhering to principles of separation of concerns.
 
-### 2.4. `app/db/`
-*   **`DBConnectionPool`:** Manages a pool of `Poco::Data::Session` objects for connecting to the DB-Optimizer's internal PostgreSQL database. This ensures efficient and concurrent database access.
-*   **`PostgreSQLAdapter`:** A specialized adapter for connecting to and interacting with *external* PostgreSQL databases registered for monitoring. It handles dynamic connections based on stored credentials for each monitored DB.
-*   **`migrations/`:** Contains SQL scripts for evolving the DB-Optimizer's internal database schema.
+```mermaid
+graph TD
+    A[HTTP Request] --> B(Controller Layer)
+    B --> C(Service Layer)
+    C --> D(Repository Layer)
+    D --> E[Database / JPA Entities]
+    C --> F(Utility Layer: DataProcessor)
+    C --> E
+    B --> H(Global Exception Handler)
 
-### 2.5. `app/http/`
-*   **`HTTPServer`:** Encapsulates `Poco::Net::HTTPServer`, handling incoming HTTP requests.
-*   **`Router`:** Maps API paths and HTTP methods to appropriate request handlers (controllers). Supports middleware chain.
-*   **`RequestHandler`:** Base class or interface for handling specific HTTP requests.
-*   **`middleware/`:**
-    *   **`AuthMiddleware`:** Intercepts requests to validate JWT tokens and enforce authentication/authorization.
-    *   **`ErrorMiddleware`:** Catches exceptions during request processing and formats error responses consistently.
-    *   **`RateLimiter` (Conceptual):** Controls the rate of requests to protect the API from abuse.
-*   **`responses/APIResponses`:** Utility for generating standardized JSON API responses.
+    subgraph Core Backend
+        B --o I(Security Layer: JWT Auth)
+        C --o J(Caching Layer)
+        K(Rate Limiter Interceptor) --o A
+        I --o L(UserDetailsService)
+        I --o M(JwtUtil)
+    end
+```
 
-### 2.6. `app/models/`
-*   **Data Models:** C++ classes representing the data entities stored in the DB-Optimizer's internal database (e.g., `User`, `MonitoredDB`, `QueryLog`, `OptimizationReport`). These are typically plain old data structures (PODs) or simple classes with getters/setters.
+### Layers and Their Responsibilities:
 
-### 2.7. `app/services/`
-*   **`AuthService`:** Handles user registration, login, password hashing, and JWT token generation/validation.
-*   **`DBMonitorService`:** The core background service.
-    *   Periodically retrieves registered `MonitoredDB`s.
-    *   Connects to each target database using `PostgreSQLAdapter`.
-    *   Fetches query statistics from `pg_stat_statements` and `EXPLAIN ANALYZE` outputs.
-    *   Passes queries to `QueryAnalyzer` and `IndexRecommender`.
-    *   Stores `QueryLog`s and `OptimizationReport`s in the internal database.
-*   **`QueryAnalyzer`:**
-    *   Parses SQL query strings (using regular expressions for simplicity, a full SQL parser would be more robust).
-    *   Extracts relevant information like tables, columns in WHERE/ORDER BY/GROUP BY clauses, and JOIN conditions.
-*   **`IndexRecommender`:**
-    *   Takes analyzed query data and `EXPLAIN ANALYZE` output.
-    *   Identifies potential performance bottlenecks (e.g., sequential scans).
-    *   Suggests `CREATE INDEX` statements, avoiding redundant indexes.
+1.  **Controller Layer (`com.mlutil.ml_utilities_system.controller`)**:
+    *   Handles incoming HTTP requests and routes them to appropriate services.
+    *   Performs basic request validation (e.g., using `@Valid` with DTOs).
+    *   Translates Java objects to JSON/XML responses.
+    *   Utilizes Spring Security annotations (`@PreAuthorize`) for method-level authorization.
+    *   **Examples:** `AuthController`, `DatasetController`, `PreprocessingController`, `EvaluationController`.
 
-### 2.8. `app/controllers/`
-*   **API Endpoints:** Classes responsible for handling specific API routes. They receive HTTP requests, interact with services, and send back formatted responses.
-    *   `AuthController`: `/auth/register`, `/auth/login`
-    *   `UserController`: `/users`, `/users/{id}`
-    *   `MonitoredDBController`: `/monitored-dbs`, `/monitored-dbs/{id}`, `/monitored-dbs/{id}/analyze`
-    *   `OptimizationController`: `/monitored-dbs/{db_id}/optimization-reports`
+2.  **Service Layer (`com.mlutil.ml_utilities_system.service`)**:
+    *   Contains the core business logic.
+    *   Orchestrates operations across multiple repositories and utility classes.
+    *   Manages transactions.
+    *   **Examples:** `AuthService`, `DatasetService`, `PreprocessingService`, `EvaluationService`.
 
-### 2.9. `app/utils/`
-*   **`JSONUtils`:** Helper functions for common JSON operations.
-*   **`JWTUtils`:** Utility for encoding and decoding JWT tokens.
-*   **`Cache`:** A simple in-memory cache (e.g., LRU-based) for reducing database lookups of frequently accessed data.
-*   **`RateLimiter`:** A basic token bucket implementation for API rate limiting.
+3.  **Repository Layer (`com.mlutil.ml_utilities_system.repository`)**:
+    *   Interacts directly with the database.
+    *   Uses Spring Data JPA for data access operations (CRUD).
+    *   Translates entity objects to database records and vice-versa.
+    *   **Examples:** `UserRepository`, `DatasetRepository`, `RoleRepository`.
 
-## 3. Data Flow Example: Monitoring and Index Recommendation
+4.  **Model Layer (`com.mlutil.ml_utilities_system.model`)**:
+    *   Defines JPA Entities, representing the structure of database tables.
+    *   Defines DTOs (Data Transfer Objects) for clean API request/response structures (`com.mlutil.ml_utilities_system.dto`).
+    *   **Examples:** `User`, `Dataset`, `Role`, `AuthRequest`, `DatasetMetadataDTO`.
 
-1.  **Application Startup:**
-    *   `Application` initializes `DBConnectionPool` for its own DB, `HTTPServer`, and `DBMonitorService`.
-    *   `DBMonitorService` starts a background thread/task to periodically run `analyzeMonitoredDatabase` for all registered DBs.
+5.  **Utility Layer (`com.mlutil.ml_utilities_system.util`)**:
+    *   Contains generic helper classes that perform specific tasks, particularly the core ML algorithms.
+    *   `DataProcessor.java` is a stateless component holding all the raw ML logic (scaling, encoding, metrics).
+    *   `RateLimiterInterceptor.java` for API rate limiting.
 
-2.  **User Adds Monitored DB (via API):**
-    *   `POST /monitored-dbs` request is handled by `MonitoredDBController`.
-    *   `MonitoredDBController` validates input and stores the DB connection details (name, host, port, user, password) into the `monitored_databases` table in the DB-Optimizer's internal DB.
+6.  **Security Layer (`com.mlutil.ml_utilities_system.security`, `com.mlutil.ml_utilities_system.config.SecurityConfig`)**:
+    *   Manages user authentication and authorization.
+    *   Implements JWT (JSON Web Token) for stateless authentication.
+    *   `JwtAuthFilter` intercepts requests to validate JWTs.
+    *   `UserDetailsServiceImpl` loads user details for Spring Security.
+    *   `JwtUtil` handles JWT creation and validation.
 
-3.  **DBMonitorService Loop (Scheduled Task):**
-    *   `DBMonitorService` queries its own `monitored_databases` table to get a list of active target DBs.
-    *   For each `MonitoredDB`:
-        *   It uses `PostgreSQLAdapter` to establish a `Poco::Data::Session` to the target DB.
-        *   It queries `pg_stat_statements` on the target DB to get top N queries (e.g., by total execution time).
-        *   For each significant query:
-            *   It executes `EXPLAIN (ANALYZE, FORMAT JSON)` on the target DB to get the query plan.
-            *   The raw query text and `EXPLAIN ANALYZE` output are stored as a `QueryLog` in the DB-Optimizer's DB.
-            *   The query text is passed to `QueryAnalyzer::analyzeQuery()`. This extracts tables, filter/sort columns, join conditions.
-            *   The `QueryAnalyzer` output (a JSON object) and `EXPLAIN ANALYZE` output are passed to `IndexRecommender::recommendIndexes()`.
-            *   `IndexRecommender` identifies sequential scans, expensive operations, and determines if existing indexes cover the identified columns. It generates `CREATE INDEX` DDLs if beneficial.
-            *   Any generated `IndexRecommendation`s are saved as `OptimizationReport`s in the DB-Optimizer's DB.
+7.  **Configuration Layer (`com.mlutil.ml_utilities_system.config`)**:
+    *   Houses Spring configuration classes.
+    *   Configures security (`SecurityConfig`), OpenAPI/Swagger (`OpenApiConfig`), and caching (`CachingConfig`).
 
-4.  **User Views Reports (via API):**
-    *   `GET /monitored-dbs/{db_id}/optimization-reports` request is handled by `OptimizationController`.
-    *   `OptimizationController` retrieves the `OptimizationReport`s from the DB-Optimizer's internal DB for the specified `db_id`.
-    *   These reports are formatted into a JSON response and sent back to the user.
+8.  **Error Handling (`com.mlutil.ml_utilities_system.exception`)**:
+    *   `GlobalExceptionHandler` centrally processes exceptions thrown by the application and returns standardized JSON error responses to the client.
+    *   Custom exceptions like `ResourceNotFoundException`, `InvalidDataException`, `UserAlreadyExistsException` enhance error clarity.
 
-## 4. Key Technologies & Libraries
+## 3. Data Flow Example: Dataset Upload
 
-*   **C++17:** Modern C++ features for robust and efficient code.
-*   **Poco C++ Libraries:**
-    *   `Poco::Net`: HTTP server, client, network utilities.
-    *   `Poco::Util`: Application framework, configuration handling.
-    *   `Poco::Data`: Database abstraction layer, including PostgreSQL connector.
-    *   `Poco::JSON`: JSON parsing and serialization.
-    *   `Poco::RegularExpression`: Regex for query parsing.
-*   **spdlog:** Fast, header-only C++ logging library.
-*   **jwt-cpp:** C++ library for JSON Web Tokens (JWT).
-*   **PostgreSQL:** Both as the internal database for DB-Optimizer and as the primary target database for monitoring.
-*   **CMake:** Cross-platform build system.
-*   **Docker & Docker Compose:** Containerization for isolated and consistent development/deployment environments.
-*   **Catch2:** A modern, header-only C++ test framework.
-*   **GitHub Actions:** CI/CD pipeline for automated testing and deployment.
+1.  **Frontend:** User selects a CSV file and clicks "Upload Dataset". `script.js` sends a `POST /api/datasets` request with `MultipartFile` and JWT.
+2.  **Rate Limiter:** `RateLimiterInterceptor` checks if the user/IP has exceeded their request limit. If so, request is rejected with `429 Too Many Requests`.
+3.  **Security Filter:** `JwtAuthFilter` intercepts the request, validates the JWT, and sets `SecurityContextHolder` with authenticated user details.
+4.  **Controller:** `DatasetController.uploadDataset()` receives the request. `@PreAuthorize` verifies user role.
+5.  **Service:** `DatasetService.saveDataset()` is called.
+    *   It generates a unique filename (UUID + original name).
+    *   Saves the `MultipartFile` content to the configured `upload-dir` on the file system.
+    *   Creates a `Dataset` entity with metadata (original filename, file path, size, type, owner, upload date).
+    *   Persists the `Dataset` entity to PostgreSQL via `DatasetRepository`.
+    *   `@CacheEvict` annotation ensures the cache for this user's datasets is cleared to reflect the new addition.
+6.  **Response:** The controller returns a `201 Created` status with the `DatasetMetadataDTO` of the newly uploaded dataset.
 
-## 5. Security Considerations
+## 4. Database Schema
 
-*   **Password Storage:** Passwords for the DB-Optimizer's users are stored as salted hashes. Passwords for *monitored databases* are stored as plain text for demonstration, but in production, these *must* be encrypted using a Key Management System (KMS) or a secure secrets management solution.
-*   **JWT Security:** JWT secret key is managed via environment variables and should be a strong, randomly generated string. Tokens are signed and expiry is enforced.
-*   **Input Validation:** All API inputs are validated to prevent injection attacks and ensure data integrity.
-*   **Role-Based Access Control (RBAC):** Users are assigned roles (`user`, `admin`), and API access is restricted based on these roles using `AuthMiddleware`.
-*   **Least Privilege:** Database connections to monitored systems should use users with minimal necessary permissions (e.g., `SELECT` on `pg_stat_statements` and tables, `EXPLAIN` permissions).
+The database is PostgreSQL, and its schema is managed by Flyway.
 
-This architecture provides a solid foundation for a scalable and maintainable database optimization system.
+*   **`users`**: Stores user authentication details (`username`, `email`, `password`, `registration_date`).
+*   **`roles`**: Stores defined roles (`ROLE_USER`, `ROLE_ADMIN`).
+*   **`user_roles`**: A many-to-many join table linking users to roles.
+*   **`datasets`**: Stores metadata about uploaded datasets (`id`, `filename`, `file_path`, `file_size`, `file_type`, `owner_username`, `upload_date`). `file_path` points to the physical location of the CSV.
+
+## 5. Scalability Considerations
+
+*   **Stateless Backend:** The use of JWTs makes the backend stateless, allowing for easy horizontal scaling of the Spring Boot application instances.
+*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) depending on load.
+*   **File Storage:** While local filesystem is used in this example, a production system would integrate with distributed file storage solutions like AWS S3, Google Cloud Storage, or a Network File System (NFS) for scalability and reliability.
+*   **Caching:** Caffeine is an in-memory cache, suitable for single-instance applications or sticky sessions. For distributed scaling, a distributed cache (e.g., Redis, Memcached) would be necessary.
+*   **Rate Limiting:** The current rate limiter is in-memory. For a multi-instance deployment, a distributed rate limiter (e.g., using Redis) would be required.
+
+## 6. Security Considerations
+
+*   **Authentication:** JWTs ensure secure user identity verification.
+*   **Authorization:** Role-based access control restricts access to resources.
+*   **Password Hashing:** Passwords are never stored in plain text; BCrypt hashing is used.
+*   **Input Validation:** `jakarta.validation` annotations are used on DTOs to prevent malicious input and ensure data integrity.
+*   **CORS:** Configured to allow requests from specified frontend origins.
+*   **Environment Variables:** Sensitive configurations (like JWT secret key, database credentials) are externalized and should be managed via environment variables in production.
+
+## 7. Observability
+
+*   **Structured Logging:** Application logs provide insights into runtime behavior, errors, and performance. Configured to output to console and file, with level control.
+*   **API Documentation:** Swagger UI provides a clear contract of the API, aiding debugging and integration.
+*   **Health Checks:** Docker Compose includes a health check for the database. Spring Boot Actuator can be added for application health endpoints (not explicitly added in this example but highly recommended).
+
+This architecture provides a solid foundation for a robust and maintainable ML utilities system, with clear pathways for future enhancements and scaling.
 ```

@@ -1,55 +1,55 @@
-```yaml
 version: '3.8'
 
 services:
-  mltoolkit_db:
+  # PostgreSQL Database Service
+  db:
     image: postgres:15-alpine
-    container_name: mltoolkit_db
+    container_name: ml-utilities-db
     environment:
-      POSTGRES_DB: ${ML_DB_NAME:-ml_toolkit_db}
-      POSTGRES_USER: ${ML_DB_USER:-ml_user}
-      POSTGRES_PASSWORD: ${ML_DB_PASSWORD:-ml_password}
-    volumes:
-      - mltoolkit_db_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
-      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/seed_data.sql
+      POSTGRES_DB: ml_utilities_db
+      POSTGRES_USER: mluser
+      POSTGRES_PASSWORD: mlpassword
     ports:
       - "5432:5432"
+    volumes:
+      - ml-utilities-db-data:/var/lib/postgresql/data
+      # You can mount initial SQL scripts here if you prefer initdb for seed data
+      # - ./db/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U mluser -d ml_utilities_db"]
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: always
 
-  mltoolkit_server:
+  # Spring Boot Application Service
+  app:
     build:
-      context: .
+      context: ../ # Build context is the project root, so Dockerfile can access 'backend/'
       dockerfile: docker/Dockerfile
-      args:
-        UID: 1000 # Map to your host user UID for consistent file permissions
-        GID: 1000 # Map to your host user GID
-    container_name: mltoolkit_server
-    environment:
-      ML_DB_HOST: mltoolkit_db
-      ML_DB_PORT: 5432
-      ML_DB_NAME: ${ML_DB_NAME:-ml_toolkit_db}
-      ML_DB_USER: ${ML_DB_USER:-ml_user}
-      ML_DB_PASSWORD: ${ML_DB_PASSWORD:-ml_password}
-      ML_API_PORT: ${ML_API_PORT:-8080}
-      ML_JWT_SECRET: ${ML_JWT_SECRET:-super_secret_jwt_key_please_change_this_in_production}
-      ML_LOG_LEVEL: ${ML_LOG_LEVEL:-info}
-    volumes:
-      - ./config:/home/mltoolkituser/app/config:ro # Mount config for runtime, read-only
-      - ./ml_toolkit.log:/home/mltoolkituser/app/ml_toolkit.log # Mount log file
-      - ./vendor:/home/mltoolkituser/app/vendor:ro # Mount vendor for build stage
+    container_name: ml-utilities-app
     ports:
       - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ml_utilities_db
+      SPRING_DATASOURCE_USERNAME: mluser
+      SPRING_DATASOURCE_PASSWORD: mlpassword
+      APPLICATION_SECURITY_JWT_SECRET_KEY: THIS_IS_A_VERY_LONG_AND_COMPLEX_SECRET_KEY_FOR_JWT_AUTHENTICATION_AND_SIGNATURE_VERIFICATION_MAKE_SURE_IT_IS_AT_LEAST_256_BITS_OR_32_BYTES_LONG_AND_KEPT_CONFIDENTIAL # Same as in application.properties
+      APPLICATION_DATASET_UPLOAD_DIR: /app/data/datasets # Mount to a persistent volume
+      APPLICATION_DATASET_TEMP_DIR: /app/data/temp # Mount to a persistent volume
     depends_on:
-      mltoolkit_db:
-        condition: service_healthy
-    restart: always
+      db:
+        condition: service_healthy # Wait for the database to be healthy
+    volumes:
+      - ml-utilities-app-datasets:/app/data/datasets # Persistent storage for uploaded datasets
+      - ml-utilities-app-temp:/app/data/temp       # Persistent storage for temporary processed files
+      - ml-utilities-app-logs:/app/logs            # Persistent storage for application logs
+    # To run with a specific profile (e.g., prod)
+    # command: java -Dspring.profiles.active=prod -jar app.jar
 
+# Define volumes for persistent data
 volumes:
-  mltoolkit_db_data:
+  ml-utilities-db-data:
+  ml-utilities-app-datasets:
+  ml-utilities-app-temp:
+  ml-utilities-app-logs:
 ```
