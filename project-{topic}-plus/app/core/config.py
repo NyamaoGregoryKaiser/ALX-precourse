@@ -1,86 +1,83 @@
-```python
-"""
-Configuration management for the ALX-Shop application.
-
-This module uses `pydantic-settings` to load environment variables and
-provide a structured configuration object for the entire application.
-It defines various settings like database connection, JWT secrets, logging levels,
-and more.
-"""
-
-import os
-from typing import List, Optional
-from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Literal, Union
+
+# Define possible environments
+Environment = Literal["development", "testing", "production"]
 
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-
-    Uses `SettingsConfigDict` to specify the `.env` file for local development.
-    Fields are defined with default values or marked as required.
+    Uses Pydantic's BaseSettings for type-safe configuration management.
     """
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore" # Ignore extra fields in .env not defined here
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Project Information
-    PROJECT_NAME: str = "ALX-Shop API"
-    ENVIRONMENT: str = Field("development", pattern=r"^(development|testing|production)$")
+    # Core Application Settings
+    APP_NAME: str = "Project Management API"
+    APP_VERSION: str = "1.0.0"
+    ENVIRONMENT: Environment = "development"
+    DEBUG: bool = False
 
-    # Database Configuration
-    DATABASE_URL: str = Field(..., env="DATABASE_URL", description="PostgreSQL database connection URL")
-    ASYNC_DATABASE_URL: str = Field(..., env="ASYNC_DATABASE_URL", description="Async PostgreSQL database connection URL")
+    # Database Settings
+    DATABASE_URL: str
+    TEST_DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5433/test_db" # Separate DB for tests
+    ASYNC_DATABASE_URL: str # This will be derived or set explicitly for asyncpg
+    ASYNC_TEST_DATABASE_URL: str # This will be derived or set explicitly for asyncpg
 
-    # JWT Configuration
-    SECRET_KEY: str = Field(..., env="SECRET_KEY", description="Secret key for JWT token encoding")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # JWT Settings
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 1440 # 24 hours
 
-    # CORS Configuration
-    BACKEND_CORS_ORIGINS: Optional[List[HttpUrl]] = Field(
-        None,
-        env="BACKEND_CORS_ORIGINS",
-        description="Comma-separated list of allowed CORS origins, e.g., http://localhost:3000,https://example.com"
-    )
-    # Pydantic will automatically parse this string into a list of HttpUrl objects.
-    # For example, BACKEND_CORS_ORIGINS="http://localhost:3000,https://www.google.com"
+    # Logging Settings
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE_PATH: str = "app.log"
+    LOG_RETENTION_DAYS: int = 7
+    LOG_ROTATION_SIZE_MB: int = 10
 
-    # Redis Configuration (for caching and rate limiting)
-    REDIS_URI: str = Field("redis://localhost:6379/0", env="REDIS_URI", description="Redis connection URI")
-    REDIS_PREFIX: str = "alx-shop" # Prefix for Redis keys to avoid collisions
+    # Rate Limiting Settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    RATE_LIMIT_DEFAULT: str = "5/minute" # Default rate limit per user
 
-    # Logging Configuration
-    LOG_LEVEL: str = Field("INFO", pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
-    LOG_FORMAT: str = (
-        "%(asctime)s - %(name)s - %(levelname)s - "
-        "%(funcName)s:%(lineno)d - %(message)s"
-    )
+    # CORS Settings
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:8000", "http://localhost:5173", "http://127.0.0.1:5173"] # Frontend origins
 
-    # Test Database Configuration (for integration tests)
-    TEST_DATABASE_URL: Optional[str] = Field(
-        None,
-        env="TEST_DATABASE_URL",
-        description="Separate database URL for running tests. Defaults to DATABASE_URL if not set."
-    )
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == "production"
 
-    # Admin User Defaults (for seeding)
-    DEFAULT_ADMIN_EMAIL: str = Field("admin@alx.com", env="DEFAULT_ADMIN_EMAIL")
-    DEFAULT_ADMIN_PASSWORD: str = Field("adminpassword", env="DEFAULT_ADMIN_PASSWORD")
-    DEFAULT_ADMIN_FULL_NAME: str = Field("ALX Admin", env="DEFAULT_ADMIN_FULL_NAME")
+    @property
+    def is_testing(self) -> bool:
+        return self.ENVIRONMENT == "testing"
+
+    @property
+    def get_database_url_for_env(self) -> str:
+        if self.is_testing:
+            return self.ASYNC_TEST_DATABASE_URL
+        return self.ASYNC_DATABASE_URL
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ensure ASYNC_DATABASE_URL and ASYNC_TEST_DATABASE_URL are set
+        # Pydantic Settings allows for computed properties or custom init
+        if not self.DATABASE_URL.startswith("postgresql+asyncpg"):
+            self.ASYNC_DATABASE_URL = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+        else:
+            self.ASYNC_DATABASE_URL = self.DATABASE_URL
+        
+        if not self.TEST_DATABASE_URL.startswith("postgresql+asyncpg"):
+            self.ASYNC_TEST_DATABASE_URL = self.TEST_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+        else:
+            self.ASYNC_TEST_DATABASE_URL = self.TEST_DATABASE_URL
 
 
-# Create a single instance of settings to be imported throughout the application
 settings = Settings()
 
-# Post-initialization check or adjustment
-if settings.TEST_DATABASE_URL:
-    # Use the test database for ASYNC_DATABASE_URL if in testing environment and TEST_DATABASE_URL is provided
-    # This is a common pattern to ensure tests run against a clean, isolated database.
-    settings.ASYNC_DATABASE_URL = settings.TEST_DATABASE_URL
-    settings.DATABASE_URL = settings.TEST_DATABASE_URL # Ensure sync also uses test DB if needed for Alembic
-
+# Validate environment specific settings
+if settings.is_production:
+    # Example: Ensure sensitive settings are not default in production
+    assert settings.SECRET_KEY != "YOUR_SUPER_SECRET_KEY", "SECRET_KEY must be changed in production!"
+    assert settings.DEBUG is False, "DEBUG should be False in production!"
 ```

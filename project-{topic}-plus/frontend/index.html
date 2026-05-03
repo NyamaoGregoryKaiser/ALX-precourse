@@ -1,77 +1,113 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Task Manager Pro - Frontend Demo</title>
-    <link rel="stylesheet" href="/frontend/style.css">
+    <title>Project Management API Frontend</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Task Manager Pro</h1>
+    <header>
+        <h1>Project Management Dashboard</h1>
+        <nav>
+            <button id="logout-btn" style="display: none;">Logout</button>
+        </nav>
+    </header>
 
-        <!-- Auth Section -->
-        <section id="auth-section" class="card">
-            <h2>Authentication</h2>
-            <form id="auth-form">
-                <input type="email" id="email" placeholder="Email" required value="user@taskmgr.com">
-                <input type="password" id="password" placeholder="Password" required value="userpassword">
-                <button type="submit" id="login-button">Login</button>
-                <button type="button" id="register-button">Register (Default: user@taskmgr.com/userpassword)</button>
+    <main>
+        <div id="auth-section" class="card">
+            <h2>Login</h2>
+            <form id="login-form">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+                <button type="submit">Login</button>
             </form>
             <p id="auth-message" class="message"></p>
-        </section>
+        </div>
 
-        <!-- User Info Section -->
-        <section id="user-info-section" class="card hidden">
-            <h2>Welcome, <span id="user-fullname"></span>!</h2>
-            <p>Your Role(s): <span id="user-roles"></span></p>
-            <button id="logout-button">Logout</button>
-        </section>
+        <div id="dashboard-section" style="display: none;">
+            <p>Welcome, <span id="current-user-info"></span>!</p>
 
-        <!-- Task Management Section -->
-        <section id="task-management-section" class="card hidden">
-            <h2>My Tasks</h2>
-            <div id="task-list">
-                <!-- Tasks will be loaded here -->
+            <div class="card">
+                <h2>Create New Project</h2>
+                <form id="create-project-form">
+                    <label for="project-title">Title:</label>
+                    <input type="text" id="project-title" required>
+                    <label for="project-description">Description:</label>
+                    <textarea id="project-description"></textarea>
+                    <label for="project-status">Status:</label>
+                    <select id="project-status">
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <button type="submit">Create Project</button>
+                </form>
+                <p id="create-project-message" class="message"></p>
             </div>
-            <h3>Add New Task</h3>
-            <form id="add-task-form">
-                <input type="text" id="task-title" placeholder="Task Title" required>
-                <textarea id="task-description" placeholder="Task Description"></textarea>
-                <input type="datetime-local" id="task-due-date" required>
-                <select id="task-status" required>
-                    <option value="PENDING">PENDING</option>
-                    <option value="IN_PROGRESS">IN_PROGRESS</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                </select>
-                <select id="task-category" required>
-                    <!-- Categories will be loaded here -->
-                </select>
-                <button type="submit">Add Task</button>
-            </form>
-            <p id="task-message" class="message"></p>
-        </section>
 
-        <!-- Admin Section (optional, if user is admin) -->
-        <section id="admin-section" class="card hidden">
-            <h2>Admin Dashboard</h2>
-            <h3>All Categories</h3>
-            <div id="category-list">
-                <!-- Categories will be loaded here -->
+            <div class="card">
+                <h2>My Projects</h2>
+                <ul id="projects-list">
+                    <li>Loading projects...</li>
+                </ul>
+                <p id="projects-message" class="message"></p>
             </div>
-            <h3>Add New Category</h3>
-            <form id="add-category-form">
-                <input type="text" id="category-name" placeholder="Category Name" required>
-                <button type="submit">Add Category</button>
-            </form>
-            <p id="admin-message" class="message"></p>
-        </section>
-    </div>
 
-    <script src="/frontend/app.js"></script>
+            <div class="card">
+                <h2>My Tasks</h2>
+                <ul id="tasks-list">
+                    <li>Loading tasks...</li>
+                </ul>
+                <p id="tasks-message" class="message"></p>
+            </div>
+
+            <div id="task-detail-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close-button">&times;</span>
+                    <h3>Task Details</h3>
+                    <p><strong>Title:</strong> <span id="modal-task-title"></span></p>
+                    <p><strong>Description:</strong> <span id="modal-task-description"></span></p>
+                    <p><strong>Status:</strong> <span id="modal-task-status"></span></p>
+                    <p><strong>Priority:</strong> <span id="modal-task-priority"></span></p>
+                    <p><strong>Assignee:</strong> <span id="modal-task-assignee"></span></p>
+                    <p><strong>Due Date:</strong> <span id="modal-task-due-date"></span></p>
+                    <p><strong>Completed:</strong> <span id="modal-task-completed"></span></p>
+                    <p><strong>Project:</strong> <span id="modal-task-project"></span></p>
+                    
+                    <h4>Update Task</h4>
+                    <form id="update-task-form">
+                        <input type="hidden" id="update-task-id">
+                        <label for="update-task-description">Description:</label>
+                        <textarea id="update-task-description"></textarea>
+                        <label for="update-task-status">Status:</label>
+                        <select id="update-task-status">
+                            <option value="to_do">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                            <option value="blocked">Blocked</option>
+                        </select>
+                        <label for="update-task-due-date">Due Date:</label>
+                        <input type="datetime-local" id="update-task-due-date">
+                        <label for="update-task-is-completed">Is Completed:</label>
+                        <input type="checkbox" id="update-task-is-completed">
+                        <button type="submit">Update Task</button>
+                    </form>
+                    <p id="update-task-message" class="message"></p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Project Management API</p>
+    </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>
 ```

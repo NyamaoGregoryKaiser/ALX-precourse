@@ -1,136 +1,162 @@
-from typing import Any, List
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
+from typing import List
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.deps import get_db, get_current_active_superuser, get_current_active_user
-from app.core.errors import DuplicateEntryException, NotFoundException
-from app.crud.user import crud_user
-from app.schemas.user import User, UserCreate, UserUpdate
-from app.models.user import User as DBUser
+from app.models.user import User, UserCreate, UserUpdate
+from app.schemas.user import User as DBUser, UserRole
+from app.crud import users as crud_users
+from app.dependencies.common import get_async_db_session, get_current_admin_dependency, get_current_user_dependency
+from app.core.exceptions import NotFoundException, ConflictException, BadRequestException
+from loguru import logger
 
 router = APIRouter()
 
-@router.get("/", response_model=List[User], summary="Retrieve all users (Superuser only)")
+@router.post("/", response_model=User, status_code=status.HTTP_201_CREATED, summary="Create a new user")
+async def create_user(
+    user_in: UserCreate,
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_admin_dependency) # Only admins can create users
+):
+    """
+    Create a new user with all information.
+    **Requires admin privileges.**
+    """
+    logger.info(f"Admin user {current_user.id} attempting to create a new user: {user_in.username}")
+    try:
+        user = await crud_users.create_user(db, user_in)
+        return user
+    except ConflictException as e:
+        logger.warning(f"User creation failed due to conflict: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Error creating user {user_in.username}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+
+@router.get("/", response_model=List[User], summary="Retrieve multiple users")
 async def read_users(
-    db: AsyncSession = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
-    current_user: DBUser = Depends(get_current_active_superuser),
-) -> Any:
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_admin_dependency) # Only admins can list all users
+):
     """
-    Retrieve users. Requires superuser privileges.
+    Retrieve multiple users with pagination.
+    **Requires admin privileges.**
     """
-    users = await crud_user.get_multi(db, skip=skip, limit=limit)
+    logger.info(f"Admin user {current_user.id} retrieving list of users (skip={skip}, limit={limit}).")
+    users = await crud_users.get_users(db, skip=skip, limit=limit)
     return users
 
-@router.post("/", response_model=User, status_code=status.HTTP_201_CREATED, summary="Create new user (Superuser only)")
-async def create_user(
-    *,
-    db: AsyncSession = Depends(get_db),
-    user_in: UserCreate,
-    current_user: DBUser = Depends(get_current_active_superuser),
-) -> Any:
-    """
-    Create new user. Requires superuser privileges.
-    """
-    user = await crud_user.get_by_email(db, email=user_in.email)
-    if user:
-        raise DuplicateEntryException(detail="The user with this username already exists in the system.")
-    user = await crud_user.create(db, obj_in=user_in)
-    return user
-
-@router.get("/me", response_model=User, summary="Retrieve current user's details")
+@router.get("/me", response_model=User, summary="Retrieve current user's profile")
 async def read_user_me(
-    current_user: DBUser = Depends(get_current_active_user),
-) -> Any:
+    current_user: DBUser = Depends(get_current_user_dependency)
+):
     """
-    Get current active user.
+    Retrieve the profile of the current authenticated user.
     """
+    logger.info(f"User {current_user.id} retrieving their own profile.")
     return current_user
 
-@router.put("/me", response_model=User, summary="Update current user's details")
+@router.put("/me", response_model=User, summary="Update current user's profile")
 async def update_user_me(
-    *,
-    db: AsyncSession = Depends(get_db),
     user_in: UserUpdate,
-    current_user: DBUser = Depends(get_current_active_user),
-) -> Any:
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_user_dependency)
+):
     """
-    Update own user.
+    Update the profile of the current authenticated user.
+    Users can only update their own `full_name`, `email`, `username`, and `password`.
+    `is_active` and `role` cannot be changed by the user themselves.
     """
-    # Prevent regular users from changing superuser status
-    if user_in.is_superuser is not None and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough privileges to change superuser status.",
-        )
+    logger.info(f"User {current_user.id} attempting to update their own profile.")
+    # Exclude fields that regular users shouldn't be able to update for themselves
+    update_data = user_in.model_dump(exclude_unset=True)
+    if 'is_active' in update_data:
+        del update_data['is_active']
+    if 'role' in update_data:
+        del update_data['role']
 
-    # Ensure email is not changed to an existing one by another user
-    if user_in.email and user_in.email != current_user.email:
-        existing_user = await crud_user.get_by_email(db, email=user_in.email)
-        if existing_user:
-            raise DuplicateEntryException(detail="This email is already registered by another user.")
+    # Create a new UserUpdate object with filtered data
+    filtered_user_in = UserUpdate(**update_data)
 
-    user = await crud_user.update(db, db_obj=current_user, obj_in=user_in)
-    return user
+    try:
+        updated_user = await crud_users.update_user(db, current_user.id, filtered_user_in)
+        return updated_user
+    except NotFoundException as e:
+        # Should not happen for current_user, but handled defensively
+        logger.error(f"Error updating user {current_user.id}: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.detail)
+    except ConflictException as e:
+        logger.warning(f"User update failed due to conflict: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Error updating user {current_user.id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
-@router.get("/{user_id}", response_model=User, summary="Retrieve user by ID (Superuser only)")
+
+@router.get("/{user_id}", response_model=User, summary="Retrieve a user by ID")
 async def read_user_by_id(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: DBUser = Depends(get_current_active_superuser),
-) -> Any:
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_admin_dependency) # Only admins can get other users by ID
+):
     """
-    Get a specific user by ID. Requires superuser privileges.
+    Retrieve a specific user by their ID.
+    **Requires admin privileges.**
     """
-    user = await crud_user.get(db, id=user_id)
+    logger.info(f"Admin user {current_user.id} retrieving user with ID: {user_id}")
+    user = await crud_users.get_user_by_id(db, user_id)
     if not user:
-        raise NotFoundException(detail="User not found")
+        logger.warning(f"User with ID {user_id} not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
-@router.put("/{user_id}", response_model=User, summary="Update user by ID (Superuser only)")
+@router.put("/{user_id}", response_model=User, summary="Update a user by ID")
 async def update_user(
-    *,
-    db: AsyncSession = Depends(get_db),
     user_id: int,
     user_in: UserUpdate,
-    current_user: DBUser = Depends(get_current_active_superuser),
-) -> Any:
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_admin_dependency) # Only admins can update other users
+):
     """
-    Update a user. Requires superuser privileges.
+    Update an existing user by their ID.
+    **Requires admin privileges.**
     """
-    user = await crud_user.get(db, id=user_id)
-    if not user:
-        raise NotFoundException(detail="User not found")
+    logger.info(f"Admin user {current_user.id} attempting to update user with ID: {user_id}")
+    try:
+        updated_user = await crud_users.update_user(db, user_id, user_in)
+        return updated_user
+    except NotFoundException as e:
+        logger.warning(f"User update failed: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.detail)
+    except ConflictException as e:
+        logger.warning(f"User update failed due to conflict: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Error updating user {user_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
-    # Ensure email is not changed to an existing one by another user
-    if user_in.email and user_in.email != user.email:
-        existing_user = await crud_user.get_by_email(db, email=user_in.email)
-        if existing_user and existing_user.id != user_id:
-            raise DuplicateEntryException(detail="This email is already registered by another user.")
-
-    user = await crud_user.update(db, db_obj=user, obj_in=user_in)
-    return user
-
-@router.delete("/{user_id}", response_model=User, summary="Delete user by ID (Superuser only)")
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a user by ID")
 async def delete_user(
-    *,
-    db: AsyncSession = Depends(get_db),
     user_id: int,
-    current_user: DBUser = Depends(get_current_active_superuser),
-) -> Any:
+    db: AsyncSession = Depends(get_async_db_session),
+    current_user: DBUser = Depends(get_current_admin_dependency) # Only admins can delete users
+):
     """
-    Delete a user. Requires superuser privileges.
+    Delete a user by their ID.
+    **Requires admin privileges.**
     """
-    user = await crud_user.get(db, id=user_id)
-    if not user:
-        raise NotFoundException(detail="User not found")
-    if user.id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete your own user account.",
-        )
-    user = await crud_user.remove(db, id=user_id)
-    return user
+    logger.info(f"Admin user {current_user.id} attempting to delete user with ID: {user_id}")
+    if current_user.id == user_id:
+        raise BadRequestException(detail="You cannot delete your own account via this endpoint.")
+    try:
+        success = await crud_users.delete_user(db, user_id)
+        if not success: # This case is already handled by NotFoundException in crud, but good to double check
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return # 204 No Content
+    except NotFoundException as e:
+        logger.warning(f"User deletion failed: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+```

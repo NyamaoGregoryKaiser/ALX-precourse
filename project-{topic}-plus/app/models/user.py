@@ -1,56 +1,47 @@
-```python
-"""
-SQLAlchemy ORM model for the User entity.
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
+import datetime
+from app.schemas.user import UserRole
 
-This module defines the database schema for users, including fields for
-authentication (email, hashed password), personal details, roles,
-and account status. It integrates with the `BaseORM` for common fields.
-"""
+# Shared properties
+class UserBase(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
+    full_name: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = True
+    role: Optional[UserRole] = UserRole.MEMBER
 
-import enum
-from sqlalchemy import Column, Integer, String, Boolean, Enum
-from sqlalchemy.orm import relationship
+# Properties to receive via API on creation
+class UserCreate(UserBase):
+    password: str = Field(min_length=6)
 
-from app.models.base import BaseORM # Import BaseORM from core.database
+# Properties to receive via API on update
+class UserUpdate(UserBase):
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    password: Optional[str] = Field(None, min_length=6)
+    role: Optional[UserRole] = None
 
-class UserRole(enum.Enum):
-    """
-    Enum for different user roles in the system.
-    """
-    CUSTOMER = "customer"
-    ADMIN = "admin"
+# Properties stored in DB
+class UserInDBBase(UserBase):
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
-class User(BaseORM):
-    """
-    SQLAlchemy model representing a user in the ALX-Shop system.
+    class Config:
+        from_attributes = True
 
-    Attributes:
-        id (int): Primary key, auto-incrementing. Inherited from BaseORM.
-        email (str): Unique email address of the user.
-        hashed_password (str): Hashed password for authentication.
-        full_name (str): Full name of the user.
-        is_active (bool): Whether the user account is active.
-        role (UserRole): The role of the user (e.g., ADMIN, CUSTOMER).
-        created_at (datetime): Timestamp of record creation. Inherited from BaseORM.
-        updated_at (datetime): Timestamp of last record update. Inherited from BaseORM.
+# Properties to return to API
+class User(UserInDBBase):
+    pass
 
-        orders (relationship): One-to-many relationship with Order model.
-    """
-    __tablename__ = "users"
+# For response that doesn't include sensitive info like email (e.g., assignee)
+class UserPublic(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str]
+    role: UserRole
 
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.CUSTOMER, nullable=False)
-
-    # Relationships
-    orders = relationship("Order", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
-
-    def __repr__(self):
-        """
-        Returns a string representation of the User object.
-        """
-        return f"<User(id={self.id}, email='{self.email}', role='{self.role.value}', is_active={self.is_active})>"
-
+    class Config:
+        from_attributes = True
 ```

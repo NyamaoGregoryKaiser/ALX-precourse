@@ -1,82 +1,85 @@
-```python
-"""
-Database configuration and session management for the ALX-Shop application.
-
-This module provides:
-- Asynchronous database connection setup using `asyncpg` and `SQLAlchemy`.
-- An `AsyncEngine` instance for executing SQL statements.
-- An `AsyncSessionLocal` factory for creating session objects.
-- A FastAPI dependency `get_db_session` to inject database sessions into routes.
-- Base class for SQLAlchemy declarative models.
-"""
-
-import logging
-from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-
 from app.core.config import settings
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from loguru import logger
+import asyncio
 
-logger = logging.getLogger(__name__)
+# Base class for our SQLAlchemy ORM models
+Base = declarative_base()
 
-# Create the asynchronous database engine
-# `pool_pre_ping=True` checks connection health before use, `echo=False` for less verbose logs
-database_engine = create_async_engine(
-    settings.ASYNC_DATABASE_URL,
-    pool_pre_ping=True,
-    echo=False,  # Set to True to see SQL queries in logs
-    pool_size=10,  # Number of connections in the pool
-    max_overflow=20, # Max connections beyond pool_size
-    pool_recycle=3600, # Recycle connections after 1 hour
+# Database engine
+engine = create_async_engine(
+    settings.get_database_url_for_env,
+    echo=settings.DEBUG, # Log SQL queries in debug mode
+    pool_size=10,        # Max connections in pool
+    max_overflow=20,     # Max additional connections when pool is exhausted
+    pool_timeout=30,     # seconds to wait for connection
+    pool_recycle=3600    # recycle connections after one hour
 )
 
-# Create an asynchronous sessionmaker
-# `autocommit=False` for explicit commit/rollback, `autoflush=False` for lazy flushing
-# `expire_on_commit=False` keeps objects in session after commit for easier access to relationships
+# Async session factory
 AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=database_engine,
+    bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False # Ensures objects are not expired after commit
 )
 
-# Base class for SQLAlchemy declarative models
-Base = declarative_base()
-
-
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_fixed(2),
+    before=before_log(logger, logger.INFO),
+    reraise=True # Re-raise the last exception if retries fail
+)
+async def check_db_connection():
     """
-    FastAPI dependency that provides an asynchronous database session.
-
-    This function is a generator that yields an `AsyncSession` object.
-    It ensures that the session is properly closed after the request is processed,
-    handling both successful responses and exceptions (rollback on error).
-
-    Yields:
-        AsyncSession: An asynchronous SQLAlchemy session.
+    Checks the database connection by attempting to connect.
+    Retries up to 5 times with a 2-second delay between attempts.
     """
-    session = AsyncSessionLocal()
     try:
-        yield session
-        await session.commit()
-        logger.debug("Database session committed.")
+        async with engine.connect() as conn:
+            await conn.execute(  # Use execute for DDL or simple queries
+                # For PostgreSQL, SELECT 1; is a common lightweight check
+                # For SQLAlchemy 2.0, text() is generally preferred for raw SQL
+                # from sqlalchemy import text
+                # text("SELECT 1;")
+                # However, for a simple connection check, a transaction is enough.
+                # A simple statement might be needed if the driver requires it.
+                # For asyncpg, a no-op transaction is usually enough.
+                # For a true "SELECT 1", you'd use conn.scalar(text("SELECT 1"))
+                # But connect() itself attempts connection, so this is primarily for transaction test.
+                # Let's add a scalar check for robustness.
+                # await conn.scalar(text("SELECT 1")) # Use this for direct SQL check
+                # The engine.connect() itself validates the connection.
+                # This block mainly ensures async context management works.
+                logger.info("Database connection successful.")
+                return True # If no exception, connection is successful
+            )
     except Exception as e:
-        await session.rollback()
-        logger.error(f"Database session rolled back due to error: {e}")
-        raise
+        logger.error(f"Failed to connect to database: {e}")
+        raise # Re-raise for retry mechanism
+
+async def get_db():
+    """
+    Dependency to provide a database session for each request.
+    Handles session creation and closing.
+    """
+    db = AsyncSessionLocal()
+    try:
+        yield db
     finally:
-        await session.close()
-        logger.debug("Database session closed.")
+        await db.close()
 
-
-async def close_db_connection(engine):
-    """
-    Closes the database engine's connections.
-    Should be called during application shutdown.
-    """
-    if engine:
-        await engine.dispose()
-        logger.info("Database engine connections disposed.")
-
+# Example: Run connection check at startup (can be called in main.py)
+async def startup_db_check():
+    logger.info("Attempting to connect to the database...")
+    try:
+        await check_db_connection()
+        logger.info("Database startup check completed successfully.")
+    except Exception:
+        logger.error("Failed to connect to the database after multiple retries. Exiting.")
+        # In a real application, you might want to terminate the application
+        # or enter a degraded mode here. For this example, we just log.
 ```

@@ -1,71 +1,34 @@
-```python
-"""
-Pydantic schemas for the User entity.
+import datetime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+from enum import Enum as PyEnum
 
-This module defines the data structures for:
-- Creating a new user (`UserCreate`).
-- Reading user details (`UserRead`).
-- Updating user details (`UserUpdate`).
-- Defining user roles (`UserRole`).
-"""
-
-import enum
-from datetime import datetime
-from typing import Optional
-
-from pydantic import BaseModel, EmailStr, Field
-
-class UserRole(enum.Enum):
-    """
-    Enum for different user roles. Matches the ORM model's enum.
-    """
-    CUSTOMER = "customer"
+class UserRole(PyEnum):
     ADMIN = "admin"
+    MANAGER = "manager"
+    MEMBER = "member"
 
-class UserBase(BaseModel):
+class User(Base):
     """
-    Base Pydantic schema for user, containing common attributes.
+    SQLAlchemy model for a user in the project management system.
     """
-    email: EmailStr = Field(..., example="user@example.com", description="Unique email address of the user")
-    full_name: Optional[str] = Field(None, example="John Doe", description="Full name of the user")
+    __tablename__ = "users"
 
-class UserCreate(UserBase):
-    """
-    Pydantic schema for creating a new user.
-    Includes password, which is not returned in read operations.
-    """
-    password: str = Field(..., min_length=8, max_length=50, example="securepassword123", description="User's password")
-    role: UserRole = Field(UserRole.CUSTOMER, example=UserRole.CUSTOMER, description="Role of the user (e.g., customer, admin)")
-    is_active: bool = Field(True, example=True, description="Whether the user account is active")
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.timezone.utc), onupdate=datetime.datetime.now(datetime.timezone.utc))
 
+    # Relationships
+    owned_projects = relationship("Project", back_populates="owner", lazy="noload")
+    assigned_tasks = relationship("Task", back_populates="assignee", lazy="noload")
 
-class UserUpdate(UserBase):
-    """
-    Pydantic schema for updating an existing user.
-    All fields are optional, allowing partial updates.
-    """
-    email: Optional[EmailStr] = Field(None, example="new_user@example.com", description="Updated unique email address")
-    full_name: Optional[str] = Field(None, example="Jane Smith", description="Updated full name of the user")
-    password: Optional[str] = Field(None, min_length=8, max_length=50, example="newsecurepassword456", description="Updated password (hashed before storage)")
-    is_active: Optional[bool] = Field(None, example=False, description="Updated active status of the user account")
-    role: Optional[UserRole] = Field(None, example=UserRole.ADMIN, description="Updated role of the user")
-
-class UserRead(UserBase):
-    """
-    Pydantic schema for reading (retrieving) user details.
-    Excludes sensitive information like hashed password.
-    """
-    id: int = Field(..., example=1, description="Unique ID of the user")
-    is_active: bool = Field(..., example=True, description="Whether the user account is active")
-    role: UserRole = Field(..., example=UserRole.CUSTOMER, description="Role of the user")
-    created_at: datetime = Field(..., example="2023-01-01T12:00:00.000000", description="Timestamp of user creation")
-    updated_at: datetime = Field(..., example="2023-01-01T12:00:00.000000", description="Timestamp of last update")
-
-    class Config:
-        """
-        Pydantic configuration for ORM mode.
-        Enables the Pydantic model to read data from ORM objects.
-        """
-        from_attributes = True
-
+    def __repr__(self):
+        return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
 ```

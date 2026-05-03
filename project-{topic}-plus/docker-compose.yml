@@ -1,63 +1,53 @@
-```yaml
-# docker-compose.yml for ALX-Shop development environment
-
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # Command to run the application, overrides CMD in Dockerfile for development
-    # Reload allows code changes to take effect without restarting the container.
-    # We use 1 worker for development for simplicity and easier debugging.
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app  # Mount current directory into /app for live code changes
-    depends_on:
-      - db
-      - redis
-    env_file:
-      - .env # Load environment variables from .env file
-    environment:
-      # Override specific variables from .env for Docker environment if needed
-      # Ensure DATABASE_HOST points to the service name 'db'
-      DATABASE_HOST: db
-      REDIS_URI: redis://redis:6379/0
-      # Use the test database for development if needed, or explicitly set for local dev DB
-      # ENVIRONMENT: development # Ensure consistent environment setting
-
   db:
     image: postgres:15-alpine
     restart: always
-    ports:
-      - "5432:5432" # Expose DB port for local access if needed (e.g., using pgAdmin)
-    volumes:
-      - pgdata:/var/lib/postgresql/data # Persistent data volume
-    env_file:
-      - .env # Load DB credentials from .env
     environment:
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-      POSTGRES_DB: ${DATABASE_NAME} # Main database name
-      # Optional: Test database for running tests within a separate container/setup
-      POSTGRES_TEST_DB: ${TEST_DATABASE_NAME} # If you need a separate DB for tests
-                                              # You'd typically create this in your CI/CD setup
-                                              # or have a separate docker-compose for testing.
-                                              # For this setup, we configure app to use TEST_DATABASE_URL
-                                              # if ENVIRONMENT is "testing".
+      POSTGRES_DB: project_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432" # Standard port for PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379" # Expose Redis port for local access if needed
-    volumes:
-      - redisdata:/data # Persistent data volume
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    restart: always
+    env_file:
+      - .env # Load environment variables from .env file
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy # Wait for DB to be healthy
+      redis:
+        condition: service_healthy # Wait for Redis to be healthy
+    command: ["/bin/sh", "-c", "sleep 5 && alembic upgrade head && python app/seed_data.py && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"]
+    # The 'sleep 5' is a rudimentary wait for DB, 'service_healthy' is better but sometimes network takes a moment.
+    # `alembic upgrade head` applies migrations on startup
+    # `python app/seed_data.py` runs the seed script after migrations. REMOVE THIS FOR PRODUCTION AFTER INITIAL SEEDING!
+    # In production, you'd typically run `alembic upgrade head` and `python app/seed_data.py` as separate CI/CD steps,
+    # not as part of the main `command` to avoid re-seeding on every restart.
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
 ```

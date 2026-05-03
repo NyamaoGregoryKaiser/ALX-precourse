@@ -1,99 +1,75 @@
-```python
-"""
-Custom exception definitions and handlers for the ALX-Shop application.
+from fastapi import HTTPException, status
 
-This module provides:
-- `CustomException`: A base class for application-specific HTTP exceptions.
-- `custom_exception_handler`: A global FastAPI exception handler that
-  converts `CustomException`, `HTTPException`, and `RequestValidationError`
-  into standardized JSON error responses.
-"""
-
-import logging
-from typing import Dict, Any, Optional
-
-from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-logger = logging.getLogger(__name__)
-
-class CustomException(HTTPException):
-    """
-    Base class for custom application-specific HTTP exceptions.
-
-    Inherits from FastAPI's HTTPException to allow direct raising
-    in API endpoints and automatic handling by FastAPI, but also
-    provides a consistent structure for custom error responses.
-    """
-    def __init__(
-        self,
-        status_code: int,
-        detail: Any = None,
-        headers: Optional[Dict[str, str]] = None,
-        error_code: Optional[str] = None
-    ):
+class ProjectAPIException(HTTPException):
+    """Base custom exception for the Project Management API."""
+    def __init__(self, status_code: int, detail: str, headers: dict = None):
         super().__init__(status_code=status_code, detail=detail, headers=headers)
-        self.error_code = error_code if error_code else f"ERR-{status_code}"
 
+class NotFoundException(ProjectAPIException):
+    """Exception for resources not found."""
+    def __init__(self, detail: str = "Resource not found"):
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
-async def custom_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """
-    Global exception handler for the FastAPI application.
+class UnauthorizedException(ProjectAPIException):
+    """Exception for unauthorized access."""
+    def __init__(self, detail: str = "Not authenticated"):
+        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail,
+                         headers={"WWW-Authenticate": "Bearer"})
 
-    This handler catches various types of exceptions (CustomException, HTTPException,
-    RequestValidationError) and formats them into a consistent JSON error response.
-    It also logs the exceptions appropriately.
+class ForbiddenException(ProjectAPIException):
+    """Exception for insufficient permissions."""
+    def __init__(self, detail: str = "Not enough permissions"):
+        super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
-    Args:
-        request (Request): The incoming FastAPI request.
-        exc (Exception): The exception that was raised.
+class BadRequestException(ProjectAPIException):
+    """Exception for bad request input."""
+    def __init__(self, detail: str = "Bad request"):
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
-    Returns:
-        JSONResponse: A standardized JSON error response.
-    """
-    error_detail = "An unexpected error occurred."
-    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    error_code = "ERR-500"
-    headers: Optional[Dict[str, str]] = None
+class ConflictException(ProjectAPIException):
+    """Exception for conflicting resource creation/update."""
+    def __init__(self, detail: str = "Resource conflict"):
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
-    if isinstance(exc, CustomException):
-        status_code = exc.status_code
-        error_detail = exc.detail
-        error_code = exc.error_code
-        headers = exc.headers
-        log_func = logger.warning if status_code < 500 else logger.error
-        log_func(f"CustomException handled: {exc.error_code} - {exc.detail} (Status: {exc.status_code}) for {request.url}")
+class UnprocessableEntityException(ProjectAPIException):
+    """Exception for valid but unprocessable entity."""
+    def __init__(self, detail: str = "Unprocessable Entity"):
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
-    elif isinstance(exc, StarletteHTTPException):
-        status_code = exc.status_code
-        error_detail = exc.detail
-        error_code = f"HTTP-ERR-{status_code}"
-        headers = exc.headers
-        log_func = logger.warning if status_code < 500 else logger.error
-        log_func(f"HTTPException handled: {exc.detail} (Status: {exc.status_code}) for {request.url}")
-
-    elif isinstance(exc, RequestValidationError) or isinstance(exc, ValidationError):
-        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
-        error_detail = exc.errors() # Pydantic's error messages
-        error_code = "VALIDATION-ERROR"
-        logger.warning(f"RequestValidationError handled: {error_detail} for {request.url}")
-
-    else:
-        # Catch-all for any other unhandled exceptions
-        logger.exception(f"Unhandled exception: {exc} for {request.url}") # Use exception for full traceback
-
-    response_content = {
-        "error_code": error_code,
-        "message": error_detail,
-        "timestamp": request.state.start_time.isoformat() if hasattr(request.state, 'start_time') else datetime.now().isoformat()
-    }
+# Global Exception Handlers (to be registered in main.py)
+# These convert custom exceptions into FastAPI HTTPExceptions
+async def http_exception_handler(request, exc: HTTPException):
+    from fastapi.responses import JSONResponse
     return JSONResponse(
-        status_code=status_code,
-        content=response_content,
-        headers=headers
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers
     )
 
+async def validation_exception_handler(request, exc):
+    from fastapi.responses import JSONResponse
+    from pydantic import ValidationError
+    if isinstance(exc, ValidationError):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": exc.errors()},
+        )
+    # Default to FastAPI's own handler for RequestValidationError
+    from fastapi.exceptions import RequestValidationError
+    if isinstance(exc, RequestValidationError):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": exc.errors()},
+        )
+    # Fallback for other unhandled exceptions
+    return await http_exception_handler(request, HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred"))
+
+async def generic_exception_handler(request, exc: Exception):
+    from fastapi.responses import JSONResponse
+    from loguru import logger
+    logger.exception(f"Unhandled exception: {exc}") # Log the full traceback
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An unexpected server error occurred."},
+    )
 ```
