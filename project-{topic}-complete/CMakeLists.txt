@@ -1,119 +1,224 @@
 ```cmake
-cmake_minimum_required(VERSION 3.15)
-project(ecommerce-cpp CXX)
+cmake_minimum_required(VERSION 3.10)
+project(MLToolkit_Server VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # For better IDE integration
 
-# Find vcpkg and integrate it
-if(EXISTS "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
-    include("${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+# --- Compiler flags ---
+if (CMAKE_BUILD_TYPE MATCHES "Debug")
+    add_compile_options(-Wall -Wextra -Wpedantic -g -O0)
 else()
-    message(FATAL_ERROR "VCPKG_ROOT is not set or vcpkg.cmake not found. Please set VCPKG_ROOT environment variable.")
+    add_compile_options(-Wall -Wextra -Wpedantic -O3 -DNDEBUG)
 endif()
 
-# Find necessary packages
-find_package(Crow CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(Pqxx CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
-find_package(CURL CONFIG REQUIRED) # For client
-find_package(GTest CONFIG REQUIRED) # For tests
+# --- External Dependencies ---
 
-# --- Backend Application ---
-add_executable(ecommerce_backend
-    src/backend/main.cpp
-    src/backend/db/db_manager.cpp
-    src/backend/middleware/auth_middleware.cpp
-    src/backend/middleware/error_middleware.cpp
-    src/backend/middleware/logging_middleware.cpp
-    src/backend/middleware/rate_limit_middleware.cpp
-    src/backend/services/auth_service.cpp
-    src/backend/services/product_service.cpp
-    src/backend/services/order_service.cpp
-    src/backend/utils/json_util.cpp
-    src/backend/utils/jwt_util.cpp
+# nlohmann/json (vendored for simplicity)
+add_subdirectory(vendor/nlohmann_json)
+
+# spdlog (vendored for simplicity)
+add_subdirectory(vendor/spdlog)
+
+# Crow (vendored for simplicity)
+add_subdirectory(vendor/Crow)
+
+# Eigen (download if not found)
+find_package(Eigen3 CONFIG)
+if (NOT Eigen3_FOUND)
+    message(STATUS "Eigen3 not found, downloading...")
+    include(FetchContent)
+    FetchContent_Declare(
+        eigen
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG 3.4.0 # Or specific version
+    )
+    FetchContent_MakeAvailable(eigen)
+    set(Eigen3_INCLUDE_DIR ${eigen_SOURCE_DIR})
+    set(Eigen3_FOUND TRUE)
+endif()
+if (Eigen3_FOUND)
+    include_directories(${Eigen3_INCLUDE_DIR})
+    message(STATUS "Using Eigen from: ${Eigen3_INCLUDE_DIR}")
+else()
+    message(FATAL_ERROR "Eigen3 not found or downloadable. Please install or ensure access.")
+endif()
+
+# pqxx (PostgreSQL C++ client)
+find_package(libpqxx CONFIG REQUIRED) # Requires libpqxx to be installed on the system
+message(STATUS "Found libpqxx: ${libpqxx_LIBRARIES}")
+
+# --- MLToolkit Source Files ---
+# Common
+set(MLTOOLKIT_COMMON_SOURCES
+    src/common/Logger.cpp
+    src/common/Exceptions.cpp
+)
+set(MLTOOLKIT_COMMON_HEADERS
+    src/common/Logger.hpp
+    src/common/Exceptions.hpp
 )
 
-target_include_directories(ecommerce_backend PUBLIC
-    src/backend
-    src/backend/models
-    src/backend/services
-    src/backend/db
-    src/backend/middleware
-    src/backend/utils
+# Config
+set(MLTOOLKIT_CONFIG_SOURCES
+    src/config/Config.cpp
+)
+set(MLTOOLKIT_CONFIG_HEADERS
+    src/config/Config.hpp
 )
 
-target_link_libraries(ecommerce_backend PRIVATE
+# Database Models
+set(MLTOOLKIT_DB_MODELS_HEADERS
+    src/database/models/Dataset.hpp
+    src/database/models/Model.hpp
+    src/database/models/Pipeline.hpp
+)
+
+# Database Manager
+set(MLTOOLKIT_DB_SOURCES
+    src/database/DBManager.cpp
+)
+set(MLTOOLKIT_DB_HEADERS
+    src/database/DBManager.hpp
+)
+
+# ML Utilities - Core
+set(MLTOOLKIT_ML_CORE_SOURCES
+    src/ml_utils/core/MatrixUtils.cpp # Basic matrix operations, mainly using Eigen
+)
+set(MLTOOLKIT_ML_CORE_HEADERS
+    src/ml_utils/core/MatrixUtils.hpp
+)
+
+# ML Utilities - Preprocessing
+set(MLTOOLKIT_ML_PREPROCESSING_SOURCES
+    src/ml_utils/preprocessing/Scaler.cpp
+    src/ml_utils/preprocessing/Imputer.cpp
+)
+set(MLTOOLKIT_ML_PREPROCESSING_HEADERS
+    src/ml_utils/preprocessing/Scaler.hpp
+    src/ml_utils/preprocessing/Imputer.hpp
+)
+
+# ML Utilities - Features
+set(MLTOOLKIT_ML_FEATURES_SOURCES
+    src/ml_utils/features/FeatureExtractor.cpp
+)
+set(MLTOOLKIT_ML_FEATURES_HEADERS
+    src/ml_utils/features/FeatureExtractor.hpp
+)
+
+# ML Utilities - Evaluation
+set(MLTOOLKIT_ML_EVALUATION_SOURCES
+    src/ml_utils/evaluation/Metrics.cpp
+)
+set(MLTOOLKIT_ML_EVALUATION_HEADERS
+    src/ml_utils/evaluation/Metrics.hpp
+)
+
+# ML Processor
+set(MLTOOLKIT_ML_PROCESSOR_SOURCES
+    src/ml_utils/MLProcessor.cpp
+)
+set(MLTOOLKIT_ML_PROCESSOR_HEADERS
+    src/ml_utils/MLProcessor.hpp
+)
+
+# Middleware
+set(MLTOOLKIT_MIDDLEWARE_SOURCES
+    src/middleware/AuthMiddleware.cpp
+    src/middleware/LoggingMiddleware.cpp
+    src/middleware/ErrorHandler.cpp
+    src/middleware/Cache.cpp
+    src/middleware/RateLimiter.cpp
+)
+set(MLTOOLKIT_MIDDLEWARE_HEADERS
+    src/middleware/AuthMiddleware.hpp
+    src/middleware/LoggingMiddleware.hpp
+    src/middleware/ErrorHandler.hpp
+    src/middleware/Cache.hpp
+    src/middleware/RateLimiter.hpp
+)
+
+# API Handlers
+set(MLTOOLKIT_API_HANDLERS_SOURCES
+    src/api/handlers/AuthHandler.cpp
+    src/api/handlers/DatasetHandler.cpp
+    src/api/handlers/ModelHandler.cpp
+    src/api/handlers/PipelineHandler.cpp
+)
+set(MLTOOLKIT_API_HANDLERS_HEADERS
+    src/api/handlers/AuthHandler.hpp
+    src/api/handlers/DatasetHandler.hpp
+    src/api/handlers/ModelHandler.hpp
+    src/api/handlers/PipelineHandler.hpp
+)
+
+# API Server
+set(MLTOOLKIT_API_SERVER_SOURCES
+    src/api/APIServer.cpp
+)
+set(MLTOOLKIT_API_SERVER_HEADERS
+    src/api/APIServer.hpp
+)
+
+# Main executable
+set(MLTOOLKIT_MAIN_SOURCE src/main.cpp)
+
+# Combine all sources and headers
+set(MLTOOLKIT_SERVER_SOURCES
+    ${MLTOOLKIT_COMMON_SOURCES}
+    ${MLTOOLKIT_CONFIG_SOURCES}
+    ${MLTOOLKIT_DB_SOURCES}
+    ${MLTOOLKIT_ML_CORE_SOURCES}
+    ${MLTOOLKIT_ML_PREPROCESSING_SOURCES}
+    ${MLTOOLKIT_ML_FEATURES_SOURCES}
+    ${MLTOOLKIT_ML_EVALUATION_SOURCES}
+    ${MLTOOLKIT_ML_PROCESSOR_SOURCES}
+    ${MLTOOLKIT_MIDDLEWARE_SOURCES}
+    ${MLTOOLKIT_API_HANDLERS_SOURCES}
+    ${MLTOOLKIT_API_SERVER_SOURCES}
+    ${MLTOOLKIT_MAIN_SOURCE}
+)
+
+set(MLTOOLKIT_SERVER_HEADERS
+    ${MLTOOLKIT_COMMON_HEADERS}
+    ${MLTOOLKIT_CONFIG_HEADERS}
+    ${MLTOOLKIT_DB_MODELS_HEADERS}
+    ${MLTOOLKIT_DB_HEADERS}
+    ${MLTOOLKIT_ML_CORE_HEADERS}
+    ${MLTOOLKIT_ML_PREPROCESSING_HEADERS}
+    ${MLTOOLKIT_ML_FEATURES_HEADERS}
+    ${MLTOOLKIT_ML_EVALUATION_HEADERS}
+    ${MLTOOLKIT_ML_PROCESSOR_HEADERS}
+    ${MLTOOLKIT_MIDDLEWARE_HEADERS}
+    ${MLTOOLKIT_API_HANDLERS_HEADERS}
+    ${MLTOOLKIT_API_SERVER_HEADERS}
+)
+
+# Create the executable
+add_executable(${PROJECT_NAME} ${MLTOOLKIT_SERVER_SOURCES})
+
+# Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+    ${Crow_INCLUDE_DIRS}
+    ${NLOHMANN_JSON_INCLUDE_DIRS}
+    ${SPDLOG_INCLUDE_DIRS}
+    ${Eigen3_INCLUDE_DIR}
+    ${libpqxx_INCLUDE_DIRS}
+)
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE
     Crow::Crow
-    nlohmann_json::nlohmann_json
-    Pqxx::pqxx
-    spdlog::spdlog
+    nlohmann_json
+    spdlog::spdlog_header_only # spdlog is header-only with this usage
+    ${Eigen3_LIBRARIES}
+    ${libpqxx_LIBRARIES}
 )
 
-# --- Client Application ---
-add_executable(ecommerce_client
-    src/client/client_main.cpp
-)
-
-target_include_directories(ecommerce_client PUBLIC
-    src/client
-    src/backend/models # Client also needs product/user models to parse responses
-    src/backend/utils # Client also needs json_util
-)
-
-target_link_libraries(ecommerce_client PRIVATE
-    CURL::libcurl
-    nlohmann_json::nlohmann_json
-)
-
-# --- Test Executables ---
-# Unit Tests
-add_executable(ecommerce_unit_tests
-    tests/unit/test_auth_service.cpp
-    tests/unit/test_product_service.cpp
-)
-target_include_directories(ecommerce_unit_tests PUBLIC
-    src/backend
-    src/backend/models
-    src/backend/services
-    src/backend/db
-    src/backend/middleware
-    src/backend/utils
-    ${GTest_INCLUDE_DIRS}
-)
-target_link_libraries(ecommerce_unit_tests PRIVATE
-    GTest::gtest GTest::gtest_main
-    nlohmann_json::nlohmann_json
-    spdlog::spdlog
-    Pqxx::pqxx # Link for mock DB manager or actual
-)
-
-# Integration Tests
-add_executable(ecommerce_integration_tests
-    tests/integration/test_db_integration.cpp
-)
-target_include_directories(ecommerce_integration_tests PUBLIC
-    src/backend
-    src/backend/models
-    src/backend/services
-    src/backend/db
-    src/backend/middleware
-    src/backend/utils
-    ${GTest_INCLUDE_DIRS}
-)
-target_link_libraries(ecommerce_integration_tests PRIVATE
-    GTest::gtest GTest::gtest_main
-    Pqxx::pqxx
-    nlohmann_json::nlohmann_json
-    spdlog::spdlog
-    # Link other backend components if they are part of the integration test scope
-    # For now, db_manager is sufficient
-)
-
-# Add custom commands for running tests
-add_test(NAME RunUnitTests COMMAND ecommerce_unit_tests)
-add_test(NAME RunIntegrationTests COMMAND ecommerce_integration_tests)
-
+# --- Unit Tests ---
+enable_testing()
+add_subdirectory(tests)
 ```

@@ -1,8 +1,7 @@
 ```
-# Python tools for development, testing, or scripting
-pytest
-requests
-flake8
-black
-gunicorn # Example if using a Python microservice alongside
+requests>=2.25.1
+PyJWT>=2.0.0 # For generating/decoding JWT in client
+pytest>=6.2.2
+pytest-cov>=2.11.1
+locust>=2.1.0 # For performance testing
 ```

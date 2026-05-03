@@ -1,81 +1,75 @@
 ```python
-from locust import HttpUser, task, between, SequentialTaskSet
+import time
 import random
+from locust import HttpUser, task, between
 
-class UserBehavior(SequentialTaskSet):
+class MLToolkitUser(HttpUser):
+    wait_time = between(1, 2.5)  # Users wait between 1 and 2.5 seconds between tasks
+    host = "http://localhost:8080"
+    token = None
+
     def on_start(self):
-        """ on_start is called once per User when the User starts running. """
-        self.register()
-        self.login()
-
-    def register(self):
-        self.client.post("/api/auth/register", json={
-            "username": f"testuser_{random.randint(0, 1000000)}",
-            "email": f"test_{random.randint(0, 1000000)}@example.com",
-            "password": "password123",
-            "role": "user"
-        }, name="/auth/register [register]", catch_response=True)
-        # We don't need to store this user, just ensure registration works
-        # Real world would handle unique usernames better
-
-    def login(self):
-        response = self.client.post("/api/auth/login", json={
-            "username": "testuser", # Assuming a seeded testuser for stable logins
-            "password": "userpassword" # Assuming password for testuser
-        }, name="/auth/login [login]", catch_response=True)
-        if response.status_code == 200:
-            self.access_token = response.json()["access_token"]
-            self.user_id = response.json()["user"]["id"]
-            self.client.headers = {"Authorization": f"Bearer {self.access_token}"}
-            print(f"Logged in as user {self.user_id}")
+        """On start of the user, log in and get JWT token."""
+        self.client.headers = {"Content-Type": "application/json"}
+        login_response = self.client.post("/api/v1/auth/login", json={"username": "admin", "password": "adminpass"})
+        if login_response.status_code == 200:
+            self.token = login_response.json()["token"]
+            self.client.headers["Authorization"] = f"Bearer {self.token}"
+            print(f"Logged in and obtained token: {self.token[:10]}...")
         else:
-            print(f"Login failed: {response.status_code} {response.text}")
+            print(f"Failed to log in: {login_response.status_code} - {login_response.text}")
             self.environment.runner.quit() # Stop if login fails
 
+    @task(5) # 5 times more likely to run
+    def get_all_datasets(self):
+        self.client.get("/api/v1/datasets", name="/datasets [GET]")
+
     @task(3)
-    def view_all_tasks(self):
-        self.client.get("/api/tasks/", name="/api/tasks/ [get_all]", catch_response=True)
+    def create_and_get_dataset(self):
+        # Create a new dataset
+        dataset_name = f"locust_dataset_{int(time.time())}_{random.randint(0, 99999)}"
+        create_data = {
+            "name": dataset_name,
+            "description": "Dataset created by Locust",
+            "file_path": f"/locust/path/{dataset_name}.csv",
+            "row_count": random.randint(100, 1000),
+            "col_count": random.randint(2, 10)
+        }
+        create_response = self.client.post("/api/v1/datasets", json=create_data, name="/datasets [POST]")
+        if create_response.status_code == 201:
+            dataset_id = create_response.json()["id"]
+            # Get the created dataset
+            self.client.get(f"/api/v1/datasets/{dataset_id}", name="/datasets/{id} [GET]")
+        else:
+            create_response.failure(f"Failed to create dataset: {create_response.text}")
 
     @task(2)
-    def create_and_view_task(self):
-        # First, need a project to create a task in. Let's assume some projects exist.
-        # For simplicity, we'll try to use a hardcoded project ID from seeded data,
-        # or dynamically fetch one if the app supports it easily.
-        # In a real perf test, you'd manage test data carefully.
-        project_id_for_task = 1 # Assuming project with ID 1 exists (e.g., from seed_db)
-
-        # Create a task
-        create_res = self.client.post("/api/tasks/", json={
-            "title": f"Load Test Task {random.randint(0, 100000)}",
-            "description": "Task created during performance test",
-            "project_id": project_id_for_task,
-            "assigned_to_id": self.user_id,
-            "status": "open"
-        }, name="/api/tasks/ [create]", catch_response=True)
-
-        if create_res.status_code == 201:
-            task_id = create_res.json()["id"]
-            # View the created task
-            self.client.get(f"/api/tasks/{task_id}", name="/api/tasks/{id} [get_one]", catch_response=True)
+    def execute_pipeline(self):
+        # Requires a pre-existing pipeline and dataset in the DB for a real test
+        # For simplicity, we'll assume pipeline ID 1 exists and accept dummy data
+        pipeline_id = 1 # Assuming pipeline with ID 1 exists from seed data or prior setup
+        input_data = {
+            "data": [
+                [random.random() * 100, random.random() * 50],
+                [random.random() * 100, random.random() * 50],
+                [random.random() * 100, random.random() * 50],
+            ]
+        }
+        self.client.post(f"/api/v1/pipelines/{pipeline_id}/execute", json=input_data, name="/pipelines/{id}/execute [POST]")
 
     @task(1)
-    def view_my_profile(self):
-        self.client.get("/api/auth/me", name="/api/auth/me [get_profile]", catch_response=True)
-
-    @task(1)
-    def view_projects(self):
-        self.client.get("/api/projects/", name="/api/projects/ [get_all]", catch_response=True)
-
-
-class WebsiteUser(HttpUser):
-    wait_time = between(1, 5) # Users wait between 1 and 5 seconds between tasks
-    host = "http://localhost:5000" # Target host for the Flask app
-    tasks = [UserBehavior]
-
-# To run:
-# 1. Ensure your Flask app and database are running (e.g., via docker-compose up)
-# 2. Run `locust -f tests/performance/locustfile.py` in your terminal
-# 3. Open http://localhost:8089 in your browser
-# 4. Use "testuser" / "userpassword" from seed_db.py for the initial login.
-#    You might need to adjust the login credentials in UserBehavior.login if your seed changes.
+    def evaluate_model(self):
+        # Requires a pre-existing model, pipeline, and dataset in the DB
+        # For simplicity, we'll assume model ID 1 and pipeline ID 1 exist
+        model_id = 1
+        pipeline_id = 1
+        eval_data = {
+            "data": [
+                [random.random() * 10, random.random() * 5],
+                [random.random() * 10, random.random() * 5],
+            ],
+            "true_labels": [random.random(), random.random()],
+            "pipeline_id": pipeline_id
+        }
+        self.client.post(f"/api/v1/models/{model_id}/evaluate", json=eval_data, name="/models/{id}/evaluate [POST]")
 ```

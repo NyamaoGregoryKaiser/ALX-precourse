@@ -1,164 +1,87 @@
 ```cpp
 #include <iostream>
 #include <string>
-#include <memory>
-#include <crow.h>
 #include <cstdlib> // For getenv
-#include "config/AppConfig.h"
-#include "database/DatabaseManager.h"
-#include "services/AuthService.h"
-#include "services/AccountService.h"
-#include "services/TransactionService.h"
-#include "controllers/AuthController.h"
-#include "controllers/AccountController.h"
-#include "controllers/TransactionController.h"
-#include "middleware/AuthMiddleware.h"
-#include "middleware/ErrorHandlerMiddleware.h"
-#include "utils/JwtManager.h"
-#include "utils/Logger.h"
+#include <csignal> // For signal handling
+
+#include "common/Logger.hpp"
+#include "common/Exceptions.hpp"
+#include "config/Config.hpp"
+#include "database/DBManager.hpp"
+#include "api/APIServer.hpp"
+
+// Global pointer to the API server to allow signal handling
+std::unique_ptr<MLToolkit::API::APIServer> g_api_server;
+
+// Signal handler for graceful shutdown
+void signal_handler(int signal) {
+    if (signal == SIGINT || signal == SIGTERM) {
+        LOG_WARN("Shutdown signal ({}) received. Shutting down server...", signal);
+        if (g_api_server) {
+            g_api_server->stop();
+        }
+        MLToolkit::Database::DBManager::get_instance().disconnect();
+        exit(0);
+    }
+}
 
 int main(int argc, char* argv[]) {
-    using namespace PaymentProcessor::Config;
-    using namespace PaymentProcessor::Database;
-    using namespace PaymentProcessor::Services;
-    using namespace PaymentProcessor::Controllers;
-    using namespace PaymentProcessor::Middleware;
-    using namespace PaymentProcessor::Utils;
+    // 1. Initialize Logger
+    MLToolkit::Common::Logger::init("ml_toolkit.log", spdlog::level::info);
+    LOG_INFO("ML-Toolkit Server starting...");
 
-    // Initialize Logger early
-    Logger::getLogger()->info("Payment Processor Application Starting...");
-
-    // 1. Load configuration
+    // 2. Load Configuration
     try {
-        std::string configPath = "config/app.config.json";
-        // Allow overriding config path with an environment variable or command line arg
-        if (const char* env_config = std::getenv("PAYMENT_CONFIG_PATH")) {
-            configPath = env_config;
-        } else if (argc > 1) {
-            configPath = argv[1];
-        }
-        AppConfig::getInstance().load(configPath);
-        LOG_INFO("Configuration loaded from: {}", configPath);
-
-        // Set JWT secret globally from config
-        JwtManager::SECRET_KEY = AppConfig::getInstance().getJwtSecret();
-
-    } catch (const std::runtime_error& e) {
+        MLToolkit::Config::Config::get_instance().load("config/default.conf");
+        // Adjust log level if specified in config or env
+        std::string log_level_str = MLToolkit::Config::Config::get_instance().get_string("LOG_LEVEL", "info");
+        spdlog::level::level_enum log_level;
+        if (log_level_str == "trace") log_level = spdlog::level::trace;
+        else if (log_level_str == "debug") log_level = spdlog::level::debug;
+        else if (log_level_str == "warn") log_level = spdlog::level::warn;
+        else if (log_level_str == "error") log_level = spdlog::level::err;
+        else if (log_level_str == "critical") log_level = spdlog::level::critical;
+        else log_level = spdlog::level::info; // Default
+        spdlog::set_level(log_level);
+        LOG_INFO("Current effective log level: {}", spdlog::level::to_string_view(log_level));
+    } catch (const MLToolkit::Common::Config::ConfigException& e) {
         LOG_CRITICAL("Configuration error: {}", e.what());
         return 1;
     }
 
-    // 2. Initialize Database Manager
+    // 3. Connect to Database
     try {
-        DatabaseManager::getInstance().init(AppConfig::getInstance().getDbPath());
-        LOG_INFO("Database Initialized.");
-    } catch (const Exceptions::DatabaseException& e) {
-        LOG_CRITICAL("Database initialization failed: {}", e.what());
+        std::string db_host = MLToolkit::Config::Config::get_instance().get_string("DB_HOST", "localhost");
+        int db_port = MLToolkit::Config::Config::get_instance().get_int("DB_PORT", 5432);
+        std::string db_name = MLToolkit::Config::Config::get_instance().get_string("DB_NAME", "ml_toolkit_db");
+        std::string db_user = MLToolkit::Config::Config::get_instance().get_string("DB_USER", "ml_user");
+        std::string db_password = MLToolkit::Config::Config::get_instance().get_string("DB_PASSWORD", "ml_password");
+
+        std::string conn_str = "host=" + db_host + " port=" + std::to_string(db_port) +
+                               " dbname=" + db_name + " user=" + db_user + " password=" + db_password;
+        
+        MLToolkit::Database::DBManager::get_instance().connect(conn_str);
+    } catch (const MLToolkit::Common::DatabaseException& e) {
+        LOG_CRITICAL("Failed to connect to database: {}", e.what());
         return 1;
     }
 
-    // 3. Initialize Services
-    AuthService authService(DatabaseManager::getInstance());
-    AccountService accountService(DatabaseManager::getInstance());
-    TransactionService transactionService(DatabaseManager::getInstance());
-    LOG_INFO("Services Initialized.");
+    // 4. Set up signal handlers for graceful shutdown
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
 
-    // 4. Initialize Controllers
-    AuthController authController(authService);
-    AccountController accountController(accountService);
-    TransactionController transactionController(transactionService, accountService);
-    LOG_INFO("Controllers Initialized.");
+    // 5. Start API Server
+    try {
+        int api_port = MLToolkit::Config::Config::get_instance().get_int("API_PORT", 8080);
+        g_api_server = std::make_unique<MLToolkit::API::APIServer>();
+        g_api_server->run(api_port);
+    } catch (const std::exception& e) {
+        LOG_CRITICAL("API Server encountered a critical error: {}", e.what());
+        MLToolkit::Database::DBManager::get_instance().disconnect();
+        return 1;
+    }
 
-    // 5. Setup Crow application with middleware
-    crow::App<AuthMiddleware, ErrorHandlerMiddleware> app;
-
-    // Middleware setup (Crow automatically wires it based on template args)
-    // AuthMiddleware checks JWT, ErrorHandlerMiddleware catches exceptions
-
-    // --- API Routes ---
-
-    // Auth Routes
-    CROW_ROUTE(app, "/api/v1/auth/register")
-        .methods(crow::HTTPMethod::POST)
-        ([&](const crow::request& req) {
-            return authController.registerUser(req);
-        });
-
-    CROW_ROUTE(app, "/api/v1/auth/login")
-        .methods(crow::HTTPMethod::POST)
-        ([&](const crow::request& req) {
-            return authController.loginUser(req);
-        });
-
-    // Account Routes (Require Authentication)
-    CROW_ROUTE(app, "/api/v1/accounts")
-        .methods(crow::HTTPMethod::POST)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx) {
-            return accountController.createAccount(req, ctx.authContext);
-        });
-
-    CROW_ROUTE(app, "/api/v1/accounts/<long>") // Get account by ID
-        .methods(crow::HTTPMethod::GET)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long accountId) {
-            return accountController.getAccount(req, ctx.authContext, accountId);
-        });
-
-    CROW_ROUTE(app, "/api/v1/accounts/my") // Get all accounts for the authenticated user
-        .methods(crow::HTTPMethod::GET)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx) {
-            return accountController.getMyAccounts(req, ctx.authContext);
-        });
-
-    CROW_ROUTE(app, "/api/v1/accounts/<long>") // Update account
-        .methods(crow::HTTPMethod::PUT, crow::HTTPMethod::PATCH)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long accountId) {
-            return accountController.updateAccount(req, ctx.authContext, accountId);
-        });
-
-    CROW_ROUTE(app, "/api/v1/accounts/<long>") // Delete account
-        .methods(crow::HTTPMethod::DELETE)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long accountId) {
-            return accountController.deleteAccount(req, ctx.authContext, accountId);
-        });
-
-    // Transaction Routes (Require Authentication)
-    CROW_ROUTE(app, "/api/v1/transactions")
-        .methods(crow::HTTPMethod::POST)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx) {
-            return transactionController.processTransaction(req, ctx.authContext);
-        });
-
-    CROW_ROUTE(app, "/api/v1/transactions/<long>") // Get transaction by ID
-        .methods(crow::HTTPMethod::GET)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long transactionId) {
-            return transactionController.getTransaction(req, ctx.authContext, transactionId);
-        });
-
-    CROW_ROUTE(app, "/api/v1/accounts/<long>/transactions") // Get transactions for an account
-        .methods(crow::HTTPMethod::GET)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long accountId) {
-            return transactionController.getTransactionsByAccount(req, ctx.authContext, accountId);
-        });
-
-    CROW_ROUTE(app, "/api/v1/transactions/<long>/status") // Update transaction status
-        .methods(crow::HTTPMethod::PUT, crow::HTTPMethod::PATCH)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long transactionId) {
-            return transactionController.updateTransactionStatus(req, ctx.authContext, transactionId);
-        });
-
-    CROW_ROUTE(app, "/api/v1/transactions/<long>/refund") // Initiate a refund for an existing transaction
-        .methods(crow::HTTPMethod::POST)
-        ([&](const crow::request& req, AuthMiddleware::Context& ctx, long long originalTransactionId) {
-            return transactionController.initiateRefund(req, ctx.authContext, originalTransactionId);
-        });
-
-    // Start server
-    int port = AppConfig::getInstance().getServerPort();
-    std::string host = AppConfig::getInstance().getServerHost();
-    LOG_INFO("Starting server on {}:{}", host, port);
-    app.port(port).bindaddr(host).multithreaded().run();
-
-    LOG_INFO("Payment Processor Application Shutting Down.");
+    LOG_INFO("ML-Toolkit Server gracefully stopped.");
     return 0;
 }
 ```

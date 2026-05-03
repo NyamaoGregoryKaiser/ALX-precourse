@@ -1,245 +1,193 @@
-# ML Utilities System (MLU-Sys)
+```markdown
+# ML-Toolkit: Enterprise ML Utilities System
 
-## Table of Contents
-1.  [Project Overview](#project-overview)
-2.  [Features](#features)
-3.  [Technology Stack](#technology-stack)
-4.  [Prerequisites](#prerequisites)
-5.  [Setup Instructions](#setup-instructions)
-    *   [Local Development (without Docker)](#local-development-without-docker)
-    *   [Docker Setup (Recommended)](#docker-setup-recommended)
-6.  [Database Management](#database-management)
-7.  [API Documentation](#api-documentation)
-8.  [Frontend Usage](#frontend-usage)
-9.  [Testing](#testing)
-10. [CI/CD](#cicd)
-11. [Architecture](#architecture)
-12. [Deployment Guide](#deployment-guide)
-13. [Additional Notes](#additional-notes)
-14. [License](#license)
+## Overview
+ML-Toolkit is a comprehensive, production-ready Machine Learning Utilities System designed to streamline common ML operations such as data preprocessing, feature engineering, model management, and evaluation. Built with a high-performance C++ backend, it exposes a RESTful API for seamless integration with various client applications, along with robust database management, configuration, testing, and deployment features.
 
----
+### Key Features
+- **High-Performance C++ Backend**: Utilizes C++ with Eigen for efficient numerical operations.
+- **RESTful API**: Exposes CRUD operations for datasets, models, and processing pipelines.
+- **ML Utility Modules**: Includes data scaling (MinMax, Standard), imputation (Mean), and feature engineering (Polynomial Features).
+- **Database Management**: PostgreSQL for metadata storage, with `pqxx` for C++ interaction.
+- **Authentication & Authorization**: JWT-based token verification for API security.
+- **Robust Error Handling**: Centralized exception handling and consistent API error responses.
+- **Logging & Monitoring**: Structured logging using `spdlog`.
+- **Caching Layer**: In-memory LRU cache for frequently accessed pipeline results.
+- **Rate Limiting**: Token bucket algorithm to protect API endpoints from abuse.
+- **Configuration**: Flexible configuration via `.conf` files and environment variables.
+- **Containerization**: Docker and Docker Compose setup for easy deployment.
+- **CI/CD Integration**: GitHub Actions pipeline for automated testing and deployment.
+- **Comprehensive Testing**: Unit tests (Google Test), Integration tests (Python `requests`), Performance tests (Locust).
+- **Extensive Documentation**: This README, API docs, Architecture docs, and Deployment guide.
 
-## 1. Project Overview
-The ML Utilities System (MLU-Sys) is a comprehensive, production-ready platform designed to facilitate the management of Machine Learning datasets and models. It provides a robust backend API for CRUD operations on these resources, secure user authentication, and a simplified prediction service to demonstrate model serving capabilities. The frontend offers an intuitive interface for users to interact with the system.
+## Architecture
+The system employs a multi-layered architecture:
+1.  **Client Layer**: A conceptual web frontend (e.g., React/Vue) or a CLI client interacts with the API.
+2.  **API Layer (C++)**: Built using the Crow microframework, handling HTTP requests, authentication, authorization, rate limiting, and caching. It orchestrates calls to the business logic layer.
+3.  **Business Logic Layer (C++)**: Contains core ML utility modules (preprocessing, feature engineering, evaluation) and model/dataset management logic. Utilizes Eigen for efficient numerical operations.
+4.  **Database Layer**: PostgreSQL for persistent storage of metadata (datasets, models, pipelines). `pqxx` library handles C++ interaction.
+5.  **Common Services**: Logging (`spdlog`), configuration management, error handling, and utility functions.
 
-This project aims to demonstrate best practices in full-stack software engineering, including modular design, comprehensive testing, containerization, and detailed documentation.
+For a detailed architectural overview, see [Architecture.md](docs/Architecture.md).
 
-## 2. Features
+## Setup and Installation
 
-### Core ML Functionality
-*   **Dataset Management**: Upload, list, view, update, and delete dataset files (e.g., CSV).
-*   **Model Management**: Upload, list, view, version, update, and delete ML model files (e.g., .pkl, .h5).
-*   **Model Deployment**: Mark models as 'deployed' and associate a `deploymentUrl` (simulated for external serving).
-*   **Prediction Service**: An API endpoint to make predictions using deployed models, with input/output logging. (Note: Prediction logic is simulated, not actual ML inference).
+### Prerequisites
+-   **Docker** and **Docker Compose**: For easy setup of the database and API server.
+-   **C++ Development Environment**:
+    -   `g++` (C++17 compliant compiler)
+    -   `CMake` (version 3.10+)
+    -   `libpq-dev` and `libpqxx-dev` (PostgreSQL C++ client libraries)
+    -   `libboost-dev` (Crow might depend on some Boost modules, though it tries to minimize)
+    -   `git`
+-   **Python (for testing)**:
+    -   `pip`
+    -   `psycopg2-binary` (for DB cleanup in Python tests)
+    -   `requests`, `PyJWT`, `pytest`, `locust` (install via `requirements.txt`)
 
-### System Features
-*   **Authentication & Authorization**: JWT-based authentication, role-based access control (User, Admin).
-*   **User Management**: Admin users can manage all users; regular users can manage their own profiles.
-*   **File Storage**: Secure storage and retrieval of dataset and model files.
-*   **Configuration**: Environment-specific configurations for development, testing, and production.
-*   **Logging**: Structured logging for application events and errors using Winston.
-*   **Error Handling**: Global exception filtering for consistent API error responses.
-*   **Caching**: Redis integration for improving API response times on read-heavy operations.
-*   **Rate Limiting**: Protects API endpoints from abuse.
-*   **Database Migrations**: Managed database schema evolution with TypeORM migrations.
-*   **API Documentation**: Auto-generated Swagger/OpenAPI documentation.
-*   **Containerization**: Docker and Docker Compose for easy setup and consistent environments.
-*   **CI/CD**: Basic GitHub Actions workflow for automated testing and building.
-*   **Comprehensive Testing**: Unit, Integration, and E2E API tests.
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/ML-Toolkit.git
+cd ML-Toolkit
+```
 
-## 3. Technology Stack
+### 2. Prepare Vendor Dependencies
+The `CMakeLists.txt` uses `FetchContent` for Eigen. For Crow, nlohmann/json, spdlog, and jwt-cpp, you need to clone them into the `vendor/` directory:
+```bash
+mkdir -p vendor
+git clone https://github.com/CrowCpp/Crow.git vendor/Crow
+git clone https://github.com/nlohmann/json.git vendor/nlohmann_json
+git clone https://github.com/gabime/spdlog.git vendor/spdlog
+git clone https://github.com/Thalhammer/jwt-cpp.git vendor/jwt-cpp
+```
 
-### Backend
-*   **Framework**: NestJS (TypeScript)
-*   **Database**: PostgreSQL
-*   **ORM**: TypeORM
-*   **Authentication**: Passport.js (JWT Strategy)
-*   **Caching**: Redis (via `cache-manager-redis-store`)
-*   **Logging**: Winston
-*   **File Uploads**: Multer
-*   **Validation**: Class-validator, Class-transformer
-*   **API Docs**: Swagger (OpenAPI)
-
-### Frontend
-*   **Framework**: React (TypeScript)
-*   **Build Tool**: Vite
-*   **Styling**: Tailwind CSS
-*   **HTTP Client**: Axios
-*   **State Management**: React Context API
-*   **Routing**: React Router DOM
-
-### Infrastructure
-*   **Containerization**: Docker, Docker Compose
-*   **CI/CD**: GitHub Actions
-
-## 4. Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-*   **Node.js**: v18.x or higher
-*   **npm**: v9.x or higher
-*   **Docker & Docker Compose**: Latest stable version
-*   **Git**: Latest stable version
-
-## 5. Setup Instructions
-
-The recommended way to run this project is using Docker Compose.
-
-### Docker Setup (Recommended)
-
-1.  **Clone the repository:**
+### 3. Database & Server Setup with Docker Compose
+1.  **Environment Configuration**: Create a `.env` file in the project root by copying `config/.env.example` and filling in your desired values (especially for `ML_DB_PASSWORD` and `ML_JWT_SECRET` in production).
     ```bash
-    git clone https://github.com/your-username/mlu-sys.git
-    cd mlu-sys
+    cp config/.env.example .env
+    # Edit .env to set your secrets
     ```
-
-2.  **Create environment files:**
-    *   Create `backend/.env.development` by copying `backend/.env.example`.
-    *   Create `frontend/.env.development` by copying `frontend/.env.example`.
-    *   **Edit these `.env` files** to set your desired database credentials, JWT secret, and other configurations. For development, the example values are usually fine.
-        *   **Backend example (`backend/.env.development`):**
-            ```dotenv
-            NODE_ENV=development
-            PORT=3000
-            API_GLOBAL_PREFIX=api/v1
-
-            DATABASE_TYPE=postgres
-            DATABASE_HOST=db
-            DATABASE_PORT=5432
-            DATABASE_USERNAME=user
-            DATABASE_PASSWORD=password
-            DATABASE_NAME=ml_utilities_db
-
-            JWT_SECRET=yourStrongJwtSecretHere
-            JWT_EXPIRES_IN=1d
-
-            REDIS_HOST=redis
-            REDIS_PORT=6379
-
-            UPLOAD_PATH=./uploads
-
-            ADMIN_EMAIL=admin@example.com
-            ADMIN_PASSWORD=adminpassword123
-            ```
-        *   **Frontend example (`frontend/.env.development`):**
-            ```dotenv
-            VITE_API_BASE_URL=http://localhost:3000/api/v1
-            ```
-
-3.  **Build and run the Docker containers:**
+2.  **Build and Run**: Use Docker Compose to start the PostgreSQL database and the ML-Toolkit API server.
     ```bash
-    docker-compose up --build -d
+    docker-compose build
+    docker-compose up -d
     ```
-    This command will:
-    *   Build Docker images for the backend and frontend.
-    *   Start PostgreSQL and Redis services.
-    *   Run database migrations and seed initial data (including an admin user based on `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `backend/.env.development`).
-    *   Start the NestJS backend and React frontend.
+    This will:
+    -   Build the `mltoolkit_server` Docker image.
+    -   Start a PostgreSQL container (`mltoolkit_db`).
+    -   Run database migrations and seed data using scripts in `database/migrations` and `database/seed_data.sql`.
+    -   Start the `mltoolkit_server` container, which will wait for the database to be healthy, then run the C++ API server.
 
-4.  **Verify services are running:**
+    The API server will be accessible at `http://localhost:8080`.
+
+### 4. Local C++ Build (Alternative to Docker)
+If you prefer to build and run the C++ application directly on your host machine:
+1.  **Install C++ Dependencies**:
     ```bash
-    docker-compose ps
+    sudo apt-get update
+    sudo apt-get install -y build-essential cmake git libpq-dev libpqxx-dev libboost-dev
     ```
-    You should see `mlu-sys-backend`, `mlu-sys-frontend`, `mlu-sys-postgres`, and `mlu-sys-redis` in a healthy state.
-
-5.  **Access the application:**
-    *   **Frontend**: `http://localhost:3001`
-    *   **Backend API**: `http://localhost:3000/api/v1`
-    *   **Swagger API Docs**: `http://localhost:3000/api/v1/docs`
-
-### Local Development (without Docker for services)
-
-If you prefer to run services locally (e.g., your own PostgreSQL and Redis), you can do so.
-
-1.  **Setup Database (PostgreSQL):**
-    *   Install PostgreSQL and create a database (e.g., `ml_utilities_db`).
-    *   Ensure your `backend/.env.development` points to your local PostgreSQL instance (e.g., `DATABASE_HOST=localhost`).
-    *   Ensure Redis is running on `localhost:6379`.
-
-2.  **Backend Setup:**
+2.  **Configure and Build**:
     ```bash
-    cd backend
-    npm install
-    npm run migration:run # Run database migrations
-    npm run seed:run     # Seed initial data (e.g., admin user)
-    npm run start:dev    # Start in development mode
+    mkdir build
+    cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+    make
     ```
-
-3.  **Frontend Setup:**
+3.  **Run**:
     ```bash
-    cd frontend
-    npm install
-    npm run dev          # Start the frontend development server
+    ./MLToolkit_Server
     ```
+    Ensure your PostgreSQL database is running and accessible from `localhost` with the credentials specified in `config/default.conf` or your environment variables.
 
-4.  **Access:**
-    *   Frontend: `http://localhost:5173` (Vite's default)
-    *   Backend API: `http://localhost:3000/api/v1`
+### 5. Python Test Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-## 6. Database Management
+## Usage
 
-*   **Migrations (Backend `backend/` directory):**
-    *   Generate a new migration: `npm run migration:generate -- ./src/database/migrations/NewFeatureMigration`
-    *   Run migrations: `npm run migration:run`
-    *   Revert last migration: `npm run migration:revert`
-*   **Seed Data (Backend `backend/` directory):**
-    *   Run seed script: `npm run seed:run` (This creates an initial admin user if not exists).
+### API Endpoints
+The API is served at `http://localhost:8080/api/v1`.
 
-## 7. API Documentation
+**Authentication**:
+-   `POST /api/v1/auth/login`: Authenticate and get a JWT token.
+    ```json
+    { "username": "admin", "password": "adminpass" }
+    ```
+    Use the returned `token` in the `Authorization: Bearer <token>` header for all protected endpoints.
 
-The backend API is documented using Swagger (OpenAPI). Once the backend is running, you can access the interactive documentation at:
+**Datasets**:
+-   `POST /api/v1/datasets`: Create a new dataset.
+-   `GET /api/v1/datasets`: Get all datasets.
+-   `GET /api/v1/datasets/{id}`: Get a dataset by ID.
+-   `PUT /api/v1/datasets/{id}`: Update a dataset.
+-   `DELETE /api/v1/datasets/{id}`: Delete a dataset.
 
-`http://localhost:3000/api/v1/docs` (or adjust port if changed)
+**Models**:
+-   `POST /api/v1/models`: Create a new ML model entry.
+-   `GET /api/v1/models`: Get all models.
+-   `GET /api/v1/models/{id}`: Get a model by ID.
+-   `PUT /api/v1/models/{id}`: Update a model.
+-   `DELETE /api/v1/models/{id}`: Delete a model.
 
-This documentation allows you to explore all endpoints, their parameters, expected responses, and even make live API calls.
+**Pipelines**:
+-   `POST /api/v1/pipelines`: Create a new processing pipeline.
+-   `GET /api/v1/pipelines`: Get all pipelines.
+-   `GET /api/v1/pipelines/{id}`: Get a pipeline by ID.
+-   `PUT /api/v1/pipelines/{id}`: Update a pipeline.
+-   `DELETE /api/v1/pipelines/{id}`: Delete a pipeline.
+-   `POST /api/v1/pipelines/{id}/execute`: Execute a pipeline with input data.
+-   `POST /api/v1/models/{model_id}/evaluate`: Evaluate a model using a pipeline and true labels.
 
-## 8. Frontend Usage
+For detailed API specifications, refer to [API.md](docs/API.md).
 
-1.  **Register/Login**: Start by registering a new user or logging in with the seeded admin user (`admin@example.com`/`adminpassword123` if you used the seed script with default `.env`).
-2.  **Dashboard**: Overview of your datasets and models.
-3.  **Datasets**: Upload new datasets (e.g., CSV files), view details, update, and delete them.
-4.  **Models**: Upload ML model files (e.g., `.pkl`, `.h5`), view details, version, update, mark as deployed, and delete.
-5.  **Predictions**: For a deployed model, you can provide sample input data via the API (or integrate a form in the UI) to get a simulated prediction.
-6.  **Users (Admin Only)**: Admin users can view, create, update, and delete other user accounts.
+## Testing
 
-## 9. Testing
+### Running Unit Tests (C++)
+```bash
+cd build
+make MLToolkit_Server_Tests # Ensure test executable is built
+./MLToolkit_Server_Tests
+```
+Or, if using CTest:
+```bash
+cd build
+ctest
+```
 
-The project includes comprehensive tests to ensure quality and reliability.
+### Running Integration Tests (Python)
+Ensure the Docker Compose services are running (`docker-compose up -d`).
+```bash
+pytest tests/integration/test_api_integration.py
+```
 
-*   **Backend Tests (`backend/` directory):**
-    *   **Unit Tests**: `npm run test` (for services, DTOs, utilities)
-    *   **Coverage**: `npm run test:cov` (aims for 80%+ coverage)
-    *   **E2E (API) Tests**: `npm run test:e2e` (for controllers, API endpoints, authentication, authorization)
-*   **Frontend Tests**: (Conceptual) For a full-scale project, Jest/React Testing Library would be used for unit/integration tests of components and pages. (Not fully implemented in this example due to extensive scope).
-*   **Performance Tests**: (Conceptual) Tools like `Artillery` or `Loadtest` can be used to simulate high traffic. See `performance/` directory for example configurations.
+### Running Performance Tests (Locust)
+Ensure the Docker Compose services are running (`docker-compose up -d`).
+1.  Start Locust UI:
+    ```bash
+    locust -f tests/performance/locustfile.py
+    ```
+2.  Open your browser to `http://localhost:8089` (or the address Locust indicates).
+3.  Enter the number of users, spawn rate, and host (`http://localhost:8080`), then start swarming.
 
-## 10. CI/CD
+## Documentation
+-   **README.md**: Current file, project overview, setup, usage.
+-   **API.md**: Detailed API endpoint descriptions, request/response examples.
+-   **Architecture.md**: In-depth explanation of the system's design and components.
+-   **Deployment.md**: Guide for deploying the application to various environments (Docker, Kubernetes, etc.).
 
-A basic GitHub Actions workflow (`.github/workflows/ci.yml`) is provided for Continuous Integration:
+## Contributing
+Contributions are welcome! Please follow these steps:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write comprehensive tests.
+5.  Ensure all tests pass (`pytest` and `ctest`).
+6.  Commit your changes (`git commit -am 'Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Create a new Pull Request.
 
-*   **Build**: Builds both backend and frontend applications.
-*   **Test**: Runs backend unit and E2E tests.
-*   **Docker Build**: Builds Docker images for both services.
-
-For Continuous Deployment, this workflow can be extended to push Docker images to a registry (e.g., Docker Hub, AWS ECR) and then deploy to a cloud provider (e.g., Kubernetes, AWS ECS).
-
-## 11. Architecture
-
-Refer to the [ARCHITECTURE.md](ARCHITECTURE.md) file for a detailed overview of the system's architecture, component breakdown, and data flow.
-
-## 12. Deployment Guide
-
-Refer to the [DEPLOYMENT.md](DEPLOYMENT.md) file for comprehensive instructions on deploying the MLU-Sys to various environments, including cloud providers.
-
-## 13. Additional Notes
-
-*   **ML Inference**: The prediction logic is *simulated*. In a real-world application, this would involve integrating with actual ML model serving frameworks (e.g., TensorFlow Serving, PyTorch Serve, BentoML, or a custom Python Flask/FastAPI service). The current design allows for `deploymentUrl` to point to such external services.
-*   **File Storage**: Currently, files are stored locally on the server. For production, consider integrating with cloud storage solutions like AWS S3, Google Cloud Storage, or MinIO. The `FilesService` is designed to be abstract enough to swap out the underlying storage mechanism.
-*   **Scalability**: The modular NestJS architecture, use of PostgreSQL for data, and Redis for caching provide a solid foundation for horizontal scalability.
-*   **Security**: Implement HTTPS in production. Review and harden Docker images and server configurations.
-
-## 14. License
-
-This project is licensed under the [UNLICENSED](LICENSE) license.
+## License
+This project is licensed under the MIT License. See the LICENSE file for details.
 ```

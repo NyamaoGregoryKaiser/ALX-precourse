@@ -2,67 +2,54 @@
 version: '3.8'
 
 services:
-  db_optimizer_postgres:
-    image: postgres:14-alpine
-    container_name: db_optimizer_postgres
+  mltoolkit_db:
+    image: postgres:15-alpine
+    container_name: mltoolkit_db
     environment:
-      POSTGRES_DB: ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}
-      POSTGRES_USER: ${DB_OPTIMIZER_DB_USER:-db_optimizer_user}
-      POSTGRES_PASSWORD: ${DB_OPTIMIZER_DB_PASSWORD:-db_optimizer_password}
+      POSTGRES_DB: ${ML_DB_NAME:-ml_toolkit_db}
+      POSTGRES_USER: ${ML_DB_USER:-ml_user}
+      POSTGRES_PASSWORD: ${ML_DB_PASSWORD:-ml_password}
     volumes:
-      - db_optimizer_data:/var/lib/postgresql/data
-      - ./docker/pg_init.sql:/docker-entrypoint-initdb.d/init_pg_stat_statements.sql # To enable pg_stat_statements for test target DBs
+      - mltoolkit_db_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/seed_data.sql
     ports:
-      - "5432:5432" # Expose for local access if needed
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_OPTIMIZER_DB_USER:-db_optimizer_user} -d ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: always
 
-  db_optimizer_app:
+  mltoolkit_server:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: db_optimizer_app
+      args:
+        UID: 1000 # Map to your host user UID for consistent file permissions
+        GID: 1000 # Map to your host user GID
+    container_name: mltoolkit_server
+    environment:
+      ML_DB_HOST: mltoolkit_db
+      ML_DB_PORT: 5432
+      ML_DB_NAME: ${ML_DB_NAME:-ml_toolkit_db}
+      ML_DB_USER: ${ML_DB_USER:-ml_user}
+      ML_DB_PASSWORD: ${ML_DB_PASSWORD:-ml_password}
+      ML_API_PORT: ${ML_API_PORT:-8080}
+      ML_JWT_SECRET: ${ML_JWT_SECRET:-super_secret_jwt_key_please_change_this_in_production}
+      ML_LOG_LEVEL: ${ML_LOG_LEVEL:-info}
+    volumes:
+      - ./config:/home/mltoolkituser/app/config:ro # Mount config for runtime, read-only
+      - ./ml_toolkit.log:/home/mltoolkituser/app/ml_toolkit.log # Mount log file
+      - ./vendor:/home/mltoolkituser/app/vendor:ro # Mount vendor for build stage
     ports:
       - "8080:8080"
-    environment:
-      # Pass through environment variables defined in .env
-      DB_OPTIMIZER_SERVER_PORT: ${DB_OPTIMIZER_SERVER_PORT:-8080}
-      DB_OPTIMIZER_DB_HOST: db_optimizer_postgres # Link to the PostgreSQL service by its name
-      DB_OPTIMIZER_DB_PORT: ${DB_OPTIMIZER_DB_PORT:-5432}
-      DB_OPTIMIZER_DB_NAME: ${DB_OPTIMIZER_DB_NAME:-db_optimizer_db}
-      DB_OPTIMIZER_DB_USER: ${DB_OPTIMIZER_DB_USER:-db_optimizer_user}
-      DB_OPTIMIZER_DB_PASSWORD: ${DB_OPTIMIZER_DB_PASSWORD:-db_optimizer_password}
-      DB_OPTIMIZER_JWT_SECRET: ${DB_OPTIMIZER_JWT_SECRET:-superSecretKey123!@#}
-      DB_OPTIMIZER_LOG_LEVEL: ${DB_OPTIMIZER_LOG_LEVEL:-info}
-      DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS: ${DB_OPTIMIZER_MONITOR_INTERVAL_SECONDS:-300}
     depends_on:
-      db_optimizer_postgres:
-        condition: service_healthy # Ensure DB is healthy before starting app
-
-  # A mock target PostgreSQL database for testing the optimizer's functionality
-  target_postgres_db:
-    image: postgres:14-alpine
-    container_name: target_postgres_db
-    environment:
-      POSTGRES_DB: target_db
-      POSTGRES_USER: target_user
-      POSTGRES_PASSWORD: target_password
-    volumes:
-      - target_db_data:/var/lib/postgresql/data
-      - ./docker/pg_init.sql:/docker-entrypoint-initdb.d/init_pg_stat_statements.sql
-      - ./docker/target_db_setup.sql:/docker-entrypoint-initdb.d/setup.sql # Setup some tables/data
-    ports:
-      - "5433:5432" # Map to a different port to avoid conflict with db_optimizer_postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U target_user -d target_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      mltoolkit_db:
+        condition: service_healthy
+    restart: always
 
 volumes:
-  db_optimizer_data:
-  target_db_data:
+  mltoolkit_db_data:
 ```
