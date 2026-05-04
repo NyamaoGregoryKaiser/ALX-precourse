@@ -1,85 +1,65 @@
 ```python
+# manage.py
 import os
 import click
-from flask_migrate import upgrade, migrate, init as migrate_init
-from dotenv import load_dotenv
+from flask.cli import FlaskGroup
+from app import create_app, db, migrate
+from app.models.user_model import User, Role # Import models to be visible to Alembic
+from app.models.target_db_model import TargetDatabase
+from app.models.performance_metric_model import PerformanceMetric
+from app.models.optimization_suggestion_model import OptimizationSuggestion
+from seed import seed_data
+from app.utils.logger import setup_logging
 
-# Load environment variables from .env file
-load_dotenv()
+logger = setup_logging(__name__)
 
-from app import create_app
-from app.extensions import db
-from app.models import user, project, task, comment # Import models to ensure they are registered with SQLAlchemy
-
-# Determine environment and load appropriate config
-FLASK_ENV = os.environ.get('FLASK_ENV', 'development')
-if FLASK_ENV == 'production':
-    from app.config import ProductionConfig as Config
-elif FLASK_ENV == 'testing':
-    from app.config import TestingConfig as Config
-else:
-    from app.config import DevelopmentConfig as Config
-
-app = create_app(Config)
+app = create_app()
 
 @app.shell_context_processor
 def make_shell_context():
-    return dict(app=app, db=db, User=user.User, Project=project.Project, Task=task.Task, Comment=comment.Comment)
+    return dict(app=app, db=db, User=User, Role=Role, TargetDatabase=TargetDatabase,
+                PerformanceMetric=PerformanceMetric, OptimizationSuggestion=OptimizationSuggestion)
 
-@app.cli.group()
-def db_commands():
-    """Database management commands."""
+@click.group(cls=FlaskGroup, create_app=create_app)
+def cli():
+    """Main entry point for DPA management commands."""
     pass
 
-@db_commands.command()
-@click.option('--rev-id', default=None, help='Revision identifier to migrate to.')
-def upgrade_db(rev_id):
-    """Upgrade database to a specific revision or head."""
-    with app.app_context():
-        if not os.path.exists('migrations'):
-            click.echo("Migrations folder not found. Initializing migrations...")
-            migrate_init()
-        upgrade(revision=rev_id if rev_id else 'head')
-        click.echo("Database upgraded.")
+@cli.command("init-db")
+def init_db_command():
+    """Initializes or resets the database (clears all data)."""
+    if os.getenv('FLASK_ENV') == 'production' and not click.confirm("Are you SURE you want to drop ALL data in production?"):
+        logger.error("Database initialization aborted for production environment.")
+        return
+    db.drop_all()
+    db.create_all()
+    logger.info("Database initialized (all data dropped and recreated).")
 
-@db_commands.command()
-@click.option('-m', '--message', required=True, help='Migration message.')
-def migrate_db(message):
-    """Generate a new database migration."""
-    with app.app_context():
-        if not os.path.exists('migrations'):
-            click.echo("Migrations folder not found. Initializing migrations...")
-            migrate_init()
-        migrate(message=message)
-        click.echo(f"Migration '{message}' created.")
+@cli.command("migrate")
+@click.argument("message")
+def migrate_command(message):
+    """Creates a new database migration."""
+    try:
+        os.system(f"alembic revision --autogenerate -m '{message}'")
+        logger.info(f"Migration '{message}' created.")
+    except Exception as e:
+        logger.error(f"Error creating migration: {e}")
 
-@db_commands.command()
-def init_db():
-    """Initializes a new migrations directory."""
-    with app.app_context():
-        if not os.path.exists('migrations'):
-            migrate_init()
-            click.echo("Migrations directory initialized.")
-        else:
-            click.echo("Migrations directory already exists.")
+@cli.command("upgrade")
+def upgrade_command():
+    """Applies pending database migrations."""
+    try:
+        os.system("alembic upgrade head")
+        logger.info("Database upgraded to latest revision.")
+    except Exception as e:
+        logger.error(f"Error upgrading database: {e}")
 
-@app.cli.command()
-@click.option('--force', is_flag=True, help='Drop all tables before seeding.')
-def seed(force):
-    """Seed the database with initial data."""
-    from seed_db import seed_initial_data
-    with app.app_context():
-        seed_initial_data(force_recreate=force)
-        click.echo("Database seeded.")
-
-@app.cli.command("run-tests")
-def run_tests():
-    """Run unit and integration tests using pytest."""
-    import pytest
-    pytest.main(['tests'])
+@cli.command("seed")
+def seed_command():
+    """Seeds the database with initial data."""
+    seed_data()
+    logger.info("Database seeded.")
 
 if __name__ == '__main__':
-    # For development, `flask run` uses this.
-    # For production, gunicorn calls `manage:app` directly.
-    app.run(host='0.0.0.0', port=5000)
+    cli()
 ```

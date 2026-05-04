@@ -1,30 +1,40 @@
-# Use a slimmed-down OpenJDK image for Java 17
-FROM openjdk:17-jdk-slim AS build
+```dockerfile
+# Dockerfile
 
-# Set the working directory inside the container
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim-buster
+
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the Maven project files
-COPY pom.xml .
-COPY src ./src
+# Install system dependencies required for psycopg2 and other packages
+# psycopg2-binary requires libpq-dev
+# Gunicorn requires gcc
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    build-essential \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# Build the application using Maven
-# The --no-transfer-progress flag hides the download progress bars
-# The -Dmaven.test.skip=true flag skips tests during the build stage for faster image creation
-RUN --mount=type=cache,target=/root/.m2 ./mvnw clean package -Dmaven.test.skip=true
+# Copy the requirements file into the container
+COPY requirements.txt .
 
-# --- Second Stage: Create a smaller runtime image ---
-FROM openjdk:17-jre-slim
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set the working directory
-WORKDIR /app
+# Copy the entire application code into the container
+COPY . .
 
-# Copy the built JAR file from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Expose the port the app runs on
+EXPOSE 5000
 
-# Expose the port the Spring Boot application runs on
-EXPOSE 8080
+# Set environment variables for Gunicorn and Flask
+ENV FLASK_APP=manage.py
+ENV FLASK_RUN_HOST=0.0.0.0
 
-# Define the command to run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Command to run the application using Gunicorn (production server)
+# Gunicorn with 4 workers and bind to all interfaces on port 5000
+# --timeout 120 (seconds) for potentially long running requests (e.g. initial metric collection)
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "app:create_app()"]
 ```

@@ -1,116 +1,94 @@
 ```python
-import logging
-from app.extensions import db, cache
-from app.models.user import User
-from app.utils.decorators import log_service_operation
-from app.utils.exceptions import ResourceNotFound, DuplicateResource, InvalidInput
-
-logger = logging.getLogger(__name__)
+# app/services/user_service.py
+from app.models.user_model import User, Role
+from app.core.db import db
+from app.utils.errors import NotFoundError, ConflictError
+from app.utils.logger import logger
 
 class UserService:
     @staticmethod
-    @log_service_operation
-    def create_user(data):
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-        role = data.get('role', 'user')
+    def create_user(username, email, password, role_name='User'):
+        """Creates a new user with a specified role."""
+        if User.find_by_username(username):
+            raise ConflictError("Username already exists.")
+        if User.find_by_email(email):
+            raise ConflictError("Email already exists.")
 
-        if not username or not email or not password:
-            raise InvalidInput("Username, email, and password are required.")
+        role = Role.query.filter_by(name=role_name).first()
+        if not role:
+            logger.warning(f"Role '{role_name}' not found. Defaulting to 'User'.")
+            role = Role.query.filter_by(name='User').first()
+            if not role:
+                raise NotFoundError("Default 'User' role not found. Please seed roles first.")
 
-        if User.query.filter_by(username=username).first():
-            raise DuplicateResource(f"User with username '{username}' already exists.")
-        if User.query.filter_by(email=email).first():
-            raise DuplicateResource(f"User with email '{email}' already exists.")
-
-        try:
-            user = User(username=username, email=email, password=password, role=role)
-            db.session.add(user)
-            db.session.commit()
-            cache.delete_memoized(UserService.get_all_users) # Invalidate cache
-            logger.info(f"User created: {user.username}")
-            return user
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error creating user: {e}")
-            raise
+        user = User(username=username, email=email, role=role)
+        user.set_password(password)
+        user.save()
+        logger.info(f"User {username} created with role {role_name}.")
+        return user
 
     @staticmethod
-    @log_service_operation
-    @cache.memoize(timeout=300) # Cache for 5 minutes
-    def get_all_users(page=1, per_page=10):
-        users = User.query.paginate(page=page, per_page=per_page, error_out=False)
-        return users
+    def get_all_users():
+        """Retrieves all users."""
+        return User.get_all()
 
     @staticmethod
-    @log_service_operation
-    @cache.memoize(timeout=300)
     def get_user_by_id(user_id):
-        user = User.query.get(user_id)
+        """Retrieves a user by their ID."""
+        user = User.get_by_id(user_id)
         if not user:
-            raise ResourceNotFound(f"User with ID '{user_id}' not found.")
+            raise NotFoundError(f"User with id {user_id} not found.")
         return user
 
     @staticmethod
-    @log_service_operation
     def update_user(user_id, data):
-        user = UserService.get_user_by_id(user_id) # Uses cached version if available
+        """Updates an existing user's information."""
+        user = UserService.get_user_by_id(user_id)
         
-        if 'username' in data and data['username'] != user.username and \
-           User.query.filter_by(username=data['username']).first():
-            raise DuplicateResource(f"User with username '{data['username']}' already exists.")
+        if 'username' in data and data['username'] != user.username:
+            if User.find_by_username(data['username']):
+                raise ConflictError("Username already taken.")
+            user.username = data['username']
         
-        if 'email' in data and data['email'] != user.email and \
-           User.query.filter_by(email=data['email']).first():
-            raise DuplicateResource(f"User with email '{data['email']}' already exists.")
+        if 'email' in data and data['email'] != user.email:
+            if User.find_by_email(data['email']):
+                raise ConflictError("Email already taken.")
+            user.email = data['email']
+            
+        if 'password' in data:
+            user.set_password(data['password'])
+        
+        if 'is_active' in data:
+            user.is_active = data['is_active']
+            
+        if 'role_name' in data:
+            new_role = Role.query.filter_by(name=data['role_name']).first()
+            if not new_role:
+                raise NotFoundError(f"Role '{data['role_name']}' not found.")
+            user.role = new_role
 
-        try:
-            user.username = data.get('username', user.username)
-            user.email = data.get('email', user.email)
-            if 'password' in data:
-                user.set_password(data['password'])
-            user.role = data.get('role', user.role)
-            user.is_active = data.get('is_active', user.is_active)
-            db.session.commit()
-            cache.delete_memoized(UserService.get_all_users) # Invalidate list cache
-            cache.delete_memoized(UserService.get_user_by_id, user_id) # Invalidate specific user cache
-            logger.info(f"User updated: {user.username}")
-            return user
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error updating user {user_id}: {e}")
-            raise
+        user.save()
+        logger.info(f"User {user_id} updated.")
+        return user
 
     @staticmethod
-    @log_service_operation
     def delete_user(user_id):
-        user = UserService.get_user_by_id(user_id) # Uses cached version if available
-        try:
-            db.session.delete(user)
-            db.session.commit()
-            cache.delete_memoized(UserService.get_all_users)
-            cache.delete_memoized(UserService.get_user_by_id, user_id)
-            logger.info(f"User deleted: {user_id}")
-            return True
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error deleting user {user_id}: {e}")
-            raise
+        """Deletes a user by their ID."""
+        user = UserService.get_user_by_id(user_id)
+        user.delete()
+        logger.info(f"User {user_id} deleted.")
+        return True
+    
+    @staticmethod
+    def get_all_roles():
+        """Retrieves all roles."""
+        return Role.get_all()
 
     @staticmethod
-    @log_service_operation
-    def get_user_by_username(username):
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            raise ResourceNotFound(f"User with username '{username}' not found.")
-        return user
-
-    @staticmethod
-    @log_service_operation
-    def get_user_by_email(email):
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            raise ResourceNotFound(f"User with email '{email}' not found.")
-        return user
+    def get_role_by_id(role_id):
+        """Retrieves a role by its ID."""
+        role = Role.query.get(role_id)
+        if not role:
+            raise NotFoundError(f"Role with id {role_id} not found.")
+        return role
 ```

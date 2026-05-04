@@ -1,43 +1,100 @@
+```yaml
+# docker-compose.yml
 version: '3.8'
 
 services:
-  db:
+  dpa_db:
     image: postgres:15-alpine
-    container_name: scraper_db
+    container_name: dpa_db
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: scraper_db
-      POSTGRES_USER: scraper_user
-      POSTGRES_PASSWORD: scraper_password
+      POSTGRES_DB: dpa_db
+      POSTGRES_USER: dpa_user
+      POSTGRES_PASSWORD: dpa_password
+      # For testing database
+      POSTGRES_MULTIPLE_DATABASES: "dpa_test_db" # If using a specialized image that supports this
+    volumes:
+      - dpa_db_data:/var/lib/postgresql/data
+      # To run pg_stat_statements (requires adding to postgresql.conf and restarting)
+      # - ./dpa_db_init:/docker-entrypoint-initdb.d # For custom init scripts, e.g., enabling extensions
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U scraper_user -d scraper_db"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U dpa_user -d dpa_db"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
-  app:
+  dpa_redis:
+    image: redis:7-alpine
+    container_name: dpa_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dpa_app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: web_scraper_app
+    container_name: dpa_app
+    restart: unless-stopped
+    env_file:
+      - .env # Ensure your .env file is properly configured
     ports:
-      - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/scraper_db
-      SPRING_DATASOURCE_USERNAME: scraper_user
-      SPRING_DATASOURCE_PASSWORD: scraper_password
-      # IMPORTANT: Change this for production!
-      APP_JWT_SECRET: yourSuperSecretJwtKeyForALXProjectThatIsLongEnoughAndSecurePleaseChangeThisInProd!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      - "5000:5000"
     depends_on:
-      db:
+      dpa_db:
         condition: service_healthy
-    # Optional: If you need to map logs out of the container
+      dpa_redis:
+        condition: service_healthy
+    command: gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 "app:create_app()" # Explicit command
+    # For local development, you might want to mount volumes for live reloading
     # volumes:
-    #   - ./logs:/app/logs
+    #   - .:/app
+
+  dpa_celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dpa_celery_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      dpa_db:
+        condition: service_healthy
+      dpa_redis:
+        condition: service_healthy
+      dpa_app:
+        condition: service_started
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info # -P gevent or -P solo for debug
+    # volumes:
+    #   - .:/app
+
+  dpa_celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dpa_celery_beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      dpa_db:
+        condition: service_healthy
+      dpa_redis:
+        condition: service_healthy
+      dpa_app:
+        condition: service_started
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info --scheduler=flask_sqlalchemy.SQLAlchemyScheduler
+    # volumes:
+    #   - .:/app
 
 volumes:
-  postgres_data:
+  dpa_db_data:
 ```

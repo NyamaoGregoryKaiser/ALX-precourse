@@ -1,52 +1,51 @@
 ```python
+# app/config.py
 import os
-from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv() # Load environment variables from .env file
+load_dotenv()
 
 class Config:
-    """Base configuration."""
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'default-super-secret-key')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default-jwt-secret-key')
+    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key_for_dev')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/dpa_db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
-
-    # Caching configuration
-    CACHE_TYPE = os.environ.get('CACHE_TYPE', 'RedisCache')
-    CACHE_REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key_for_dev')
+    JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_DAYS', 7)) * 24 * 60 * 60 # 7 days
+    
+    # Redis Cache Configuration
+    CACHE_TYPE = 'redis'
+    CACHE_REDIS_URL = os.getenv('CACHE_REDIS_URL', 'redis://localhost:6379/0')
     CACHE_DEFAULT_TIMEOUT = 300 # 5 minutes
 
-    # Rate Limiting configuration
-    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/1') # Use a different DB for rate limit
+    # Celery Configuration
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/1')
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/2')
 
-    # Logging configuration
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
-    SENTRY_DSN = os.environ.get('SENTRY_DSN') # For production error monitoring
+    # Logging
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+
+    # Rate Limiting
+    RATELIMIT_STORAGE_URL = os.getenv('CACHE_REDIS_URL', 'redis://localhost:6379/0') # Use same redis for rate limiting
+    RATELIMIT_DEFAULT = os.getenv('RATE_LIMIT_DEFAULT', '200 per day; 50 per hour')
+    RATELIMIT_AUTHENTICATION_ENDPOINT = os.getenv('RATE_LIMIT_AUTH', '5 per minute')
+
 
 class DevelopmentConfig(Config):
-    """Development configuration."""
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/task_manager_db')
     FLASK_ENV = 'development'
-    LOG_LEVEL = 'DEBUG'
+    # Override with development-specific settings if any
 
 class TestingConfig(Config):
-    """Testing configuration."""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:' # Use in-memory SQLite for faster tests
-    FLASK_ENV = 'testing'
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5) # Shorter expiration for tests
-    CACHE_TYPE = 'NullCache' # Disable cache for tests
-    RATELIMIT_ENABLED = False # Disable rate limit for tests
+    SQLALCHEMY_DATABASE_URI = os.getenv('TEST_DATABASE_URL', 'postgresql://dpa_test_user:dpa_test_password@dpa_db:5432/dpa_test_db')
+    CACHE_REDIS_URL = os.getenv('TEST_CACHE_REDIS_URL', 'redis://localhost:6379/3')
+    CELERY_BROKER_URL = os.getenv('TEST_CELERY_BROKER_URL', 'redis://localhost:6379/4')
+    CELERY_RESULT_BACKEND = os.getenv('TEST_CELERY_RESULT_BACKEND', 'redis://localhost:6379/5')
+    RATELIMIT_STORAGE_URL = os.getenv('TEST_CACHE_REDIS_URL', 'redis://localhost:6379/3')
+    WTF_CSRF_ENABLED = False # Disable CSRF for easier testing
 
 class ProductionConfig(Config):
-    """Production configuration."""
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
-    if not SQLALCHEMY_DATABASE_URI:
-        raise ValueError("DATABASE_URL must be set in production environment.")
     FLASK_ENV = 'production'
-    # SENTRY_DSN should be set in environment for production
+    # More restrictive settings for production, e.g., HTTPS only, stricter rate limits, etc.
 ```

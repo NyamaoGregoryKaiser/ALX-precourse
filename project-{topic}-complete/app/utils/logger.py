@@ -1,0 +1,42 @@
+```python
+# app/utils/logger.py
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+def setup_logging(name='dpa_app'):
+    """
+    Configures a logger with console and file handlers.
+    """
+    logger = logging.getLogger(name)
+    log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    logger.setLevel(log_level)
+
+    # Prevent duplicate handlers if called multiple times
+    if not logger.handlers:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
+        # File handler (rotate logs)
+        log_dir = 'logs'
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, 'dpa.log'),
+            maxBytes=1024 * 1024 * 5,  # 5 MB
+            backupCount=5
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
+
+# Initialize logger for the application
+logger = setup_logging()
+```

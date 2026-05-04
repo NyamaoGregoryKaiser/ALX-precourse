@@ -4,107 +4,471 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Task Management System - Demo</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>DPA Dashboard</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f4; color: #333; }
+        .header { background-color: #333; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .header button { background-color: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .header button:hover { background-color: #c82333; }
+        .container { padding: 20px; max-width: 1200px; margin: 20px auto; background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        h2 { color: #007bff; margin-top: 0; margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="url"], select, textarea { width: calc(100% - 22px); padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button.submit { background-color: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button.submit:hover { background-color: #218838; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .message { margin-top: 15px; padding: 10px; border-radius: 4px; }
+        .message.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .action-buttons button { margin-right: 5px; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
+        .action-buttons .edit { background-color: #ffc107; color: #333; border: none; }
+        .action-buttons .delete { background-color: #dc3545; color: white; border: none; }
+        .action-buttons .collect { background-color: #17a2b8; color: white; border: none; }
+    </style>
 </head>
 <body>
+    <div class="header">
+        <h1>Database Performance Analyzer</h1>
+        <div id="userGreeting"></div>
+        <button id="logoutButton">Logout</button>
+    </div>
+
     <div class="container">
-        <h1>Task Management System Demo</h1>
-        <p>This is a minimal frontend to interact with the Python Flask API. Open your browser's developer console (F12) to see network requests and responses.</p>
-        
-        <h2>Authentication</h2>
-        <div class="card">
-            <h3>Register</h3>
-            <input type="text" id="reg-username" placeholder="Username">
-            <input type="email" id="reg-email" placeholder="Email">
-            <input type="password" id="reg-password" placeholder="Password">
-            <select id="reg-role">
-                <option value="user">User</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-            </select>
-            <button onclick="registerUser()">Register</button>
-            <p id="reg-status"></p>
+        <div class="section" id="targetDbSection">
+            <h2>Target Databases</h2>
+            <div id="targetDbMessage" class="message" style="display: none;"></div>
+            <form id="addTargetDbForm">
+                <h3>Add New Target Database</h3>
+                <div class="form-group">
+                    <label for="dbName">Name:</label>
+                    <input type="text" id="dbName" required>
+                </div>
+                <div class="form-group">
+                    <label for="dbType">Type:</label>
+                    <select id="dbType" required>
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="mysql">MySQL</option>
+                        <option value="mssql">MSSQL</option>
+                        <option value="oracle">Oracle</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="connectionString">Connection String (e.g., postgresql://user:pass@host:port/dbname):</label>
+                    <input type="url" id="connectionString" required>
+                </div>
+                <button type="submit" class="submit">Add Database</button>
+            </form>
+
+            <h3>Registered Databases</h3>
+            <table id="targetDbTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Owner</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Target DBs will be loaded here -->
+                </tbody>
+            </table>
         </div>
 
-        <div class="card">
-            <h3>Login</h3>
-            <input type="text" id="login-username" placeholder="Username">
-            <input type="password" id="login-password" placeholder="Password">
-            <button onclick="loginUser()">Login</button>
-            <p id="login-status"></p>
-            <p>Logged in as: <span id="current-user">None</span> (Role: <span id="current-user-role">None</span>)</p>
-            <button onclick="logoutUser()">Logout</button>
+        <div class="section" id="metricsSection">
+            <h2>Performance Metrics</h2>
+            <div id="metricsMessage" class="message" style="display: none;"></div>
+            <div class="form-group">
+                <label for="selectDbForMetrics">Select Database:</label>
+                <select id="selectDbForMetrics">
+                    <option value="">-- Select a Database --</option>
+                </select>
+            </div>
+            <table id="metricsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>DB Name</th>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Timestamp</th>
+                        <th>Anomaly</th>
+                        <th>Analyzed</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Metrics will be loaded here -->
+                </tbody>
+            </table>
         </div>
 
-        <h2>API Interaction</h2>
-        <div class="api-output">
-            <h3>API Response:</h3>
-            <pre id="api-response"></pre>
-        </div>
-
-        <div class="card">
-            <h3>Users (Admin Only)</h3>
-            <button onclick="getUsers()">Get All Users</button>
-            <input type="number" id="user-id" placeholder="User ID">
-            <button onclick="getUserById()">Get User by ID</button>
-            <input type="text" id="user-update-username" placeholder="New Username">
-            <input type="text" id="user-update-email" placeholder="New Email">
-            <input type="password" id="user-update-password" placeholder="New Password">
-            <select id="user-update-role">
-                <option value="user">User</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-            </select>
-            <input type="checkbox" id="user-update-is_active" checked> <label for="user-update-is_active">Active</label>
-            <button onclick="updateUser()">Update User</button>
-            <button onclick="deleteUser()">Delete User</button>
-        </div>
-
-        <div class="card">
-            <h3>Projects</h3>
-            <input type="text" id="project-name" placeholder="Project Name">
-            <input type="text" id="project-description" placeholder="Description">
-            <input type="number" id="project-manager-id" placeholder="Manager ID (optional, defaults to current user)">
-            <button onclick="createProject()">Create Project</button>
-            <button onclick="getProjects()">Get All Projects</button>
-            <input type="number" id="project-id" placeholder="Project ID">
-            <button onclick="getProjectById()">Get Project by ID</button>
-            <input type="text" id="project-update-name" placeholder="New Name">
-            <button onclick="updateProject()">Update Project</button>
-            <button onclick="deleteProject()">Delete Project</button>
-        </div>
-
-        <div class="card">
-            <h3>Tasks</h3>
-            <input type="text" id="task-title" placeholder="Task Title">
-            <input type="text" id="task-description" placeholder="Description">
-            <input type="number" id="task-project-id" placeholder="Project ID">
-            <input type="number" id="task-assigned-to-id" placeholder="Assigned To ID">
-            <input type="text" id="task-status" placeholder="Status (e.g., open, in_progress)">
-            <input type="datetime-local" id="task-due-date">
-            <button onclick="createTask()">Create Task</button>
-            <button onclick="getTasks()">Get All Tasks</button>
-            <input type="number" id="task-id" placeholder="Task ID">
-            <button onclick="getTaskById()">Get Task by ID</button>
-            <input type="text" id="task-update-title" placeholder="New Title">
-            <button onclick="updateTask()">Update Task</button>
-            <button onclick="deleteTask()">Delete Task</button>
-        </div>
-
-        <div class="card">
-            <h3>Comments on Task</h3>
-            <input type="number" id="comment-task-id" placeholder="Task ID for Comment">
-            <input type="text" id="comment-content" placeholder="Your comment...">
-            <button onclick="addCommentToTask()">Add Comment</button>
-            <button onclick="getTaskComments()">Get Comments</button>
-            <input type="number" id="comment-id" placeholder="Comment ID">
-            <input type="text" id="comment-update-content" placeholder="Update comment content">
-            <button onclick="updateComment()">Update Comment</button>
-            <button onclick="deleteComment()">Delete Comment</button>
+        <div class="section" id="suggestionsSection">
+            <h2>Optimization Suggestions</h2>
+            <div id="suggestionsMessage" class="message" style="display: none;"></div>
+            <div class="form-group">
+                <label for="selectDbForSuggestions">Select Database:</label>
+                <select id="selectDbForSuggestions">
+                    <option value="">-- Select a Database --</option>
+                </select>
+            </div>
+            <table id="suggestionsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>DB Name</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>SQL</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Suggestions will be loaded here -->
+                </tbody>
+            </table>
         </div>
     </div>
-    <script src="/static/script.js"></script>
+
+    <script>
+        const API_BASE_URL = ''; // Flask serves from root, no /api prefix needed here
+
+        function getToken() {
+            return localStorage.getItem('access_token');
+        }
+
+        function getUserInfo() {
+            return JSON.parse(localStorage.getItem('user_info'));
+        }
+
+        function displayMessage(divId, message, type = 'success') {
+            const div = document.getElementById(divId);
+            div.textContent = message;
+            div.className = `message ${type}`;
+            div.style.display = 'block';
+            setTimeout(() => div.style.display = 'none', 5000);
+        }
+
+        async function fetchData(url, method = 'GET', body = null) {
+            const token = getToken();
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+            const options = { method, headers };
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url, options);
+            if (response.status === 401 || response.status === 403) {
+                alert('Session expired or unauthorized. Please log in again.');
+                logout();
+                throw new Error('Unauthorized');
+            }
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || errorData.description || 'API request failed');
+            }
+            if (response.status === 204) return {}; // No content for delete
+            return response.json();
+        }
+
+        async function loadTargetDbs() {
+            try {
+                const dbs = await fetchData('/api/target-dbs/');
+                const tableBody = document.getElementById('targetDbTable').querySelector('tbody');
+                tableBody.innerHTML = ''; // Clear existing rows
+                
+                const dbSelectMetrics = document.getElementById('selectDbForMetrics');
+                const dbSelectSuggestions = document.getElementById('selectDbForSuggestions');
+                dbSelectMetrics.innerHTML = '<option value="">-- Select a Database --</option>';
+                dbSelectSuggestions.innerHTML = '<option value="">-- Select a Database --</option>';
+
+                if (dbs.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="6">No target databases registered.</td></tr>';
+                    return;
+                }
+
+                dbs.forEach(db => {
+                    const row = tableBody.insertRow();
+                    row.insertCell().textContent = db.id;
+                    row.insertCell().textContent = db.name;
+                    row.insertCell().textContent = db.db_type;
+                    row.insertCell().textContent = db.owner_id; // For simplicity, display ID
+                    row.insertCell().textContent = db.is_active ? 'Active' : 'Inactive';
+                    
+                    const actionsCell = row.insertCell();
+                    actionsCell.className = 'action-buttons';
+                    
+                    const collectBtn = document.createElement('button');
+                    collectBtn.textContent = 'Collect Metrics';
+                    collectBtn.className = 'collect';
+                    collectBtn.onclick = () => collectMetrics(db.id, db.name);
+                    actionsCell.appendChild(collectBtn);
+
+                    const editBtn = document.createElement('button');
+                    editBtn.textContent = 'Edit';
+                    editBtn.className = 'edit';
+                    editBtn.onclick = () => alert('Edit functionality not implemented for this demo.'); // Placeholder for edit
+                    actionsCell.appendChild(editBtn);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.className = 'delete';
+                    deleteBtn.onclick = () => deleteTargetDb(db.id, db.name);
+                    actionsCell.appendChild(deleteBtn);
+
+                    // Populate select options
+                    const option1 = document.createElement('option');
+                    option1.value = db.id;
+                    option1.textContent = `${db.name} (${db.db_type})`;
+                    dbSelectMetrics.appendChild(option1);
+
+                    const option2 = document.createElement('option');
+                    option2.value = db.id;
+                    option2.textContent = `${db.name} (${db.db_type})`;
+                    dbSelectSuggestions.appendChild(option2);
+                });
+            } catch (error) {
+                console.error('Error loading target databases:', error);
+                displayMessage('targetDbMessage', `Failed to load databases: ${error.message}`, 'error');
+            }
+        }
+
+        async function addTargetDb(event) {
+            event.preventDefault();
+            const name = document.getElementById('dbName').value;
+            const dbType = document.getElementById('dbType').value;
+            const connectionString = document.getElementById('connectionString').value;
+
+            try {
+                await fetchData('/api/target-dbs/', 'POST', { name, db_type: dbType, connection_string: connectionString });
+                displayMessage('targetDbMessage', `Database '${name}' added successfully!`, 'success');
+                document.getElementById('addTargetDbForm').reset();
+                await loadTargetDbs();
+            } catch (error) {
+                console.error('Error adding target database:', error);
+                displayMessage('targetDbMessage', `Failed to add database: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteTargetDb(dbId, dbName) {
+            if (!confirm(`Are you sure you want to delete '${dbName}'? This will also delete all associated metrics and suggestions.`)) {
+                return;
+            }
+            try {
+                await fetchData(`/api/target-dbs/${dbId}`, 'DELETE');
+                displayMessage('targetDbMessage', `Database '${dbName}' deleted successfully.`, 'success');
+                await loadTargetDbs();
+                // Clear related metrics and suggestions
+                document.getElementById('metricsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">No metrics loaded.</td></tr>';
+                document.getElementById('suggestionsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">No suggestions loaded.</td></tr>';
+            } catch (error) {
+                console.error('Error deleting target database:', error);
+                displayMessage('targetDbMessage', `Failed to delete database: ${error.message}`, 'error');
+            }
+        }
+
+        async function collectMetrics(dbId, dbName) {
+            try {
+                const result = await fetchData(`/api/metrics/${dbId}/collect`, 'POST');
+                displayMessage('metricsMessage', `Metric collection for '${dbName}' initiated! Task ID: ${result.task_id}`, 'success');
+                // You might poll for task completion or refresh after a delay
+                setTimeout(() => loadMetrics(dbId), 5000); // Refresh metrics after 5 seconds
+            } catch (error) {
+                console.error('Error collecting metrics:', error);
+                displayMessage('metricsMessage', `Failed to initiate metric collection: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadMetrics(dbId) {
+            const tableBody = document.getElementById('metricsTable').querySelector('tbody');
+            tableBody.innerHTML = '<tr><td colspan="8">Loading metrics...</td></tr>';
+
+            try {
+                const metrics = await fetchData(`/api/metrics/${dbId}`);
+                tableBody.innerHTML = '';
+
+                if (metrics.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="8">No metrics found for this database.</td></tr>';
+                    return;
+                }
+
+                metrics.forEach(metric => {
+                    const row = tableBody.insertRow();
+                    row.insertCell().textContent = metric.id;
+                    row.insertCell().textContent = document.getElementById('selectDbForMetrics').options[document.getElementById('selectDbForMetrics').selectedIndex].text; // Get DB Name from select
+                    row.insertCell().textContent = metric.metric_type;
+                    row.insertCell().textContent = JSON.stringify(metric.metric_value).substring(0, 100) + '...'; // Truncate
+                    row.insertCell().textContent = new Date(metric.timestamp).toLocaleString();
+                    row.insertCell().textContent = metric.is_anomaly ? 'Yes' : 'No';
+                    row.insertCell().textContent = metric.analyzed ? 'Yes' : 'No';
+
+                    const actionsCell = row.insertCell();
+                    actionsCell.className = 'action-buttons';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.className = 'delete';
+                    deleteBtn.onclick = () => deleteMetric(metric.id);
+                    actionsCell.appendChild(deleteBtn);
+                });
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+                displayMessage('metricsMessage', `Failed to load metrics: ${error.message}`, 'error');
+                tableBody.innerHTML = '<tr><td colspan="8">Failed to load metrics.</td></tr>';
+            }
+        }
+
+        async function deleteMetric(metricId) {
+            if (!confirm(`Are you sure you want to delete metric ${metricId}?`)) {
+                return;
+            }
+            try {
+                await fetchData(`/api/metrics/${metricId}`, 'DELETE');
+                displayMessage('metricsMessage', `Metric ${metricId} deleted successfully.`, 'success');
+                const selectedDbId = document.getElementById('selectDbForMetrics').value;
+                if (selectedDbId) loadMetrics(selectedDbId);
+            } catch (error) {
+                console.error('Error deleting metric:', error);
+                displayMessage('metricsMessage', `Failed to delete metric: ${error.message}`, 'error');
+            }
+        }
+
+
+        async function loadSuggestions(dbId) {
+            const tableBody = document.getElementById('suggestionsTable').querySelector('tbody');
+            tableBody.innerHTML = '<tr><td colspan="8">Loading suggestions...</td></tr>';
+
+            try {
+                const suggestions = await fetchData(`/api/suggestions/?target_db_id=${dbId}`);
+                tableBody.innerHTML = '';
+
+                if (suggestions.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="8">No suggestions found for this database.</td></tr>';
+                    return;
+                }
+
+                suggestions.forEach(suggestion => {
+                    const row = tableBody.insertRow();
+                    row.insertCell().textContent = suggestion.id;
+                    row.insertCell().textContent = document.getElementById('selectDbForSuggestions').options[document.getElementById('selectDbForSuggestions').selectedIndex].text;
+                    row.insertCell().textContent = suggestion.suggestion_type;
+                    row.insertCell().textContent = suggestion.description;
+                    row.insertCell().textContent = suggestion.sql_statement ? suggestion.sql_statement.substring(0, 50) + '...' : 'N/A';
+                    row.insertCell().textContent = suggestion.priority;
+                    row.insertCell().textContent = suggestion.status;
+
+                    const actionsCell = row.insertCell();
+                    actionsCell.className = 'action-buttons';
+                    
+                    const editBtn = document.createElement('button');
+                    editBtn.textContent = 'Update Status';
+                    editBtn.className = 'edit';
+                    editBtn.onclick = () => updateSuggestionStatus(suggestion.id, suggestion.status);
+                    actionsCell.appendChild(editBtn);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.className = 'delete';
+                    deleteBtn.onclick = () => deleteSuggestion(suggestion.id);
+                    actionsCell.appendChild(deleteBtn);
+                });
+            } catch (error) {
+                console.error('Error loading suggestions:', error);
+                displayMessage('suggestionsMessage', `Failed to load suggestions: ${error.message}`, 'error');
+                tableBody.innerHTML = '<tr><td colspan="8">Failed to load suggestions.</td></tr>';
+            }
+        }
+
+        async function updateSuggestionStatus(suggestionId, currentStatus) {
+            const newStatus = prompt(`Enter new status for suggestion ${suggestionId} (pending, applied, ignored, resolved):`, currentStatus);
+            if (newStatus && ['pending', 'applied', 'ignored', 'resolved'].includes(newStatus.toLowerCase())) {
+                try {
+                    await fetchData(`/api/suggestions/${suggestionId}`, 'PATCH', { status: newStatus.toLowerCase() });
+                    displayMessage('suggestionsMessage', `Suggestion ${suggestionId} status updated to ${newStatus}.`, 'success');
+                    const selectedDbId = document.getElementById('selectDbForSuggestions').value;
+                    if (selectedDbId) loadSuggestions(selectedDbId);
+                } catch (error) {
+                    console.error('Error updating suggestion status:', error);
+                    displayMessage('suggestionsMessage', `Failed to update suggestion status: ${error.message}`, 'error');
+                }
+            } else if (newStatus !== null) {
+                alert('Invalid status. Please choose from pending, applied, ignored, or resolved.');
+            }
+        }
+
+        async function deleteSuggestion(suggestionId) {
+            if (!confirm(`Are you sure you want to delete suggestion ${suggestionId}?`)) {
+                return;
+            }
+            try {
+                await fetchData(`/api/suggestions/${suggestionId}`, 'DELETE');
+                displayMessage('suggestionsMessage', `Suggestion ${suggestionId} deleted successfully.`, 'success');
+                const selectedDbId = document.getElementById('selectDbForSuggestions').value;
+                if (selectedDbId) loadSuggestions(selectedDbId);
+            } catch (error) {
+                console.error('Error deleting suggestion:', error);
+                displayMessage('suggestionsMessage', `Failed to delete suggestion: ${error.message}`, 'error');
+            }
+        }
+
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = '/login';
+        }
+
+        // Event Listeners
+        document.getElementById('logoutButton').addEventListener('click', logout);
+        document.getElementById('addTargetDbForm').addEventListener('submit', addTargetDb);
+        document.getElementById('selectDbForMetrics').addEventListener('change', (event) => {
+            const dbId = event.target.value;
+            if (dbId) {
+                loadMetrics(dbId);
+            } else {
+                document.getElementById('metricsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">Please select a database.</td></tr>';
+            }
+        });
+        document.getElementById('selectDbForSuggestions').addEventListener('change', (event) => {
+            const dbId = event.target.value;
+            if (dbId) {
+                loadSuggestions(dbId);
+            } else {
+                document.getElementById('suggestionsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">Please select a database.</td></tr>';
+            }
+        });
+
+        // Initial load
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!getToken()) {
+                window.location.href = '/login';
+                return;
+            }
+            const userInfo = getUserInfo();
+            if (userInfo && userInfo.username) {
+                document.getElementById('userGreeting').textContent = `Hello, ${userInfo.username} (${userInfo.role})!`;
+            }
+
+            await loadTargetDbs();
+            // Initialize metrics/suggestions tables to prompt user to select DB
+            document.getElementById('metricsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">Please select a database to view metrics.</td></tr>';
+            document.getElementById('suggestionsTable').querySelector('tbody').innerHTML = '<tr><td colspan="8">Please select a database to view suggestions.</td></tr>';
+        });
+
+    </script>
 </body>
 </html>
 ```
