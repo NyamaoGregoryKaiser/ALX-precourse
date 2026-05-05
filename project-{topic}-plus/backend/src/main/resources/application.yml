@@ -1,42 +1,45 @@
+server:
+  port: 8080
+
 spring:
-  application:
-    name: ecommerce-backend
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ecommerce_db}
-    username: ${DB_USERNAME:ecommerce_user}
-    password: ${DB_PASSWORD:ecommerce_password}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:alxchatdb}
+    username: ${DB_USERNAME:alxuser}
+    password: ${DB_PASSWORD:alxpassword}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: none # Liquibase handles DDL
+      ddl-auto: none # Flyway manages schema
     show-sql: true
     properties:
-      hibernate.format_sql: true
-      hibernate.jdbc.batch_size: 50
-      hibernate.order_inserts: true
-      hibernate.order_updates: true
-  liquibase:
-    change-log: classpath:/database/liquibase/master.xml
+      hibernate:
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true # Fix for Postgres bytea
+  flyway:
     enabled: true
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://localhost:8080 # Placeholder, adjust if using external IdP
+    locations: classpath:db/migration
   redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
   cache:
     type: redis
-    redis:
-      time-to-live: 3600000 # 1 hour in milliseconds
+  main:
+    allow-bean-definition-overriding: true # Required for Testcontainers sometimes
 
-# JWT Configuration
 jwt:
-  secret: ${JWT_SECRET:superSecretKeyForALXECommerceSolutionThatIsAtLeast32BytesLong} # MUST BE 256-bit (32 characters) or stronger
-  expiration: 86400000 # 24 hours in milliseconds
+  secret: ${JWT_SECRET:a_very_secret_key_that_should_be_at_least_256_bits_long_and_randomly_generated_in_production}
+  expiration: ${JWT_EXPIRATION:3600000} # 1 hour in milliseconds
 
-# OpenAPI (Swagger) Configuration
+logging:
+  level:
+    com.alxchat: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: INFO
+    org.springframework.security: INFO
+
+# Springdoc OpenAPI (Swagger UI) configuration
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -44,38 +47,9 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
-  default-produces-media-type: application/json
-
-# Actuator Endpoints (for monitoring)
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health, info, prometheus
-
-# Rate Limiting Configuration
-rate-limit:
-  enabled: true
-  max-requests: 10 # Max requests per client IP
-  time-window-seconds: 60 # Time window in seconds
-
-server:
-  port: 8080
-  servlet:
-    context-path: /api
-
-logging:
-  level:
-    root: INFO
-    org.springframework.web: INFO
-    com.alx.ecommerce: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-  file:
-    name: logs/ecommerce.log
-  pattern:
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) %cyan(%logger{36}) - %msg%n"
+    disable-swagger-default-url: true
+    urls[0]:
+      url: /v3/api-docs
+      name: ALX Chat API
 ```
-#### `backend/src/main/resources/logback-spring.xml`
-```xml
+*Note: `JWT_SECRET` should be a long, randomly generated string in production, e.g., `openssl rand -base64 32`.*

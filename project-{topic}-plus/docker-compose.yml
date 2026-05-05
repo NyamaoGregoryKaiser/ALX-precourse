@@ -2,52 +2,82 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
-    restart: always
+    image: postgres:15.3-alpine
+    container_name: alx-chat-db
     environment:
-      POSTGRES_DB: project_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      POSTGRES_DB: ${DB_NAME:-alxchatdb}
+      POSTGRES_USER: ${DB_USERNAME:-alxuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-alxpassword}
     ports:
-      - "5432:5432" # Standard port for PostgreSQL
+      - "5432:5432"
+    volumes:
+      - alxchat_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-alxuser} -d ${DB_NAME:-alxchatdb}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:7-alpine
-    restart: always
+    image: redis:7.0.12-alpine
+    container_name: alx-chat-redis
     ports:
       - "6379:6379"
+    volumes:
+      - alxchat_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
-    build: .
-    restart: always
-    env_file:
-      - .env # Load environment variables from .env file
+  alx-chat-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    container_name: alx-chat-backend
     ports:
-      - "8000:8000"
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-alxchatdb}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-alxuser}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-alxpassword}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-a_very_secret_key_that_should_be_at_least_256_bits_long_and_randomly_generated_in_production}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
     depends_on:
       db:
-        condition: service_healthy # Wait for DB to be healthy
+        condition: service_healthy
       redis:
-        condition: service_healthy # Wait for Redis to be healthy
-    command: ["/bin/sh", "-c", "sleep 5 && alembic upgrade head && python app/seed_data.py && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"]
-    # The 'sleep 5' is a rudimentary wait for DB, 'service_healthy' is better but sometimes network takes a moment.
-    # `alembic upgrade head` applies migrations on startup
-    # `python app/seed_data.py` runs the seed script after migrations. REMOVE THIS FOR PRODUCTION AFTER INITIAL SEEDING!
-    # In production, you'd typically run `alembic upgrade head` and `python app/seed_data.py` as separate CI/CD steps,
-    # not as part of the main `command` to avoid re-seeding on every restart.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - alxchat_network
+
+  alx-chat-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: alx-chat-frontend
+    ports:
+      - "3000:80" # Map host port 3000 to container's Nginx port 80
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:8080 # This will be proxied by Nginx
+      REACT_APP_WEBSOCKET_URL: http://localhost:8080/websocket # This will be proxied by Nginx
+    depends_on:
+      - alx-chat-backend
+    networks:
+      - alxchat_network
+
+networks:
+  alxchat_network:
+    driver: bridge
 
 volumes:
-  postgres_data:
-```
+  alxchat_pg_data:
+  alxchat_redis_data:

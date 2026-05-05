@@ -1,5 +1,4 @@
-```yaml
-name: CI/CD Pipeline
+name: ALXChat CI/CD Pipeline
 
 on:
   push:
@@ -11,58 +10,121 @@ on:
 
 jobs:
   build-and-test-backend:
-    name: Build and Test Backend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          node-version: '18'
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
 
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm ci
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
-      - name: Run backend tests
-        run: |
-          cd backend
-          npm test
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
 
-      - name: Build backend Docker image
-        run: |
-          cd backend
-          docker build -t realtime-chat-backend:${{ github.sha }} .
+      - name: Build and Test Backend with Maven
+        working-directory: ./backend
+        run: mvn -B clean verify --file pom.xml
+
+      - name: Upload JaCoCo Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/jacoco.xml
 
   build-and-test-frontend:
-    name: Build and Test Frontend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
 
-      - name: Install frontend dependencies
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Run Frontend Tests
+        working-directory: ./frontend
+        run: npm test
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage/lcov.info
+
+  docker-build-push:
+    needs: [build-and-test-backend, build-and-test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Only push on merges to main
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.backend
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/alx-chat-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.frontend
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/alx-chat-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # This job would typically deploy to a cloud provider like AWS EC2, Kubernetes, etc.
+  # For this example, we'll just demonstrate the placeholder.
+  deploy:
+    needs: [docker-build-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to Production (Placeholder)
         run: |
-          cd frontend
-          npm ci
-
-      - name: Run frontend tests (if any, for this example we'll skip for brevity as react tests can be extensive)
-        run: echo "Frontend tests would run here" # npm test
-
-      - name: Build frontend Docker image
-        run: |
-          cd frontend
-          docker build -t realtime-chat-frontend:${{ github.sha }} .
-
-  # You can add a deploy job here that pushes Docker images to a registry
-  # and then deploys to a cloud provider like AWS ECS, Kubernetes, etc.
-  # For this example, we'll keep it simple to build and test.
-```
+          echo "Deployment initiated to production environment."
+          echo "This step would involve SSHing to a server, running 'docker compose pull', and 'docker compose up -d'."
+          echo "Or updating a Kubernetes deployment, triggering a cloud platform deployment, etc."
+          # Example: ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no user@your-server-ip "cd /app/alxchat && docker compose pull && docker compose up -d"
+          echo "Deployment successful!"
