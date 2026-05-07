@@ -1,31 +1,36 @@
-# Base image
-FROM python:3.9-slim-buster
+# Use a slim Java 17 image for a smaller footprint
+FROM eclipse-temurin:17-jdk-jammy as builder
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required for psycopg2-binary
-# and potentially other libraries (like building wheels)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the Maven build files and download dependencies
+COPY pom.xml .
+COPY src ./src
+RUN mvn dependency:go-offline -B
 
-# Copy requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Build the application
+RUN mvn clean install -DskipTests
 
-# Copy the application code
-COPY . .
+# Stage 2: Create the final image
+FROM eclipse-temurin:17-jre-jammy
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Set working directory
+WORKDIR /app
 
-# Command to run the application using Gunicorn for production
-# Gunicorn is a WSGI HTTP Server for UNIX. It's stable and widely used.
-# The `manage.py` file is our Flask entry point, and `app` is the Flask app instance.
-# -w: number of worker processes
-# -b: bind to host:port
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "manage:app"]
-```
+# Copy only the built JAR from the builder stage
+COPY --from=builder /app/target/*.jar appinsight.jar
+
+# Expose the port the Spring Boot application runs on
+EXPOSE 8080
+
+# Set environment variables for database connection (defaults will be used if not provided by docker-compose)
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=appinsight_db
+ENV DB_USER=appinsight_user
+ENV DB_PASSWORD=password
+ENV JWT_SECRET=verySecretKeyForAppInsightMonitoringSystemThatIsLongAndSecureForProductionUse
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "appinsight.jar"]

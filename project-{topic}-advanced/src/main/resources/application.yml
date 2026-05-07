@@ -1,82 +1,76 @@
-spring:
-  application:
-    name: alx-scraper
-
-  # Database Configuration (PostgreSQL)
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:alx_scraper}
-    username: ${DB_USER:alx_user}
-    password: ${DB_PASSWORD:alx_password}
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: validate # Use 'update' for development, 'validate' for production with Flyway
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        jdbc.lob.non_contextual_creation: true # For PostgreSQL compatibility with LOBs
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-
-  # Spring Security and JWT Configuration
-  security:
-    user:
-      name: dummyuser # Placeholder, actual auth is JWT
-      password: dummypassword
-      roles: USER
-
-  # Caching Configuration (Caffeine)
-  cache:
-    cache-names: scrapingJobs # Define cache names used in @Cacheable
-    caffeine:
-      spec: expireAfterWrite=10m,maximumSize=500 # Default spec for Caffeine caches
-
-  # Thymeleaf Configuration for Frontend
-  thymeleaf:
-    cache: false # Set to true in production for better performance
-    prefix: classpath:/templates/
-    suffix: .html
-    mode: HTML
-    encoding: UTF-8
-    servlet:
-      content-type: text/html
-
 server:
   port: 8080
 
-# Custom Application Properties
-alx:
-  app:
-    jwtSecret: ${JWT_SECRET:your_jwt_secret_key_that_is_at_least_256_bit_long_and_very_secure} # IMPORTANT: Change this in production
-    jwtExpirationMs: ${JWT_EXPIRATION_MS:86400000} # 24 hours in milliseconds (24 * 60 * 60 * 1000)
-  rate-limit:
-    max-requests: ${RATE_LIMIT_MAX_REQUESTS:100} # Max requests per client IP per time window
-    time-window-seconds: ${RATE_LIMIT_TIME_WINDOW_SECONDS:60} # Time window in seconds
+spring:
+  application:
+    name: appinsight
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:appinsight_db}
+    username: ${DB_USER:appinsight_user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none # Managed by Flyway
+    show-sql: false # Set to true for debugging SQL
+    properties:
+      hibernate:
+        format_sql: false
+    open-in-view: false # Prevents lazy loading issues in web layer
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  cache:
+    cache-names:
+      - applications
+      - metrics
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=60s
 
-# Logging Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,beans
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:verySecretKeyForAppInsightMonitoringSystemThatIsLongAndSecureForProductionUse} # Use a strong, environment-specific secret
+  expiration: 86400000 # 24 hours in milliseconds
+
+# Rate Limiting Configuration (Bucket4j)
+bucket4j:
+  filters:
+    - url: "/api/metric-data/**"
+      rate-limits:
+        - capacity: 1000 # 1000 requests
+          period: 1 # per second
+          url-regex: true # Apply to paths matching the regex
+      http-statuses:
+        too-many-requests: 429
+    - url: "/api/applications"
+      rate-limits:
+        - capacity: 100 # 100 requests
+          period: 60 # per minute
+      http-statuses:
+        too-many-requests: 429
+
+# Logging (see logback-spring.xml for detailed configuration)
 logging:
   level:
     root: INFO
-    com.alx.scraper: DEBUG # Set application specific logs to DEBUG
     org.springframework.web: INFO
-    org.hibernate: INFO
-    org.flywaydb: INFO
-    com.github.benmanes.caffeine: DEBUG # To see cache activity
-  file:
-    name: logs/alx-scraper.log
-    max-size: 10MB
-    max-history: 7 # Keep 7 days of logs
+    com.appinsight: DEBUG # Set to DEBUG for more detailed application logs
 
-# Springdoc OpenAPI (Swagger UI) Configuration
 springdoc:
-  api-docs:
-    path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
-    tags-sorter: alpha
-    operations-sorter: alpha
-    disable-swagger-default-url: true
-    display-request-duration: true # Show execution time of requests in UI
-```
+  api-docs:
+    path: /v3/api-docs

@@ -1,143 +1,122 @@
-```markdown
-# PerformancePulse - Architecture Documentation
+# AppInsight: Architecture Documentation
 
-This document outlines the high-level architecture, design principles, and technology stack used in the PerformancePulse system.
+This document provides an overview of the architecture for the AppInsight Performance Monitoring System. It outlines the key components, their responsibilities, and how they interact to form a cohesive, scalable, and maintainable enterprise-grade application.
 
-## 1. System Overview
+## 1. High-Level Overview
 
-PerformancePulse is a distributed performance monitoring system designed to actively check external web services/URLs, collect performance metrics, store them, and provide a user interface for visualization and alert management.
+AppInsight is designed as a modular, layered application, primarily leveraging the Spring Boot ecosystem for its backend. It follows a microservice-lite approach, where the entire application is deployable as a single unit but with clearly separated concerns and components. This structure facilitates future scaling into distinct microservices if needed.
 
-## 2. High-Level Architecture Diagram
+The system focuses on:
+*   **Data Ingestion**: Receiving performance metrics from various monitored applications.
+*   **Data Storage**: Persisting time-series metric data efficiently.
+*   **Data Retrieval & Presentation**: Providing APIs for users to query and visualize performance trends.
+*   **Security**: Ensuring secure access to APIs and data.
 
-```mermaid
-graph TD
-    A[Client - Browser/Frontend App] -- HTTP/HTTPS --> B[Load Balancer / NGINX Proxy]
-    B --> C[Backend API (Node.js/Express)]
-    C -- Reads/Writes --> D[PostgreSQL Database]
-    C -- Caches/Stores Sessions --> E[Redis Cache]
-    C -- Publishes Metrics --> F[Prometheus Exporter (Prom-client)]
-    C -- Schedules Jobs --> G[Node-cron Scheduler]
-    G -- Triggers Checks --> H[Monitoring Worker]
-    H -- HTTP Requests --> I[External Monitored Service]
-
-    F -- Scrapes Metrics --> J[Prometheus Server]
-    J -- Queries Metrics --> K[Grafana Dashboard]
-
-    subgraph Core System
-        C
-        D
-        E
-        F
-        G
-    end
-
-    subgraph Observability Stack
-        J
-        K
-    end
+```
++------------------+     +--------------------+
+|  Monitored App   |---->|  AppInsight Backend  |     +--------------------+
+| (External Client)| API | (Spring Boot App)  |---->|  AppInsight Frontend |
++------------------+ Key +--------+-----------+ REST | (HTML/JS/CSS)      |
+                           |        |             API  +--------------------+
+                           |        |
+                           |        | (JPA/JDBC)
+                           |        v
+                           +--------+-----------+
+                           |  PostgreSQL DB   |
+                           +--------------------+
 ```
 
-## 3. Component Breakdown
+## 2. Component Breakdown
 
-### 3.1. Frontend Application
+### 2.1. AppInsight Backend (Spring Boot Application)
 
-*   **Technology:** React (with TypeScript), React Router, ApexCharts for visualization.
-*   **Purpose:** Provides a user-friendly interface for:
-    *   User authentication (login, registration).
-    *   Project management (create, view, update, delete projects).
-    *   Monitor configuration (add, edit, delete URLs/services to monitor).
-    *   Real-time and historical metric visualization (response times, status codes, uptime).
-    *   Alert management (configure thresholds, view active alerts).
-*   **Communication:** Interacts with the Backend API exclusively via RESTful HTTP requests.
+The core of the system, responsible for all business logic, data persistence, and API exposure.
 
-### 3.2. Backend API
+#### Sub-Components:
 
-*   **Technology:** Node.js, Express.js (with TypeScript), TypeORM.
-*   **Purpose:** The central nervous system of PerformancePulse, handling all business logic and data persistence.
-*   **Key Responsibilities:**
-    *   **Authentication & Authorization:** JWT-based user authentication, role-based access control (admin/user).
-    *   **CRUD Operations:** Manages users, projects, monitors, metrics, and alerts.
-    *   **Monitor Scheduling:** Integrates a background job scheduler (`node-cron`) to periodically trigger monitoring tasks.
-    *   **Metric Storage:** Persists collected performance metrics in the PostgreSQL database.
-    *   **Caching:** Utilizes Redis for caching frequently accessed data (e.g., monitor lists, recent metrics) to reduce database load and improve response times.
-    *   **Rate Limiting:** Protects API endpoints against abuse.
-    *   **Logging:** Structured logging using Winston for traceability and debugging.
-    *   **Error Handling:** Centralized middleware for consistent error responses.
-    *   **Prometheus Metrics:** Exposes its own operational metrics (e.g., request count, response duration) to a Prometheus server.
+*   **Controllers (API Layer)**:
+    *   Expose RESTful endpoints (e.g., `MonitoredApplicationController`, `MetricController`, `MetricDataController`, `AuthController`).
+    *   Handle HTTP requests, validation (using `@Valid`), and serialization/deserialization of DTOs.
+    *   Delegate business operations to the Service Layer.
+    *   Apply rate limiting using Bucket4j annotations/configuration.
+*   **Service Layer (Business Logic)**:
+    *   Encapsulates the core business rules and orchestrates complex operations.
+    *   Interacts with multiple repositories.
+    *   Handles data transformations between entities and DTOs.
+    *   Applies caching strategies using Spring's `@Cacheable`, `@CachePut`, `@CacheEvict` with Caffeine as the provider.
+    *   Manages transactions (`@Transactional`).
+    *   Includes `UserService`, `MonitoredApplicationService`, `MetricService`, `MetricDataService`.
+*   **Repository Layer (Data Access)**:
+    *   Spring Data JPA interfaces (`MonitoredApplicationRepository`, `MetricRepository`, `MetricDataRepository`, `UserRepository`, `RoleRepository`).
+    *   Provides abstraction over database operations (CRUD, custom queries).
+    *   Leverages Hibernate for ORM.
+*   **Model Layer (Entities)**:
+    *   JPA Entities (`MonitoredApplication`, `Metric`, `MetricData`, `User`, `Role`, `BaseEntity`).
+    *   Represents the domain objects and their relationships, mapped to database tables.
+    *   Includes auditing fields (`createdAt`, `updatedAt`, `version` for optimistic locking).
+*   **Security Layer**:
+    *   **Spring Security**: Framework for authentication and authorization.
+    *   **JWT (JSON Web Tokens)**: Used for stateless authentication.
+        *   `JwtUtil`: Handles token generation, validation, and parsing.
+        *   `JwtUserDetailsService`: Loads user details for Spring Security.
+        *   `JwtRequestFilter`: Intercepts requests, validates JWT, and sets `SecurityContext`.
+    *   **`@PreAuthorize`**: Annotation-based method-level authorization.
+*   **Configuration**:
+    *   `application.yml`: Externalized configuration for database, JWT, caching, rate limiting, logging.
+    *   `SecurityConfig`: Defines security filter chain, authentication manager, password encoder.
+    *   `CacheConfig`: Configures Caffeine cache manager.
+*   **Error Handling**:
+    *   `@ControllerAdvice` (`GlobalExceptionHandler`): Centralized exception handling to provide consistent, structured error responses across the API.
+    *   Custom Exceptions (`ResourceNotFoundException`, `IllegalArgumentException`, `UnauthorizedException`).
+*   **Logging**:
+    *   SLF4j with Logback implementation.
+    *   Configured via `logback-spring.xml` for console output and rolling file appenders.
+    *   Provides different log levels (DEBUG, INFO, WARN, ERROR).
+*   **Monitoring**:
+    *   Spring Boot Actuator: Exposes operational endpoints (`/health`, `/info`, `/prometheus`, `/beans`) for monitoring the application's health, metrics, and internal state.
 
-### 3.3. Database (PostgreSQL)
+### 2.2. Database (PostgreSQL)
 
-*   **Technology:** PostgreSQL.
-*   **Purpose:** Relational database for persistent storage of all application data.
-*   **Key Entities:**
-    *   `User`: Stores user credentials and roles.
-    *   `Project`: Organizes monitors into logical groups.
-    *   `Monitor`: Defines a specific URL/service to be monitored, including configuration (interval, method).
-    *   `Metric`: Stores individual performance data points (response time, status, timestamp) for each monitor check.
-    *   `Alert`: Stores alert configurations (thresholds, conditions) and their current status.
-*   **ORM:** TypeORM is used for interacting with the database, providing a robust and type-safe abstraction layer.
+*   **Relational Database**: Chosen for its robustness, reliability, and rich feature set suitable for structured time-series data.
+*   **Schema**: Designed with normalized tables for `MonitoredApplication`, `Metric`, `MetricData`, `User`, and `Role`.
+*   **Indexes**: Strategically placed indexes (on foreign keys, unique constraints, and `timestamp` for `MetricData`) to optimize query performance, especially for time-series lookups.
+*   **Migrations (Flyway)**: Manages database schema changes in a version-controlled and idempotent manner, ensuring consistent deployments across environments.
+*   **Query Optimization**: Leverages Spring Data JPA's query capabilities, and custom repository methods for efficient data retrieval.
 
-### 3.4. Cache (Redis)
+### 2.3. Frontend (Basic HTML/JS/CSS)
 
-*   **Technology:** Redis.
-*   **Purpose:** In-memory data store used for:
-    *   **API Response Caching:** Caching responses from read-heavy API endpoints (e.g., fetching a monitor's historical metrics) to reduce database queries and improve API latency.
-    *   (Potential future use: Session storage, distributed locks, real-time data streams).
+*   A minimalist static web application demonstrating basic user interaction with the backend APIs.
+*   Handles user registration, login, JWT storage, and basic CRUD for applications and metrics.
+*   Fetches and displays metric data.
+*   Serves as a proof-of-concept and can be replaced by a more sophisticated SPA framework (React, Angular, Vue.js) in a production setting.
 
-### 3.5. Monitoring Worker (within Backend)
+## 3. Data Flow and Interactions
 
-*   **Mechanism:** Implemented as a background job within the Node.js backend using `node-cron`.
-*   **Purpose:** Responsible for executing the actual monitoring checks.
-*   **Process:**
-    1.  Scheduled by `node-cron` to run periodically.
-    2.  Fetches active monitors from the database.
-    3.  For each monitor, it makes an HTTP request to the target URL.
-    4.  Records the response time, HTTP status, and any errors.
-    5.  Persists the collected `Metric` data to the PostgreSQL database.
-    6.  Evaluates `Alert` conditions based on new metrics and triggers alerts if thresholds are breached.
+1.  **Client Authentication**: A user interacts with the frontend (or directly via API) to `/api/auth/login`, providing credentials. The backend authenticates and returns a JWT.
+2.  **Protected API Calls**: For subsequent requests to protected endpoints, the client includes the JWT in the `Authorization` header. `JwtRequestFilter` validates the token, and Spring Security authorizes the request based on the user's roles (`@PreAuthorize`).
+3.  **Application/Metric Management**: `ADMIN` users can use REST APIs (via frontend or API client) to create, retrieve, update, and delete `MonitoredApplication` and `Metric` definitions. Services handle business logic and interact with repositories.
+4.  **Metric Data Ingestion**: External monitored applications send performance data as a `POST` request to `/api/metric-data/ingest`. This endpoint is secured by an `X-API-KEY` header, which identifies and authorizes the sending application. `MetricDataService` validates the key, maps the data to existing metrics, and persists it.
+5.  **Metric Data Retrieval**: `USER` or `ADMIN` users can query historical metric data through REST APIs, specifying metric ID and time ranges. `MetricDataService` retrieves data from the repository, potentially using optimized queries.
+6.  **Caching**: `MonitoredApplicationService` and `MetricService` utilize caching (Caffeine) to reduce database load for frequently accessed read operations (e.g., `getApplicationById`, `getMetricById`).
 
-### 3.6. External Monitored Services
+## 4. Scalability and Reliability Considerations
 
-*   These are the web applications, APIs, or URLs that PerformancePulse is configured to monitor. The system makes HTTP requests to these services to gather performance data.
+*   **Stateless Backend**: JWT-based authentication ensures the backend is stateless, simplifying horizontal scaling by adding more instances.
+*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful hardware) or horizontally (read replicas, sharding for larger datasets).
+*   **Caching**: Reduces database load and improves response times for read-heavy operations.
+*   **Rate Limiting**: Protects backend resources from being overwhelmed by excessive requests.
+*   **Asynchronous Processing**: For very high ingestion rates, the `metric-data/ingest` endpoint could be enhanced to push data to a message queue (e.g., Kafka, RabbitMQ) for asynchronous processing, decoupling ingestion from persistence and allowing for backpressure management.
+*   **Monitoring**: Spring Boot Actuator, combined with external monitoring tools (Prometheus, Grafana), provides visibility into application health and performance metrics, crucial for identifying and resolving issues.
+*   **Containerization**: Docker and Docker Compose enable consistent deployment across environments and simplify orchestration with tools like Kubernetes.
 
-## 4. Observability Stack
+## 5. Security Aspects
 
-### 4.1. Prometheus
+*   **Authentication**: JWT for secure, stateless user authentication.
+*   **Authorization**: Role-based access control to restrict actions based on user roles.
+*   **Password Hashing**: BCrypt for secure storage of user passwords.
+*   **API Keys**: Unique, robustly generated API keys for external application data ingestion.
+*   **Input Validation**: `jakarta.validation` annotations at the DTO and controller layers prevent common injection attacks and ensure data integrity.
+*   **Error Handling**: Obfuscates internal server details from client responses.
+*   **HTTPS**: Critical for production deployments to encrypt all traffic. (Implicitly assumed for production setup).
 
-*   **Technology:** Prometheus.
-*   **Purpose:** Time-series database and monitoring system.
-*   **Role:** Scrapes operational metrics exposed by the PerformancePulse Backend API (via `prom-client`) at regular intervals. This allows monitoring the health and performance of the monitoring system itself.
-
-### 4.2. Grafana
-
-*   **Technology:** Grafana.
-*   **Purpose:** Data visualization and dashboarding tool.
-*   **Role:** Connects to Prometheus as a data source and displays interactive dashboards for visualizing the operational metrics of the PerformancePulse backend. This helps in understanding the performance and resource utilization of PerformancePulse itself.
-
-## 5. Design Principles
-
-*   **Modularity:** Code is organized into distinct modules (services, controllers, repositories, middleware) to promote separation of concerns and maintainability.
-*   **Scalability:** Stateless backend services (except for the database and cache), allowing for easy horizontal scaling. Utilizes efficient asynchronous operations.
-*   **Security:** JWT-based authentication, role-based authorization, secure password hashing, rate limiting.
-*   **Reliability:** Robust error handling, comprehensive testing, and a resilient database.
-*   **Observability:** Integrated logging, custom application metrics exposed via Prometheus, and clear dashboards in Grafana.
-*   **Maintainability:** Consistent coding standards (ESLint, Prettier), TypeScript for type safety, and thorough documentation.
-*   **Performance:** Caching layer, optimized database queries (via TypeORM), efficient background jobs.
-
-## 6. Data Flow Example: Monitoring a URL
-
-1.  A user logs into the **Frontend App**.
-2.  The user navigates to a **Project** and creates a new **Monitor** (e.g., `https://example.com`, check every 60 seconds).
-3.  The **Frontend App** sends a `POST /api/monitors` request to the **Backend API**.
-4.  The **Backend API** validates the request, creates a `Monitor` entity in **PostgreSQL**, and returns a success response.
-5.  The **Node-cron Scheduler** in the **Backend API** is periodically triggered.
-6.  The **Monitoring Worker** fetches active monitors from **PostgreSQL**.
-7.  For each active monitor, the **Monitoring Worker** makes an HTTP request to `https://example.com`.
-8.  It measures the **response time** and records the **HTTP status code**.
-9.  A new `Metric` entity is created and saved to **PostgreSQL**.
-10. The **Monitoring Worker** checks for any **Alerts** associated with this monitor whose conditions are now met (e.g., response time > 500ms). If so, it updates the alert status.
-11. The user views the **Monitor Detail** page in the **Frontend App**.
-12. The **Frontend App** fetches historical metrics via `GET /api/monitors/:id/metrics` from the **Backend API**.
-13. The **Backend API** might serve this data from **Redis Cache** if recently accessed, or query **PostgreSQL** if not.
-14. The **Frontend App** displays the metrics using **ApexCharts**.
-```
+This architecture provides a solid foundation for a performant, secure, and manageable performance monitoring system.

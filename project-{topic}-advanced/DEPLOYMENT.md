@@ -1,229 +1,250 @@
-```markdown
-# PerformancePulse - Deployment Guide
+# AppInsight: Deployment Guide
 
-This guide provides instructions for deploying PerformancePulse using Docker and Docker Compose, suitable for a production environment.
+This guide provides instructions for deploying the AppInsight Performance Monitoring System. The recommended deployment strategy leverages Docker and Docker Compose for local environments, and conceptually scales to container orchestration platforms like Kubernetes for production.
 
 ## Table of Contents
 
-1.  [Overview](#1-overview)
-2.  [Prerequisites](#2-prerequisites)
-3.  [Environment Configuration](#3-environment-configuration)
-4.  [Deployment Steps](#4-deployment-steps)
-    *   [Docker Compose Deployment](#41-docker-compose-deployment)
-    *   [Database Migrations and Seeding](#42-database-migrations-and-seeding)
-5.  [Post-Deployment Checks](#5-post-deployment-checks)
-6.  [Scaling](#6-scaling)
-7.  [Monitoring PerformancePulse Itself](#7-monitoring-performancepulse-itself)
-8.  [Troubleshooting](#8-troubleshooting)
+1.  [Local Deployment (Docker Compose)](#1-local-deployment-docker-compose)
+2.  [Production Deployment Strategy (Conceptual)](#2-production-deployment-strategy-conceptual)
+    *   [Prerequisites for Production](#prerequisites-for-production)
+    *   [Building and Pushing Docker Image](#building-and-pushing-docker-image)
+    *   [Kubernetes Deployment Example (Conceptual)](#kubernetes-deployment-example-conceptual)
+3.  [Configuration Management](#3-configuration-management)
+4.  [Monitoring and Logging](#4-monitoring-and-logging)
+5.  [Scalability](#5-scalability)
+6.  [Security Considerations](#6-security-considerations)
+7.  [Troubleshooting](#7-troubleshooting)
 
-## 1. Overview
+## 1. Local Deployment (Docker Compose)
 
-We will deploy PerformancePulse using Docker containers orchestrated by Docker Compose. This includes:
+This is ideal for development, testing, and demonstrating the application quickly.
 
-*   **Backend:** Node.js/Express application.
-*   **Frontend:** React application.
-*   **Database:** PostgreSQL.
-*   **Cache:** Redis.
-*   **Monitoring:** Prometheus and Grafana for monitoring PerformancePulse's own operational metrics.
-*   **Reverse Proxy (Optional but Recommended):** NGINX for SSL termination, load balancing, and serving static files.
+### Steps:
 
-## 2. Prerequisites
-
-*   A server (VM, cloud instance) with Docker and Docker Compose installed.
-*   Domain names configured to point to your server's IP address (e.g., `api.yourdomain.com` for backend, `app.yourdomain.com` for frontend).
-*   (Optional but Recommended) NGINX installed on the host or as a separate container.
-*   (Optional but Recommended) Certbot or a similar tool for SSL certificates.
-
-## 3. Environment Configuration
-
-It's crucial to properly configure environment variables for a production deployment.
-
-1.  **Backend (`backend/.env`):**
-    *   `NODE_ENV=production`
-    *   `PORT=5000` (or your desired internal port)
-    *   `DB_HOST=<YOUR_DB_HOST>` (e.g., `postgres` if running in same docker-compose network, or an external DB IP)
-    *   `DB_PORT=5432`
-    *   `DB_USER=<YOUR_DB_USER>`
-    *   `DB_PASSWORD=<YOUR_DB_PASSWORD>` (Strong password!)
-    *   `DB_DATABASE=<YOUR_DB_NAME>`
-    *   `JWT_SECRET=<YOUR_STRONG_JWT_SECRET>` (Generate a long, random string)
-    *   `JWT_EXPIRES_IN=1h`
-    *   `REDIS_HOST=<YOUR_REDIS_HOST>` (e.g., `redis` if running in same docker-compose network)
-    *   `REDIS_PORT=6379`
-    *   `LOG_LEVEL=info` (or `error`, `warn` for less verbosity)
-    *   `RATE_LIMIT_WINDOW_MS=60000`
-    *   `RATE_LIMIT_MAX_REQUESTS=100`
-
-2.  **Frontend (`frontend/.env`):**
-    *   `REACT_APP_BACKEND_URL=https://api.yourdomain.com/api/v1` (The public URL of your backend API)
-    *   `REACT_APP_ENVIRONMENT=production`
-
-3.  **`docker-compose.yml`:**
-    *   Review `docker-compose.yml` for network configurations, port mappings, and volume mounts.
-    *   Ensure your `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` in the `docker-compose.yml` (under `services.postgres.environment`) match the `DB_USER`, `DB_PASSWORD`, `DB_DATABASE` in `backend/.env`.
-    *   The Grafana admin password can be set with `GF_SECURITY_ADMIN_PASSWORD`.
-
-## 4. Deployment Steps
-
-### 4.1. Docker Compose Deployment
-
-1.  **Clone the repository on your server:**
+1.  **Ensure Docker is Installed**: Make sure Docker and Docker Compose are installed and running on your machine.
+2.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/your-username/performance-pulse.git
-    cd performance-pulse
+    git clone https://github.com/yourusername/appinsight.git
+    cd appinsight
     ```
-
-2.  **Create `.env` files:**
+3.  **Build and Run**: The `docker-compose.yml` file is configured to build the Spring Boot application image and run both the backend and a PostgreSQL database.
     ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    docker compose up --build -d
     ```
-    **Crucially, edit these `.env` files with your production-specific values as described in Section 3.**
-
-3.  **Build and run the containers:**
+    *   `--build`: Forces a rebuild of the application's Docker image. Omit this if you haven't changed the code and the image already exists.
+    *   `-d`: Runs the containers in detached mode (in the background).
+4.  **Verify Services**:
     ```bash
-    docker-compose -f docker-compose.yml up --build -d
+    docker compose ps
     ```
-    This command will:
-    *   Build optimized production Docker images for the backend and frontend.
-    *   Start PostgreSQL, Redis, Prometheus, and Grafana containers.
-    *   The `-d` flag runs the containers in detached mode.
-
-4.  **(Optional) Configure NGINX (if not using NGINX container):**
-    If you're using a host-level NGINX, you'll need to configure it to proxy requests to your Docker containers.
-
-    Example NGINX configuration for `api.yourdomain.com` (backend) and `app.yourdomain.com` (frontend):
-
-    ```nginx
-    # /etc/nginx/sites-available/performance-pulse.conf
-
-    server {
-        listen 80;
-        server_name api.yourdomain.com;
-        return 301 https://$host$request_uri;
-    }
-
-    server {
-        listen 443 ssl;
-        server_name api.yourdomain.com;
-
-        ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem; # Your SSL cert path
-        ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem; # Your SSL key path
-
-        location / {
-            proxy_pass http://localhost:5000; # Or internal Docker IP if NGINX is outside the Docker network
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-
-    server {
-        listen 80;
-        server_name app.yourdomain.com;
-        return 301 https://$host$request_uri;
-    }
-
-    server {
-        listen 443 ssl;
-        server_name app.yourdomain.com;
-
-        ssl_certificate /etc/letsencrypt/live/app.yourdomain.com/fullchain.pem; # Your SSL cert path
-        ssl_certificate_key /etc/letsencrypt/live/app.yourdomain.com/privkey.pem; # Your SSL key path
-
-        location / {
-            # Serve static files directly from the frontend container volume or a host path
-            # For simplicity, if NGINX is external, it would proxy to the frontend container's exposed port.
-            # Example:
-            proxy_pass http://localhost:3000; # Frontend container's exposed port
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-    ```
-    *   Enable the NGINX configuration: `sudo ln -s /etc/nginx/sites-available/performance-pulse.conf /etc/nginx/sites-enabled/`
-    *   Test NGINX configuration: `sudo nginx -t`
-    *   Reload NGINX: `sudo systemctl reload nginx`
-
-### 4.2. Database Migrations and Seeding
-
-When deploying with Docker Compose, the `backend` service's `command` in `docker-compose.yml` is set up to run migrations and then seeds automatically before starting the server. This happens on the *first* startup.
-
-If you need to run migrations manually later (e.g., after updating the backend code with new migrations), you can execute:
-
-```bash
-docker-compose exec backend npm run typeorm migration:run -d dist/database/data-source.js
-```
-*Note: For production, we build the TypeScript to JavaScript, so the data-source path changes from `src/...` to `dist/...`.*
-
-## 5. Post-Deployment Checks
-
-1.  **Verify container status:**
+    You should see `appinsight_db` and `appinsight_backend` containers running and healthy.
+5.  **Access Application**:
+    *   **Backend API**: `http://localhost:8080/api`
+    *   **Frontend UI**: `http://localhost:8080`
+    *   **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+6.  **Stop and Clean Up**:
     ```bash
-    docker-compose ps
+    docker compose down
+    # To remove volumes (database data), add -v
+    # docker compose down -v
     ```
-    All services should be `Up`.
 
-2.  **Check logs:**
+## 2. Production Deployment Strategy (Conceptual)
+
+For production, it is highly recommended to use a robust container orchestration platform like Kubernetes, or cloud-specific services (AWS ECS/EKS, Azure App Service/AKS, Google Cloud Run/GKE).
+
+### Prerequisites for Production
+
+*   **Cloud Provider Account**: AWS, Azure, GCP, etc.
+*   **Container Registry**: Docker Hub, AWS ECR, Azure Container Registry, GCP Container Registry to store your Docker images.
+*   **Kubernetes Cluster** (if using Kubernetes): Already provisioned and configured.
+*   **Persistent Storage**: For the PostgreSQL database, a managed database service (AWS RDS, Azure Database for PostgreSQL, GCP Cloud SQL) is preferred over running PostgreSQL in a container with persistent volumes in Kubernetes, due to complexity of stateful applications in K8s.
+*   **CI/CD Pipeline**: As described in `README.md` and `.github/workflows/main.yml`, to automate builds, tests, and deployments.
+*   **Domain Name & TLS/SSL Certificate**: For secure HTTPS communication.
+
+### Building and Pushing Docker Image
+
+Your CI/CD pipeline should automate this. Manually:
+
+1.  **Build the Docker image**:
     ```bash
-    docker-compose logs -f
+    docker build -t appinsight-backend:<version> .
+    # Example: docker build -t your-dockerhub-username/appinsight-backend:1.0.0 .
     ```
-    Look for errors or unexpected behavior in the backend and frontend logs.
+2.  **Tag the image**: (Optional, if not already tagged with build command)
+    ```bash
+    docker tag appinsight-backend:<version> <your-registry>/appinsight-backend:<version>
+    # Example: docker tag appinsight-backend:1.0.0 your-dockerhub-username/appinsight-backend:1.0.0
+    ```
+3.  **Log in to your container registry**:
+    ```bash
+    docker login <your-registry>
+    # Example: docker login docker.io
+    ```
+4.  **Push the image**:
+    ```bash
+    docker push <your-registry>/appinsight-backend:<version>
+    # Example: docker push your-dockerhub-username/appinsight-backend:1.0.0
+    ```
 
-3.  **Access the application:**
-    *   Navigate to your frontend URL (e.g., `https://app.yourdomain.com`).
-    *   Try registering a new user, creating a project, and adding a monitor.
-    *   Check if monitors are being checked and metrics are recorded.
+### Kubernetes Deployment Example (Conceptual)
 
-4.  **Access Grafana & Prometheus:**
-    *   If exposed via NGINX or direct port, verify Grafana (`https://grafana.yourdomain.com` or `http://your_server_ip:3001`) and Prometheus (`http://your_server_ip:9090`) are accessible.
-    *   Log into Grafana (default admin/admin, or your configured password), add Prometheus as a data source, and import/create dashboards to visualize PerformancePulse's own metrics.
+This provides a high-level idea. Actual YAMLs would be more detailed.
 
-## 6. Scaling
+1.  **Managed Database Service**: Provision a PostgreSQL instance (e.g., AWS RDS PostgreSQL) in your cloud provider.
+2.  **Kubernetes Secret for Database Credentials**:
+    ```yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: appinsight-db-secrets
+    type: Opaque
+    stringData:
+      DB_HOST: "your-rds-endpoint.aws.com"
+      DB_PORT: "5432"
+      DB_NAME: "appinsight_db"
+      DB_USER: "appinsight_user"
+      DB_PASSWORD: "your_strong_db_password"
+      JWT_SECRET: "your_very_long_jwt_secret_from_env"
+    ```
+3.  **Kubernetes Deployment for AppInsight Backend**:
+    ```yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: appinsight-backend
+      labels:
+        app: appinsight
+    spec:
+      replicas: 3 # Scale as needed
+      selector:
+        matchLabels:
+          app: appinsight
+      template:
+        metadata:
+          labels:
+            app: appinsight
+        spec:
+          containers:
+          - name: appinsight-backend
+            image: <your-registry>/appinsight-backend:<version> # e.g., your-dockerhub-username/appinsight-backend:1.0.0
+            ports:
+            - containerPort: 8080
+            envFrom: # Load DB credentials and JWT secret from the secret
+            - secretRef:
+                name: appinsight-db-secrets
+            env: # Other environment variables if needed
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            livenessProbe: # Check if the application is running
+              httpGet:
+                path: /actuator/health
+                port: 8080
+              initialDelaySeconds: 30
+              periodSeconds: 10
+            readinessProbe: # Check if the application is ready to serve traffic
+              httpGet:
+                path: /actuator/health
+                port: 8080
+              initialDelaySeconds: 60
+              periodSeconds: 15
+            resources: # Define resource limits and requests
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+          imagePullSecrets: # If using a private registry
+          - name: regcred
+    ```
+4.  **Kubernetes Service**:
+    ```yaml
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: appinsight-backend-service
+    spec:
+      selector:
+        app: appinsight
+      ports:
+        - protocol: TCP
+          port: 80
+          targetPort: 8080
+      type: ClusterIP # Or LoadBalancer for external access
+    ```
+5.  **Ingress (for external access with TLS)**:
+    ```yaml
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: appinsight-ingress
+      annotations:
+        kubernetes.io/ingress.class: nginx
+        cert-manager.io/cluster-issuer: letsencrypt-prod # Or your chosen issuer
+    spec:
+      tls:
+      - hosts:
+        - appinsight.yourdomain.com
+        secretName: appinsight-tls
+      rules:
+      - host: appinsight.yourdomain.com
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: appinsight-backend-service
+                port:
+                  number: 80
+    ```
 
-### 6.1. Backend
+## 3. Configuration Management
 
-The backend is stateless (besides its interaction with PostgreSQL and Redis). You can scale it horizontally by increasing the number of replicas:
+*   **Environment Variables**: `application.yml` uses placeholders (`${VAR_NAME}`) for sensitive information and environment-specific settings (DB credentials, JWT secret). These should be provided via environment variables in your deployment environment (e.g., Docker `ENV` in `Dockerfile`, `environment` in `docker-compose.yml`, Kubernetes `Secrets` and `ConfigMaps`).
+*   **Spring Profiles**: Use `SPRING_PROFILES_ACTIVE=prod` to activate production-specific configurations if you have them (e.g., in `application-prod.yml`).
 
-```bash
-docker-compose up --scale backend=3 -d
-```
-This will run 3 instances of your backend service. A load balancer (like NGINX or a cloud provider's load balancer) is essential to distribute traffic across these instances.
+## 4. Monitoring and Logging
 
-### 6.2. Frontend
+*   **Logs**: Configured with Logback to output to console (for container logs) and rolling files. In production, consolidate container logs using a centralized logging solution (e.g., ELK stack, Splunk, cloud-native logging services like CloudWatch, Azure Monitor, Stackdriver).
+*   **Metrics**: Spring Boot Actuator exposes Prometheus-compatible metrics (`/actuator/prometheus`).
+    *   Integrate with **Prometheus** for scraping these metrics.
+    *   Visualize metrics and create dashboards using **Grafana**.
+    *   Set up alerts based on key performance indicators (KPIs) like error rates, latency, CPU/memory usage.
+*   **Health Checks**: Actuator's `/actuator/health` endpoint is used for Kubernetes liveness and readiness probes to ensure containers are healthy and ready to receive traffic.
 
-The frontend is a static asset application. It's scaled by serving these assets efficiently, usually through a CDN or NGINX. If you proxy to multiple frontend containers, they would all serve the same static content.
+## 5. Scalability
 
-### 6.3. Database & Redis
+*   **Horizontal Scaling**: The stateless nature of the backend (JWT auth) allows for easy horizontal scaling by deploying multiple instances behind a load balancer (e.g., Kubernetes `replicas`).
+*   **Database Scaling**: As mentioned, for production, a managed PostgreSQL service can be scaled independently (read replicas, larger instance sizes).
+*   **Caching**: In-memory Caffeine cache improves performance for individual instances. For distributed caching across multiple instances, consider integrating with Redis or a similar distributed cache solution.
 
-For high-availability and extreme scaling, PostgreSQL and Redis would require dedicated setups (e.g., master-replica configurations, clustering). This `docker-compose.yml` provides single instances, which is suitable for many production scenarios but might need to be replaced with managed services (AWS RDS, ElastiCache, etc.) for large-scale deployments.
+## 6. Security Considerations
 
-## 7. Monitoring PerformancePulse Itself
+*   **HTTPS/TLS**: Crucial for encrypting all communication in production. Configure your load balancer or ingress controller to terminate TLS certificates.
+*   **Strong Secrets**: Use long, random, and securely stored values for `JWT_SECRET`, database passwords, etc. Avoid hardcoding sensitive information.
+*   **Network Policies**: In Kubernetes, implement network policies to restrict communication between pods to only what is necessary.
+*   **Firewall Rules**: Configure cloud provider firewalls to limit database access to only the application instances.
+*   **API Key Management**: Ensure API keys are treated as sensitive credentials and rotated regularly.
+*   **Least Privilege**: Run containers with the least necessary privileges.
 
-PerformancePulse exposes its own operational metrics via a Prometheus endpoint at `/metrics`.
+## 7. Troubleshooting
 
-1.  **Prometheus Integration:**
-    *   The `prometheus.yml` (mounted into the Prometheus container) should already be configured to scrape the `backend` service at `http://backend:9999/metrics`.
-    *   Verify this in Prometheus UI (`http://your_server_ip:9090/targets`).
-
-2.  **Grafana Dashboards:**
-    *   In Grafana (`http://your_server_ip:3001`), add Prometheus as a data source.
-    *   You can then create custom dashboards to visualize metrics like:
-        *   API request count/rate (`http_requests_total`)
-        *   API request duration (`http_request_duration_seconds_bucket`, `_sum`, `_count`)
-        *   Active Redis connections (`redis_connections`)
-        *   Database connection pool usage, etc.
-
-## 8. Troubleshooting
-
-*   **"Container exited unexpectedly":** Check `docker-compose logs <service_name>` for error messages.
-*   **"Database connection refused":** Verify `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` in `backend/.env` and ensure the PostgreSQL container is running. Check network connectivity between backend and PostgreSQL containers.
-*   **"Frontend not loading":** Check NGINX configuration (if used), ensure `REACT_APP_BACKEND_URL` in `frontend/.env` is correct. Check browser developer console for network errors.
-*   **"JWT_SECRET not set":** Ensure `JWT_SECRET` is defined in `backend/.env` with a strong value.
-*   **"Migrations failed":** Check backend container logs for TypeORM errors. Ensure database is accessible and clean if starting fresh.
-
-For further assistance, consult the specific service logs, `README.md`, or the `ARCHITECTURE.md` for design details.
-```
+*   **Check Container Logs**:
+    ```bash
+    docker compose logs appinsight_backend
+    kubectl logs -f <appinsight-backend-pod-name>
+    ```
+*   **Check Service Status**:
+    ```bash
+    docker compose ps
+    kubectl get pods -l app=appinsight
+    kubectl get services
+    kubectl get ingress
+    ```
+*   **Connectivity**:
+    *   Ensure database container/service is reachable from the application container.
+    *   Check firewall rules and security groups.
+*   **Configuration**: Double-check environment variables in the deployed environment match `application.yml` expectations.
+*   **Actuator Endpoints**: Use `/actuator/health`, `/actuator/info`, `/actuator/beans` to inspect the application's internal state.

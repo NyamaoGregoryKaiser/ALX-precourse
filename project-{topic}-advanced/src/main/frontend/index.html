@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AppInsight Monitoring</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #e9ecef; }
+        form label { display: block; margin-bottom: 5px; font-weight: bold; }
+        form input[type="text"], form input[type="password"], form input[type="email"], form textarea {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;
+        }
+        form button {
+            background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 16px;
+        }
+        form button:hover { background-color: #0056b3; }
+        #message { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
+        #message.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; display: block; }
+        #message.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; display: block; }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .data-table th, .data-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .data-table th { background-color: #007bff; color: white; }
+        .button-group button { margin-right: 5px; padding: 8px 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .button-group button:hover { background-color: #5a6268; }
+        .button-group button.delete { background-color: #dc3545; }
+        .button-group button.delete:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AppInsight Performance Monitoring</h1>
+        <div id="auth-section">
+            <h2>Register/Login</h2>
+            <form id="register-form">
+                <h3>Register</h3>
+                <label for="reg-username">Username:</label>
+                <input type="text" id="reg-username" required><br>
+                <label for="reg-password">Password:</label>
+                <input type="password" id="reg-password" required><br>
+                <label for="reg-email">Email:</label>
+                <input type="email" id="reg-email" required><br>
+                <button type="submit">Register</button>
+            </form>
+            <form id="login-form">
+                <h3>Login</h3>
+                <label for="username">Username:</label>
+                <input type="text" id="username" required><br>
+                <label for="password">Password:</label>
+                <input type="password" id="password" required><br>
+                <button type="submit">Login</button>
+            </form>
+            <button id="logout-button" style="display:none;">Logout</button>
+        </div>
+
+        <div id="app-section" style="display:none;">
+            <h2>Applications</h2>
+            <form id="create-app-form">
+                <h3>Create New Application</h3>
+                <label for="app-name">Name:</label>
+                <input type="text" id="app-name" required><br>
+                <label for="app-description">Description:</label>
+                <textarea id="app-description"></textarea><br>
+                <button type="submit">Create Application</button>
+            </form>
+            <h3>Existing Applications</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>API Key</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="app-list">
+                    <!-- Applications will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="metrics-section" style="display:none;">
+            <h2>Metrics for <span id="current-app-name"></span></h2>
+            <button onclick="goBackToApps()">Back to Applications</button>
+            <form id="create-metric-form">
+                <h3>Create New Metric</h3>
+                <label for="metric-name">Name:</label>
+                <input type="text" id="metric-name" required><br>
+                <label for="metric-description">Description:</label>
+                <textarea id="metric-description"></textarea><br>
+                <label for="metric-type">Type:</label>
+                <select id="metric-type" required>
+                    <option value="GAUGE">GAUGE</option>
+                    <option value="COUNTER">COUNTER</option>
+                    <option value="HISTOGRAM">HISTOGRAM</option>
+                    <option value="SUMMARY">SUMMARY</option>
+                </select><br>
+                <button type="submit">Create Metric</button>
+            </form>
+            <h3>Existing Metrics</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="metric-list">
+                    <!-- Metrics will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="metric-data-section" style="display:none;">
+            <h2>Metric Data for <span id="current-metric-name"></span></h2>
+            <button onclick="goBackToMetrics()">Back to Metrics</button>
+            <h3>Ingest Sample Metric Data (for selected metric)</h3>
+            <form id="ingest-data-form">
+                <label for="data-value">Value:</label>
+                <input type="number" id="data-value" step="0.01" required><br>
+                <label for="data-tags">Tags (e.g., region:us-east-1,env:prod):</label>
+                <input type="text" id="data-tags"><br>
+                <button type="submit">Ingest Data</button>
+            </form>
+            <h3>Historical Data (Last 24 Hours)</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Value</th>
+                        <th>Timestamp</th>
+                        <th>Tags</th>
+                    </tr>
+                </thead>
+                <tbody id="metric-data-list">
+                    <!-- Metric data will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="message"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

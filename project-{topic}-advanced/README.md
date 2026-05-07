@@ -1,521 +1,276 @@
-# DBOptiFlow: Database Optimization System
+# AppInsight: Production-Ready Performance Monitoring System
 
-DBOptiFlow is a comprehensive, production-ready system for monitoring, analyzing, and optimizing external database performance. It identifies bottlenecks and provides actionable recommendations to improve database efficiency.
+AppInsight is a robust, full-stack application designed to monitor the performance of various client applications. It allows for the definition of custom metrics, ingestion of time-series data, and retrieval for analysis. Built with Spring Boot, PostgreSQL, and a touch of modern web frontend, it emphasizes enterprise-grade features like security, scalability, and maintainability.
 
 ## Table of Contents
 
 1.  [Features](#features)
 2.  [Architecture](#architecture)
-3.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Setup (using Docker Compose)](#local-setup-using-docker-compose)
-    *   [Manual Setup (without Docker)](#manual-setup-without-docker)
-4.  [Usage](#usage)
-    *   [API Endpoints](#api-endpoints)
-    *   [Web UI](#web-ui)
-    *   [Celery Worker](#celery-worker)
-    *   [CLI Commands](#cli-commands)
-5.  [Testing](#testing)
-6.  [Deployment Guide](#deployment-guide)
-7.  [CI/CD Configuration](#cicd-configuration)
-8.  [Authentication and Authorization](#authentication-and-authorization)
-9.  [Logging and Monitoring](#logging-and-monitoring)
-10. [Error Handling](#error-handling)
-11. [Caching Layer](#caching-layer)
-12. [Rate Limiting](#rate-limiting)
-13. [Future Enhancements](#future-enhancements)
-14. [Contributing](#contributing)
-15. [License](#license)
+3.  [Technologies Used](#technologies-used)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup and Installation](#setup-and-installation)
+    *   [Local Development (Docker Compose)](#local-development-docker-compose)
+    *   [Manual Setup](#manual-setup)
+6.  [Running the Application](#running-the-application)
+7.  [API Endpoints](#api-endpoints)
+8.  [Authentication & Authorization](#authentication--authorization)
+9.  [Frontend Usage](#frontend-usage)
+10. [Testing](#testing)
+11. [CI/CD](#cicd)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ## 1. Features
 
-*   **Database Registration:** Securely register external PostgreSQL/MySQL databases for monitoring.
-*   **Metric Collection:** Periodically collect key performance metrics (slow queries, index usage, table statistics, configuration parameters).
-*   **Performance Analysis:** Advanced logic to identify common bottlenecks (missing indexes, inefficient queries, sub-optimal configurations).
-*   **Actionable Recommendations:** Generate SQL statements (e.g., `CREATE INDEX`, `ANALYZE TABLE`), configuration tuning suggestions, and query rewrite ideas.
-*   **Reporting:** Generate and view detailed optimization reports.
-*   **RESTful API:** Full CRUD operations for managing monitored databases, tasks, and reports.
-*   **User Management:** Secure user registration, login, and profile management.
-*   **Asynchronous Tasks:** Uses Celery for background processing of metric collection and analysis.
-*   **Web UI:** A user-friendly web interface for managing and visualizing optimization efforts.
-*   **Dockerized:** Easy setup and deployment using Docker and Docker Compose.
-*   **Comprehensive Testing:** Unit, integration, and API tests.
-*   **Robustness:** Implements logging, error handling, rate limiting, and caching.
+*   **Application Management**: CRUD operations for `MonitoredApplication` entities.
+*   **Metric Definition**: CRUD operations for `Metric` entities tied to applications.
+*   **Metric Data Ingestion**: Secure API for external systems to push `MetricData`.
+*   **Metric Data Retrieval**: Query historical `MetricData` by time range or paginated.
+*   **Authentication**: JWT-based authentication for API access.
+*   **Authorization**: Role-based access control (`ADMIN`, `USER`) using Spring Security's `@PreAuthorize`.
+*   **Logging**: Structured logging with Logback, configured for console and rolling file appenders.
+*   **Error Handling**: Centralized global exception handling with consistent error responses.
+*   **Caching**: In-memory caching with Caffeine for frequently accessed application/metric data.
+*   **Rate Limiting**: API rate limiting using Bucket4j to prevent abuse.
+*   **Database Migrations**: Flyway for managing database schema evolution.
+*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
+*   **Testing**: Comprehensive Unit, Integration, and API tests.
+*   **Frontend**: A simple HTML/JavaScript interface for basic interaction.
+*   **Monitoring**: Spring Boot Actuator endpoints for operational insights.
 
 ## 2. Architecture
 
-DBOptiFlow follows a modular, microservice-oriented (loosely coupled) architecture:
+AppInsight follows a standard N-tier architecture:
 
-```mermaid
-graph TD
-    A[User/Client] -->|Web UI| B[Flask Backend (DBOptiFlow App)]
-    A -->|REST API| B
-    B -->|Database Operations| C[PostgreSQL (DBOptiFlow System DB)]
-    B -->|Queue Tasks| D[Redis (Celery Broker)]
-    D -->|Process Tasks| E[Celery Worker]
-    E -->|Connects to| F[External Monitored Database]
-    F -->|Returns Metrics| E
-    E -->|Stores Results| C
+*   **Presentation Layer (Frontend)**: A basic static HTML/JS application served by the Spring Boot backend.
+*   **API Layer (Controllers)**: RESTful endpoints exposed by Spring Boot, handling request/response mapping and delegating to services.
+*   **Service Layer (Services)**: Contains the core business logic, orchestrates data access, applies validation, caching, and rate limiting.
+*   **Persistence Layer (Repositories)**: Spring Data JPA interfaces interacting with the PostgreSQL database.
+*   **Database Layer (PostgreSQL)**: Stores all application, metric, and metric data.
+*   **Security Layer**: Integrated Spring Security with JWT for authentication and authorization.
 
-    subgraph DBOptiFlow Core Services
-        B -- HTTP --> B1[API Layer]
-        B -- Call --> B2[Service Layer]
-        B -- Render --> B3[Frontend (Jinja2)]
-        B2 -- ORM --> C
-    end
+## 3. Technologies Used
 
-    subgraph External Database Interaction
-        E --> S1[DB Connector Service]
-        S1 --> S2[Metric Collector Service]
-        S2 --> S3[Analyzer Service]
-        S3 --> S4[Report Generator Service]
-        S4 --> C
-    end
-```
+*   **Backend**: Java 17, Spring Boot 3.2.x
+*   **Database**: PostgreSQL
+*   **ORM**: Spring Data JPA, Hibernate
+*   **Migrations**: Flyway
+*   **Authentication**: Spring Security, JWT (jjwt)
+*   **Caching**: Caffeine
+*   **Rate Limiting**: Bucket4j
+*   **Logging**: SLF4j, Logback
+*   **Build Tool**: Maven
+*   **Containerization**: Docker, Docker Compose
+*   **Testing**: JUnit 5, Mockito, Spring Boot Test, Testcontainers
+*   **Frontend**: HTML, CSS, JavaScript (minimal)
 
-*   **Flask Backend:** The core application, handling API requests, serving the UI, and orchestrating services.
-    *   **API Layer:** Defines RESTful endpoints for CRUD operations.
-    *   **Service Layer:** Contains the business logic for connecting to external databases, collecting metrics, analyzing data, and generating reports.
-    *   **Authentication & Authorization:** Secures API endpoints and UI access using JWT and session management.
-    *   **Extensions:** Integrates various Flask extensions (SQLAlchemy, Migrate, JWT, Cache, Limiter).
-*   **PostgreSQL (DBOptiFlow System DB):** Stores all system-related data, including user accounts, configurations of monitored databases, collected metrics, analysis results, and generated reports.
-*   **Redis (Celery Broker):** Acts as a message broker for Celery, facilitating communication between the Flask app and Celery workers.
-*   **Celery Worker:** A separate process responsible for executing long-running, asynchronous tasks such as:
-    *   Periodically collecting metrics from external databases.
-    *   Running complex analysis routines.
-    *   Generating comprehensive reports.
-*   **External Monitored Database:** The actual database instances (e.g., PostgreSQL, MySQL) that DBOptiFlow connects to for metric collection and analysis. DBOptiFlow *does not* modify these databases directly; it only reads metrics and provides recommendations.
+## 4. Prerequisites
 
-## 3. Setup and Installation
+*   Java Development Kit (JDK) 17 or higher
+*   Maven 3.x
+*   Docker and Docker Compose (recommended for easy setup)
+*   A text editor or IDE (e.g., IntelliJ IDEA, VS Code)
 
-### Prerequisites
+## 5. Setup and Installation
 
-*   **Docker** and **Docker Compose** (recommended for local setup)
-*   Alternatively, for manual setup:
-    *   Python 3.8+
-    *   PostgreSQL (running locally or accessible)
-    *   Redis (running locally or accessible)
-    *   `pip` (Python package installer)
+### Local Development (Docker Compose) - Recommended
 
-### Local Setup (using Docker Compose)
-
-This is the easiest way to get DBOptiFlow up and running.
+This is the quickest way to get the entire stack (PostgreSQL + Spring Boot app) running.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/dboptiflow.git
-    cd dboptiflow
+    git clone https://github.com/yourusername/appinsight.git
+    cd appinsight
     ```
 
-2.  **Create `.env` file:**
-    Copy the example environment file:
+2.  **Build the Docker image for the Spring Boot application:**
     ```bash
-    cp .env.example .env
+    docker build -t appinsight-backend .
     ```
-    Open `.env` and fill in the values. Ensure `SECRET_KEY` is a strong, random string. You can leave database and Redis defaults for local development.
+    (The `docker-compose.yml` also includes `build: .`, so `docker compose up` will build if the image doesn't exist, but it's good practice to build explicitly first if you change code.)
 
-3.  **Build and run Docker containers:**
+3.  **Start the services using Docker Compose:**
     ```bash
-    docker-compose up --build -d
+    docker compose up -d
     ```
-    This command will:
-    *   Build the `dboptiflow` Flask application image.
-    *   Start a PostgreSQL database container for DBOptiFlow's system data.
-    *   Start a Redis container (for Celery broker and cache).
-    *   Start the `dboptiflow` Flask application container.
-    *   Start the `celery_worker` container.
+    This will:
+    *   Start a PostgreSQL database container.
+    *   Apply Flyway database migrations.
+    *   Start the AppInsight Spring Boot backend application.
+    *   Mount a `logs` directory from your host into the container for easy log access.
 
-4.  **Run Migrations and Seed Data:**
-    Once containers are up, execute database migrations and seed the database with initial data (e.g., an admin user).
+4.  **Verify services are running:**
     ```bash
-    docker-compose exec app flask db upgrade
-    docker-compose exec app flask seed-db
+    docker compose ps
     ```
-    *(Note: `seed-db` will create an initial admin user with `username: admin`, `password: password`. Change this immediately in production!)*
+    You should see `appinsight_db` and `appinsight_backend` in a healthy state.
 
-5.  **Access the Application:**
-    *   **Web UI:** Open your browser and go to `http://localhost:5000`
-    *   **API Base URL:** `http://localhost:5000/api/v1`
+The backend application will be accessible at `http://localhost:8080`.
+The frontend `index.html` is served directly from the Spring Boot app at `http://localhost:8080`.
 
-### Manual Setup (without Docker)
-
-If you prefer to run the application directly on your host:
+### Manual Setup (without Docker Compose for backend)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/dboptiflow.git
-    cd dboptiflow
+    git clone https://github.com/yourusername/appinsight.git
+    cd appinsight
     ```
 
-2.  **Create a virtual environment and install dependencies:**
+2.  **Set up PostgreSQL Database:**
+    *   Install PostgreSQL (if not already installed).
+    *   Create a database: `appinsight_db`
+    *   Create a user: `appinsight_user` with password: `password`
+    *   Grant necessary privileges to the user on the database.
+    *   Alternatively, run *only* the PostgreSQL container from `docker-compose.yml`:
+        ```bash
+        docker compose up -d db
+        ```
+
+3.  **Configure `application.yml`:**
+    *   Update `src/main/resources/application.yml` with your PostgreSQL connection details if they differ from the defaults (`localhost:5432`, `appinsight_db`, `appinsight_user`, `password`).
+    *   Ensure `JWT_SECRET` is set in your environment variables or directly in `application.yml` for production (a very strong, long, random string).
+
+4.  **Run Flyway Migrations:**
+    *   Flyway migrations are automatically applied by Spring Boot on startup if `spring.flyway.enabled=true`.
+    *   If you encounter issues, ensure `hibernate.ddl-auto` is set to `none` in `application.yml`.
+
+5.  **Build the Spring Boot application:**
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    mvn clean install -DskipTests
     ```
 
-3.  **Set up Environment Variables:**
-    Copy `.env.example` to `.env` and configure your database connection string, Redis URL, and a `SECRET_KEY`.
-    Example `.env` (adjust for your setup):
-    ```
-    FLASK_APP=manage.py
-    FLASK_ENV=development
-    SECRET_KEY=your_super_secret_key_here
-    DATABASE_URL=postgresql://user:password@localhost:5432/dboptiflow_db
-    REDIS_URL=redis://localhost:6379/0
-    CELERY_BROKER_URL=redis://localhost:6379/0
-    CELERY_RESULT_BACKEND=redis://localhost:6379/0
-    # Add external DB credentials here for testing, e.g.
-    # EXTERNAL_DB_HOST=localhost
-    # EXTERNAL_DB_PORT=5432
-    # EXTERNAL_DB_USER=testuser
-    # EXTERNAL_DB_PASS=testpass
-    # EXTERNAL_DB_NAME=testdb
-    ```
-    You will need a PostgreSQL database instance running and accessible at `localhost:5432` (or wherever you configure it). Also, a Redis instance.
-
-4.  **Run Database Migrations and Seed Data:**
+6.  **Run the Spring Boot application:**
     ```bash
-    flask db upgrade
-    flask seed-db
+    java -jar target/appinsight-0.0.1-SNAPSHOT.jar
     ```
 
-5.  **Run the Flask Application:**
-    ```bash
-    flask run
-    ```
+## 6. Running the Application
 
-6.  **Run the Celery Worker (in a separate terminal):**
-    ```bash
-    celery -A app.tasks worker -l info
-    ```
+Once setup is complete:
 
-7.  **Access the Application:**
-    *   **Web UI:** Open your browser and go to `http://localhost:5000`
-    *   **API Base URL:** `http://localhost:5000/api/v1`
+*   **Backend API**: `http://localhost:8080/api`
+*   **Frontend UI**: `http://localhost:8080/index.html` (or simply `http://localhost:8080`)
+*   **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+*   **Spring Boot Actuator**: `http://localhost:8080/actuator`
 
-## 4. Usage
+## 7. API Endpoints
 
-### API Endpoints
+All API endpoints are prefixed with `/api`.
 
-The API is accessible at `/api/v1/`. All authenticated endpoints require a JWT token in the `Authorization: Bearer <token>` header.
+### Authentication
 
-**Authentication:**
+*   `POST /api/auth/register` - Register a new user.
+    *   Request Body: `{"username": "...", "password": "...", "email": "...", "roles": ["USER"]}`
+*   `POST /api/auth/login` - Authenticate and get a JWT token.
+    *   Request Body: `{"username": "...", "password": "..."}`
+    *   Response: `{"jwt": "..."}`
 
-*   `POST /api/v1/auth/register`: Register a new user.
-    *   Body: `{ "username": "...", "password": "..." }`
-*   `POST /api/v1/auth/login`: Log in and receive a JWT token.
-    *   Body: `{ "username": "...", "password": "..." }`
-*   `GET /api/v1/auth/me`: Get current user details (requires JWT).
+### Monitored Applications
 
-**Monitored Databases (`/api/v1/databases`):**
+*   `GET /api/applications` - Get all monitored applications. (Roles: ADMIN, USER)
+*   `GET /api/applications/{id}` - Get a single application by ID. (Roles: ADMIN, USER)
+*   `POST /api/applications` - Create a new application. (Role: ADMIN)
+    *   Request Body: `{"name": "...", "description": "..."}`
+*   `PUT /api/applications/{id}` - Update an existing application. (Role: ADMIN)
+    *   Request Body: `{"name": "...", "description": "..."}`
+*   `DELETE /api/applications/{id}` - Delete an application. (Role: ADMIN)
 
-*   `POST /api/v1/databases`: Add a new database to monitor.
-    *   Body: `{ "name": "...", "db_type": "postgresql", "host": "...", "port": ..., "username": "...", "password": "...", "database": "..." }`
-*   `GET /api/v1/databases`: List all monitored databases.
-*   `GET /api/v1/databases/<id>`: Get details of a specific monitored database.
-*   `PUT /api/v1/databases/<id>`: Update details of a monitored database.
-*   `DELETE /api/v1/databases/<id>`: Remove a monitored database.
+### Metrics
 
-**Optimization Tasks (`/api/v1/tasks`):**
+*   `GET /api/applications/{applicationId}/metrics` - Get all metrics for a specific application. (Roles: ADMIN, USER)
+*   `GET /api/applications/{applicationId}/metrics/{metricId}` - Get a single metric by ID. (Roles: ADMIN, USER)
+*   `POST /api/applications/{applicationId}/metrics` - Create a new metric for an application. (Role: ADMIN)
+    *   Request Body: `{"name": "...", "description": "...", "type": "GAUGE"}` (Type can be GAUGE, COUNTER, HISTOGRAM, SUMMARY)
+*   `PUT /api/applications/{applicationId}/metrics/{metricId}` - Update an existing metric. (Role: ADMIN)
+    *   Request Body: `{"name": "...", "description": "...", "type": "GAUGE"}`
+*   `DELETE /api/applications/{applicationId}/metrics/{metricId}` - Delete a metric. (Role: ADMIN)
 
-*   `POST /api/v1/tasks`: Create a new optimization task for a database.
-    *   Body: `{ "db_id": ..., "task_type": "metric_collection", "schedule": "every 5 minutes" }`
-    *   `task_type`: `metric_collection`, `analysis`
-    *   `schedule`: Cron string or interval (e.g., "1 hour", "daily", "0 0 * * *")
-*   `GET /api/v1/tasks`: List all optimization tasks.
-*   `GET /api/v1/tasks/<id>`: Get details of a specific task.
-*   `DELETE /api/v1/tasks/<id>`: Delete an optimization task.
-*   `POST /api/v1/tasks/<id>/run`: Manually trigger an optimization task (will run in background via Celery).
+### Metric Data
 
-**Reports (`/api/v1/reports`):**
+*   `POST /api/metric-data/ingest` - Ingest metric data points from an external application. (Requires `X-API-KEY` header)
+    *   Headers: `X-API-KEY: <application_api_key>`
+    *   Request Body: `[{"metricName": "...", "value": 123.45, "timestamp": "ISO_DATE_TIME", "tags": "..."}]`
+*   `GET /api/metric-data/{metricId}` - Get historical metric data for a specific metric within a time range. (Roles: ADMIN, USER)
+    *   Query Params: `startTime=ISO_DATE_TIME`, `endTime=ISO_DATE_TIME`
+*   `GET /api/metric-data/{metricId}/paginated` - Get paginated metric data. (Roles: ADMIN, USER)
+    *   Query Params: `page=0`, `size=100`
 
-*   `GET /api/v1/reports`: List all generated reports.
-*   `GET /api/v1/reports/<id>`: Get details of a specific report.
+For detailed API documentation, refer to the [API Documentation](#api-documentation) section.
 
-**Metrics (`/api/v1/metrics`):**
+## 8. Authentication & Authorization
 
-*   `GET /api/v1/metrics/database/<db_id>`: Get latest metrics for a specific monitored database.
-*   `GET /api/v1/metrics/database/<db_id>/history`: Get historical metrics for a specific monitored database.
-    *   Query params: `start_date`, `end_date`, `metric_type`
+*   **Login Credentials (default seed data):**
+    *   **Admin User:** `username: admin`, `password: adminpass`
+    *   **Regular User:** `username: user`, `password: userpass`
+*   **JWT Tokens:** After successful login, a JWT token is returned. This token must be included in the `Authorization` header of subsequent requests in the format `Bearer <YOUR_JWT_TOKEN>`.
+*   **Role-Based Access Control:**
+    *   **ADMIN**: Can perform all CRUD operations on Applications and Metrics, view all data.
+    *   **USER**: Can view Applications, Metrics, and Metric Data. Cannot create, update, or delete.
+    *   **MONITORING_AGENT**: (Currently not tied to JWT, uses API Key for data ingestion). Can only ingest data via the `X-API-KEY` header.
 
-### Web UI
+## 9. Frontend Usage
 
-Navigate to `http://localhost:5000`.
+The simple frontend (`index.html` and `script.js`) demonstrates basic interaction with the backend:
 
-1.  **Register/Login:** Create a new account or log in with the seeded admin user (`admin`/`password`).
-2.  **Dashboard:** View an overview of monitored databases and recent activities.
-3.  **Monitored Databases:**
-    *   Add a new database by providing connection details.
-    *   View, edit, or delete existing database configurations.
-    *   Trigger manual metric collection or analysis tasks.
-4.  **Reports:** Browse generated optimization reports, click to view details and recommendations.
+1.  Open `http://localhost:8080` in your browser.
+2.  **Register/Login**: Use the forms to register a new user or log in with the default `admin`/`adminpass` or `user`/`userpass`.
+3.  **Manage Applications**: After logging in, you can create new applications and view existing ones. Note their generated API Keys.
+4.  **Manage Metrics**: Click "View Metrics" for an application to define new metrics for it.
+5.  **Ingest & View Data**: For a specific metric, you can use the "Ingest Sample Metric Data" form (it uses the associated application's API Key) and view recent historical data.
 
-### Celery Worker
+This frontend is a minimal demonstration. For a production-grade UI, a dedicated frontend framework like React, Angular, or Vue.js would be used, consuming these APIs.
 
-The Celery worker runs in the background. It polls Redis for new tasks and executes the business logic for metric collection and analysis. It's automatically started with `docker-compose up`. If running manually, ensure you start it with:
+## 10. Testing
 
+The project includes various types of tests to ensure quality:
+
+*   **Unit Tests**: Located in `src/test/java/.../service` and `src/test/java/.../util`. These focus on individual components (e.g., business logic in services, utility functions like `JwtUtil`) in isolation using Mockito for dependencies. Target: 80%+ coverage.
+*   **Integration Tests**: Located in `src/test/java/.../repository` and `src/test/java/.../controller`.
+    *   **Repository Tests**: Use `@DataJpaTest` with `Testcontainers` (PostgreSQL) to verify database interactions.
+    *   **Controller Tests**: Use `@WebMvcTest` to test REST endpoints, including authentication and authorization flows, with `MockMvc`.
+*   **API Tests**: (Conceptual) A Postman collection or `curl` scripts would be used to test the full API endpoints from an external perspective.
+*   **Performance Tests**: (Conceptual) Using tools like JMeter or Gatling to simulate high load on the system, focusing on `POST /api/metric-data/ingest` and `GET /api/metric-data/{metricId}` endpoints.
+
+To run all tests:
 ```bash
-celery -A app.tasks worker -l info
+mvn clean test
 ```
-For scheduled tasks, you'd also run `celery -A app.tasks beat -l info` in another terminal, but currently scheduling logic is triggered via API/UI.
-
-### CLI Commands
-
-The Flask CLI (`flask`) provides utility commands:
-
-*   `flask db init`: Initialize migrations (first time setup).
-*   `flask db migrate -m "Initial migration"`: Create a new migration script.
-*   `flask db upgrade`: Apply pending migrations.
-*   `flask db downgrade`: Revert the last migration.
-*   `flask seed-db`: Populate the database with initial data (e.g., admin user).
-*   `flask run`: Run the Flask development server.
-
-## 5. Testing
-
-DBOptiFlow includes a comprehensive test suite using `pytest` to ensure code quality and functionality.
-
-To run tests:
-
-1.  **Ensure Docker containers are running (or manual setup is complete):**
-    ```bash
-    docker-compose up -d
-    ```
-2.  **Execute tests within the app container:**
-    ```bash
-    docker-compose exec app pytest
-    ```
-    Or, if running manually after `source venv/bin/activate`:
-    ```bash
-    pytest
-    ```
-
-**Test Coverage:**
-Tests aim for 80%+ coverage across unit, integration, and API levels.
-
-*   **Unit Tests (`tests/unit`):** Focus on individual functions, methods, and service logic in isolation. Mocks are used for external dependencies (database, external APIs).
-*   **Integration Tests (`tests/integration`):** Verify the interaction between different components, such as API endpoints with the database, or Celery tasks with the service layer.
-*   **API Tests (`tests/integration`):** Test the RESTful API endpoints, including authentication, request/response cycles, and data validation.
-*   **Performance Tests:** While a full-fledged load testing setup is beyond this single response, the framework provides a foundation. For performance testing, tools like `locust`, `JMeter`, or `k6` would be used against the deployed API endpoints to measure response times, throughput, and error rates under load. Monitoring tools (Prometheus, Grafana) would then track application and database performance.
-
-## 6. Deployment Guide
-
-The recommended deployment method is using Docker and Docker Compose (or Kubernetes in a production environment).
-
-1.  **Production `.env`:** Create a `.env` file for production with strong, random `SECRET_KEY`, production database credentials, secure Redis URL, and `FLASK_ENV=production`.
-    *   **Crucially**, ensure your `DATABASE_URL` points to a persistent, managed PostgreSQL instance, and `REDIS_URL` points to a secure, managed Redis instance.
-    *   Disable debugging (`FLASK_DEBUG=0`).
-
-2.  **Build Production Images:**
-    ```bash
-    docker-compose build --no-cache
-    ```
-
-3.  **Run Migrations:**
-    Before starting the application, ensure migrations are applied. This might be part of your CI/CD pipeline or a manual step.
-    ```bash
-    docker-compose run --rm app flask db upgrade
-    ```
-    If it's a fresh deploy, you might also want to `flask seed-db`.
-
-4.  **Start Services:**
-    ```bash
-    docker-compose up -d
-    ```
-    For production, you might want to use a process manager like `supervisor` or `systemd` to manage `celery_worker` and `celery_beat` processes outside of Docker Compose, or utilize a container orchestration platform like Kubernetes to manage all services.
-
-5.  **Reverse Proxy:** In a real production environment, place a reverse proxy (Nginx or Apache) in front of the Flask application to handle SSL/TLS termination, static file serving, load balancing, and potentially additional rate limiting or security features.
-
-6.  **Monitoring:** Integrate with external monitoring solutions (e.g., Prometheus + Grafana, Datadog) to monitor application logs, performance metrics, and system health.
-
-## 7. CI/CD Configuration
-
-A basic GitHub Actions workflow is provided as a placeholder in `.github/workflows/main.yml`.
-
-```yaml
-# .github/workflows/main.yml
-name: DBOptiFlow CI/CD
-
-on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
-      - develop
-
-jobs:
-  build_and_test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_DB: testdb
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-
-      - name: Wait for PostgreSQL and Redis to be ready
-        run: |
-          echo "Waiting for PostgreSQL..."
-          for i in `seq 1 10`; do
-            nc -z localhost 5432 && break
-            echo "PostgreSQL not ready yet, waiting..."
-            sleep 5
-          done
-          echo "Waiting for Redis..."
-          for i in `seq 1 10`; do
-            nc -z localhost 6379 && break
-            echo "Redis not ready yet, waiting..."
-            sleep 5
-          done
-
-      - name: Set up environment variables
-        run: |
-          echo "FLASK_APP=manage.py" >> $GITHUB_ENV
-          echo "FLASK_ENV=testing" >> $GITHUB_ENV
-          echo "SECRET_KEY=${{ secrets.SECRET_KEY || 'test-secret-key' }}" >> $GITHUB_ENV
-          echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5432/testdb" >> $GITHUB_ENV
-          echo "REDIS_URL=redis://localhost:6379/0" >> $GITHUB_ENV
-          echo "CELERY_BROKER_URL=redis://localhost:6379/0" >> $GITHUB_ENV
-          echo "CELERY_RESULT_BACKEND=redis://localhost:6379/0" >> $GITHUB_ENV
-
-      - name: Run Database Migrations
-        run: |
-          flask db upgrade
-
-      - name: Run Tests with Coverage
-        run: |
-          pytest --cov=app --cov-report=xml
-        env:
-          FLASK_ENV: testing
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }} # Not strictly necessary for basic coverage report
-
-  # Additional jobs for deployment could be added here, e.g.,
-  # deploy:
-  #   needs: build_and_test
-  #   if: github.ref == 'refs/heads/main'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Deploy to Production
-  #       run: |
-  #         echo "Deployment steps (e.g., push Docker images, update Kubernetes deployment)"
-  #         # Example: docker login ...
-  #         # Example: docker build -t myapp:latest .
-  #         # Example: docker push myapp:latest
-  #         # Example: kubectl apply -f kubernetes/deployment.yaml
+To generate a JaCoCo coverage report (usually run after `mvn install` to ensure code is built):
+```bash
+mvn jacoco:report
+# Report will be in target/site/jacoco/index.html
 ```
 
-This workflow automates:
-*   Checking out code.
-*   Setting up Python environment.
-*   Installing dependencies.
-*   Starting isolated PostgreSQL and Redis services for testing.
-*   Running database migrations for the test environment.
-*   Executing unit, integration, and API tests.
-*   Generating a coverage report.
+## 11. CI/CD
 
-For full CI/CD, you would extend this to:
-*   Build Docker images after successful tests.
-*   Push images to a container registry (e.g., Docker Hub, ECR).
-*   Deploy to staging/production environments (e.g., Kubernetes, EC2, Azure App Services).
+A basic GitHub Actions workflow (`.github/workflows/main.yml`) is provided:
 
-## 8. Authentication and Authorization
+*   **Triggers**: On `push` and `pull_request` to `main` branch.
+*   **Steps**:
+    1.  Checkout code.
+    2.  Set up JDK 17.
+    3.  Build the project with Maven (`mvn clean install`).
+    4.  Run unit and integration tests (`mvn test`).
+    5.  Generate JaCoCo test coverage report.
+    6.  Build a Docker image for the application.
+    7.  (On `main` branch push): Log in to Docker Hub and push the image.
+    8.  (On `main` branch push): Placeholder for deployment to a staging/production environment.
 
-*   **API Authentication:** Uses **JWT (JSON Web Tokens)** via `Flask-JWT-Extended`.
-    *   Upon successful login, the API returns an access token.
-    *   This token must be included in subsequent requests in the `Authorization: Bearer <token>` header.
-    *   Routes are protected using the `@jwt_required()` decorator.
-*   **Web UI Authentication:** Uses standard **Flask Sessions** (`session['user_id']`).
-    *   Login through the UI creates a session.
-    *   Routes are protected using a custom `@login_required` decorator.
-*   **Authorization:** Currently, a simple check for `user.is_admin` could be added, but for this project, all authenticated users have access to all DBOptiFlow features. More granular role-based access control (RBAC) could be implemented by adding roles to the `User` model and checking them in decorators.
+**Note**: For production CI/CD, you would replace the deployment placeholder with actual deployment steps (e.g., Kubernetes deployment with Helm, cloud provider deployment tools, blue/green deployments, etc.) and use secure secrets management.
 
-## 9. Logging and Monitoring
+## 12. Contributing
 
-*   **Logging:** Python's standard `logging` module is used throughout the application.
-    *   Logs are configured to output to `stdout` by default, making them easily viewable in Docker logs (`docker-compose logs app`).
-    *   Different log levels (INFO, WARNING, ERROR) are used for various events.
-    *   Custom log formats can be configured in `config.py`.
-*   **Monitoring:**
-    *   For the DBOptiFlow system itself, integrate with solutions like Prometheus + Grafana to collect metrics on API response times, error rates, Celery task queue depth, and database performance of DBOptiFlow's own PostgreSQL instance.
-    *   The core purpose of DBOptiFlow is to *monitor external databases*. The collected metrics are stored in DBOptiFlow's database and can be visualized via its UI or API.
+Contributions are welcome! Please follow these steps:
 
-## 10. Error Handling
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write comprehensive tests for your changes.
+5.  Ensure all tests pass and code coverage is maintained.
+6.  Commit your changes (`git commit -m 'feat: Add new feature X'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
 
-*   **Custom Exceptions:** `app.utils.errors.py` defines custom exception classes (e.g., `APIError`).
-*   **Global Error Handlers:** Flask's `app.register_error_handler` is used in `app/__init__.py` to catch specific HTTP errors (404, 500) and custom `APIError` exceptions.
-*   **Consistent API Responses:** Error responses are formatted as JSON, providing a `message` and an `error_code` for client-side handling.
-*   **Logging Errors:** All caught exceptions are logged with relevant details.
+## 13. License
 
-## 11. Caching Layer
-
-*   **Flask-Caching:** Used for a simple, in-memory (or Redis-backed) caching layer.
-*   **Usage:** The `@cache.cached()` decorator from `app.extensions.py` can be applied to API endpoints or service methods to cache their results, reducing redundant computations or database queries.
-    *   Example: `GET /api/v1/reports` could be cached for a short period.
-*   **Configuration:** Configured in `app/config.py` to use Redis as the cache backend when available, falling back to simple in-memory cache.
-
-## 12. Rate Limiting
-
-*   **Flask-Limiter:** Integrated to protect API endpoints from abuse.
-*   **Configuration:** Defined in `app/extensions.py` and applied to API blueprints.
-*   **Default Limits:** A default rate limit (e.g., "200 per day", "50 per hour") can be applied globally or to specific routes.
-*   **Example:** Rate limit for authentication endpoints to prevent brute-force attacks.
-
-## 13. Future Enhancements
-
-*   **Support for more database types:** Expand `db_connector` and `metric_collector` to support SQL Server, Oracle, MongoDB, etc.
-*   **Advanced Analysis Algorithms:** Integrate machine learning for anomaly detection in metrics, predictive analytics for resource needs.
-*   **Automated Remediation (Opt-in):** Allow users to approve and automatically execute recommended SQL statements on target databases (with extreme caution and proper authorization).
-*   **Interactive Query Builder/Optimizer:** A UI to input queries and get real-time optimization suggestions.
-*   **Enhanced UI/Dashboard:** Richer visualizations, interactive graphs (using libraries like D3.js, Chart.js, or React/Vue frontend).
-*   **Notification System:** Email, Slack, PagerDuty integration for critical alerts and new report availability.
-*   **Role-Based Access Control (RBAC):** More granular permissions for different user roles.
-*   **Multi-tenancy:** Isolate data and configurations for different organizations.
-*   **Background task scheduling UI:** A way to manage Celery Beat schedules via the web interface.
-
-## 14. Contributing
-
-Contributions are welcome! Please fork the repository, create a feature branch, and submit a pull request.
-
-## 15. License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details (not included in this response, but implied).
