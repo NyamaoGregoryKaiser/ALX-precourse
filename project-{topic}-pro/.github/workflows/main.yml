@@ -1,4 +1,5 @@
-name: ALXPay CI/CD Pipeline
+```yaml
+name: Java Spring Boot CI/CD
 
 on:
   push:
@@ -11,137 +12,107 @@ on:
       - develop
 
 jobs:
-  build-and-test-backend:
-    name: Build & Test Backend
+  build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Build with Maven
+      run: mvn clean install -B
+
+    - name: Run JaCoCo report
+      run: mvn jacoco:report
+
+    - name: Upload JaCoCo report to Codecov (Optional)
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # Required for private repos
+        fail_ci_if_error: true # Recommended to fail CI if Codecov upload fails
+        files: target/site/jacoco/jacoco.xml # Path to JaCoCo XML report
+        verbose: true # Option for more debug output
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: spring-boot-app
+        path: target/*.jar
+
+  test-integration-docker:
+    needs: build
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './backend/package-lock.json'
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Copy .env.example to .env for tests
-        run: cp .env.example .env
-
-      - name: Start PostgreSQL and Redis for integration tests
-        run: |
-          docker run --name test-postgres -e POSTGRES_DB=alxpay_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16-alpine
-          docker run --name test-redis -p 6379:6379 -d redis:7-alpine
-          sleep 10 # Give services time to start
-          docker exec test-postgres psql -U postgres -d alxpay_test -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
-
-      - name: Run Backend Tests
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: alxpay_test
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test_jwt_secret # Use a test secret for CI
-          HASH_SALT_ROUNDS: 5 # Faster hashing for tests
-          WEBHOOK_SECRET: test_webhook_secret
-        run: npm test
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage-report
-          path: backend/coverage
-
-  build-frontend:
-    name: Build Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: './frontend/package-lock.json'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Frontend
-        env:
-          # Use a placeholder API URL for build, or actual production one if deploying directly
-          REACT_APP_API_BASE_URL: /api
-        run: npm run build
-
-      - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/build
-
-  # This job would be for deployment to a production server (e.g., via SSH/Docker)
-  # Needs secrets configured in GitHub repository (e.g., SSH_USER, SSH_HOST, SSH_KEY)
-  deploy:
-    name: Deploy to Production
-    if: github.ref == 'refs/heads/main' # Only deploy from main branch
-    runs-on: ubuntu-latest
-    needs: [build-and-test-backend, build-frontend] # Ensure tests pass and builds succeed
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download backend-coverage-report
+      - name: Restore build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: backend-coverage-report
-          path: backend/coverage
+          name: spring-boot-app
+          path: target/
 
-      - name: Download frontend-build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/build
+      - name: Build Docker images for integration tests
+        run: docker-compose -f docker-compose.test.yml build # Use a separate compose file for tests if needed
 
-      - name: Deploy with SSH and Docker Compose
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd alxpay-system
-            git pull origin main
-            # Copy the built frontend artifacts from the CI workspace to the server
-            rm -rf frontend/build # Clear existing build
-            cp -R ${{ github.workspace }}/frontend/build frontend/
-            # Copy backend dist and node_modules (if not using multi-stage build)
-            # This is simpler if Dockerfile build copies everything needed
-            
-            # Ensure production .env files are in place on the server
-            # Use environment variables for sensitive data, or a secure file copy
-            
-            docker-compose pull # Pull latest images if any upstream changes
-            docker-compose up -d --build --remove-orphans # Recreate services with new images
-            docker-compose exec backend npm run typeorm migration:run # Run migrations
-            # Optional: Restart nginx if it's external to ensure it picks up new configs (if any)
-            sudo systemctl reload nginx
-```
----
+      - name: Run integration tests with Testcontainers
+        # Assuming your Spring Boot tests with @Testcontainers can run against
+        # a local Postgres instance (or Testcontainers can launch it).
+        # For simplicity, if @Testcontainers is configured to spin up postgres
+        # for each test, mvn test is sufficient.
+        # If running against a pre-existing docker-compose setup, it's more complex.
+        run: mvn test -P integration-test # Activate a profile that runs integration tests
+
+  deploy-docker:
+    needs: build # Or test-integration-docker if you want to ensure tests pass before deployment
+    if: github.ref == 'refs/heads/main' # Only deploy from the main branch
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/event-management-backend:latest
+          ${{ secrets.DOCKER_USERNAME }}/event-management-backend:${{ github.sha }}
+
+    - name: Deploy to Server (Example: SSH and restart service)
+      # This is a placeholder. Real deployment varies greatly (Kubernetes, AWS ECS, custom server).
+      # For a simple server, you might SSH in and run 'docker-compose pull && docker-compose up -d'.
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USER }}
+        key: ${{ secrets.DEPLOY_SSH_KEY }}
+        script: |
+          cd /path/to/your/app/on/server
+          docker-compose pull event_management_app
+          docker-compose up -d --no-deps event_management_app # Restart only the app service
+          docker image prune -f # Clean up old images
 ```
