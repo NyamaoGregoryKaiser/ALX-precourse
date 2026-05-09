@@ -1,40 +1,66 @@
 ```dockerfile
-# Dockerfile
+# Stage 1: Build C++ application
+FROM gcc:11.4.0 AS builder
 
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
-
-# Set the working directory in the container
-WORKDIR /app
-
-# Install system dependencies required for psycopg2 and other packages
-# psycopg2-binary requires libpq-dev
-# Gunicorn requires gcc
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
+    cmake \
     libpq-dev \
-    build-essential \
+    libpistache-dev \
+    libspdlog-dev \
+    libnlohmann-json-dev \
+    g++ \
+    git \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Install jwt-cpp (manual build as it might not be in apt-dev for all GCC versions)
+# Alternatively, use vcpkg or vendoring for better dependency management
+RUN git clone https://github.com/Thalhammer/jwt-cpp.git /opt/jwt-cpp && \
+    cd /opt/jwt-cpp && \
+    mkdir build && cd build && \
+    cmake .. && make && make install
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
-# Copy the entire application code into the container
-COPY . .
+# Copy source code and CMakeLists
+COPY CMakeLists.txt .
+COPY src src/
+COPY tests tests/
+COPY scripts scripts/
+COPY config.json .
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Build the application
+RUN cmake . && \
+    make -j$(nproc)
 
-# Set environment variables for Gunicorn and Flask
-ENV FLASK_APP=manage.py
-ENV FLASK_RUN_HOST=0.0.0.0
+# Stage 2: Create a smaller runtime image
+FROM debian:bullseye-slim
 
-# Command to run the application using Gunicorn (production server)
-# Gunicorn with 4 workers and bind to all interfaces on port 5000
-# --timeout 120 (seconds) for potentially long running requests (e.g. initial metric collection)
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "app:create_app()"]
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    libssl1.1 \
+    libspdlog1 \
+    libstdc++6 \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the built executable from the builder stage
+COPY --from=builder /app/visuflow_server /usr/local/bin/visuflow_server
+COPY --from=builder /app/config.json /app/config.json
+COPY --from=builder /app/scripts /app/scripts
+COPY --from=builder /app/docs /app/docs
+
+# Create a directory for logs
+RUN mkdir -p /var/log/visuflow && \
+    chmod -R 777 /var/log/visuflow # For simplicity, usually a specific user/group would own this
+
+WORKDIR /app
+
+# Expose the API port
+EXPOSE 9080
+
+# Command to run the API server
+CMD ["/usr/local/bin/visuflow_server"]
 ```

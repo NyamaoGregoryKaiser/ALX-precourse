@@ -1,0 +1,25 @@
+```json
+{
+  "api_port": 9080,
+  "api_threads": 8,
+  "api_base_url": "http://localhost:9080",
+
+  "log_level": "debug",
+  "log_file": "visuflow.log",
+
+  "db_host": "visuflow_db",
+  "db_port": "5432",
+  "db_name": "visuflow_db",
+  "db_user": "visuflow_user",
+  "db_password": "password",
+
+  "jwt_secret": "super_strong_secret_key_alx_se_project_visuflow",
+  "jwt_expiration_seconds": 3600,
+
+  "rate_limit_capacity": 100,
+  "rate_limit_refill_rate": 10,
+  "rate_limit_refill_interval_ms": 1000,
+
+  "cache_default_ttl_seconds": 300
+}
+```

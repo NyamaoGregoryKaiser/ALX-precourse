@@ -1,100 +1,53 @@
 ```yaml
-# docker-compose.yml
 version: '3.8'
 
 services:
-  dpa_db:
-    image: postgres:15-alpine
-    container_name: dpa_db
-    restart: unless-stopped
+  visuflow_db:
+    image: postgres:13
+    container_name: visuflow_db
+    restart: always
     environment:
-      POSTGRES_DB: dpa_db
-      POSTGRES_USER: dpa_user
-      POSTGRES_PASSWORD: dpa_password
-      # For testing database
-      POSTGRES_MULTIPLE_DATABASES: "dpa_test_db" # If using a specialized image that supports this
-    volumes:
-      - dpa_db_data:/var/lib/postgresql/data
-      # To run pg_stat_statements (requires adding to postgresql.conf and restarting)
-      # - ./dpa_db_init:/docker-entrypoint-initdb.d # For custom init scripts, e.g., enabling extensions
+      POSTGRES_DB: visuflow_db
+      POSTGRES_USER: visuflow_user
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
+    volumes:
+      - visuflow_db_data:/var/lib/postgresql/data
+      # Mount seed script to run on first container start (if DB is empty)
+      - ./scripts/db/seed.sh:/docker-entrypoint-initdb.d/seed.sh
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dpa_user -d dpa_db"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U visuflow_user -d visuflow_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  dpa_redis:
-    image: redis:7-alpine
-    container_name: dpa_redis
-    restart: unless-stopped
+  visuflow_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: visuflow_api
+    restart: always
     ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  dpa_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dpa_app
-    restart: unless-stopped
-    env_file:
-      - .env # Ensure your .env file is properly configured
-    ports:
-      - "5000:5000"
+      - "9080:9080"
+    volumes:
+      - ./config.json:/app/config.json # Mount config for easy changes without rebuild
+      - ./scripts:/app/scripts         # For migration scripts
+      - ./logs:/var/log/visuflow       # Persist logs outside container
+    environment:
+      # Pass database connection details as environment variables (can override config.json)
+      DB_HOST: visuflow_db
+      DB_PORT: 5432
+      DB_NAME: visuflow_db
+      DB_USER: visuflow_user
+      DB_PASSWORD: password
+      # Other variables (e.g., JWT_SECRET) can be passed here
     depends_on:
-      dpa_db:
+      visuflow_db:
         condition: service_healthy
-      dpa_redis:
-        condition: service_healthy
-    command: gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 "app:create_app()" # Explicit command
-    # For local development, you might want to mount volumes for live reloading
-    # volumes:
-    #   - .:/app
-
-  dpa_celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dpa_celery_worker
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      dpa_db:
-        condition: service_healthy
-      dpa_redis:
-        condition: service_healthy
-      dpa_app:
-        condition: service_started
-    command: celery -A app.core.celery_app.celery_app worker --loglevel=info # -P gevent or -P solo for debug
-    # volumes:
-    #   - .:/app
-
-  dpa_celery_beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dpa_celery_beat
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      dpa_db:
-        condition: service_healthy
-      dpa_redis:
-        condition: service_healthy
-      dpa_app:
-        condition: service_started
-    command: celery -A app.core.celery_app.celery_app beat --loglevel=info --scheduler=flask_sqlalchemy.SQLAlchemyScheduler
-    # volumes:
-    #   - .:/app
+    command: sh -c "echo 'Waiting for DB to be fully ready...' && sleep 10 && /usr/local/bin/visuflow_server"
 
 volumes:
-  dpa_db_data:
+  visuflow_db_data:
+
 ```

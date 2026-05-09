@@ -1,0 +1,56 @@
+graph TD
+    User(User via Desktop App/Web UI)
+    DesktopApp[VisuFlow Desktop Application (C++ / Qt-conceptual)]
+    WebServer[VisuFlow Web Server (Conceptual, could be C++ or another language)]
+    VisuFlowAPI[VisuFlow API Server (C++)]
+    AuthM[Authentication/Authorization Middleware]
+    RateLimitM[Rate Limiting Middleware]
+    CacheM[Caching Layer]
+    LogM[Logging & Error Handling]
+    DataProc[Data Processing Module]
+    VizEngine[Visualization Engine]
+    DataSourceMgr[Data Source Manager]
+    DB[PostgreSQL Database]
+    ExternalDS[External Data Sources (CSV, SQL DBs, APIs)]
+
+    User --> DesktopApp
+    User --> WebServer
+    DesktopApp --> VisuFlowAPI
+    WebServer --> VisuFlowAPI
+
+    VisuFlowAPI --> AuthM
+    AuthM --> RateLimitM
+    RateLimitM --> CacheM
+    CacheM --> LogM
+    LogM --> DataProc
+    LogM --> DataSourceMgr
+    LogM --> VizEngine
+
+    DataProc --> VizEngine
+    DataProc --> DataSourceMgr
+    DataSourceMgr --> DB
+    DataSourceMgr --> ExternalDS
+
+    DB --> VisuFlowAPI
+    DB --> AuthM
+
+    subgraph Core Application (C++)
+        VisuFlowAPI
+        AuthM
+        RateLimitM
+        CacheM
+        LogM
+        DataProc
+        VizEngine
+        DataSourceMgr
+        DesktopApp
+    end
+
+    subgraph Database Layer
+        DB
+    end
+
+    subgraph External Systems
+        ExternalDS
+        WebServer
+    end

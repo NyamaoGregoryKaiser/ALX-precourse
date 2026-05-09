@@ -1,87 +1,97 @@
 ```cpp
+#include "util/Logger.h"
+#include "api/ApiServer.h"
+#include "data/db/Database.h"
+#include "data/db/migrations/MigrationManager.h"
+#include "core/config/ConfigManager.h"
+
 #include <iostream>
+#include <memory>
 #include <string>
-#include <cstdlib> // For getenv
-#include <csignal> // For signal handling
 
-#include "common/Logger.hpp"
-#include "common/Exceptions.hpp"
-#include "config/Config.hpp"
-#include "database/DBManager.hpp"
-#include "api/APIServer.hpp"
+// A simple mock for a GUI application, demonstrating how it would
+// interact with the API or data processing logic directly.
+// In a real scenario, this would be a full-fledged Qt/ImGui app.
+void start_gui_application() {
+    // This is highly conceptual. A real GUI would use a GUI framework (e.g., Qt).
+    // It would instantiate GUI elements and connect signals/slots to business logic
+    // or make API calls to the local/remote VisuFlowAPI server.
+    VisuFlow::GUI::MainWindow mainWindow; // Conceptual main window
+    // mainWindow.show(); // Show the main window (if using Qt)
+    // Run GUI event loop (e.g., QApplication::exec() for Qt)
+    VisuFlow::Util::Logger::log(spdlog::level::info, "GUI application started (conceptual).");
 
-// Global pointer to the API server to allow signal handling
-std::unique_ptr<MLToolkit::API::APIServer> g_api_server;
+    // Example: GUI asks for data for a dashboard
+    // This could either call local DataProcessor/DataSourceManager directly
+    // or make an HTTP request to the ApiServer.
+    // For this example, let's assume it calls the local API.
+    std::string dashboardId = "dashboard_123";
+    std::string token = "mock_jwt_token"; // Obtained from login
 
-// Signal handler for graceful shutdown
-void signal_handler(int signal) {
-    if (signal == SIGINT || signal == SIGTERM) {
-        LOG_WARN("Shutdown signal ({}) received. Shutting down server...", signal);
-        if (g_api_server) {
-            g_api_server->stop();
-        }
-        MLToolkit::Database::DBManager::get_instance().disconnect();
-        exit(0);
-    }
+    // Conceptual API call from GUI
+    // VisuFlow::API::Client apiClient("http://localhost:9080");
+    // auto data = apiClient.fetchDashboardData(dashboardId, token);
+    // mainWindow.renderDashboard(data); // Render data in GUI
+
+    VisuFlow::Util::Logger::log(spdlog::level::info, "GUI requested dashboard data.");
 }
 
 int main(int argc, char* argv[]) {
-    // 1. Initialize Logger
-    MLToolkit::Common::Logger::init("ml_toolkit.log", spdlog::level::info);
-    LOG_INFO("ML-Toolkit Server starting...");
+    // 1. Initialize Configuration
+    VisuFlow::Core::Config::ConfigManager::loadConfig("config.json");
+    auto& config = VisuFlow::Core::Config::ConfigManager::getInstance();
 
-    // 2. Load Configuration
+    // 2. Initialize Logger
+    VisuFlow::Util::Logger::init(config.getString("log_level", "info"), config.getString("log_file", "visuflow.log"));
+    VisuFlow::Util::Logger::log(spdlog::level::info, "VisuFlow Analytics Platform starting...");
+
+    // 3. Initialize Database
     try {
-        MLToolkit::Config::Config::get_instance().load("config/default.conf");
-        // Adjust log level if specified in config or env
-        std::string log_level_str = MLToolkit::Config::Config::get_instance().get_string("LOG_LEVEL", "info");
-        spdlog::level::level_enum log_level;
-        if (log_level_str == "trace") log_level = spdlog::level::trace;
-        else if (log_level_str == "debug") log_level = spdlog::level::debug;
-        else if (log_level_str == "warn") log_level = spdlog::level::warn;
-        else if (log_level_str == "error") log_level = spdlog::level::err;
-        else if (log_level_str == "critical") log_level = spdlog::level::critical;
-        else log_level = spdlog::level::info; // Default
-        spdlog::set_level(log_level);
-        LOG_INFO("Current effective log level: {}", spdlog::level::to_string_view(log_level));
-    } catch (const MLToolkit::Common::Config::ConfigException& e) {
-        LOG_CRITICAL("Configuration error: {}", e.what());
-        return 1;
-    }
+        VisuFlow::Data::DB::Database::init(
+            config.getString("db_host", "localhost"),
+            config.getString("db_port", "5432"),
+            config.getString("db_name", "visuflow_db"),
+            config.getString("db_user", "visuflow_user"),
+            config.getString("db_password", "password")
+        );
+        VisuFlow::Util::Logger::log(spdlog::level::info, "Database connection established.");
 
-    // 3. Connect to Database
-    try {
-        std::string db_host = MLToolkit::Config::Config::get_instance().get_string("DB_HOST", "localhost");
-        int db_port = MLToolkit::Config::Config::get_instance().get_int("DB_PORT", 5432);
-        std::string db_name = MLToolkit::Config::Config::get_instance().get_string("DB_NAME", "ml_toolkit_db");
-        std::string db_user = MLToolkit::Config::Config::get_instance().get_string("DB_USER", "ml_user");
-        std::string db_password = MLToolkit::Config::Config::get_instance().get_string("DB_PASSWORD", "ml_password");
-
-        std::string conn_str = "host=" + db_host + " port=" + std::to_string(db_port) +
-                               " dbname=" + db_name + " user=" + db_user + " password=" + db_password;
-        
-        MLToolkit::Database::DBManager::get_instance().connect(conn_str);
-    } catch (const MLToolkit::Common::DatabaseException& e) {
-        LOG_CRITICAL("Failed to connect to database: {}", e.what());
-        return 1;
-    }
-
-    // 4. Set up signal handlers for graceful shutdown
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
-
-    // 5. Start API Server
-    try {
-        int api_port = MLToolkit::Config::Config::get_instance().get_int("API_PORT", 8080);
-        g_api_server = std::make_unique<MLToolkit::API::APIServer>();
-        g_api_server->run(api_port);
+        // 4. Run Migrations
+        VisuFlow::Data::DB::MigrationManager migrator("scripts/db/migrations");
+        migrator.runMigrations();
+        VisuFlow::Util::Logger::log(spdlog::level::info, "Database migrations applied successfully.");
     } catch (const std::exception& e) {
-        LOG_CRITICAL("API Server encountered a critical error: {}", e.what());
-        MLToolkit::Database::DBManager::get_instance().disconnect();
+        VisuFlow::Util::Logger::log(spdlog::level::critical, "Database initialization failed: {}", e.what());
         return 1;
     }
 
-    LOG_INFO("ML-Toolkit Server gracefully stopped.");
+    // 5. Start API Server in a separate thread/process
+    unsigned int port = config.getUint("api_port", 9080);
+    VisuFlow::API::ApiServer apiServer(port);
+    try {
+        apiServer.start();
+        VisuFlow::Util::Logger::log(spdlog::level::info, "API Server listening on port {}.", port);
+
+        // Optionally, start a conceptual GUI application (e.g., for desktop mode)
+        // start_gui_application(); // Uncomment to run conceptual GUI
+
+        // Keep main thread alive for API server
+        // In a real Pistache/Boost.Beast server, there might be an explicit wait call.
+        // For simplicity here, we'll just log and let it run (as it's often daemonized).
+        // Or for a blocking server, you'd have a server.serve() or similar.
+        // For Pistache, this would typically involve an `httpEndpoint->serveThreaded();`
+        // or `httpEndpoint->serve();` and then waiting.
+        std::cout << "Press Enter to stop the server..." << std::endl;
+        std::cin.ignore(); // Block indefinitely until user input
+        apiServer.stop();
+        VisuFlow::Util::Logger::log(spdlog::level::info, "API Server stopped.");
+
+    } catch (const std::exception& e) {
+        VisuFlow::Util::Logger::log(spdlog::level::critical, "API Server failed to start: {}", e.what());
+        return 1;
+    }
+
+    VisuFlow::Util::Logger::log(spdlog::level::info, "VisuFlow Analytics Platform shutting down.");
     return 0;
 }
 ```
