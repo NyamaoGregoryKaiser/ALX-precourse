@@ -1,5 +1,10 @@
 from pydantic import BaseModel
 
-class Message(BaseModel):
-    message: str
+
+class Msg(BaseModel):
+    msg: str
+
 ```
+
+#### `app/services/data_collector.py`
+```python

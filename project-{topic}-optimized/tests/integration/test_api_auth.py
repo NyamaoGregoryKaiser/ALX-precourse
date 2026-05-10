@@ -1,83 +1,99 @@
 import pytest
-from flask import url_for
-from app.models.user import User, UserRole
-from app.extensions import bcrypt
+from httpx import AsyncClient
+from fastapi import status
+from app.api.deps import reusable_oauth2 # To get token URL
+from app.core.config import settings
 
-def test_register_user(client, db_session):
-    # Ensure customer role exists
-    customer_role = UserRole.query.filter_by(name='CUSTOMER').first()
-    if not customer_role:
-        customer_role = UserRole(name='CUSTOMER')
-        db_session.add(customer_role)
-        db_session.commit()
+@pytest.mark.asyncio
+async def test_login_success(client: AsyncClient, test_normal_user):
+    response = await client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": test_normal_user.email, "password": "testpassword"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    token_data = response.json()
+    assert "access_token" in token_data
+    assert token_data["token_type"] == "bearer"
 
-    response = client.post('/api/auth/register', json={
-        'username': 'testuser_api',
-        'email': 'test_api@example.com',
-        'password': 'testpassword'
-    })
-    assert response.status_code == 201
-    data = response.get_json()
-    assert data['username'] == 'testuser_api'
-    assert data['email'] == 'test_api@example.com'
-    assert 'id' in data
-    assert any(role['name'] == 'CUSTOMER' for role in data['roles'])
+@pytest.mark.asyncio
+async def test_login_invalid_credentials(client: AsyncClient):
+    response = await client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": "nonexistent@example.com", "password": "wrongpassword"}
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "Incorrect email or password"
 
-    # Test duplicate registration
-    response = client.post('/api/auth/register', json={
-        'username': 'testuser_api',
-        'email': 'test_api_dup@example.com',
-        'password': 'testpassword'
-    })
-    assert response.status_code == 409
-    assert 'Username already taken.' in response.get_json()['message']
+@pytest.mark.asyncio
+async def test_login_inactive_user(client: AsyncClient, db_session, test_normal_user):
+    test_normal_user.is_active = False
+    db_session.add(test_normal_user)
+    await db_session.commit()
+    await db_session.refresh(test_normal_user)
 
-def test_login_user(client, customer_user):
-    response = client.post('/api/auth/login', json={
-        'email': customer_user.email,
-        'password': 'customerpass'
-    })
-    assert response.status_code == 200
-    data = response.get_json()
-    assert 'access_token' in data
-    assert 'refresh_token' in data
+    response = await client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": test_normal_user.email, "password": "testpassword"}
+    )
+    # The login itself authenticates, then get_current_active_user checks is_active.
+    # The endpoint only checks authentication, not activation status.
+    # The 'get_current_active_user' dependency would raise HTTP 400.
+    # For login, it should still give a token, but subsequent calls will fail.
+    assert response.status_code == status.HTTP_200_OK 
+    token_data = response.json()
+    assert "access_token" in token_data
 
-def test_login_user_invalid_credentials(client):
-    response = client.post('/api/auth/login', json={
-        'email': 'wrong@example.com',
-        'password': 'wrongpassword'
-    })
-    assert response.status_code == 401
-    assert 'Invalid credentials' in response.get_json()['message']
+    # Now try to access a protected endpoint
+    auth_headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+    response_protected = await client.get(f"{settings.API_V1_STR}/users/me", headers=auth_headers)
+    assert response_protected.status_code == status.HTTP_400_BAD_REQUEST
+    assert response_protected.json()["detail"] == "Inactive user"
 
-def test_refresh_token(client, auth_tokens):
-    response = client.post('/api/auth/refresh', headers={
-        'Authorization': f"Bearer {auth_tokens['refresh_token']}"
-    })
-    assert response.status_code == 200
-    data = response.get_json()
-    assert 'access_token' in data
 
-def test_get_current_user(client, auth_tokens, customer_user):
-    response = client.get('/api/auth/me', headers={
-        'Authorization': f"Bearer {auth_tokens['access_token']}"
-    })
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data['id'] == customer_user.id
-    assert data['email'] == customer_user.email
-    assert 'password' not in data # password should be load_only=True
+@pytest.mark.asyncio
+async def test_get_current_user_me_success(client: AsyncClient, normal_user_token, test_normal_user):
+    headers = {"Authorization": f"Bearer {normal_user_token}"}
+    response = await client.get(f"{settings.API_V1_STR}/users/me", headers=headers)
+    assert response.status_code == status.HTTP_200_OK
+    user_data = response.json()
+    assert user_data["email"] == test_normal_user.email
+    assert user_data["id"] == test_normal_user.id
 
-def test_logout_user(client, auth_tokens):
-    response = client.post('/api/auth/logout', headers={
-        'Authorization': f"Bearer {auth_tokens['access_token']}"
-    })
-    assert response.status_code == 200
-    assert 'Successfully logged out.' in response.get_json()['message']
+@pytest.mark.asyncio
+async def test_get_current_user_me_unauthorized(client: AsyncClient):
+    response = await client.get(f"{settings.API_V1_STR}/users/me")
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # Test accessing a protected endpoint with the logged-out token (should fail)
-    response = client.get('/api/auth/me', headers={
-        'Authorization': f"Bearer {auth_tokens['access_token']}"
-    })
-    assert response.status_code == 401
-    assert 'expired' in response.get_json()['message'] # Token is technically expired due to short test expiry
+@pytest.mark.asyncio
+async def test_register_user_success(client: AsyncClient):
+    user_data = {
+        "email": "newuser@example.com",
+        "password": "newpassword123",
+        "full_name": "New User"
+    }
+    response = await client.post(
+        f"{settings.API_V1_STR}/signup",
+        json=user_data
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    created_user = response.json()
+    assert created_user["email"] == user_data["email"]
+    assert "hashed_password" not in created_user # Should not expose hashed password
+
+@pytest.mark.asyncio
+async def test_register_existing_user(client: AsyncClient, test_normal_user):
+    user_data = {
+        "email": test_normal_user.email,
+        "password": "anotherpassword",
+        "full_name": "Duplicate User"
+    }
+    response = await client.post(
+        f"{settings.API_V1_STR}/signup",
+        json=user_data
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "The user with this username already exists in the system."
+```
+
+#### `tests/integration/test_api_services.py`
+```python

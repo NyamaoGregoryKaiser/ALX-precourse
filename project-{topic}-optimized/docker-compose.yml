@@ -1,68 +1,68 @@
 version: '3.8'
 
 services:
-  backend:
-    build:
-      context: ./backend # Path to your backend Dockerfile
-      dockerfile: Dockerfile
-    container_name: backend-api
-    restart: always
-    ports:
-      - "5000:5000" # Expose backend on port 5000
-    env_file:
-      - ./backend/.env # Load environment variables from backend/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - app-network
-    # Command to run migrations and then start the server.
-    # This is for development, in production you'd run migrations as a separate step.
-    command: >
-      sh -c "npm run migrate && npm run seed && npm start"
-      # In a real production scenario, seed should be optional/manual and migrations
-      # should be handled more carefully (e.g., via CI/CD, separate script).
-
-  postgres:
-    image: postgres:14-alpine
-    container_name: postgres_db
+  db:
+    image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - db-data:/var/lib/postgresql/data # Persistent data volume
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432" # Expose PostgreSQL directly (for local development, connecting with tools)
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      - "5432:5432" # Expose DB port to host for external tools if needed, remove in production
+    healthcheck: # Basic health check for the database
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - app-network
 
   redis:
-    image: redis:6-alpine
-    container_name: redis_cache
+    image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379" # Expose Redis directly (for local development, connecting with tools)
-    healthcheck:
+      - "6379:6379" # Expose Redis port to host for external tools if needed, remove in production
+    volumes:
+      - redis_data:/data
+    healthcheck: # Basic health check for Redis
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - app-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app # Mount current directory for live development, remove or replace with named volume for production builds
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && python scripts/seed_data.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck: # Health check for the FastAPI backend
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  db-data: # Define the named volume for PostgreSQL data persistence
-
-networks:
-  app-network:
-    driver: bridge
+  postgres_data:
+  redis_data:
 ```
+
+---
+
+### 4. Testing & Quality
+
+#### `tests/conftest.py`
+```python

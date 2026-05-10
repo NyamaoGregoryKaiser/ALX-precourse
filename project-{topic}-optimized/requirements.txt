@@ -1,20 +1,24 @@
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-SQLAlchemy==2.0.29
-asyncpg==0.29.0
-alembic==1.13.1
+fastapi==0.104.1
+uvicorn[standard]==0.24.0.post1
+SQLAlchemy==2.0.23
 psycopg2-binary==2.9.9
-pydantic==2.7.1
-pydantic-settings==2.2.1
-python-dotenv==1.0.1
-passlib[bcrypt]==1.7.4
+pydantic==2.5.2
+pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
-redis==5.0.4
-fastapi-cache2==0.2.1
+passlib[bcrypt]==1.7.4
+alembic==1.12.1
+python-multipart==0.0.6
+asyncpg==0.28.0 # For SQLAlchemy async driver
+redis==5.0.1 # aioredis is part of redis client > 4.x
+fastapi-cache[redis]==0.2.1
 fastapi-limiter==0.1.5
-pytest==8.2.0
-httpx==0.27.0
-pytest-asyncio==0.23.6
-faker==24.4.0
-greenlet==3.0.3 # Required by SQLAlchemy 2.0+ for some async contexts
+httpx==0.25.1
+pytest==7.4.3
+pytest-cov==4.1.0
+loguru==0.7.2
+APScheduler==3.10.4
+python-dotenv==1.0.0
 ```
+
+#### `.env.example`
+```ini

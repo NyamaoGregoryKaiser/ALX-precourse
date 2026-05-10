@@ -1,25 +1,17 @@
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, DateTime
 from datetime import datetime
-from app import db
+from sqlalchemy.sql import func as sql_func
 
-class Base(db.Model):
-    __abstract__ = True
+# Base class for all models, providing common fields
+class CustomBase:
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=sql_func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=sql_func.now(), server_default=sql_func.now(), nullable=False)
 
-    id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+Base = declarative_base(cls=CustomBase)
 
-    def save(self):
-        db.session.add(self)
-        db.session.commit()
-
-    def delete(self):
-        db.session.delete(self)
-        db.session.commit()
-
-    def update(self, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-        self.updated_at = datetime.utcnow()
-        db.session.commit()
 ```
+
+#### `app/models/user.py`
+```python

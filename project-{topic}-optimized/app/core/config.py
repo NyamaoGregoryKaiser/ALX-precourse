@@ -1,86 +1,106 @@
-import logging
-from typing import Optional
+import os
+from typing import List, Optional, Union
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, SecretStr, HttpUrl
+from pydantic import AnyHttpUrl, PostgresDsn
 
-# Set up logging for this module
-logger = logging.getLogger(__name__)
+load_dotenv()  # Load environment variables from .env file
+
 
 class Settings(BaseSettings):
-    """
-    Application settings loaded from environment variables or .env file.
-    """
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore" # Ignore extra fields not defined in the model
-    )
+    model_config = SettingsConfigDict(case_sensitive=True)
 
-    # --- Application Settings ---
-    APP_NAME: str = Field("Mobile Backend API", description="Name of the application.")
-    APP_VERSION: str = Field("1.0.0", description="Version of the application.")
-    DEBUG: bool = Field(False, description="Enable debug mode.")
-    ENVIRONMENT: str = Field("development", description="Application environment (e.g., development, staging, production).")
+    PROJECT_NAME: str = "Performance Monitoring System"
+    PROJECT_DESCRIPTION: str = "An enterprise-grade system for monitoring application performance, collecting metrics, and alerting on anomalies."
+    API_VERSION: str = "0.1.0"
+    API_V1_STR: str = "/api/v1"
 
-    # --- Security Settings ---
-    SECRET_KEY: SecretStr = Field(..., description="Secret key for JWT encoding/decoding. **MUST BE SET IN PRODUCTION**")
-    ALGORITHM: str = Field("HS256", description="Algorithm used for JWT signing.")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, description="Access token expiration time in minutes.")
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = Field(10080, description="Refresh token expiration time in minutes (7 days).") # 7 days
+    # Security
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-super-secret-key-replace-me")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # --- Database Settings (PostgreSQL) ---
-    POSTGRES_USER: str = Field("admin", description="PostgreSQL database user.")
-    POSTGRES_PASSWORD: SecretStr = Field("admin", description="PostgreSQL database password.")
-    POSTGRES_DB: str = Field("mobile_db", description="PostgreSQL database name.")
-    POSTGRES_HOST: str = Field("db", description="PostgreSQL database host.")
-    POSTGRES_PORT: int = Field(5432, description="PostgreSQL database port.")
-    DATABASE_URL: HttpUrl = Field(
-        f"postgresql+asyncpg://admin:admin@db:5432/mobile_db",
-        description="Full database connection URL. Auto-constructed if not explicitly set."
-    )
-    # This is for local testing outside of Docker, for CI/CD it will be overridden by environment variable
-    TEST_DATABASE_URL: Optional[HttpUrl] = Field(
-        f"postgresql+asyncpg://admin:admin@localhost:5432/test_mobile_db",
-        description="Test database connection URL."
-    )
+    # Database
+    POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "db")
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "perf_monitor_db")
+    POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
+    SQLALCHEMY_DATABASE_URI: Optional[PostgresDsn] = None # Will be set below
 
+    # Redis for Caching and Rate Limiting
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "redis")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_URL: Optional[str] = None # Will be set below
 
-    # --- Redis Settings ---
-    REDIS_HOST: str = Field("redis", description="Redis host.")
-    REDIS_PORT: int = Field(6379, description="Redis port.")
-    REDIS_DB: int = Field(0, description="Redis database number.")
-    CACHE_EXPIRE_SECONDS: int = Field(300, description="Default cache expiration in seconds (5 minutes).")
+    # CORS
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    if os.getenv("BACKEND_CORS_ORIGINS"):
+        BACKEND_CORS_ORIGINS = [
+            AnyHttpUrl(x) for x in os.getenv("BACKEND_CORS_ORIGINS", "").split(",")
+        ]
 
-    # --- Logging Settings ---
-    LOG_LEVEL: str = Field("INFO", description="Minimum logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).")
-    LOG_FORMAT: str = Field(
-        '{"level": "%(levelname)s", "time": "%(asctime)s", "message": "%(message)s", "module": "%(name)s"}',
-        description="Logging format string, preferably JSON for structured logging."
-    )
+    # Server Host & Port
+    UVICORN_HOST: str = os.getenv("UVICORN_HOST", "0.0.0.0")
+    UVICORN_PORT: int = int(os.getenv("UVICORN_PORT", "8000"))
 
-    # --- Rate Limiting Settings ---
-    RATE_LIMIT_DEFAULT: str = Field("10/minute", description="Default rate limit for endpoints (e.g., '10/minute', '5/second').")
+    # Admin User Defaults (for seeding)
+    FIRST_SUPERUSER_EMAIL: str = os.getenv("FIRST_SUPERUSER_EMAIL", "admin@example.com")
+    FIRST_SUPERUSER_PASSWORD: str = os.getenv("FIRST_SUPERUSER_PASSWORD", "adminpass")
 
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
-    # --- Derived properties / Pydantic validators ---
-    @property
-    def ASYNC_DATABASE_URL(self) -> str:
-        """Constructs the async database URL for SQLAlchemy."""
-        # Pydantic 2.x handles HttpUrl validation, but returns a URL object.
-        # We need the string representation for SQLAlchemy.
-        return str(self.DATABASE_URL)
+    # Background Tasks / Data Simulation
+    DATA_COLLECTION_INTERVAL_SECONDS: int = int(os.getenv("DATA_COLLECTION_INTERVAL_SECONDS", "30"))
+    ALERT_EVALUATION_INTERVAL_SECONDS: int = int(os.getenv("ALERT_EVALUATION_INTERVAL_SECONDS", "60"))
 
     @property
-    def ASYNC_TEST_DATABASE_URL(self) -> Optional[str]:
-        """Constructs the async test database URL for SQLAlchemy."""
-        return str(self.TEST_DATABASE_URL) if self.TEST_DATABASE_URL else None
+    def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> Optional[PostgresDsn]:
+        """
+        Generate async PostgreSQL URI from settings.
+        """
+        return PostgresDsn.build(
+            scheme="postgresql+asyncpg",
+            username=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_SERVER,
+            port=int(self.POSTGRES_PORT),
+            path=f"{self.POSTGRES_DB}",
+        )
+    
+    @property
+    def SYNC_SQLALCHEMY_DATABASE_URI(self) -> Optional[PostgresDsn]:
+        """
+        Generate sync PostgreSQL URI from settings (for Alembic).
+        """
+        return PostgresDsn.build(
+            scheme="postgresql",
+            username=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_SERVER,
+            port=int(self.POSTGRES_PORT),
+            path=f"{self.POSTGRES_DB}",
+        )
+
+    @property
+    def REDIS_URL_FULL(self) -> str:
+        """
+        Generate full Redis connection URL.
+        """
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        # Set SQLALCHEMY_DATABASE_URI after all other properties are initialized
+        self.SQLALCHEMY_DATABASE_URI = self.ASYNC_SQLALCHEMY_DATABASE_URI
+        self.REDIS_URL = self.REDIS_URL_FULL
 
 
-# Instantiate settings to be imported throughout the application
 settings = Settings()
 
-logger.info(f"Loaded settings for environment: {settings.ENVIRONMENT}")
-if settings.DEBUG:
-    logger.debug(f"Debug mode is enabled. App Name: {settings.APP_NAME}, Version: {settings.APP_VERSION}")
 ```
+
+#### `app/core/database.py`
+```python

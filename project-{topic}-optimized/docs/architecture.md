@@ -1,140 +1,154 @@
-# Architecture Documentation
+# Performance Monitoring System - Architecture Documentation
 
-This document outlines the high-level architecture of the Enterprise-Grade API Development System.
+This document outlines the architecture and design of the Performance Monitoring System, detailing its components and their interactions.
 
-## 1. System Overview
+## 1. High-Level Architecture
 
-The system is designed as a distributed application consisting of a React-based frontend client, an Express.js-based backend API, a PostgreSQL database for persistent storage, and a Redis instance for caching. These components communicate primarily over HTTP/HTTPS, forming a robust and scalable architecture suitable for enterprise applications.
-
-## 2. Component Diagram
+The system follows a typical microservice-oriented or layered architecture, leveraging Docker and Docker Compose for deployment.
 
 ```mermaid
 graph TD
-    User --(1. Access UI)--> FrontendApp
-    FrontendApp --(2. API Requests)--> API_Gateway
-    API_Gateway --(3. Route Requests)--> BackendAPI
-    BackendAPI --(4. Read/Write Data)--> PostgreSQLDB
-    BackendAPI --(5. Cache Data)--> RedisCache
-    BackendAPI --(6. Log Events)--> Logger
-    CI_CD[CI/CD Pipeline] --(7. Test & Deploy)--> DockerRegistry
-    DockerRegistry --(8. Pull Images)--> ProductionServer
-
-    subgraph User Interaction
-        FrontendApp[React Frontend]
-    end
-
-    subgraph Backend Services
-        BackendAPI[Express.js Backend API]
-        Logger[Winston Logging]
-    end
-
-    subgraph Data Stores
-        PostgreSQLDB[PostgreSQL Database]
-        RedisCache[Redis Cache]
-    end
-
-    subgraph Infrastructure
-        API_Gateway[Nginx/Load Balancer (Optional in Dev)]
-        ProductionServer[Docker Host / Kubernetes]
-    end
-
-    style FrontendApp fill:#f9f,stroke:#333,stroke-width:2px
-    style BackendAPI fill:#bbf,stroke:#333,stroke-width:2px
-    style PostgreSQLDB fill:#bfb,stroke:#333,stroke-width:2px
-    style RedisCache fill:#ffb,stroke:#333,stroke-width:2px
-    style API_Gateway fill:#ccf,stroke:#333,stroke-width:2px
-    style Logger fill:#ddf,stroke:#333,stroke-width:2px
+    A[User/Frontend] -->|HTTP/HTTPS| B(FastAPI Backend)
+    B -->|Async API Calls| C(PostgreSQL Database)
+    B -->|Caching/Rate Limiting| D(Redis Cache)
+    B -- Cron/Scheduler --> E(Background Tasks: Data Collection, Alert Evaluation)
+    E -->|Async DB Operations| C
+    E -->|Write Alerts| B
 ```
 
-**Flow Description:**
-1.  **User Access UI:** Users interact with the application through the React-based frontend.
-2.  **API Requests:** The frontend makes asynchronous HTTP requests to the backend API.
-3.  **Route Requests (Optional):** In a production environment, an API Gateway or Load Balancer (e.g., Nginx) would route requests to the appropriate backend service. For development, the frontend directly calls the backend.
-4.  **Backend API Processing:** The Express.js backend processes requests, applies business logic (via services), performs validation, authentication, and authorization.
-5.  **Database Interaction:** For data persistence, the backend interacts with the PostgreSQL database via Sequelize ORM.
-6.  **Caching:** Frequently accessed data or heavy query results are cached in Redis to improve response times and reduce database load.
-7.  **Logging:** All significant events (requests, errors, critical operations) are logged using Winston.
-8.  **CI/CD Pipeline:** Changes are pushed to a Git repository, triggering a CI/CD pipeline (e.g., GitHub Actions) for automated testing, building Docker images, and (conceptually) deploying to a production server or Docker Registry.
+**Key Components:**
 
-## 3. Core Modules and Components
+*   **FastAPI Backend**: The core application, providing RESTful API endpoints, handling business logic, authentication, and orchestrating background tasks.
+*   **PostgreSQL Database**: Persistent storage for all application data (users, services, metrics, alerts).
+*   **Redis Cache**: Used for API caching (e.g., frequently accessed lists) and rate limiting.
+*   **Background Tasks (APScheduler)**: In-process scheduler within the FastAPI application for periodic operations like simulating metric data collection and evaluating alert rules.
+*   **Frontend (Basic HTML/JS)**: A simple client-side application that interacts with the FastAPI backend to visualize data and manage resources.
 
-### Frontend (React)
-*   **Components:** Reusable UI elements (e.g., buttons, forms, cards).
-*   **Pages:** Top-level components representing distinct views (e.g., HomePage, ProductList, LoginPage).
-*   **Services:** Abstractions for making API calls using `axios`.
-*   **Contexts/Redux (Not fully implemented):** For global state management (e.g., user authentication state).
+## 2. Detailed Component Breakdown
 
-### Backend (Node.js/Express)
-*   **`server.js`**: Application entry point. Initializes Express app and starts the server.
-*   **`app.js`**: Configures the Express application, applies middleware, and defines base routes.
-*   **`config/`**: Contains environment-specific configurations for database, JWT, Redis, logger, etc.
-*   **`middleware/`**:
-    *   `authJwt.js`: Authenticates JWT tokens and authorizes based on user roles.
-    *   `errorHandler.js`: Centralized error handling for consistent error responses.
-    *   `loggerMiddleware.js`: Logs incoming requests and responses.
-    *   `cacheMiddleware.js`: Handles caching responses in Redis.
-    *   `rateLimitMiddleware.js`: Protects routes from excessive requests.
-    *   `validate.js`: Middleware for request body/query validation using Joi.
-*   **`models/`**:
-    *   Sequelize model definitions (`User`, `Product`) defining schema, associations, and validation.
-*   **`migrations/`**: Sequelize migration scripts for evolving the database schema.
-*   **`seeders/`**: Sequelize seeder scripts for populating the database with initial data.
-*   **`services/`**:
-    *   Encapsulate business logic. For example, `userService.js` handles user registration, login, and retrieval; `productService.js` handles product creation, update, deletion, and retrieval.
-    *   Interact with `models` for data persistence.
-*   **`controllers/`**:
-    *   Handle incoming HTTP requests.
-    *   Validate request data (often using `middleware/validate.js`).
-    *   Call appropriate `services` to perform business operations.
-    *   Format and send HTTP responses.
-*   **`routes/`**:
-    *   Define API endpoints and map them to `controllers` functions.
-    *   Apply `middleware` for authentication, authorization, validation, caching, and rate limiting.
-*   **`utils/`**:
-    *   `jwt.js`: Helper for JWT token generation and verification.
-    *   `helpers.js`: General utility functions.
-    *   `errors.js`: Custom error classes for structured error handling.
+### 2.1. FastAPI Backend
 
-### Database (PostgreSQL)
-*   Relational database storing user accounts, product information, and other structured data.
-*   Managed via Sequelize ORM, abstracting SQL queries.
-*   Indexed columns for performance (`users.email`, `products.name`).
+*   **Framework**: FastAPI (Python)
+*   **Web Server**: Uvicorn (managed by `docker-compose` `command`)
 
-### Caching (Redis)
-*   In-memory data store used for fast retrieval of frequently requested data.
-*   Reduces load on the primary database.
-*   Implemented with `ioredis` client.
+#### Sub-Components:
 
-## 4. Security Considerations
+1.  **API Endpoints (`app/api/v1/endpoints/`)**:
+    *   Defines the RESTful interface for `users`, `services`, `metric_types`, `metric_records`, `alert_rules`, and `alert_notifications`.
+    *   Uses Pydantic schemas for request body validation and response serialization.
+    *   Dependency Injection is heavily used for database sessions and authentication/authorization.
+2.  **Authentication & Authorization (`app/auth/`, `app/api/deps.py`)**:
+    *   **JWT (JSON Web Tokens)**: Used for stateless authentication. Users receive an access token upon successful login.
+    *   **Password Hashing**: `passlib` with `bcrypt` is used for securely storing user passwords.
+    *   **OAuth2PasswordBearer**: FastAPI's built-in OAuth2 scheme to extract tokens.
+    *   **Role-Based Access Control (RBAC)**: Implemented via `get_current_active_user` and `get_current_active_admin` dependencies to restrict access to certain endpoints.
+3.  **CRUD Operations (`app/crud/`)**:
+    *   A generic `CRUDBase` class provides common database operations (create, read, update, delete).
+    *   Specific CRUD classes (e.g., `CRUDUser`) extend `CRUDBase` for model-specific logic (e.g., password hashing during user creation, fetching by email).
+    *   Uses SQLAlchemy's ORM for asynchronous database interactions.
+4.  **Database Models (`app/models/`)**:
+    *   SQLAlchemy declarative models defining the database schema (tables, columns, relationships).
+    *   Includes `User`, `Service`, `MetricType`, `MetricRecord`, `AlertRule`, `AlertNotification`.
+    *   `Base` model provides common fields like `id`, `created_at`, `updated_at`.
+5.  **Pydantic Schemas (`app/schemas/`)**:
+    *   Defines data structures for API request bodies and response models.
+    *   Ensures data validation and clear API contracts.
+    *   Separation of concerns between database models and API data structures.
+6.  **Core Utilities (`app/core/`)**:
+    *   **Configuration (`config.py`)**: Manages application settings loaded from environment variables (`.env`).
+    *   **Database (`database.py`)**: Initializes SQLAlchemy engine and async session makers.
+    *   **Logging (`logger.py`)**: Configures `Loguru` for structured and flexible logging.
+    *   **Exceptions (`exceptions.py`)**: Custom exception classes for specific error conditions.
+7.  **Middleware (`app/middleware/`)**:
+    *   **CustomExceptionHandlerMiddleware**: Catches and handles various exceptions (FastAPI's `HTTPException`, Pydantic `ValidationError`, custom exceptions, generic `Exception`) to return consistent JSON error responses.
+    *   **CORS Middleware**: Configures Cross-Origin Resource Sharing based on settings.
+8.  **Services/Business Logic (`app/services/`)**:
+    *   **`data_collector.py`**: Simulates external systems sending metric data. Generates random metric values for existing services and metric types.
+    *   **`alert_evaluator.py`**: Core logic for evaluating active alert rules against the latest metric records. Creates `AlertNotification` entries when conditions are met. **Note**: Uses `eval()` for condition string which requires careful input validation in a real-world scenario.
+9.  **Background Tasks (`app/tasks/`)**:
+    *   **APScheduler**: An asynchronous scheduler (`AsyncIOScheduler`) embedded within the FastAPI application.
+    *   Schedules `simulate_data_collection` and `evaluate_alert_rules` to run at configured intervals.
+    *   Ensures tasks run in the background without blocking the main API thread.
 
-*   **Authentication**: JWTs are used for stateless authentication.
-*   **Authorization**: Role-based access control implemented via middleware.
-*   **Password Hashing**: `bcrypt.js` is used to hash passwords securely.
-*   **Input Validation**: Joi is used to validate all incoming request data.
-*   **Rate Limiting**: Protects against brute-force attacks and denial-of-service attempts.
-*   **CORS**: `cors` middleware is configured to allow requests only from trusted origins.
-*   **Environment Variables**: Sensitive information (database credentials, JWT secrets) is stored in environment variables, not committed to source control.
+### 2.2. PostgreSQL Database
 
-## 5. Scalability and Performance
+*   **ORM**: SQLAlchemy 2.0 (async)
+*   **Driver**: `asyncpg`
+*   **Migrations**: Alembic
+*   **Schema**:
+    *   `users`: Stores user credentials and roles.
+    *   `services`: Stores information about monitored applications/systems.
+    *   `metric_types`: Defines categories of metrics (e.g., CPU, Memory, Latency).
+    *   `metric_records`: Stores time-series performance data points.
+    *   `alert_rules`: Defines conditions for triggering alerts.
+    *   `alert_notifications`: Records instances when alert rules are violated.
+*   **Indexes**: Applied to frequently queried columns (e.g., `email` for users, `name` for services/metric types, `service_id`, `metric_type_id`, `timestamp` for metric records).
 
-*   **Stateless Backend**: Express.js application is designed to be stateless, facilitating horizontal scaling.
-*   **Caching with Redis**: Reduces database load and improves response times for read-heavy operations.
-*   **Database Indexing**: Improves query performance for frequently accessed columns.
-*   **Containerization (Docker)**: Enables easy deployment and scaling of individual services.
-*   **Rate Limiting**: Prevents resource exhaustion from malicious or accidental overuse.
-*   **Asynchronous Operations**: Node.js's non-blocking I/O model inherently supports handling many concurrent connections.
+### 2.3. Redis Cache
 
-## 6. Observability
+*   **Client**: `redis-py` (`aioredis` for async operations)
+*   **Usage**:
+    *   **FastAPI-Cache**: Caches responses for idempotent GET requests (e.g., listing services, metric types) to reduce database load and improve response times.
+    *   **FastAPI-Limiter**: Implements rate limiting on API endpoints (e.g., `POST /metric_records`) to protect against abuse.
 
-*   **Structured Logging (Winston)**: Provides detailed logs for debugging, monitoring, and auditing. Logs are structured (JSON) for easy parsing by log aggregation systems.
-*   **Error Monitoring**: Centralized error handling ensures all errors are caught, logged, and returned with consistent formats.
-*   **Performance Monitoring (Conceptual)**: Tools like `k6` are used for performance testing, and in production, metrics gathering (e.g., Prometheus) would be integrated.
+### 2.4. Frontend (Basic HTML/JS)
 
-## 7. Development and Deployment Workflow
+*   **Technology**: Pure HTML, CSS, JavaScript (using `fetch` API).
+*   **Purpose**: Provides a minimal interactive dashboard for logging in, viewing services with live metrics, and managing alerts. It demonstrates how to consume the backend API.
+*   **Dynamic Updates**: Polls the backend API periodically to refresh dashboard and alerts data.
 
-*   **Local Development**: Docker Compose provides a consistent development environment.
-*   **CI/CD**: GitHub Actions workflow automates testing, linting, and building of Docker images.
-*   **Deployment**: Docker images are pushed to a registry and deployed to a production environment (e.g., cloud VMs, Kubernetes, ECS).
+## 3. Data Flow
 
-This architecture provides a robust, secure, and scalable foundation for building modern web applications.
+1.  **User Interaction**:
+    *   Frontend sends login/signup requests.
+    *   Frontend sends CRUD requests for services, rules, etc.
+    *   Frontend fetches dashboard data (services with latest metrics) and alert notifications.
+2.  **Metric Ingestion (Simulated)**:
+    *   `data_collector.py` (background task) periodically generates random metric values.
+    *   It creates `MetricRecordCreate` schemas and persists them via `crud_metric_record`.
+3.  **Alert Evaluation**:
+    *   `alert_evaluator.py` (background task) periodically retrieves all active `AlertRule`s.
+    *   For each rule, it fetches the latest `MetricRecord` for the associated `service_id` and `metric_type_id`.
+    *   It evaluates the rule's `condition` string against the metric `value`.
+    *   If a condition is met and no active notification exists, a new `AlertNotification` is created via `crud_alert_notification`.
+    *   If a condition is no longer met, existing unresolved `AlertNotification`s for that rule are marked as resolved.
+4.  **Data Storage and Retrieval**:
+    *   All persistent data is stored in **PostgreSQL**.
+    *   API endpoints query the database via `CRUD` operations and SQLAlchemy models.
+    *   Caching layer (Redis) intercepts read requests for configured endpoints, returning cached data if available and valid.
+
+## 4. Deployment Strategy
+
+*   **Docker Compose**: Used for local development and simplified single-host deployment. It orchestrates the `backend`, `db`, and `redis` services.
+*   **Health Checks**: Defined in `docker-compose.yml` to ensure services are ready before the backend attempts to connect.
+*   **Init Commands**: The `backend` service's `command` in `docker-compose.yml` includes `alembic upgrade head` and `python scripts/seed_data.py` to ensure the database is set up and populated on startup.
+
+## 5. Security Considerations
+
+*   **JWT for Authentication**: Provides a secure, stateless way to verify user identity.
+*   **Bcrypt for Password Hashing**: Industry-standard secure password storage.
+*   **Role-Based Access Control**: Prevents unauthorized access to sensitive endpoints.
+*   **Environment Variables**: Sensitive information (database credentials, secret keys) is stored in `.env` and accessed via `pydantic-settings`, not hardcoded.
+*   **CORS**: Configurable to restrict access to trusted frontend origins.
+*   **Rate Limiting**: Mitigates brute-force attacks and resource exhaustion.
+*   **`eval()` for Alert Conditions**: This is a known security risk. In a truly production-hardened system, `eval()` would be replaced by a safer expression parser (e.g., `numexpr`, `ast.literal_eval` with custom logic, or a domain-specific language for conditions) or by predefined structured alert conditions to prevent arbitrary code execution. For this project, it's used for demonstration with the caveat of needing further hardening.
+
+## 6. Future Enhancements
+
+*   **Advanced Frontend**: Replace the basic HTML/JS with a modern SPA framework (React, Vue, Angular) for a richer user experience, charting, and real-time updates (WebSockets).
+*   **Notifications**: Implement actual notification mechanisms (email, Slack, PagerDuty) for alert notifications.
+*   **Scalability**:
+    *   Separate background workers (e.g., Celery) from the main FastAPI process for long-running tasks.
+    *   Database connection pooling, read replicas.
+    *   Load balancing for multiple FastAPI instances.
+*   **Monitoring**: Integrate with external monitoring tools (Prometheus, Grafana) for deeper insights into the application itself.
+*   **Audit Logging**: Detailed logging of sensitive actions.
+*   **Metric Aggregation**: Implement functionality to aggregate raw metric data over time (e.g., hourly averages, daily sums).
+*   **Dynamic Alerting**: More complex alert rule conditions (e.g., trends, baselines, multi-metric rules).
+*   **TLS/SSL**: Encrypt communication in production environments.
+
+This architecture provides a solid foundation for a robust performance monitoring system, with clear separation of concerns and adherence to modern best practices.
 ```
+
+#### `docs/deployment.md`
+```markdown

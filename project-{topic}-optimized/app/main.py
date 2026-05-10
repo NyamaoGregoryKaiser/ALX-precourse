@@ -1,97 +1,125 @@
-import logging
-import time
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi_cache import FastAPICache
-from fastapi_cache.backends.redis_backend import RedisBackend
-from fastapi_limiter import FastAPILimiter
-import redis.asyncio as aioredis
+from fastapi_cache.backends.redis import RedisBackend
+from redis import asyncio as aioredis
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.api.v1.router import api_router
+from app.api.v1.endpoints import (auth, users, services, metric_types,
+                                  metric_records, alert_rules,
+                                  alert_notifications)
 from app.core.config import settings
-from app.middleware.error_handler import http_exception_handler, validation_exception_handler
-from app.middleware.logging_middleware import LoggingMiddleware
-from app.utils.logger import setup_logging
+from app.core.database import engine, Base
+from app.core.logger import logger
+from app.middleware.error_handler import CustomExceptionHandlerMiddleware
+from app.tasks.scheduler import get_scheduler, setup_scheduler_jobs
 
-# Setup logging before FastAPI app creation
-setup_logging(settings.LOG_LEVEL)
-logger = logging.getLogger(__name__)
+# Initialize scheduler globally
+scheduler: AsyncIOScheduler = get_scheduler()
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    debug=settings.DEBUG,
-    openapi_url=f"/openapi.json" if settings.DEBUG else None,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-)
 
-# --- Middleware ---
-app.add_middleware(LoggingMiddleware)
-
-# --- Exception Handlers ---
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(status.HTTPException, http_exception_handler)
-
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-    Middleware to add X-Process-Time header to responses.
-    This helps in performance monitoring.
+    Context manager for application startup and shutdown events.
+    Handles database initialization, caching, and background tasks.
     """
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    logger.debug(f"Request to {request.url.path} processed in {process_time:.4f} seconds")
-    return response
+    logger.info("Application startup event triggered.")
 
-# --- Routers ---
-app.include_router(api_router, prefix="/api/v1")
+    # 1. Database Initialization
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables checked/created.")
 
-# --- Event Handlers (Startup/Shutdown) ---
-@app.on_event("startup")
-async def startup_event():
-    """
-    Actions to perform on application startup.
-    Initializes Redis for caching and rate limiting.
-    """
-    logger.info("Application startup initiated.")
-    try:
-        redis_instance = aioredis.from_url(
-            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
-            encoding="utf8",
-            decode_responses=True
-        )
-        await FastAPILimiter.init(redis_instance)
-        FastAPICache.init(RedisBackend(redis_instance), prefix="fastapi-cache")
-        logger.info("Redis connection established and caching/rate limiting initialized.")
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        # Depending on criticality, you might want to exit or disable features.
-        # For now, we'll let the app start but features relying on Redis will fail.
+    # 2. Caching Initialization
+    redis = aioredis.from_url(settings.REDIS_URL, encoding="utf8", decode_responses=True)
+    FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+    logger.info("FastAPI Cache initialized with Redis.")
+
+    # 3. Background Tasks (APScheduler) Initialization
+    setup_scheduler_jobs(scheduler)
+    if not scheduler.running:
+        scheduler.start()
+        logger.info("APScheduler started.")
+    else:
+        logger.info("APScheduler already running.")
 
     logger.info("Application startup complete.")
+    yield
+    logger.info("Application shutdown event triggered.")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Actions to perform on application shutdown.
-    Cleans up resources.
-    """
-    logger.info("Application shutdown initiated.")
-    # Add any cleanup logic here, e.g., closing database connections if not handled by ORM
-    # For SQLAlchemy, connection pool handles this.
+    # 4. Background Tasks Shutdown
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("APScheduler shut down.")
+
     logger.info("Application shutdown complete.")
 
-# --- Root Endpoint (Health Check) ---
-@app.get("/", summary="Health Check", description="Returns a simple message to indicate the API is running.")
-async def root():
-    """
-    Root endpoint for health checks.
-    """
-    return {"message": "Mobile Backend API is running!"}
 
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description=settings.PROJECT_DESCRIPTION,
+    version=settings.API_VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
+)
+
+# Set up templates for basic frontend
+templates = Jinja2Templates(directory="app/templates")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# Add custom exception handler middleware
+app.add_middleware(CustomExceptionHandlerMiddleware)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS] if settings.BACKEND_CORS_ORIGINS else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API V1 Router
+app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["Authentication"])
+app.include_router(users.router, prefix=settings.API_V1_STR, tags=["Users"])
+app.include_router(services.router, prefix=settings.API_V1_STR, tags=["Services"])
+app.include_router(metric_types.router, prefix=settings.API_V1_STR, tags=["Metric Types"])
+app.include_router(metric_records.router, prefix=settings.API_V1_STR, tags=["Metric Records"])
+app.include_router(alert_rules.router, prefix=settings.API_V1_STR, tags=["Alert Rules"])
+app.include_router(alert_notifications.router, prefix=settings.API_V1_STR, tags=["Alert Notifications"])
+
+
+# Root endpoint for basic frontend
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def read_root(request: Request):
+    """
+    Renders the main dashboard page.
+    """
+    return templates.TemplateResponse("index.html", {"request": request, "project_name": settings.PROJECT_NAME})
+
+# Health Check
+@app.get("/health", response_model=dict, tags=["Monitoring"])
+async def health_check():
+    """
+    API Health Check endpoint.
+    """
+    return {"status": "ok", "message": "Performance Monitoring System is running."}
+
+# Log startup message
+logger.info(f"{settings.PROJECT_NAME} API started successfully.")
+logger.info(f"Access API Docs at: http://localhost:{settings.UVICORN_PORT}{settings.API_V1_STR}/docs")
+logger.info(f"Access Frontend at: http://localhost:{settings.UVICORN_PORT}")
 ```
+
+#### `app/api/v1/endpoints/auth.py`
+```python
