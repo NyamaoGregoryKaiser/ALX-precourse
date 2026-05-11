@@ -1,1 +1,17 @@
-5.  Stop test services:
+fastapi[all]==0.111.0
+uvicorn[standard]==0.29.0
+SQLAlchemy==2.0.30
+psycopg2-binary==2.9.9
+alembic==1.13.1
+python-dotenv==1.0.1
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+pyjwt==2.8.0
+redis==5.0.4
+fastapi-limiter==0.1.6
+fastapi-cache2[redis]==0.2.1
+httpx==0.27.0
+pytest==8.2.1
+pytest-cov==5.0.0
+factory-boy==2.12.0
+locust==2.22.0
