@@ -1,113 +1,108 @@
 #include "AuthService.h"
-#include "utils/Logger.h"
-#include "jwt-cpp/jwt.h"
-#include "argon2.h" // A real project would use a library like libsodium or a dedicated Argon2/Bcrypt library
+#include "../db/repositories/UserRepository.h"
+#include "../models/User.h"
+#include "../utils/Logger.h"
 
-// Simple pseudo-hashing for demonstration. Replace with real Argon2/Bcrypt.
-#include <cryptopp/sha.h>
-#include <cryptopp/hex.h>
+// For JWT handling, you'd integrate a library like jwt-cpp or similar.
+// For demonstration, these are simplified mocks.
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <sstream>
+#include <cryptopp/sha.h> // For password hashing
+#include <cryptopp/hex.h> // For hex encoding hash
 
-std::string pseudo_hash(const std::string& password) {
+AuthService::AuthService(const std::string& jwt_secret)
+    : jwt_secret_(jwt_secret) {
+    if (jwt_secret_.length() < 32) { // Minimal length for a secure secret
+        LOG_WARN("JWT_SECRET is too short. It should be at least 32 characters for security.");
+    }
+}
+
+std::optional<std::string> AuthService::login(const std::string& username, const std::string& password, UserRepository& userRepo) {
+    auto conn = userRepo.getDbConnection(); // Use the connection from repo for this specific action
+    UserRepository local_user_repo(conn); // Create a temporary repo with the obtained connection
+
+    std::optional<User> user = local_user_repo.findByUsername(username);
+
+    if (user && verifyPassword(password, user->password_hash)) {
+        LOG_INFO("User {} logged in successfully.", username);
+        return generateToken(*user);
+    }
+    LOG_WARN("Failed login attempt for user: {}", username);
+    return std::nullopt;
+}
+
+std::string AuthService::generateToken(const User& user) {
+    // In a real app, use a JWT library (e.g., jwt-cpp)
+    // This is a highly simplified, insecure mock
+    auto now = std::chrono::system_clock::now();
+    auto exp = now + std::chrono::hours(24); // Token valid for 24 hours
+
+    std::stringstream ss;
+    ss << "header.payload." << jwt_secret_; // Mock structure
+    
+    // In a real implementation:
+    // jwt::builder builder = jwt::create()
+    //                         .set_issuer("database-optimizer")
+    //                         .set_type("JWT")
+    //                         .set_issued_at(now)
+    //                         .set_expires_at(exp)
+    //                         .set_subject(user.username)
+    //                         .set_payload_claim("userId", jwt::claim(std::to_string(user.id.value_or(0))))
+    //                         .set_payload_claim("username", jwt::claim(user.username))
+    //                         .set_payload_claim("role", jwt::claim(user.role));
+    // return builder.sign(jwt::algorithm::hs256{jwt_secret_});
+
+    LOG_DEBUG("Generated mock token for user {}", user.username);
+    return "mock_jwt_token_for_" + user.username + "_" + std::to_string(user.id.value_or(0)) + "_" + user.role;
+}
+
+std::map<std::string, std::string> AuthService::verifyToken(const std::string& token) {
+    // In a real app, use a JWT library to verify signature and claims
+    // This is a highly simplified mock
+    if (token.empty() || token.find("mock_jwt_token_for_") == std::string::npos) {
+        LOG_WARN("Attempted to verify invalid mock token.");
+        return {}; // Invalid mock token
+    }
+
+    // Parse mock token: "mock_jwt_token_for_username_id_role"
+    size_t first_underscore = token.find("_", token.find("for_") + 4); // After "for_username"
+    size_t second_underscore = token.find("_", first_underscore + 1); // After "id"
+
+    if (first_underscore == std::string::npos || second_underscore == std::string::npos) {
+        LOG_WARN("Failed to parse mock token format.");
+        return {};
+    }
+
+    std::string username = token.substr(token.find("for_") + 4, first_underscore - (token.find("for_") + 4));
+    std::string userId_str = token.substr(first_underscore + 1, second_underscore - (first_underscore + 1));
+    std::string role = token.substr(second_underscore + 1);
+
+    std::map<std::string, std::string> claims;
+    claims["userId"] = userId_str;
+    claims["username"] = username;
+    claims["role"] = role;
+
+    LOG_DEBUG("Verified mock token for user {}", username);
+    return claims;
+}
+
+std::string AuthService::hashPassword(const std::string& password) {
     CryptoPP::SHA256 hash;
     std::string digest;
-    CryptoPP::StringSource s(password, true, new CryptoPP::HashFilter(hash, new CryptoPP::HexEncoder(new CryptoPP::StringSink(digest))));
+    CryptoPP::StringSource s(password, true, 
+        new CryptoPP::HashFilter(hash,
+            new CryptoPP::HexEncoder(
+                new CryptoPP::StringSink(digest)
+            )
+        )
+    );
+    LOG_DEBUG("Hashed password (SHA256)");
     return digest;
 }
 
-AuthService::AuthService() {}
-
-std::optional<User> AuthService::register_user(const std::string& username, const std::string& email, const std::string& password) {
-    if (user_repo_.find_by_username(username)) {
-        LOG_WARN("Registration failed: Username '{}' already exists.", username);
-        return std::nullopt;
-    }
-
-    User new_user;
-    new_user.username = username;
-    new_user.email = email;
-    new_user.password_hash = hash_password(password); // Hash the password
-    new_user.role = UserRole::USER;
-
-    return user_repo_.create_user(new_user);
+bool AuthService::verifyPassword(const std::string& password, const std::string& hashed_password) {
+    return hashPassword(password) == hashed_password;
 }
-
-std::optional<std::string> AuthService::login_user(const std::string& username, const std::string& password, const std::string& jwt_secret) {
-    auto user_opt = user_repo_.find_by_username(username);
-    if (!user_opt) {
-        LOG_WARN("Login failed: User '{}' not found.", username);
-        return std::nullopt;
-    }
-
-    if (!verify_password(password, user_opt->password_hash)) {
-        LOG_WARN("Login failed: Invalid password for user '{}'.", username);
-        return std::nullopt;
-    }
-
-    LOG_INFO("User '{}' logged in successfully.", username);
-    return generate_jwt(*user_opt, jwt_secret);
-}
-
-std::string AuthService::hash_password(const std::string& password) {
-    // In a real application, use a robust library like libsodium (for Argon2) or bcrypt-cpp.
-    // This is a placeholder for demonstration purposes.
-    // Example: Using Argon2:
-    // char hash[ARGON2_MAX_HASH_LEN + 1];
-    // char encoded[ARGON2_MAX_ENCODED_LEN + 1];
-    // int res = argon2id_hash_encoded(t_cost, m_cost, p_cost, password.c_str(), password.length(),
-    //                                  salt, salt_len, hash, ARGON2_MAX_HASH_LEN, encoded, ARGON2_MAX_ENCODED_LEN);
-    // if (res != ARGON2_OK) { throw std::runtime_error("Argon2 hashing failed"); }
-    // return std::string(encoded);
-    LOG_WARN("Using insecure pseudo_hash. Replace with a real password hashing library (e.g., Argon2, Bcrypt) in production.");
-    return pseudo_hash(password);
-}
-
-bool AuthService::verify_password(const std::string& password, const std::string& hash) {
-    // In a real application, use the same robust library used for hashing.
-    // Example: Argon2 verification:
-    // int res = argon2id_verify(hash.c_str(), password.c_str(), password.length());
-    // return res == ARGON2_OK;
-    LOG_WARN("Using insecure pseudo_hash verification. Replace with a real password hashing library in production.");
-    return pseudo_hash(password) == hash;
-}
-
-std::string AuthService::generate_jwt(const User& user, const std::string& secret) {
-    auto token = jwt::create()
-        .set_issuer("webscraper-api")
-        .set_type("JWT")
-        .set_subject(user.username)
-        .set_id(std::to_string(user.id))
-        .set_issued_at(std::chrono::system_clock::now())
-        .set_expires_at(std::chrono::system_clock::now() + std::chrono::hours{24}) // Token valid for 24 hours
-        .set_payload_claim("user_id", jwt::claim(std::to_string(user.id)))
-        .set_payload_claim("username", jwt::claim(user.username))
-        .set_payload_claim("role", jwt::claim(user_role_to_string(user.role)))
-        .sign(jwt::algorithm::hs256{secret});
-    return token;
-}
-
-std::optional<AuthToken> AuthService::decode_jwt(const std::string& token_str, const std::string& jwt_secret) {
-    try {
-        auto decoded_token = jwt::decode(token_str);
-        jwt::verify_options verify_opts;
-        verify_opts.allow_algorithm(jwt::algorithm::hs256{jwt_secret});
-        verify_opts.set_issuer("webscraper-api");
-        // No need to verify subject or ID here, as they are claims.
-        // The verifier checks signature and standard claims like expiration, issuer.
-        jwt::verify(decoded_token, verify_opts);
-
-        AuthToken auth_token;
-        auth_token.user_id = std::stoi(decoded_token.get_payload_claim("user_id").as_string());
-        auth_token.username = decoded_token.get_payload_claim("username").as_string();
-        auth_token.role = decoded_token.get_payload_claim("role").as_string();
-        auth_token.iat = decoded_token.get_issued_at();
-        auth_token.exp = decoded_token.get_expires_at();
-
-        if (auth_token.is_valid()) {
-            return auth_token;
-        }
-    } catch (const std::exception& e) {
-        LOG_WARN("JWT decoding or verification failed: {}", e.what());
-    }
-    return std::nullopt;
-}
+```

@@ -1,201 +1,223 @@
-```markdown
-# DBOptiFlow Deployment Guide
+# Database Optimization System (DBO) - Deployment Guide
 
-This document outlines the steps and considerations for deploying the DBOptiFlow system to a production environment. While the project uses Docker Compose for local development, a production deployment would typically leverage more robust infrastructure.
+This document outlines the steps to deploy the Database Optimization System (DBO) to a production environment. The primary deployment method recommended is using Docker and Docker Compose for smaller deployments, or Kubernetes for larger, more scalable setups.
 
-## Table of Contents
+## 1. Prerequisites
 
-1.  [Deployment Strategy Overview](#1-deployment-strategy-overview)
-2.  [Prerequisites for Production Environment](#2-prerequisites-for-production-environment)
-3.  [Build and Push Docker Images](#3-build-and-push-docker-images)
-4.  [Environment Variables and Secrets Management](#4-environment-variables-and-secrets-management)
-5.  [Database Setup](#5-database-setup)
-6.  [Caching Layer (Redis) Setup](#6-caching-layer-redis-setup)
-7.  [Container Orchestration (Kubernetes/ECS/Swarm)](#7-container-orchestration-kubernetecs-swarm)
-    *   [Example: Manual Docker Compose on a VM](#71-example-manual-docker-compose-on-a-vm)
-8.  [Web Server and Load Balancing](#8-web-server-and-load-balancing)
-9.  [HTTPS Configuration](#9-https-configuration)
-10. [Monitoring and Logging](#10-monitoring-and-logging)
-11. [CI/CD Pipeline Integration](#11-ci/cd-pipeline-integration)
-12. [Post-Deployment Checks](#12-post-deployment-checks)
+*   **Server Environment**: A Linux-based server (e.g., Ubuntu, Debian, CentOS) or a Kubernetes cluster.
+*   **Docker and Docker Compose**: Must be installed on the target server for Docker Compose deployments.
+*   **Kubectl (if using Kubernetes)**: Configured to connect to your Kubernetes cluster.
+*   **Git**: To clone the repository.
+*   **SSH Access**: To connect to your deployment server.
+*   **Production Database**: A PostgreSQL database instance (can be deployed via Docker Compose, or an external managed service like AWS RDS, Azure Database for PostgreSQL, etc.).
 
----
+## 2. Production Configuration
 
-## 1. Deployment Strategy Overview
+Before deployment, ensure your `.env` file contains production-ready values.
 
-DBOptiFlow is designed for containerized deployment. A typical production setup would involve:
-
-*   **Container Images:** Backend and Frontend packaged as Docker images.
-*   **Orchestration:** Using a container orchestration platform (e.g., Kubernetes, AWS ECS, Docker Swarm) for managing deployment, scaling, and high availability.
-*   **Managed Services:** Leveraging cloud provider managed services for PostgreSQL and Redis for reliability, backups, and ease of management.
-*   **Load Balancer:** Distributing incoming traffic across multiple instances of the frontend/backend.
-*   **HTTPS:** All traffic secured with SSL/TLS.
-*   **Centralized Logging & Monitoring:** Aggregating logs and metrics for operational visibility.
-
-## 2. Prerequisites for Production Environment
-
-Before deploying, ensure you have:
-
-*   **Cloud Provider Account:** (e.g., AWS, Azure, GCP) or a dedicated server/VM.
-*   **Docker & Docker Compose:** Installed if deploying manually on a VM.
-*   **Container Registry:** (e.g., Docker Hub, AWS ECR, GCP Container Registry) to store your built Docker images.
-*   **DNS Management:** A registered domain name pointing to your deployment.
-*   **SSL/TLS Certificate:** For HTTPS (e.g., Let's Encrypt).
-*   **SSH Access:** To your deployment server(s).
-*   **Database and Redis Instances:** Provisioned and accessible.
-
-## 3. Build and Push Docker Images
-
-The CI/CD pipeline (described in `README.md` and `.github/workflows/ci-cd.yml`) automates this. If deploying manually:
-
-1.  **Build Backend Image:**
+1.  **Generate a Strong JWT Secret**:
+    `JWT_SECRET` must be a long, random, and cryptographically secure string (e.g., 64 characters or more). Never expose this.
     ```bash
-    cd db-optiflow/backend
-    docker build -t your-docker-username/db-optiflow-backend:latest .
+    openssl rand -base64 64 # Generate a strong secret
     ```
-2.  **Build Frontend Image:**
+
+2.  **Database Credentials**:
+    Use strong, unique passwords for `DB_USER` and `DB_PASSWORD`. Ensure these users have minimal necessary permissions (e.g., not `postgres` superuser).
+    `DB_HOST` should point to your production PostgreSQL instance (e.g., an internal IP, hostname, or managed service endpoint).
+
+3.  **Logging**:
+    Set `LOG_LEVEL` to `info` or `warn` for production to avoid excessive logging. Configure `LOG_FILE` to an appropriate path for persistence.
+
+4.  **Security**:
+    Ensure your server's firewall (e.g., `ufw`, security groups) only allows incoming traffic on port `8080` (or your chosen server port) from trusted sources, or through a reverse proxy/load balancer.
+
+## 3. Deployment Methods
+
+### 3.1. Docker Compose (Single Server Deployment)
+
+This method is suitable for small to medium-sized deployments on a single virtual machine or dedicated server.
+
+1.  **SSH into your server:**
     ```bash
-    cd db-optiflow/frontend
-    # Pass VITE_API_BASE_URL as a build-arg to ensure the frontend build includes the correct API endpoint
-    docker build -t your-docker-username/db-optiflow-frontend:latest --build-arg VITE_API_BASE_URL=https://api.yourdomain.com/api .
+    ssh user@your_server_ip
     ```
-    Replace `https://api.yourdomain.com/api` with your actual production backend API URL.
 
-3.  **Push Images to Registry:**
+2.  **Install Docker and Docker Compose** (if not already installed).
+    Refer to the official Docker documentation for installation instructions.
+
+3.  **Clone the repository:**
     ```bash
-    docker push your-docker-username/db-optiflow-backend:latest
-    docker push your-docker-username/db-optiflow-frontend:latest
+    git clone https://github.com/yourusername/database-optimizer.git
+    cd database-optimizer
     ```
-    Ensure you are logged into your Docker registry (`docker login`).
 
-## 4. Environment Variables and Secrets Management
-
-**DO NOT store sensitive information (like database passwords, JWT secrets) directly in your repository or Docker images.**
-
-*   **`.env` file:** Suitable for local development. In production, environment variables should be set directly in your orchestration platform (Kubernetes Secrets, AWS SSM Parameter Store, ECS Task Definitions, etc.).
-*   **Secrets Management:**
-    *   **Database Credentials:** Instead of storing in `.env`, use a dedicated secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault, Azure Key Vault) or inject them directly into your container's environment from your orchestration platform.
-    *   **JWT Secrets:** Same as database credentials.
-*   **Update `backend/.env.example` values:** Ensure the production values for `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` reflect your production infrastructure.
-    *   `DB_HOST` will be the endpoint of your managed PostgreSQL instance.
-    *   `REDIS_HOST` will be the endpoint of your managed Redis instance.
-
-## 5. Database Setup (PostgreSQL)
-
-It's highly recommended to use a **managed PostgreSQL service** (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for production due to built-in backups, replication, scaling, and maintenance.
-
-1.  **Provision Managed PostgreSQL:** Create an instance with appropriate compute and storage.
-2.  **Configure Security Group/Firewall:** Allow inbound connections to the PostgreSQL port (5432) only from your application servers/containers.
-3.  **Create Database and User:** Create the `dbopti_db` database and `dbopti_user` with a strong password as defined in your environment variables.
-4.  **Run Migrations:**
-    *   The `Dockerfile` for the backend includes `npm run migration:run` in its `CMD`. When the backend container starts in production, it will automatically apply pending migrations.
-    *   Alternatively, you can run migrations manually from a temporary container or a dedicated CI/CD step:
-        ```bash
-        # Example using a temporary container, replace with your image
-        docker run --rm \
-            -e DB_HOST=your.prod.db.endpoint \
-            -e DB_PORT=5432 \
-            -e DB_USER=dbopti_user \
-            -e DB_PASSWORD=your_prod_password \
-            -e DB_NAME=dbopti_db \
-            your-docker-username/db-optiflow-backend:latest npm run migration:run
-        ```
-5.  **Seed Data (Optional):** If you need initial data, run the seed script:
+4.  **Place `.env` file**:
+    Create a production `.env` file in the root directory of the cloned repository with your production configurations. **Do not commit this file to your repository.**
     ```bash
-    # Similar to migrations, either via a temporary container or CI/CD
-    docker run --rm \
-        # ... environment variables ...
-        your-docker-username/db-optiflow-backend:latest npm run seed
+    nano .env # Paste your production environment variables here
     ```
 
-## 6. Caching Layer (Redis) Setup
-
-Similar to PostgreSQL, use a **managed Redis service** (e.g., AWS ElastiCache, Azure Cache for Redis, Google Cloud Memorystore) for production.
-
-1.  **Provision Managed Redis:** Create an instance.
-2.  **Configure Security Group/Firewall:** Allow inbound connections to the Redis port (6379) only from your application servers/containers.
-3.  **Password (Optional but Recommended):** Configure Redis with a strong password if your managed service supports it. Update `REDIS_PASSWORD` in your environment.
-
-## 7. Container Orchestration
-
-### 7.1. Example: Manual Docker Compose on a VM (for simpler deployments)
-
-While not as robust as Kubernetes, Docker Compose can be used for simpler production deployments on a single VM.
-
-1.  **Provision a Linux VM:** Choose a suitable instance type (e.g., t3.medium on AWS) with Docker installed.
-2.  **SSH into the VM.**
-3.  **Create Project Directory:**
+5.  **Build and Deploy:**
     ```bash
-    mkdir db-optiflow-prod
-    cd db-optiflow-prod
+    docker-compose pull # Pull base images
+    docker-compose up --build -d # Build the app image and start services in detached mode
     ```
-4.  **Create `docker-compose.yml`:** Copy the `docker-compose.yml` from the root of your project into this directory.
-    *   **Important:** Modify `image` fields to point to your Docker registry images (e.g., `image: your-docker-username/db-optiflow-backend:latest`).
-    *   **Remove `db-optiflow-postgres` and `db-optiflow-redis` services** if you are using managed cloud services, and ensure backend/frontend `env_file` points to your managed service endpoints.
-5.  **Create `.env` file:** Copy your production `.env` file here. Ensure it has correct endpoints for your managed DB/Redis.
-6.  **Create `nginx.conf`:** Copy `frontend/nginx.conf` to this directory.
-    *   **Modify proxy_pass:** Update `proxy_pass http://db-optiflow-backend:5000/api/` to `proxy_pass http://localhost:5000/api/` if the backend is running on the same host, or `proxy_pass http://your-backend-internal-ip:5000/api/` if backend is on another internal IP/container name.
-    *   **Update `VITE_API_BASE_URL` in frontend build args** to point to your public API endpoint.
-7.  **Pull Images and Start Services:**
+    The `--build` flag ensures that the latest version of your application image is built. `-d` runs containers in the background.
+
+6.  **Verify Deployment:**
     ```bash
-    docker compose pull
-    docker compose up -d
+    docker-compose ps
+    docker-compose logs -f app # Check application logs for any errors
+    ```
+    Ensure both `db` and `app` services are `Up` and healthy.
+    Access your application at `http://your_server_ip:8080`.
+
+7.  **Updating the Application:**
+    To deploy a new version:
+    ```bash
+    git pull origin main # Get latest code
+    docker-compose stop app # Stop the running app container
+    docker-compose rm -f app # Remove the old app container
+    docker-compose build app # Build the new image
+    docker-compose up -d app # Start the new app container
+    # Or simply: docker-compose up --build -d app
+    ```
+    The database service `db` will typically not need to be rebuilt unless its Dockerfile or configuration changes.
+
+### 3.2. Kubernetes (Container Orchestration)
+
+For highly available, scalable, and complex deployments, Kubernetes is the recommended choice.
+
+1.  **Container Registry**:
+    First, ensure your Docker image is pushed to a public or private container registry (e.g., Docker Hub, Google Container Registry, AWS ECR, GitHub Container Registry).
+    This is typically handled by your CI/CD pipeline (e.g., the `deploy` job in `ci-cd.yml`).
+    Example: `yourusername/database-optimizer:latest`
+
+2.  **Kubernetes Manifests**:
+    You'll need Kubernetes YAML manifests for your deployment. These typically include:
+    *   `Deployment` for the DBO application.
+    *   `Service` for exposing the DBO application (e.g., `ClusterIP`, `NodePort`, or `LoadBalancer`).
+    *   `PersistentVolumeClaim` and `PersistentVolume` (if needed for logs, though often logs go to stdout/stderr and are collected by K8s logging agents).
+    *   `Secret` for database credentials and JWT secret (highly recommended to use Kubernetes Secrets).
+    *   `ConfigMap` for non-sensitive configurations.
+    *   `Deployment` for a PostgreSQL instance (if self-hosting within K8s), or connection details for an external managed PostgreSQL.
+
+    **Example `k8s-deployment.yaml` (Conceptual):**
+    ```yaml
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: dbo-secrets
+    type: Opaque
+    stringData:
+      DB_CONNECTION_STRING: "postgresql://dbo_user:dbo_password_secure@dbo-db:5432/database_optimizer_db"
+      JWT_SECRET: "your_super_secret_jwt_key_for_production"
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: dbo-app-deployment
+      labels:
+        app: dbo-app
+    spec:
+      replicas: 3 # Example: 3 instances for high availability
+      selector:
+        matchLabels:
+          app: dbo-app
+      template:
+        metadata:
+          labels:
+            app: dbo-app
+        spec:
+          containers:
+          - name: database-optimizer
+            image: yourusername/database-optimizer:latest # Your image from the registry
+            ports:
+            - containerPort: 8080
+            env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: DB_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: dbo-secrets
+                  key: DB_CONNECTION_STRING
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dbo-secrets
+                  key: JWT_SECRET
+            # Other environment variables from .env can go here, or in a ConfigMap
+            # Liveness and Readiness probes are crucial for K8s
+            livenessProbe:
+              httpGet:
+                path: /
+                port: 8080
+              initialDelaySeconds: 30
+              periodSeconds: 10
+            readinessProbe:
+              httpGet:
+                path: /
+                port: 8080
+              initialDelaySeconds: 15
+              periodSeconds: 5
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          # Optional: Init Container for migrations
+          # This could be a separate container that runs migrations before the main app starts
+          # initContainers:
+          # - name: run-migrations
+          #   image: yourusername/database-optimizer:latest
+          #   command: ["/usr/local/bin/DatabaseOptimizer", "--run-migrations-only"] # A custom command to just run migrations
+          #   envFrom:
+          #     - secretRef:
+          #         name: dbo-secrets
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: dbo-app-service
+    spec:
+      selector:
+        app: dbo-app
+      ports:
+        - protocol: TCP
+          port: 80
+          targetPort: 8080
+      type: LoadBalancer # Or ClusterIP if behind an Ingress
     ```
 
-**For Kubernetes, AWS ECS/EKS, Azure AKS, or GCP GKE:**
-This requires writing Kubernetes manifests (Deployments, Services, Ingress, Secrets) or using cloud-specific task definitions. This is beyond the scope of this document but is the recommended approach for enterprise production deployments.
-
-## 8. Web Server and Load Balancing
-
-*   **Frontend:** The `frontend/Dockerfile` uses Nginx to serve the static React application. Nginx also acts as a reverse proxy to forward API requests to the backend.
-*   **Load Balancer:** In a production environment with multiple instances, an external load balancer (e.g., AWS ALB, Nginx Proxy Manager, Cloudflare) would distribute traffic to your frontend containers and provide SSL termination.
-
-## 9. HTTPS Configuration
-
-**Always use HTTPS in production.**
-
-*   If using an external load balancer, configure SSL/TLS termination on the load balancer itself.
-*   If deploying on a single VM with Nginx:
-    *   Obtain an SSL certificate (e.g., from Let's Encrypt using Certbot).
-    *   Mount the certificates into the Nginx container.
-    *   Modify `nginx.conf` to listen on port 443, use your certificates, and redirect HTTP to HTTPS.
-
-    Example `nginx.conf` snippet for HTTPS (within `server` block):
-    ```nginx
-    listen 443 ssl;
-    ssl_certificate /etc/nginx/certs/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/yourdomain.com/privkey.pem;
-    # ... other SSL/TLS settings
+3.  **Apply Manifests**:
+    ```bash
+    kubectl apply -f k8s-deployment.yaml -n your-namespace
     ```
-    You'd need to mount `/etc/nginx/certs` as a Docker volume containing your certificates.
 
-## 10. Monitoring and Logging
+4.  **Database within Kubernetes**:
+    For a production PostgreSQL instance, it's generally recommended to use a managed database service (e.g., AWS RDS, Azure PostgreSQL, GCP Cloud SQL) rather than deploying PostgreSQL directly within Kubernetes for stateful workloads, unless you have strong operational expertise in running statefulsets. If you do deploy within Kubernetes, use a `StatefulSet` with persistent volumes.
 
-*   **Centralized Logging:** Configure your containers to send logs to a centralized logging system (e.g., ELK Stack, Grafana Loki, AWS CloudWatch Logs, Datadog). Winston (used in backend) can be configured to send logs to various transports.
-*   **Application Monitoring:**
-    *   Integrate with APM tools (e.g., New Relic, Datadog, Dynatrace) for detailed performance metrics.
-    *   Consider Prometheus and Grafana for collecting and visualizing custom application metrics.
-*   **Infrastructure Monitoring:** Monitor the health and performance of your VM instances, Docker containers, PostgreSQL, and Redis instances.
+## 4. Post-Deployment Checks
 
-## 11. CI/CD Pipeline Integration
+*   **Access Logs**: Verify that application logs are being collected and are accessible (e.g., in `docker-compose logs` or your Kubernetes logging solution).
+*   **Health Checks**: Monitor the `/health` endpoint (if implemented) or other internal metrics.
+*   **Security Scans**: Regularly scan your deployed containers for vulnerabilities.
+*   **Backup Strategy**: Ensure your PostgreSQL database has a robust backup and recovery strategy.
 
-The provided `.github/workflows/ci-cd.yml` demonstrates a basic CI/CD pipeline. For production:
+## 5. Rollback Strategy
 
-*   **Secrets:** Configure GitHub Secrets for `DOCKER_USERNAME`, `DOCKER_PASSWORD`, `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY`, and `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_PRIVATE_KEY`.
-*   **Environment Variables:** Configure GitHub Variables for `VITE_API_BASE_URL` specific to staging and production.
-*   **Deployment Script:** Enhance the SSH deployment script to handle graceful restarts, blue/green deployments, or rolling updates if using advanced orchestration.
+In case of issues with a new deployment, you should be able to quickly revert to a previous stable version.
 
-## 12. Post-Deployment Checks
+*   **Docker Compose**:
+    Tag your Docker images with versions (e.g., `yourusername/database-optimizer:v1.0.0`). To rollback, simply update your `docker-compose.yml` to point to the previous image tag and run `docker-compose up -d`.
+*   **Kubernetes**:
+    Kubernetes deployments automatically manage revisions. You can rollback using:
+    ```bash
+    kubectl rollout undo deployment/dbo-app-deployment -n your-namespace
+    ```
 
-After deploying, perform these checks:
-
-*   **Access Frontend:** Verify `https://yourdomain.com` loads correctly.
-*   **Access API Docs:** Verify `https://api.yourdomain.com/api-docs` is accessible.
-*   **Login & Register:** Test user authentication.
-*   **CRUD Operations:** Test adding a new `DbConnection`, viewing recommendations, etc.
-*   **Check Logs:** Monitor application logs for any errors or warnings.
-*   **Performance:** Run your `k6` performance tests against the deployed environment.
-*   **Security Scan:** Run vulnerability scans against your deployed application.
-
-By following this guide, you can confidently deploy DBOptiFlow to a robust and scalable production environment.
+This guide provides a foundational approach to deploying the DBO system. Adapt it to your specific infrastructure requirements and security policies.
 ```

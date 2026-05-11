@@ -1,516 +1,271 @@
-```markdown
-# API Documentation: Enterprise Security System
+# Database Optimization System API Documentation
 
-This document provides detailed information about the API endpoints of the Enterprise Security System.
+This document outlines the RESTful API endpoints for the Database Optimization System (DBO).
 
-**Base URL**: `http://localhost:5000/api/v1`
-
----
-
-## Authentication Endpoints
-
-These endpoints handle user registration, login, token refresh, and profile retrieval.
-
-### 1. Register User
-
--   **URL**: `/auth/register`
--   **Method**: `POST`
--   **Description**: Registers a new user with a specified username, email, password, and role.
--   **Authentication**: None
--   **Request Body**: `application/json`
-    ```json
-    {
-        "username": "string",       // Required, min 3, max 30 alphanumeric
-        "email": "string",          // Required, valid email format
-        "password": "string",       // Required, min 8 characters
-        "role": "string"            // Optional, default "user". Enum: "user", "admin"
-    }
-    ```
--   **Response (201 Created)**:
-    ```json
-    {
-        "status": "success",
-        "message": "User registered successfully",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
-        },
-        "tokens": {
-            "accessToken": "string",
-            "refreshToken": "string"
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data (e.g., weak password, invalid email, missing fields).
-    -   `409 Conflict`: User with provided email already exists.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 2. Login User
-
--   **URL**: `/auth/login`
--   **Method**: `POST`
--   **Description**: Authenticates a user and returns an access token and a refresh token.
--   **Authentication**: None
--   **Request Body**: `application/json`
-    ```json
-    {
-        "email": "string",          // Required, valid email format
-        "password": "string"        // Required
-    }
-    ```
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Logged in successfully",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
-        },
-        "tokens": {
-            "accessToken": "string",
-            "refreshToken": "string"
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data (e.g., missing fields).
-    -   `401 Unauthorized`: Incorrect email or password.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 3. Refresh Access Token
-
--   **URL**: `/auth/refresh-token`
--   **Method**: `POST`
--   **Description**: Uses a refresh token to obtain a new access token and a new refresh token (token rotation).
--   **Authentication**: None (uses refresh token in body)
--   **Request Body**: `application/json`
-    ```json
-    {
-        "refreshToken": "string"    // Required, a valid refresh token
-    }
-    ```
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Access token refreshed successfully",
-        "tokens": {
-            "accessToken": "string",
-            "refreshToken": "string"
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input (e.g., missing refresh token).
-    -   `401 Unauthorized`: Invalid or expired refresh token.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 4. Logout User
-
--   **URL**: `/auth/logout`
--   **Method**: `POST`
--   **Description**: Invalidates the provided refresh token, effectively logging out the user from all sessions using that token. Requires an access token for authentication.
--   **Authentication**: Required (Bearer Token)
--   **Request Body**: `application/json`
-    ```json
-    {
-        "refreshToken": "string"    // Required, the refresh token to invalidate
-    }
-    ```
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Logged out successfully"
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Missing refresh token in body.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `404 Not Found`: Refresh token not found or already invalidated.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 5. Get User Profile
-
--   **URL**: `/auth/profile`
--   **Method**: `GET`
--   **Description**: Retrieves the profile details of the authenticated user.
--   **Authentication**: Required (Bearer Token)
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `404 Not Found`: User not found (should generally not happen if token is valid).
-    -   `500 Internal Server Error`: Server-side issues.
+**Base URL**: `http://localhost:8080/api/v1`
 
 ---
 
-## User Management Endpoints (Admin Only)
+## Authentication
 
-These endpoints allow administrators to manage user accounts.
+All protected endpoints require a valid JWT token in the `Authorization` header, in the format `Bearer <TOKEN>`.
 
--   **Authentication**: Required (Bearer Token)
--   **Authorization**: `admin` role required for all operations.
+### `POST /auth/login`
 
-### 1. Get All Users
+Authenticates a user and returns a JWT token.
 
--   **URL**: `/users`
--   **Method**: `GET`
--   **Description**: Retrieves a list of all registered users.
--   **Response (200 OK)**:
+*   **Request Body**: `application/json`
     ```json
     {
-        "status": "success",
-        "results": 2, // Number of users
-        "data": {
-            "users": [
-                {
-                    "id": "uuid",
-                    "username": "string",
-                    "email": "string",
-                    "role": "string"
-                }
-                // ... more user objects
-            ]
+        "username": "string",
+        "password": "string"
+    }
+    ```
+*   **Responses**:
+    *   `200 OK`: Successful login.
+        ```json
+        {
+            "token": "string"
         }
-    }
-    ```
--   **Error Responses**:
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 2. Create User
-
--   **URL**: `/users`
--   **Method**: `POST`
--   **Description**: Creates a new user account. This is distinct from `/auth/register` as it's for admin-driven creation.
--   **Request Body**: `application/json`
-    ```json
-    {
-        "username": "string",       // Required, min 3, max 30 alphanumeric
-        "email": "string",          // Required, valid email format
-        "password": "string",       // Required, min 8 characters
-        "role": "string"            // Required, Enum: "user", "admin"
-    }
-    ```
--   **Response (201 Created)**:
-    ```json
-    {
-        "status": "success",
-        "message": "User created successfully",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
+        ```
+    *   `401 Unauthorized`: Invalid credentials.
+        ```json
+        {
+            "status": 401,
+            "message": "Invalid credentials"
         }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `409 Conflict`: User with provided email already exists.
-    -   `500 Internal Server Error`: Server-side issues.
+        ```
+    *   `400 Bad Request`: Invalid JSON payload.
 
-### 3. Get User by ID
+### `POST /auth/register`
 
--   **URL**: `/users/:id`
--   **Method**: `GET`
--   **Description**: Retrieves details of a specific user by their ID.
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the user.
--   **Response (200 OK)**:
+Registers a new user. Default role is 'USER'.
+
+*   **Request Body**: `application/json`
     ```json
     {
-        "status": "success",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
+        "username": "string",
+        "password_hash": "string",  // This field temporarily holds the clear password for registration
+        "email": "string"
+    }
+    ```
+*   **Responses**:
+    *   `201 Created`: User registered successfully.
+        ```json
+        {
+            "message": "User registered successfully"
         }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid UUID format.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `404 Not Found`: User with the specified ID not found.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 4. Update User
-
--   **URL**: `/users/:id`
--   **Method**: `PUT`
--   **Description**: Updates the details of a specific user.
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the user.
--   **Request Body**: `application/json` (at least one field required)
-    ```json
-    {
-        "username": "string",       // Optional, min 3, max 30 alphanumeric
-        "email": "string",          // Optional, valid email format
-        "password": "string",       // Optional, min 8 characters (will be hashed)
-        "role": "string"            // Optional, Enum: "user", "admin"
-    }
-    ```
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "User updated successfully",
-        "data": {
-            "user": {
-                "id": "uuid",
-                "username": "string",
-                "email": "string",
-                "role": "string"
-            }
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data or UUID format.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `404 Not Found`: User with the specified ID not found.
-    -   `409 Conflict`: Attempted to update with a duplicate email.
-    -   `500 Internal Server Error`: Server-side issues.
-
-### 5. Delete User
-
--   **URL**: `/users/:id`
--   **Method**: `DELETE`
--   **Description**: Deletes a specific user account.
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the user.
--   **Response (204 No Content)**:
-    -   Successful deletion returns an empty response body.
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid UUID format.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `404 Not Found`: User with the specified ID not found.
-    -   `500 Internal Server Error`: Server-side issues.
+        ```
+    *   `400 Bad Request`: Missing required fields or invalid JSON.
+    *   `409 Conflict`: User with this username or email already exists.
+    *   `500 Internal Server Error`: Server-side error.
 
 ---
 
-## Product Management Endpoints
+## Users (Admin Only)
 
-These endpoints allow management of product resources. Some are publicly accessible and cached, others require authentication and admin privileges.
+Requires `ADMIN` role.
 
-### 1. Get All Products
+### `GET /users`
 
--   **URL**: `/products`
--   **Method**: `GET`
--   **Description**: Retrieves a list of all products. This endpoint is public and uses a caching layer.
--   **Authentication**: None
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "results": 3, // Number of products
-        "message": "Data from cache" // Or omitted if from DB
-        "data": {
-            "products": [
-                {
-                    "id": "uuid",
-                    "name": "string",
-                    "description": "string",
-                    "price": "decimal",
-                    "stock": "integer",
-                    "createdAt": "datetime",
-                    "updatedAt": "datetime"
-                }
-                // ... more product objects
-            ]
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `500 Internal Server Error`: Server-side issues.
+Retrieves a list of all users.
 
-### 2. Get Product by ID
-
--   **URL**: `/products/:id`
--   **Method**: `GET`
--   **Description**: Retrieves details of a specific product by its ID. This endpoint is public and uses a caching layer.
--   **Authentication**: None
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the product.
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Data from cache" // Or omitted if from DB
-        "data": {
-            "product": {
-                "id": "uuid",
-                "name": "string",
-                "description": "string",
-                "price": "decimal",
-                "stock": "integer",
-                "createdAt": "datetime",
-                "updatedAt": "datetime"
+*   **Authentication**: Required (Admin Role)
+*   **Responses**:
+    *   `200 OK`: List of users.
+        ```json
+        [
+            {
+                "id": 1,
+                "username": "admin",
+                "email": "admin@example.com",
+                "role": "ADMIN",
+                "created_at": "2023-10-27T10:00:00Z",
+                "updated_at": "2023-10-27T10:00:00Z"
             }
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid UUID format.
-    -   `404 Not Found`: Product with the specified ID not found.
-    -   `500 Internal Server Error`: Server-side issues.
+        ]
+        ```
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Insufficient role.
 
-### 3. Create Product
+### `GET /users/{id}`
 
--   **URL**: `/products`
--   **Method**: `POST`
--   **Description**: Creates a new product.
--   **Authentication**: Required (Bearer Token)
--   **Authorization**: `admin` role required.
--   **Request Body**: `application/json`
+Retrieves a user by ID.
+
+*   **Authentication**: Required (Admin Role)
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the user.
+*   **Responses**:
+    *   `200 OK`: User object.
+    *   `404 Not Found`: User not found.
+    *   `401 Unauthorized`: Missing or invalid token.
+    *   `403 Forbidden`: Insufficient role.
+
+### `PUT /users/{id}`
+
+Updates an existing user.
+
+*   **Authentication**: Required (Admin Role)
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the user to update.
+*   **Request Body**: `application/json` (partial or full user object)
     ```json
     {
-        "name": "string",           // Required, min 3, max 100
-        "description": "string",    // Optional, min 10, max 500
-        "price": 99.99,             // Required, positive decimal
-        "stock": 100                // Optional, default 0, min 0 integer
+        "email": "new.email@example.com",
+        "role": "USER"
     }
     ```
--   **Response (201 Created)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Product created successfully",
-        "data": {
-            "product": {
-                "id": "uuid",
-                "name": "string",
-                "description": "string",
-                "price": "decimal",
-                "stock": "integer",
-                "createdAt": "datetime",
-                "updatedAt": "datetime"
-            }
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `409 Conflict`: Product with provided name already exists.
-    -   `500 Internal Server Error`: Server-side issues.
+*   **Responses**:
+    *   `200 OK`: User updated successfully.
+    *   `404 Not Found`: User not found.
+    *   `400 Bad Request`: Invalid JSON or data.
+    *   `401 Unauthorized`/`403 Forbidden`.
 
-### 4. Update Product
+### `DELETE /users/{id}`
 
--   **URL**: `/products/:id`
--   **Method**: `PUT`
--   **Description**: Updates the details of a specific product.
--   **Authentication**: Required (Bearer Token)
--   **Authorization**: `admin` role required.
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the product.
--   **Request Body**: `application/json` (at least one field required)
-    ```json
-    {
-        "name": "string",           // Optional, min 3, max 100
-        "description": "string",    // Optional, min 10, max 500
-        "price": 99.99,             // Optional, positive decimal
-        "stock": 100                // Optional, min 0 integer
-    }
-    ```
--   **Response (200 OK)**:
-    ```json
-    {
-        "status": "success",
-        "message": "Product updated successfully",
-        "data": {
-            "product": {
-                "id": "uuid",
-                "name": "string",
-                "description": "string",
-                "price": "decimal",
-                "stock": "integer",
-                "createdAt": "datetime",
-                "updatedAt": "datetime"
-            }
-        }
-    }
-    ```
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid input data or UUID format.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `404 Not Found`: Product with the specified ID not found.
-    -   `409 Conflict`: Attempted to update with a duplicate name.
-    -   `500 Internal Server Error`: Server-side issues.
+Deletes a user by ID.
 
-### 5. Delete Product
-
--   **URL**: `/products/:id`
--   **Method**: `DELETE`
--   **Description**: Deletes a specific product.
--   **Authentication**: Required (Bearer Token)
--   **Authorization**: `admin` role required.
--   **Path Parameters**:
-    -   `id`: `uuid` (Required) - The UUID of the product.
--   **Response (204 No Content)**:
-    -   Successful deletion returns an empty response body.
--   **Error Responses**:
-    -   `400 Bad Request`: Invalid UUID format.
-    -   `401 Unauthorized`: Invalid or missing access token.
-    -   `403 Forbidden`: User does not have `admin` role.
-    -   `404 Not Found`: Product with the specified ID not found.
-    -   `500 Internal Server Error`: Server-side issues.
+*   **Authentication**: Required (Admin Role)
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the user to delete.
+*   **Responses**:
+    *   `200 OK`: User deleted successfully.
+    *   `404 Not Found`: User not found.
+    *   `401 Unauthorized`/`403 Forbidden`.
 
 ---
 
-## Other Endpoints
+## Optimization Recommendations
 
-### 1. Health Check
+Accessible to authenticated users.
 
--   **URL**: `/health`
--   **Method**: `GET`
--   **Description**: Basic health check endpoint to verify if the server is running.
--   **Authentication**: None
--   **Response (200 OK)**:
+### `GET /recommendations`
+
+Retrieves a list of all index recommendations.
+
+*   **Authentication**: Required
+*   **Responses**:
+    *   `200 OK`: Array of recommendation objects.
+        ```json
+        [
+            {
+                "id": 1,
+                "table_name": "customers",
+                "column_name": "email",
+                "recommendation_type": "B-TREE INDEX",
+                "recommendation_sql": "CREATE INDEX idx_customers_email ON customers (email);",
+                "description": "Index email column for faster email lookups.",
+                "status": "PENDING",
+                "severity": "MEDIUM",
+                "cost_savings": "High",
+                "created_at": "2023-10-27T10:00:00Z",
+                "updated_at": "2023-10-27T10:00:00Z"
+            }
+        ]
+        ```
+    *   `401 Unauthorized`: Missing or invalid token.
+
+### `GET /recommendations/{id}`
+
+Retrieves a single index recommendation by ID.
+
+*   **Authentication**: Required
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the recommendation.
+*   **Responses**:
+    *   `200 OK`: Recommendation object.
+    *   `404 Not Found`: Recommendation not found.
+    *   `401 Unauthorized`.
+
+### `POST /recommendations`
+
+Creates a new index recommendation.
+
+*   **Authentication**: Required
+*   **Request Body**: `application/json`
     ```json
     {
-        "status": "UP",
-        "timestamp": "datetime"
+        "table_name": "string",
+        "column_name": "string",
+        "recommendation_type": "string",
+        "recommendation_sql": "string",
+        "description": "string",
+        "severity": "string",
+        "cost_savings": "string"
     }
     ```
--   **Error Responses**: (Rare, indicates server failure)
-    -   `500 Internal Server Error`
+*   **Responses**:
+    *   `201 Created`: Recommendation created.
+    *   `400 Bad Request`: Invalid JSON or data.
+    *   `401 Unauthorized`.
+
+### `PUT /recommendations/{id}`
+
+Updates an existing index recommendation.
+
+*   **Authentication**: Required
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the recommendation to update.
+*   **Request Body**: `application/json` (partial or full recommendation object)
+    ```json
+    {
+        "status": "APPLIED",
+        "description": "Updated description..."
+    }
+    ```
+*   **Responses**:
+    *   `200 OK`: Recommendation updated.
+    *   `404 Not Found`: Recommendation not found.
+    *   `400 Bad Request`: Invalid JSON or data.
+    *   `401 Unauthorized`.
+
+### `DELETE /recommendations/{id}`
+
+Deletes an index recommendation.
+
+*   **Authentication**: Required
+*   **Parameters**:
+    *   `id` (path): `integer` - The ID of the recommendation to delete.
+*   **Responses**:
+    *   `200 OK`: Recommendation deleted.
+    *   `404 Not Found`: Recommendation not found.
+    *   `401 Unauthorized`.
+
+---
+
+## Analysis Endpoints (Admin Only)
+
+These endpoints trigger database analysis processes.
+
+### `POST /analyze/queries`
+
+Initiates an analysis of recent query logs to identify potential index improvements. This is typically an asynchronous operation.
+
+*   **Authentication**: Required (Admin Role)
+*   **Responses**:
+    *   `200 OK`: Analysis initiated message.
+        ```json
+        {
+            "message": "Query analysis initiated. Check recommendations later."
+        }
+        ```
+    *   `401 Unauthorized`/`403 Forbidden`.
+    *   `500 Internal Server Error`: Analysis failed.
+
+### `POST /analyze/schema`
+
+Initiates an analysis of the current database schema for issues like missing foreign keys, suboptimal data types, etc.
+
+*   **Authentication**: Required (Admin Role)
+*   **Responses**:
+    *   `200 OK`: Analysis initiated message.
+        ```json
+        {
+            "message": "Schema analysis initiated. Check schema issues later."
+        }
+        ```
+    *   `401 Unauthorized`/`403 Forbidden`.
+    *   `500 Internal Server Error`: Analysis failed.
 
 ---
 ```

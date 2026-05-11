@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Optimizer - {{title}}</title>
+    <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+    <header>
+        <h1>Database Optimizer</h1>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/login">Login (placeholder)</a>
+            <a href="/recommendations">Recommendations (API Driven)</a>
+            <!-- In a real app, these would be proper client-side routes -->
+        </nav>
+    </header>
+    <main>
+        <section class="hero">
+            <h2>Welcome to your Database Optimization Dashboard</h2>
+            <p>Monitor, analyze, and optimize your PostgreSQL databases for peak performance.</p>
+            <button onclick="window.location.href='/login'">Get Started</button>
+        </section>
+
+        <section class="features">
+            <h3>Key Features</h3>
+            <ul>
+                <li>Automated Query Log Analysis</li>
+                <li>Intelligent Index Recommendations</li>
+                <li>Schema Issue Detection</li>
+                <li>API for Integration</li>
+                <li>Authentication & Authorization</li>
+            </ul>
+        </section>
+
+        <section class="api-info">
+            <h3>API Endpoints (Examples)</h3>
+            <pre><code>
+GET /api/v1/recommendations
+POST /api/v1/auth/login
+POST /api/v1/analyze/queries
+            </code></pre>
+            <p>For full API documentation, see <a href="/api-docs">API_DOCUMENTATION.md</a></p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Database Optimizer. All rights reserved.</p>
+    </footer>
+    <script>
+        // Basic client-side script for demonstration
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Database Optimizer Frontend Loaded!');
+        });
+    </script>
+</body>
+</html>
+```

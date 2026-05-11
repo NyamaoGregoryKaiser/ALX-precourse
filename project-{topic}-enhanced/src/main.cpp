@@ -1,97 +1,97 @@
-#include "crow.h"
-#include "config/AppConfig.h"
+#include "server/HttpServer.h"
+#include "server/RequestHandler.h"
+#include "db/DbConnection.h"
+#include "db/migrations/MigrationManager.h"
 #include "utils/Logger.h"
-#include "database/DatabaseManager.h"
+#include "utils/Config.h"
 #include "services/AuthService.h"
-#include "services/ScrapingService.h"
-#include "services/SchedulerService.h"
-#include "middleware/AuthMiddleware.h"
-#include "middleware/ErrorMiddleware.h"
-#include "middleware/RateLimitMiddleware.h"
-#include "controllers/AuthController.h"
-#include "controllers/ScrapeJobController.h"
-#include "controllers/ScrapedItemController.h"
-#include "cache/CacheManager.h"
+#include "db/repositories/UserRepository.h" // For initial admin creation
 
 #include <iostream>
 #include <memory>
-#include <string>
+#include <boost/asio/signal_set.hpp>
 
-int main() {
-    // 1. Load configuration
-    if (!AppConfig::load()) {
-        LOG_CRITICAL("Failed to load application configuration. Exiting.");
-        return 1;
+int main(int argc, char* argv[]) {
+    // 1. Initialize Logger
+    Logger::init();
+    LOG_INFO("Starting Database Optimizer application...");
+
+    // 2. Load Configuration
+    Config::load_config(".env");
+    const std::string db_conn_str = Config::get("DB_CONNECTION_STRING");
+    const int port = std::stoi(Config::get("SERVER_PORT", "8080"));
+    const std::string jwt_secret = Config::get("JWT_SECRET");
+
+    if (db_conn_str.empty() || jwt_secret.empty()) {
+        LOG_ERROR("Missing critical environment variables. Exiting.");
+        return EXIT_FAILURE;
     }
 
-    LOG_INFO("Application configuration loaded successfully.");
-
-    // 2. Initialize Logger
-    Logger::init();
-    LOG_INFO("Logger initialized.");
-
-    // 3. Initialize Database Manager
+    // 3. Initialize Database Connection Pool
     try {
-        DatabaseManager::init(AppConfig::get_instance().get_db_connection_string());
+        DbConnection::init(db_conn_str);
         LOG_INFO("Database connection pool initialized.");
     } catch (const std::exception& e) {
-        LOG_CRITICAL("Failed to initialize database: {}", e.what());
-        return 1;
+        LOG_ERROR("Failed to initialize database: {}", e.what());
+        return EXIT_FAILURE;
     }
 
-    // 4. Initialize Cache Manager (Redis)
+    // 4. Run Migrations
     try {
-        CacheManager::init(AppConfig::get_instance().get_redis_host(), AppConfig::get_instance().get_redis_port());
-        LOG_INFO("Redis Cache Manager initialized.");
+        MigrationManager migration_manager("./database/migrations");
+        migration_manager.runMigrations();
+        LOG_INFO("Database migrations completed successfully.");
     } catch (const std::exception& e) {
-        LOG_WARNING("Failed to initialize Redis Cache Manager: {}. Caching/Rate limiting might be affected.", e.what());
+        LOG_ERROR("Failed to run database migrations: {}", e.what());
+        return EXIT_FAILURE;
     }
 
-    // 5. Initialize Services
-    AuthService auth_service;
-    ScrapingService scraping_service; // Depends on CacheManager
-    SchedulerService scheduler_service(scraping_service, AppConfig::get_instance().get_scheduler_interval_seconds());
-    scheduler_service.start(); // Start background scraping scheduler
+    // 5. Create Initial Admin User (if not exists)
+    try {
+        auto conn = DbConnection::getPool().getConnection();
+        UserRepository user_repo(conn);
+        if (!user_repo.findByUsername("admin")) {
+            User admin_user = {"admin", AuthService::hashPassword("admin_password_secure"), "admin@example.com", "ADMIN"};
+            user_repo.create(admin_user);
+            LOG_WARN("Default admin user 'admin' created with password 'admin_password_secure'. PLEASE CHANGE IT IMMEDIATELY!");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to check/create admin user: {}", e.what());
+        // Continue, as this might be due to concurrent startup
+    }
 
-    // 6. Setup Crow Application
-    crow::App<
-        crow::AuthMiddleware,
-        crow::ErrorMiddleware,
-        crow::RateLimitMiddleware
-    > app;
 
-    // Apply global middleware configurations
-    app.template get_middleware<crow::AuthMiddleware>().set_secret(AppConfig::get_instance().get_jwt_secret());
-    app.template get_middleware<crow::RateLimitMiddleware>().set_redis_connection(
-        AppConfig::get_instance().get_redis_host(),
-        AppConfig::get_instance().get_redis_port(),
-        AppConfig::get_instance().get_rate_limit_requests(),
-        AppConfig::get_instance().get_rate_limit_window_seconds()
-    );
+    // 6. Setup HTTP Server
+    boost::asio::io_context ioc{};
+    boost::asio::ip::tcp::endpoint endpoint{boost::asio::ip::make_address("0.0.0.0"), static_cast<unsigned short>(port)};
 
-    // 7. Register Controllers (API Endpoints)
-    AuthController::register_routes(app, auth_service);
-    ScrapeJobController::register_routes(app, scraping_service);
-    ScrapedItemController::register_routes(app, scraping_service);
+    // Instantiate services and repositories
+    AuthService auth_service(jwt_secret);
+    RequestHandler request_handler(auth_service); // Pass services/repos here
 
-    // Serve static files for the frontend (optional, for simple integration)
-    CROW_ROUTE(app, "/")([](){
-        crow::response res;
-        res.set_static_file_info(crow::utility::get_current_directory() + "/frontend/index.html");
-        return res;
+    // This is where you would register your routes with `request_handler`
+    // Example: request_handler.registerRoute("/api/v1/users", HttpMethod::GET, handleGetUsers);
+
+    // Initial setup of routes:
+    request_handler.setupRoutes();
+
+    HttpServer server(ioc, endpoint, request_handler);
+    LOG_INFO("HTTP Server listening on {}:{}", endpoint.address().to_string(), endpoint.port());
+
+    // 7. Handle OS Signals for graceful shutdown
+    boost::asio::signal_set signals(ioc, SIGINT, SIGTERM);
+    signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
+        if (!error) {
+            LOG_INFO("Received signal {}, shutting down gracefully...", signal_number);
+            server.stop(); // Request server to stop accepting new connections
+            ioc.stop();    // Stop io_context
+        }
     });
-    CROW_ROUTE(app, "/<path>")([](const crow::request& req, crow::response& res, const std::string& path){
-        std::string full_path = crow::utility::get_current_directory() + "/frontend/" + path;
-        res.set_static_file_info(full_path);
-        return res;
-    });
 
-    // 8. Start the server
-    LOG_INFO("Starting Crow server on port {}.", AppConfig::get_instance().get_port());
-    app.port(AppConfig::get_instance().get_port()).multithreaded().run();
+    // 8. Run io_context
+    ioc.run();
 
-    // Cleanup (though typically not reached in a server app without shutdown signals)
-    scheduler_service.stop();
-    LOG_INFO("Server stopped.");
-    return 0;
+    LOG_INFO("Application shutdown complete.");
+    return EXIT_SUCCESS;
 }
+```
