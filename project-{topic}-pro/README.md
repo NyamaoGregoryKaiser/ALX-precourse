@@ -1,71 +1,51 @@
-securestore/
+task-management-system/
+├── backend/
+│   ├── src/main/java/com/alx/task_management_system/
+│   │   ├── config/             # Spring configurations (Security, OpenAPI, Cache)
+│   │   ├── controller/         # REST API endpoints
+│   │   ├── dto/                # Data Transfer Objects
+│   │   ├── entity/             # JPA Entities
+│   │   ├── exception/          # Custom exceptions
+│   │   ├── filter/             # Custom servlet filters (e.g., rate limiting, JWT)
+│   │   ├── mapper/             # MapStruct interfaces
+│   │   ├── repository/         # Spring Data JPA repositories
+│   │   ├── security/           # JWT utilities, user details service
+│   │   ├── service/            # Business logic
+│   │   ├── util/               # Utility classes
+│   │   └── TaskManagementSystemApplication.java
+│   ├── src/main/resources/
+│   │   ├── application.yml     # Main application properties
+│   │   ├── db/migration/       # Flyway SQL migration scripts
+│   │   └── logback-spring.xml  # Logging configuration
+│   ├── src/test/java/com/alx/task_management_system/
+│   │   ├── controller/
+│   │   ├── repository/
+│   │   ├── service/
+│   │   └── security/
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── .dockerignore
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── assets/
+│   │   ├── components/
+│   │   ├── contexts/
+│   │   ├── hooks/
+│   │   ├── pages/
+│   │   ├── App.js
+│   │   ├── index.js
+│   │   └── index.css
+│   ├── package.json
+│   ├── Dockerfile
+│   └── .env
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
-├── alembic/
-│   ├── versions/
-│   ├── env.py
-│   └── script.py.mako
-├── app/
-│   ├── api/
-│   │   ├── deps.py
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       │   ├── auth.py
-│   │       │   ├── users.py
-│   │       │   ├── products.py
-│   │       │   └── audit_logs.py
-│   │       └── api.py
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── security.py
-│   │   ├── exceptions.py
-│   │   ├── middlewares.py
-│   │   └── logging_config.py
-│   ├── crud/
-│   │   ├── base.py
-│   │   ├── user.py
-│   │   ├── product.py
-│   │   └── audit_log.py
-│   ├── db/
-│   │   ├── base.py
-│   │   ├── session.py
-│   │   └── init_db.py
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── product.py
-│   │   ├── role.py
-│   │   └── audit_log.py
-│   ├── schemas/
-│   │   ├── token.py
-│   │   ├── user.py
-│   │   ├── product.py
-│   │   ├── role.py
-│   │   └── audit_log.py
-│   ├── static/
-│   │   ├── css/
-│   │   │   └── style.css
-│   │   └── js/
-│   │       └── script.js
-│   ├── templates/
-│   │   └── index.html
-│   └── main.py
-├── tests/
-│   ├── unit/
-│   │   ├── test_security.py
-│   │   └── test_crud_base.py
-│   ├── integration/
-│   │   ├── test_auth_api.py
-│   │   ├── test_users_api.py
-│   │   └── test_products_api.py
-│   └── performance/
-│       └── locustfile.py
-├── .env.example
-├── Dockerfile
+│       └── ci-cd.yml
 ├── docker-compose.yml
-├── requirements.txt
-├── alembic.ini
 ├── README.md
 ├── ARCHITECTURE.md
 ├── DEPLOYMENT.md
-├── API_DOCS.md
+└── performance-test/
+    └── jmeter-plan.jmx (conceptual)
