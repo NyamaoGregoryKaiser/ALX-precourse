@@ -1,0 +1,133 @@
+```yaml
+# GitLab CI/CD Pipeline Configuration
+
+variables:
+  DOCKER_IMAGE_NAME: $CI_REGISTRY_IMAGE/task-api
+  DOCKER_IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  DOCKER_LATEST_TAG: latest
+
+stages:
+  - build
+  - test
+  - deploy
+
+.docker_login: &docker_login
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+build_docker_image:
+  stage: build
+  <<: *docker_login
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG -t $DOCKER_IMAGE_NAME:$DOCKER_LATEST_TAG .
+    - docker push $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG
+    - docker push $DOCKER_IMAGE_NAME:$DOCKER_LATEST_TAG
+    - echo "Docker image built and pushed: $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"
+  only:
+    - main
+    - merge_requests
+
+# C++ Unit and Integration Tests
+unit_integration_tests:
+  stage: test
+  image: $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG # Use the freshly built image for testing
+  services:
+    - name: postgres:15-alpine
+      alias: db # Alias the service to 'db' so app can connect
+  variables:
+    # Override DB host for tests to connect to the service
+    DB_HOST: db
+    DB_USER: test_user
+    DB_PASSWORD: test_password
+    DB_NAME: test_db
+    DB_PORT: 5432
+    JWT_SECRET: "test-secret"
+  script:
+    - echo "Running C++ unit and integration tests..."
+    - apt-get update && apt-get install -y cmake build-essential libgtest-dev libgmock-dev
+    - cd /usr/src/gtest && cmake . && make && mv libg* /usr/local/lib/
+    - cd /usr/src/gmock && cmake . && make && mv libg* /usr/local/lib/
+    - cd /app/build
+    - cmake .. -DBUILD_TESTS=ON # Ensure tests are built
+    - cmake --build . --target TaskAPI_tests
+    - ./TaskAPI_tests # Run compiled tests
+  needs: ["build_docker_image"]
+  only:
+    - main
+    - merge_requests
+
+# API Tests (Python)
+api_tests:
+  stage: test
+  image: python:3.10-slim-bullseye # Use a Python image for API tests
+  services:
+    - name: $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG # Our built app image
+      alias: app
+    - name: postgres:15-alpine # The database for the app
+      alias: db
+  variables:
+    # These variables are for the `app` service to connect to `db`
+    APP_DB_HOST: db
+    APP_DB_USER: task_user
+    APP_DB_PASSWORD: secret_password
+    APP_DB_NAME: task_db
+    APP_DB_PORT: 5432
+    APP_SERVER_PORT: 9080
+    APP_JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production-!!!!" # Use the production-like secret
+
+  script:
+    - echo "Running API tests..."
+    - pip install -r tests/api/requirements.txt
+    - python tests/api/api_tests.py http://app:${APP_SERVER_PORT}
+  needs: ["build_docker_image"] # Depends on the image being built
+  only:
+    - main
+    - merge_requests
+
+deploy_to_staging:
+  stage: deploy
+  image: alpine/helm:3.10.0 # Example: using Helm for Kubernetes deployment
+  variables:
+    KUBE_CONTEXT: "$STAGING_KUBE_CONTEXT"
+    KUBE_NAMESPACE: "$STAGING_KUBE_NAMESPACE"
+  script:
+    - echo "Deploying to staging environment..."
+    - kubectl config use-context $KUBE_CONTEXT
+    - kubectl config set-context --current --namespace=$KUBE_NAMESPACE
+    - helm upgrade --install task-api-staging ./helm/task-api \
+      --set image.repository=$DOCKER_IMAGE_NAME \
+      --set image.tag=$DOCKER_IMAGE_TAG \
+      --set env.jwtSecret=$JWT_SECRET \
+      # Add other production specific configurations
+    - echo "Deployment to staging complete."
+  environment:
+    name: staging
+    url: https://staging.yourdomain.com
+  when: manual # Manual deploy to staging
+  only:
+    - main
+
+deploy_to_production:
+  stage: deploy
+  image: alpine/helm:3.10.0
+  variables:
+    KUBE_CONTEXT: "$PROD_KUBE_CONTEXT"
+    KUBE_NAMESPACE: "$PROD_KUBE_NAMESPACE"
+  script:
+    - echo "Deploying to production environment..."
+    - kubectl config use-context $KUBE_CONTEXT
+    - kubectl config set-context --current --namespace=$KUBE_NAMESPACE
+    - helm upgrade --install task-api-production ./helm/task-api \
+      --set image.repository=$DOCKER_IMAGE_NAME \
+      --set image.tag=$DOCKER_IMAGE_TAG \
+      --set env.jwtSecret=$JWT_SECRET_PROD \
+      # Add other production specific configurations
+    - echo "Deployment to production complete."
+  environment:
+    name: production
+    url: https://yourdomain.com
+  when: manual # Manual deploy to production, typically after staging validation
+  only:
+    - main
+```

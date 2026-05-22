@@ -1,36 +1,53 @@
 ```cmake
-# Add Google Test
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
+enable_testing()
 
-# Add the test executable
-add_executable(visuflow_tests
-    unit/TestDataProcessor.cpp
-    unit/TestJWTManager.cpp
-    unit/TestCacheManager.cpp
-    integration/TestDatabase.cpp
-    integration/TestApiServer.cpp
-)
+# Find Google Test
+find_package(GTest CONFIG REQUIRED)
 
-# Link tests with the main application's sources and libraries
-target_link_libraries(visuflow_tests
-    gtest_main
-    gmock_main
-    visuflow_server # Link the main executable to access its components
+# Link C++ libraries needed for tests
+# We need to link the same libraries as the main application, plus gtest and gmock.
+set(TEST_LIBS
     Pistache::Pistache
-    nlohmann_json::nlohmann_json
+    jsoncpp::jsoncpp
+    PQXX::pqxx
     spdlog::spdlog
-    # jwt-cpp
-    # soci_core soci_postgresql
-    pqxx::pqxx # Link libpqxx for database tests
+    jwt-cpp::jwt-cpp
+    argon2 # Assuming this is correctly linked globally or by find_package
+    GTest::gtest_main
+    GTest::gmock_main
 )
 
-# Set common definitions for tests to correctly find paths/config
-target_compile_definitions(visuflow_tests PUBLIC
-    TEST_RESOURCE_PATH="${CMAKE_SOURCE_DIR}/tests/resources"
-    CONFIG_PATH="${CMAKE_SOURCE_DIR}/config.json"
+# Set common include directories for tests
+target_include_directories(TaskAPI_tests PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${GTest_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src # Allow tests to include src/ headers
 )
 
-# Ensure tests are run after building
-add_test(NAME run_visuflow_tests COMMAND visuflow_tests)
+# Unit Tests
+add_executable(TaskAPI_unit_tests
+    unit/test_config.cpp
+    unit/test_jwt_manager.cpp
+    unit/test_password_hasher.cpp
+    unit/test_json_utils.cpp
+    # Add more unit test files as needed
+)
+target_link_libraries(TaskAPI_unit_tests PRIVATE ${TEST_LIBS})
+add_test(NAME UnitTests COMMAND TaskAPI_unit_tests)
+
+
+# Integration Tests
+add_executable(TaskAPI_integration_tests
+    integration/test_task_service_integration.cpp
+    # Add more integration test files as needed
+)
+target_link_libraries(TaskAPI_integration_tests PRIVATE ${TEST_LIBS})
+add_test(NAME IntegrationTests COMMAND TaskAPI_integration_tests)
+
+
+# Overall test target for convenience
+add_custom_target(TaskAPI_tests ALL DEPENDS
+    TaskAPI_unit_tests
+    TaskAPI_integration_tests
+)
 ```

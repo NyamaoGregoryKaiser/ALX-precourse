@@ -1,0 +1,4 @@
+```
+requests
+PyYAML # If you want to load config from a YAML file in tests
+```

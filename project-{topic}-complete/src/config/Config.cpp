@@ -1,154 +1,88 @@
 ```cpp
-#include "Config.hpp"
-#include "../common/Logger.hpp"
-#include "../common/Exceptions.hpp"
-#include <cstdlib> // For getenv
+#include "Config.h"
+#include "utils/Logger.h"
+#include <fstream>
+#include <sstream>
 
-namespace MLToolkit {
 namespace Config {
+    std::map<std::string, std::string> s_config;
+    bool s_is_loaded = false;
 
-Config& Config::get_instance() {
-    static Config instance;
-    return instance;
-}
-
-void Config::load(const std::string& config_file_path) {
-    LOG_INFO("Loading configuration from: {}", config_file_path);
-    load_from_file(config_file_path);
-    load_from_environment();
-    LOG_INFO("Configuration loaded successfully.");
-}
-
-std::string Config::get_string(const std::string& key, const std::string& default_value) const {
-    auto it = settings_.find(key);
-    if (it != settings_.end()) {
-        return it->second;
-    }
-    LOG_DEBUG("Config key '{}' not found, returning default string value.", key);
-    return default_value;
-}
-
-int Config::get_int(const std::string& key, int default_value) const {
-    auto it = settings_.find(key);
-    if (it != settings_.end()) {
-        try {
-            return std::stoi(it->second);
-        } catch (const std::exception& e) {
-            LOG_WARN("Failed to convert config key '{}' value '{}' to int: {}. Returning default.",
-                     key, it->second, e.what());
+    void load(const std::string& filename) {
+        s_config.clear();
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            LOG_WARN("Could not open .env file: {}. Trying to load from environment variables.", filename);
+            // Fallback to environment variables if .env file not found
+            // This is a simplified fallback. A more robust solution might iterate through expected keys.
+            s_config["SERVER_PORT"] = std::getenv("SERVER_PORT") ? std::getenv("SERVER_PORT") : "";
+            s_config["SERVER_THREADS"] = std::getenv("SERVER_THREADS") ? std::getenv("SERVER_THREADS") : "";
+            s_config["DB_HOST"] = std::getenv("DB_HOST") ? std::getenv("DB_HOST") : "";
+            s_config["DB_PORT"] = std::getenv("DB_PORT") ? std::getenv("DB_PORT") : "";
+            s_config["DB_USER"] = std::getenv("DB_USER") ? std::getenv("DB_USER") : "";
+            s_config["DB_PASSWORD"] = std::getenv("DB_PASSWORD") ? std::getenv("DB_PASSWORD") : "";
+            s_config["DB_NAME"] = std::getenv("DB_NAME") ? std::getenv("DB_NAME") : "";
+            s_config["JWT_SECRET"] = std::getenv("JWT_SECRET") ? std::getenv("JWT_SECRET") : "";
+            s_config["JWT_EXPIRATION_SECONDS"] = std::getenv("JWT_EXPIRATION_SECONDS") ? std::getenv("JWT_EXPIRATION_SECONDS") : "";
+            s_config["LOG_LEVEL"] = std::getenv("LOG_LEVEL") ? std::getenv("LOG_LEVEL") : "";
+            s_config["RATE_LIMIT_ENABLED"] = std::getenv("RATE_LIMIT_ENABLED") ? std::getenv("RATE_LIMIT_ENABLED") : "";
+            s_config["RATE_LIMIT_WINDOW_SECONDS"] = std::getenv("RATE_LIMIT_WINDOW_SECONDS") ? std::getenv("RATE_LIMIT_WINDOW_SECONDS") : "";
+            s_config["RATE_LIMIT_MAX_REQUESTS"] = std::getenv("RATE_LIMIT_MAX_REQUESTS") ? std::getenv("RATE_LIMIT_MAX_REQUESTS") : "";
+        } else {
+            std::string line;
+            while (std::getline(file, line)) {
+                if (line.empty() || line[0] == '#') {
+                    continue;
+                }
+                size_t eqPos = line.find('=');
+                if (eqPos != std::string::npos) {
+                    std::string key = line.substr(0, eqPos);
+                    std::string value = line.substr(eqPos + 1);
+                    // Trim whitespace
+                    key.erase(0, key.find_first_not_of(" \t\n\r\f\v"));
+                    key.erase(key.find_last_not_of(" \t\n\r\f\v") + 1);
+                    value.erase(0, value.find_first_not_of(" \t\n\r\f\v"));
+                    value.erase(value.find_last_not_of(" \t\n\r\f\v") + 1);
+                    s_config[key] = value;
+                }
+            }
         }
+        s_is_loaded = true;
+        LOG_INFO("Configuration loaded from {}. {} entries.", filename, s_config.size());
     }
-    LOG_DEBUG("Config key '{}' not found or invalid int, returning default int value.", key);
-    return default_value;
-}
 
-bool Config::get_bool(const std::string& key, bool default_value) const {
-    auto it = settings_.find(key);
-    if (it != settings_.end()) {
-        std::string value = trim(it->second);
-        std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-        if (value == "true" || value == "1" || value == "yes") {
-            return true;
+    void clear() {
+        s_config.clear();
+        s_is_loaded = false;
+    }
+
+    bool isLoaded() {
+        return s_is_loaded;
+    }
+
+    template <>
+    bool get<bool>(const std::string& key, const bool& defaultValue) {
+        if (s_config.count(key)) {
+            std::string value = s_config[key];
+            std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+            return value == "true" || value == "1";
         }
-        if (value == "false" || value == "0" || value == "no") {
-            return false;
+        return defaultValue;
+    }
+
+    template <>
+    bool get<bool>(const std::string& key) {
+        if (!s_is_loaded) {
+            throw std::runtime_error("Config not loaded. Call Config::load() first.");
         }
-        LOG_WARN("Failed to convert config key '{}' value '{}' to bool. Returning default.", key, it->second);
-    }
-    LOG_DEBUG("Config key '{}' not found or invalid bool, returning default bool value.", key);
-    return default_value;
-}
-
-void Config::set(const std::string& key, const std::string& value) {
-    settings_[key] = value;
-    LOG_DEBUG("Config key '{}' set to '{}'.", key, value);
-}
-
-void Config::load_from_file(const std::string& file_path) {
-    std::ifstream file(file_path);
-    if (!file.is_open()) {
-        LOG_WARN("Config file '{}' not found, proceeding without it.", file_path);
-        return;
-    }
-
-    std::string line;
-    while (std::getline(file, line)) {
-        line = trim(line);
-        if (line.empty() || line[0] == '#') { // Skip empty lines and comments
-            continue;
+        if (s_config.count(key)) {
+            std::string value = s_config[key];
+            std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+            if (value == "true" || value == "1") return true;
+            if (value == "false" || value == "0") return false;
+            throw std::runtime_error("Failed to convert config value for key '" + key + "' to bool.");
         }
-
-        size_t delimiter_pos = line.find('=');
-        if (delimiter_pos == std::string::npos) {
-            LOG_WARN("Malformed config line: '{}'. Skipping.", line);
-            continue;
-        }
-
-        std::string key = trim(line.substr(0, delimiter_pos));
-        std::string value = trim(line.substr(delimiter_pos + 1));
-        settings_[key] = value;
-        LOG_DEBUG("Loaded config from file: {}={}", key, value);
-    }
-    file.close();
-}
-
-void Config::load_from_environment() {
-    // Example: Look for ML_DB_HOST, ML_DB_PORT, ML_API_PORT, etc.
-    // Environment variables override file settings.
-    const char* env_db_host = std::getenv("ML_DB_HOST");
-    if (env_db_host) {
-        settings_["DB_HOST"] = env_db_host;
-        LOG_DEBUG("Overriding DB_HOST from environment: {}", env_db_host);
-    }
-    const char* env_db_port = std::getenv("ML_DB_PORT");
-    if (env_db_port) {
-        settings_["DB_PORT"] = env_db_port;
-        LOG_DEBUG("Overriding DB_PORT from environment: {}", env_db_port);
-    }
-    const char* env_db_name = std::getenv("ML_DB_NAME");
-    if (env_db_name) {
-        settings_["DB_NAME"] = env_db_name;
-        LOG_DEBUG("Overriding DB_NAME from environment: {}", env_db_name);
-    }
-    const char* env_db_user = std::getenv("ML_DB_USER");
-    if (env_db_user) {
-        settings_["DB_USER"] = env_db_user;
-        LOG_DEBUG("Overriding DB_USER from environment: {}", env_db_user);
-    }
-    const char* env_db_password = std::getenv("ML_DB_PASSWORD");
-    if (env_db_password) {
-        settings_["DB_PASSWORD"] = env_db_password;
-        LOG_DEBUG("Overriding DB_PASSWORD from environment.");
-    }
-
-    const char* env_api_port = std::getenv("ML_API_PORT");
-    if (env_api_port) {
-        settings_["API_PORT"] = env_api_port;
-        LOG_DEBUG("Overriding API_PORT from environment: {}", env_api_port);
-    }
-
-    const char* env_jwt_secret = std::getenv("ML_JWT_SECRET");
-    if (env_jwt_secret) {
-        settings_["JWT_SECRET"] = env_jwt_secret;
-        LOG_DEBUG("Overriding JWT_SECRET from environment.");
-    }
-    
-    const char* env_log_level = std::getenv("ML_LOG_LEVEL");
-    if (env_log_level) {
-        settings_["LOG_LEVEL"] = env_log_level;
-        LOG_DEBUG("Overriding LOG_LEVEL from environment: {}", env_log_level);
+        throw std::runtime_error("Config key '" + key + "' not found.");
     }
 }
-
-std::string Config::trim(const std::string& str) {
-    size_t first = str.find_first_not_of(" \t\n\r");
-    if (std::string::npos == first) {
-        return str;
-    }
-    size_t last = str.find_last_not_of(" \t\n\r");
-    return str.substr(first, (last - first + 1));
-}
-
-} // namespace Config
-} // namespace MLToolkit
 ```

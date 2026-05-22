@@ -1,97 +1,158 @@
 ```cpp
-#include "util/Logger.h"
-#include "api/ApiServer.h"
-#include "data/db/Database.h"
-#include "data/db/migrations/MigrationManager.h"
-#include "core/config/ConfigManager.h"
+#include "pistache/endpoint.h"
+#include "pistache/http.h"
+#include "pistache/router.h"
+
+#include "config/Config.h"
+#include "db/Database.h"
+#include "utils/Logger.h"
+#include "utils/JsonUtils.h"
+
+#include "middleware/AuthMiddleware.h"
+#include "middleware/ErrorHandlingMiddleware.h"
+#include "middleware/RateLimitMiddleware.h"
+
+#include "controllers/UserController.h"
+#include "controllers/TaskController.h"
 
 #include <iostream>
+#include <stdexcept>
 #include <memory>
-#include <string>
 
-// A simple mock for a GUI application, demonstrating how it would
-// interact with the API or data processing logic directly.
-// In a real scenario, this would be a full-fledged Qt/ImGui app.
-void start_gui_application() {
-    // This is highly conceptual. A real GUI would use a GUI framework (e.g., Qt).
-    // It would instantiate GUI elements and connect signals/slots to business logic
-    // or make API calls to the local/remote VisuFlowAPI server.
-    VisuFlow::GUI::MainWindow mainWindow; // Conceptual main window
-    // mainWindow.show(); // Show the main window (if using Qt)
-    // Run GUI event loop (e.g., QApplication::exec() for Qt)
-    VisuFlow::Util::Logger::log(spdlog::level::info, "GUI application started (conceptual).");
+class TaskApiServer {
+public:
+    explicit TaskApiServer(Pistache::Address addr)
+        : httpEndpoint(std::make_shared<Pistache::Http::Endpoint>(addr)) {
+        Logger::init();
+        LOG_INFO("Initializing API server...");
 
-    // Example: GUI asks for data for a dashboard
-    // This could either call local DataProcessor/DataSourceManager directly
-    // or make an HTTP request to the ApiServer.
-    // For this example, let's assume it calls the local API.
-    std::string dashboardId = "dashboard_123";
-    std::string token = "mock_jwt_token"; // Obtained from login
+        // Load configuration
+        Config::load();
+        if (Config::get<std::string>("DB_HOST").empty()) {
+            LOG_ERROR("Database configuration missing. Please check .env file.");
+            throw std::runtime_error("Missing DB configuration.");
+        }
 
-    // Conceptual API call from GUI
-    // VisuFlow::API::Client apiClient("http://localhost:9080");
-    // auto data = apiClient.fetchDashboardData(dashboardId, token);
-    // mainWindow.renderDashboard(data); // Render data in GUI
-
-    VisuFlow::Util::Logger::log(spdlog::level::info, "GUI requested dashboard data.");
-}
-
-int main(int argc, char* argv[]) {
-    // 1. Initialize Configuration
-    VisuFlow::Core::Config::ConfigManager::loadConfig("config.json");
-    auto& config = VisuFlow::Core::Config::ConfigManager::getInstance();
-
-    // 2. Initialize Logger
-    VisuFlow::Util::Logger::init(config.getString("log_level", "info"), config.getString("log_file", "visuflow.log"));
-    VisuFlow::Util::Logger::log(spdlog::level::info, "VisuFlow Analytics Platform starting...");
-
-    // 3. Initialize Database
-    try {
-        VisuFlow::Data::DB::Database::init(
-            config.getString("db_host", "localhost"),
-            config.getString("db_port", "5432"),
-            config.getString("db_name", "visuflow_db"),
-            config.getString("db_user", "visuflow_user"),
-            config.getString("db_password", "password")
+        // Initialize database connection pool
+        Database::initPool(
+            Config::get<std::string>("DB_HOST"),
+            Config::get<std::string>("DB_USER"),
+            Config::get<std::string>("DB_PASSWORD"),
+            Config::get<std::string>("DB_NAME"),
+            Config::get<int>("DB_PORT")
         );
-        VisuFlow::Util::Logger::log(spdlog::level::info, "Database connection established.");
+        LOG_INFO("Database connection pool initialized.");
 
-        // 4. Run Migrations
-        VisuFlow::Data::DB::MigrationManager migrator("scripts/db/migrations");
-        migrator.runMigrations();
-        VisuFlow::Util::Logger::log(spdlog::level::info, "Database migrations applied successfully.");
-    } catch (const std::exception& e) {
-        VisuFlow::Util::Logger::log(spdlog::level::critical, "Database initialization failed: {}", e.what());
-        return 1;
+        // Run migrations
+        Database::runMigrations("src/db/migrations");
+        LOG_INFO("Database migrations applied.");
     }
 
-    // 5. Start API Server in a separate thread/process
-    unsigned int port = config.getUint("api_port", 9080);
-    VisuFlow::API::ApiServer apiServer(port);
+    void init(size_t thr = 2) {
+        auto opts = Pistache::Http::Endpoint::options()
+            .threads(static_cast<int>(thr))
+            .flags(Pistache::Tcp::Options::ReuseAddr);
+        httpEndpoint->init(opts);
+        setupRoutes();
+        LOG_INFO("Server initialized with {} threads.", thr);
+    }
+
+    void start() {
+        httpEndpoint->set>=<
+```
+```cpp
+        // Log starting event
+        LOG_INFO("API server starting on port {}.", Config::get<int>("SERVER_PORT"));
+        httpEndpoint->serve();
+    }
+
+    void shutdown() {
+        LOG_INFO("Shutting down API server...");
+        httpEndpoint->shutdown();
+        Database::shutdownPool();
+        LOG_INFO("Server shut down.");
+    }
+
+private:
+    std::shared_ptr<Pistache::Http::Endpoint> httpEndpoint;
+    Pistache::Rest::Router router;
+
+    void setupRoutes() {
+        using namespace Pistache::Rest;
+        Routes::Post(router, "/users/register", Routes::bind(&UserController::registerUser));
+        Routes::Post(router, "/users/login", Routes::bind(&UserController::loginUser));
+
+        // Routes requiring authentication
+        Routes::Get(router, "/tasks", Routes::bind(&TaskController::getTasks));
+        Routes::Post(router, "/tasks", Routes::bind(&TaskController::createTask));
+        Routes::Get(router, "/tasks/:id", Routes::bind(&TaskController::getTaskById));
+        Routes::Put(router, "/tasks/:id", Routes::bind(&TaskController::updateTask));
+        Routes::Delete(router, "/tasks/:id", Routes::bind(&TaskController::deleteTask));
+
+        // Apply middleware
+        auto authMiddleware = std::make_shared<AuthMiddleware>();
+        auto rateLimitMiddleware = std::make_shared<RateLimitMiddleware>();
+
+        // For simplicity, applying middleware globally to routes for now
+        // In a real app, you'd apply it more granularly using a custom route handler
+        // or a chain of responsibilities. Pistache's Router doesn't have a direct
+        // global middleware stack like Express. We'll simulate by calling them
+        // at the start of each relevant controller method or use custom handlers.
+
+        // Simulate middleware chain within a custom route handler for protected routes
+        auto protectRoute = [&](const std::function<void(const Pistache::Rest::Request&, Pistache::Http::ResponseWriter)>& handler) {
+            return [=](const Pistache::Rest::Request& request, Pistache::Http::ResponseWriter response) {
+                try {
+                    // 1. Rate Limiting (example, can be more sophisticated)
+                    rateLimitMiddleware->handle(request);
+
+                    // 2. Authentication
+                    authMiddleware->handle(request); // Throws if unauthorized
+
+                    // 3. Original handler
+                    handler(request, response);
+                } catch (const HttpError& e) {
+                    ErrorHandlingMiddleware::handle(response, e);
+                } catch (const std::exception& e) {
+                    ErrorHandlingMiddleware::handle(response, HttpError(Pistache::Http::Code::Internal_Server_Error, e.what()));
+                }
+            };
+        };
+        
+        // Re-bind protected routes with middleware wrapper
+        Routes::Get(router, "/tasks", protectRoute(Routes::bind(&TaskController::getTasks)));
+        Routes::Post(router, "/tasks", protectRoute(Routes::bind(&TaskController::createTask)));
+        Routes::Get(router, "/tasks/:id", protectRoute(Routes::bind(&TaskController::getTaskById)));
+        Routes::Put(router, "/tasks/:id", protectRoute(Routes::bind(&TaskController::updateTask)));
+        Routes::Delete(router, "/tasks/:id", protectRoute(Routes::bind(&TaskController::deleteTask)));
+
+        // Error handling for unmatched routes (404)
+        router.addCustomHandler(Routes::bind(&ErrorHandlingMiddleware::handleNotFound));
+
+        // Set the router to the HTTP endpoint
+        httpEndpoint->set";=handler(router);
+    }
+};
+
+int main() {
+    // Daemonize option for production, skipped for simplicity here.
+
     try {
-        apiServer.start();
-        VisuFlow::Util::Logger::log(spdlog::level::info, "API Server listening on port {}.", port);
+        Pistache::Port port(Config::get<int>("SERVER_PORT", 9080));
+        Pistache::Address addr(Pistache::Ipv4::any(), port);
 
-        // Optionally, start a conceptual GUI application (e.g., for desktop mode)
-        // start_gui_application(); // Uncomment to run conceptual GUI
+        TaskApiServer server(addr);
+        server.init(Config::get<int>("SERVER_THREADS", 4));
+        server.start(); // This call is blocking
 
-        // Keep main thread alive for API server
-        // In a real Pistache/Boost.Beast server, there might be an explicit wait call.
-        // For simplicity here, we'll just log and let it run (as it's often daemonized).
-        // Or for a blocking server, you'd have a server.serve() or similar.
-        // For Pistache, this would typically involve an `httpEndpoint->serveThreaded();`
-        // or `httpEndpoint->serve();` and then waiting.
-        std::cout << "Press Enter to stop the server..." << std::endl;
-        std::cin.ignore(); // Block indefinitely until user input
-        apiServer.stop();
-        VisuFlow::Util::Logger::log(spdlog::level::info, "API Server stopped.");
-
+    } catch (const std::runtime_error& e) {
+        LOG_ERROR("Application initialization error: {}", e.what());
+        return 1;
     } catch (const std::exception& e) {
-        VisuFlow::Util::Logger::log(spdlog::level::critical, "API Server failed to start: {}", e.what());
+        LOG_ERROR("An unexpected error occurred: {}", e.what());
         return 1;
     }
 
-    VisuFlow::Util::Logger::log(spdlog::level::info, "VisuFlow Analytics Platform shutting down.");
     return 0;
 }
 ```

@@ -1,66 +1,63 @@
 ```dockerfile
-# Stage 1: Build C++ application
-FROM gcc:11.4.0 AS builder
+# Use a C++ base image with build tools
+FROM ubuntu:22.04 AS builder
 
-# Install build dependencies
+# Install dependencies
 RUN apt-get update && apt-get install -y \
+    build-essential \
     cmake \
-    libpq-dev \
     libpistache-dev \
+    libpqxx-dev \
+    libjsoncpp-dev \
     libspdlog-dev \
-    libnlohmann-json-dev \
-    g++ \
+    libjwt-dev \
+    libargon2-dev \
+    curl \
     git \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    pkg-config \
+    libssl-dev \
+    g++
 
-# Install jwt-cpp (manual build as it might not be in apt-dev for all GCC versions)
-# Alternatively, use vcpkg or vendoring for better dependency management
-RUN git clone https://github.com/Thalhammer/jwt-cpp.git /opt/jwt-cpp && \
-    cd /opt/jwt-cpp && \
-    mkdir build && cd build && \
-    cmake .. && make && make install
-
+# Set working directory
 WORKDIR /app
 
-# Copy source code and CMakeLists
-COPY CMakeLists.txt .
-COPY src src/
-COPY tests tests/
-COPY scripts scripts/
-COPY config.json .
+# Copy source code
+COPY . .
 
 # Build the application
-RUN cmake . && \
-    make -j$(nproc)
+RUN cmake -B build -S .
+RUN cmake --build build
 
-# Stage 2: Create a smaller runtime image
-FROM debian:bullseye-slim
+# --- Runtime Image ---
+FROM ubuntu:22.04
 
-# Install runtime dependencies
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libpq5 \
-    libssl1.1 \
-    libspdlog1 \
-    libstdc++6 \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    libpistache10 \
+    libpqxx9 \
+    libjsoncpp25 \
+    libspdlog1.9 \
+    libjwt0 \
+    libargon2-1 \
+    libssl3 \
+    # Clean up APT cache to reduce image size
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the built executable from the builder stage
-COPY --from=builder /app/visuflow_server /usr/local/bin/visuflow_server
-COPY --from=builder /app/config.json /app/config.json
-COPY --from=builder /app/scripts /app/scripts
-COPY --from=builder /app/docs /app/docs
-
-# Create a directory for logs
-RUN mkdir -p /var/log/visuflow && \
-    chmod -R 777 /var/log/visuflow # For simplicity, usually a specific user/group would own this
-
+# Set working directory
 WORKDIR /app
 
-# Expose the API port
+# Copy the built executable and its dependencies from the builder stage
+COPY --from=builder /app/build/TaskAPI .
+COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY --from=builder /app/.env.example ./.env.example # Provide example .env
+COPY --from=builder /app/public ./public
+
+# Expose the port (e.g., 9080, adjust if needed)
 EXPOSE 9080
 
-# Command to run the API server
-CMD ["/usr/local/bin/visuflow_server"]
+# Run the application
+# For production, you'd manage .env externally (e.g., Kubernetes secrets, Docker secrets)
+# Here, we'll demonstrate using a copied .env.example that the user replaces.
+CMD ["./TaskAPI"]
 ```
