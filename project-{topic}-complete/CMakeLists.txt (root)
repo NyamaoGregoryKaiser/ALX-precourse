@@ -1,0 +1,24 @@
+```cmake
+cmake_minimum_required(VERSION 3.15)
+project(CMS_Drogon_Project LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Configure Conan integration
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan_toolchain.cmake")
+    message(STATUS "Conan toolchain not found. Please run 'conan install . --output-folder=${CMAKE_BINARY_DIR} --build=missing'")
+else()
+    include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
+endif()
+
+# Find Drogon and other Conan dependencies
+find_package(drogon CONFIG REQUIRED)
+find_package(json-cpp CONFIG REQUIRED)
+find_package(jwt-cpp CONFIG REQUIRED)
+find_package(libpq CONFIG REQUIRED)
+
+# Add source directory
+add_subdirectory(src)
+add_subdirectory(tests)
+```

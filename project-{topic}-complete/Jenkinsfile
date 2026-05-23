@@ -1,0 +1,139 @@
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = "cms-cpp-drogon"
+        DOCKER_REGISTRY = "your_docker_registry" // e.g., "myregistry.com"
+        DOCKER_CREDENTIALS_ID = "dockerhub-creds" // Jenkins credential ID for Docker login
+        DB_USER = "cms_user"
+        DB_PASSWORD = "cms_password"
+        DB_NAME = "cms_db"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/yourusername/cms-cpp-drogon.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Run Unit and Integration Tests') {
+            steps {
+                script {
+                    // Start a temporary test database
+                    sh "docker run --rm -d --name cms-test-db -e POSTGRES_USER=${DB_USER} -e POSTGRES_PASSWORD=${DB_PASSWORD} -e POSTGRES_DB=${DB_NAME} -p 5432:5432 postgres:14-alpine"
+                    
+                    // Wait for DB to be ready
+                    sh 'until docker exec cms-test-db pg_isready -U ${DB_USER} -d ${DB_NAME}; do echo "Waiting for db..."; sleep 2; done'
+                    
+                    // Apply schema and seed data
+                    sh "docker cp db/schema.sql cms-test-db:/tmp/schema.sql"
+                    sh "docker exec cms-test-db psql -U ${DB_USER} -d ${DB_NAME} -f /tmp/schema.sql"
+                    sh "docker cp db/seed.sql cms-test-db:/tmp/seed.sql"
+                    sh "docker exec cms-test-db psql -U ${DB_USER} -d ${DB_NAME} -f /tmp/seed.sql"
+
+                    // Run tests in a new container, linking to the test DB
+                    sh "docker run --rm --network host --env DB_HOST=127.0.0.1 --env DB_USER=${DB_USER} --env DB_PASSWORD=${DB_PASSWORD} --env DB_NAME=${DB_NAME} ${DOCKER_IMAGE}:${BUILD_NUMBER} /app/build/Release/unit_tests"
+                    sh "docker run --rm --network host --env DB_HOST=127.0.0.1 --env DB_USER=${DB_USER} --env DB_PASSWORD=${DB_PASSWORD} --env DB_NAME=${DB_NAME} ${DOCKER_IMAGE}:${BUILD_NUMBER} /app/build/Release/integration_tests"
+                    
+                    // Stop test database
+                    sh "docker stop cms-test-db"
+                }
+            }
+            post {
+                always {
+                    sh "docker stop cms-test-db || true" // Ensure DB is stopped even if tests fail
+                }
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh "echo $DOCKER_PASSWORD | docker login ${DOCKER_REGISTRY} -u $DOCKER_USERNAME --password-stdin"
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                        sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest"
+                    }
+                }
+            }
+        }
+
+        stage('Performance Tests') {
+            when {
+                # Only run performance tests on main branch builds or manual trigger
+                branch 'main'
+            }
+            steps {
+                script {
+                    echo "Running performance tests with Locust against deployed application (or local if configured)"
+                    // For actual performance tests, you'd deploy the app first, then run Locust against the deployed URL.
+                    // For simplicity, this example assumes the app is accessible (e.g. locally running or a dedicated test env).
+                    // In a real pipeline, you'd provision a temporary environment, deploy, then test.
+                    sh "pip install locust" // Ensure locust is available in the agent
+                    sh "locust -f tests/performance/post_performance.py --headless -u 10 -r 5 --run-time 60s --host http://localhost:8080"
+                    // -u: users, -r: spawn rate, --run-time: duration, --host: target URL
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'main' // Deploy 'main' branch to staging automatically
+            }
+            steps {
+                script {
+                    echo "Deploying ${DOCKER_IMAGE}:${BUILD_NUMBER} to staging environment..."
+                    // Example: SSH into staging server and update service
+                    // sh "ssh user@staging.server 'docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest && docker-compose -f /path/to/staging/docker-compose.yml up -d --scale cms-app=2'"
+                    // A more robust deployment would involve Kubernetes or a dedicated orchestrator.
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                // Manual approval for production deployment
+                allOf {
+                    branch 'main'
+                    expression { return env.BRANCH_NAME == 'main' }
+                }
+            }
+            steps {
+                script {
+                    // Manual approval step
+                    input message: 'Approve deployment to Production?', ok: 'Deploy to Production'
+                    echo "Deploying ${DOCKER_IMAGE}:${BUILD_NUMBER} to production environment..."
+                    // sh "ssh user@production.server 'docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest && docker-compose -f /path/to/prod/docker-compose.yml up -d --scale cms-app=5 --force-recreate'"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished."
+        }
+        success {
+            echo "Pipeline succeeded!"
+        }
+        failure {
+            echo "Pipeline failed!"
+        }
+        // clean up images
+        # script {
+        #     sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
+        # }
+    }
+}
+```

@@ -1,53 +1,43 @@
 ```cmake
-enable_testing()
+cmake_minimum_required(VERSION 3.15)
 
 # Find Google Test
-find_package(GTest CONFIG REQUIRED)
+find_package(googletest CONFIG REQUIRED)
+enable_testing()
 
-# Link C++ libraries needed for tests
-# We need to link the same libraries as the main application, plus gtest and gmock.
-set(TEST_LIBS
-    Pistache::Pistache
-    jsoncpp::jsoncpp
-    PQXX::pqxx
-    spdlog::spdlog
-    jwt-cpp::jwt-cpp
-    argon2 # Assuming this is correctly linked globally or by find_package
-    GTest::gtest_main
-    GTest::gmock_main
+# Include common source directories for models/services for testing
+target_include_directories(cms_tests PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/models
+    ${CMAKE_SOURCE_DIR}/src/services
+    ${CMAKE_SOURCE_DIR}/src/utils
+    ${CMAKE_SOURCE_DIR}/src/filters # If testing filter logic directly
 )
 
-# Set common include directories for tests
-target_include_directories(TaskAPI_tests PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-    ${GTest_INCLUDE_DIRS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src # Allow tests to include src/ headers
+# Link Drogon's DB client as it's used by mappers/services
+target_link_libraries(cms_tests PRIVATE
+    drogon::drogon
+    json-cpp::json-cpp
+    jwt-cpp::jwt-cpp
+    libpq::libpq
 )
 
 # Unit Tests
-add_executable(TaskAPI_unit_tests
-    unit/test_config.cpp
-    unit/test_jwt_manager.cpp
-    unit/test_password_hasher.cpp
-    unit/test_json_utils.cpp
-    # Add more unit test files as needed
+add_executable(unit_tests
+    unit/UserService_test.cc
+    unit/Cache_test.cc
 )
-target_link_libraries(TaskAPI_unit_tests PRIVATE ${TEST_LIBS})
-add_test(NAME UnitTests COMMAND TaskAPI_unit_tests)
-
+target_link_libraries(unit_tests PRIVATE gtest::gtest_main)
+add_test(NAME UnitTests COMMAND unit_tests)
 
 # Integration Tests
-add_executable(TaskAPI_integration_tests
-    integration/test_task_service_integration.cpp
-    # Add more integration test files as needed
+add_executable(integration_tests
+    integration/AuthAPI_test.cc
 )
-target_link_libraries(TaskAPI_integration_tests PRIVATE ${TEST_LIBS})
-add_test(NAME IntegrationTests COMMAND TaskAPI_integration_tests)
+target_link_libraries(integration_tests PRIVATE gtest::gtest_main)
+add_test(NAME IntegrationTests COMMAND integration_tests)
 
-
-# Overall test target for convenience
-add_custom_target(TaskAPI_tests ALL DEPENDS
-    TaskAPI_unit_tests
-    TaskAPI_integration_tests
-)
+# Link Drogon for test dependencies
+target_link_libraries(unit_tests PRIVATE drogon::drogon json-cpp::json-cpp jwt-cpp::jwt-cpp libpq::libpq)
+target_link_libraries(integration_tests PRIVATE drogon::drogon json-cpp::json-cpp jwt-cpp::jwt-cpp libpq::libpq)
 ```

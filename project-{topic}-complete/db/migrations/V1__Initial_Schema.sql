@@ -1,12 +1,7 @@
 ```sql
--- Disable foreign key checks for schema changes if needed, but not standard for PostgreSQL
--- SET session_replication_role = 'replica';
+-- V1__Initial_Schema.sql
+-- Initial schema creation for CMS database
 
-DROP TABLE IF EXISTS posts;
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS categories;
-
--- Users Table
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -17,7 +12,6 @@ CREATE TABLE users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Categories Table
 CREATE TABLE categories (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
@@ -26,7 +20,6 @@ CREATE TABLE categories (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Posts Table
 CREATE TABLE posts (
     id BIGSERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -34,7 +27,6 @@ CREATE TABLE posts (
     author_id BIGINT NOT NULL,
     category_id BIGINT NOT NULL,
     published BOOLEAN DEFAULT FALSE,
-    content_type VARCHAR(50) DEFAULT 'markdown', -- e.g., 'markdown', 'html', 'text'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_author
@@ -47,15 +39,11 @@ CREATE TABLE posts (
         ON DELETE RESTRICT
 );
 
--- Indexes for performance
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_posts_author_id ON posts(author_id);
 CREATE INDEX idx_posts_category_id ON posts(category_id);
 CREATE INDEX idx_posts_published ON posts(published);
-CREATE INDEX idx_categories_name ON categories(name);
 
--- Triggers for updated_at (PostgreSQL 11+)
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -78,6 +66,4 @@ CREATE TRIGGER update_posts_timestamp
 BEFORE UPDATE ON posts
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
-
--- SET session_replication_role = 'origin';
 ```

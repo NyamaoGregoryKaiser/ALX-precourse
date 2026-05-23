@@ -1,152 +1,146 @@
-# ML Utilities System: Architecture Documentation
+```markdown
+# CMS Drogon Project - Architecture Document
 
-This document outlines the architectural design of the ML Utilities System, focusing on its components, their interactions, and the underlying infrastructure.
+## 1. Introduction
 
-## 1. High-Level Architecture
+This document provides a high-level overview of the architecture for the Comprehensive Enterprise-Grade C++ CMS. It details the design choices, component interactions, and the overall structure of the system.
 
-The system follows a typical **client-server architecture** with a **microservices-oriented approach** (though implemented as a monolith for simplicity in this example, it's designed with modularity in mind for potential future decomposition).
+## 2. Goals
 
-```mermaid
-graph TD
-    A[User/Client] -->|HTTP/HTTPS| B(Frontend: HTML/JS)
-    B -->|REST API (HTTP/HTTPS)| C(Backend: Spring Boot Application)
-    C -->|JDBC| D(Database: PostgreSQL)
-    C -->|Filesystem I/O| E(File Storage: Local/NFS/S3)
-    C --o|Logs| F(Logging System)
-    C --o|Cache Read/Write| G(Caching Layer: Caffeine)
+*   **Scalability**: Design for horizontal scaling of the application layer.
+*   **Reliability**: Robust error handling, logging, and database transactions.
+*   **Maintainability**: Clear separation of concerns, modular design.
+*   **Security**: Authentication, authorization, rate limiting, and secure password handling.
+*   **Performance**: High-performance C++ backend, caching.
+*   **Deployability**: Containerized for easy deployment across environments.
 
-    subgraph Infrastructure
-        D
-        E
-        F
-        G
-    end
-```
-
-### Components:
-
-*   **User/Client:** Interacts with the system via a web browser.
-*   **Frontend:** A lightweight HTML/CSS/JavaScript client that consumes the backend REST APIs. In a production environment, this would typically be a more robust Single Page Application (SPA) built with frameworks like React, Angular, or Vue.js.
-*   **Backend (Spring Boot Application):** The core of the system. A Java-based RESTful API server responsible for business logic, data processing, security, and interaction with persistent storage.
-*   **Database (PostgreSQL):** Relational database for storing metadata about users, datasets, and configuration.
-*   **File Storage:** A local file system (or network file system / cloud storage like S3 in production) used to store the actual uploaded dataset CSV files.
-*   **Logging System:** Integrated logging (SLF4J + Logback) for monitoring application behavior and debugging.
-*   **Caching Layer (Caffeine):** In-memory cache to improve performance by reducing database load for frequently accessed data.
-
-## 2. Backend Architecture (Spring Boot)
-
-The Spring Boot application is structured into several logical layers, adhering to principles of separation of concerns.
+## 3. High-Level Architecture Diagram
 
 ```mermaid
 graph TD
-    A[HTTP Request] --> B(Controller Layer)
-    B --> C(Service Layer)
-    C --> D(Repository Layer)
-    D --> E[Database / JPA Entities]
-    C --> F(Utility Layer: DataProcessor)
-    C --> E
-    B --> H(Global Exception Handler)
+    User(Client Application: Web Browser / Mobile App) -->|HTTP/HTTPS| LoadBalancer(Load Balancer / Reverse Proxy)
+    LoadBalancer -->|HTTP/HTTPS| CMSApp(CMS Application - Drogon C++ Frontend/Backend Instances)
 
-    subgraph Core Backend
-        B --o I(Security Layer: JWT Auth)
-        C --o J(Caching Layer)
-        K(Rate Limiter Interceptor) --o A
-        I --o L(UserDetailsService)
-        I --o M(JwtUtil)
+    CMSApp --& API(RESTful API Endpoints)
+    CMSApp --& SSR(Server-Side Rendered Admin)
+
+    API -->|JWT for Auth| AuthFilter(Auth Filter)
+    API -->|Rate Limiting| RateLimitFilter(Rate Limit Filter)
+    API --> Controller(Controllers: User, Post, Category, Auth)
+    Controller --> Service(Services: AuthService, PostService etc.)
+    Service --> Mapper(Mappers: UserMapper, PostMapper, CategoryMapper)
+    Mapper -->|SQL Queries| DB(PostgreSQL Database)
+
+    CMSApp -->|Read/Write Logs| Logging(Logging System)
+    CMSApp -- Cache(In-memory Cache)
+
+    subgraph CI/CD
+        GitRepo(Git Repository) --> Jenkins(Jenkins / CI/CD Pipeline)
+        Jenkins --> DockerRegistry(Docker Registry)
+        Jenkins --> DeploymentTarget(Staging / Production Servers)
     end
+
+    DeploymentTarget --> Docker(Docker / Docker Compose / Kubernetes)
+    Docker --> CMSApp
+    Docker --> DB
 ```
 
-### Layers and Their Responsibilities:
+## 4. Component Breakdown
 
-1.  **Controller Layer (`com.mlutil.ml_utilities_system.controller`)**:
-    *   Handles incoming HTTP requests and routes them to appropriate services.
-    *   Performs basic request validation (e.g., using `@Valid` with DTOs).
-    *   Translates Java objects to JSON/XML responses.
-    *   Utilizes Spring Security annotations (`@PreAuthorize`) for method-level authorization.
-    *   **Examples:** `AuthController`, `DatasetController`, `PreprocessingController`, `EvaluationController`.
+### 4.1. Client Applications (User)
 
-2.  **Service Layer (`com.mlutil.ml_utilities_system.service`)**:
-    *   Contains the core business logic.
-    *   Orchestrates operations across multiple repositories and utility classes.
-    *   Manages transactions.
-    *   **Examples:** `AuthService`, `DatasetService`, `PreprocessingService`, `EvaluationService`.
+*   **Web Browser / Mobile App**: End-user interfaces that interact with the CMS. The primary interaction is via the RESTful API. A basic server-side rendered (SSR) admin panel is provided for direct content management.
 
-3.  **Repository Layer (`com.mlutil.ml_utilities_system.repository`)**:
-    *   Interacts directly with the database.
-    *   Uses Spring Data JPA for data access operations (CRUD).
-    *   Translates entity objects to database records and vice-versa.
-    *   **Examples:** `UserRepository`, `DatasetRepository`, `RoleRepository`.
+### 4.2. Load Balancer / Reverse Proxy
 
-4.  **Model Layer (`com.mlutil.ml_utilities_system.model`)**:
-    *   Defines JPA Entities, representing the structure of database tables.
-    *   Defines DTOs (Data Transfer Objects) for clean API request/response structures (`com.mlutil.ml_utilities_system.dto`).
-    *   **Examples:** `User`, `Dataset`, `Role`, `AuthRequest`, `DatasetMetadataDTO`.
+*   Distributes incoming traffic across multiple instances of the `CMS Application`.
+*   Handles SSL termination.
+*   Examples: Nginx, HAProxy, AWS ALB, Google Cloud Load Balancer.
 
-5.  **Utility Layer (`com.mlutil.ml_utilities_system.util`)**:
-    *   Contains generic helper classes that perform specific tasks, particularly the core ML algorithms.
-    *   `DataProcessor.java` is a stateless component holding all the raw ML logic (scaling, encoding, metrics).
-    *   `RateLimiterInterceptor.java` for API rate limiting.
+### 4.3. CMS Application (Drogon C++ Instances)
 
-6.  **Security Layer (`com.mlutil.ml_utilities_system.security`, `com.mlutil.ml_utilities_system.config.SecurityConfig`)**:
-    *   Manages user authentication and authorization.
-    *   Implements JWT (JSON Web Token) for stateless authentication.
-    *   `JwtAuthFilter` intercepts requests to validate JWTs.
-    *   `UserDetailsServiceImpl` loads user details for Spring Security.
-    *   `JwtUtil` handles JWT creation and validation.
+This is the core C++ application built with the Drogon framework. It's designed to be stateless for horizontal scaling.
 
-7.  **Configuration Layer (`com.mlutil.ml_utilities_system.config`)**:
-    *   Houses Spring configuration classes.
-    *   Configures security (`SecurityConfig`), OpenAPI/Swagger (`OpenApiConfig`), and caching (`CachingConfig`).
+*   **HTTP Server**: Provided by Drogon, handling network communication.
+*   **Routing**: Maps incoming requests to appropriate controllers.
+*   **Controllers (`src/controllers`)**:
+    *   **API Controllers (`api/v1`)**: Handle RESTful API requests, parse JSON input, call services, and return JSON responses.
+    *   **Web Controllers (`web`)**: Handle requests for the server-side rendered admin interface, fetch data, and render HTML using CppTemplate.
+*   **Filters (`src/filters`)**: Middleware components that intercept requests before they reach controllers.
+    *   **`AuthFilter`**: Validates JWT tokens for API requests and session tokens for web requests.
+    *   **`RateLimitFilter`**: Prevents abuse by limiting the number of requests from a single IP address within a time window.
+*   **Middleware (`src/middleware`)**: Generic request processing logic.
+    *   **`ErrorHandler`**: Centralized exception handling, ensuring consistent error responses.
+*   **Services (`src/services`)**: Encapsulate the business logic. They interact with mappers to perform complex operations, enforce business rules, and manage transactions.
+    *   **`AuthService`**: Handles user authentication (login, token generation, token validation).
+*   **Models / Mappers (`src/models`)**: Represent the data entities and provide an abstraction layer over database operations (CRUD). They use Drogon's `DbClient` for asynchronous SQL execution.
+    *   `UserMapper`, `PostMapper`, `CategoryMapper`.
+*   **Utilities (`src/utils`)**: Helper classes and functions.
+    *   **`Cache`**: A simple in-memory cache for frequently accessed data (e.g., public posts).
+*   **Configuration (`config.json`, `.env`)**: Manages application settings, database connection strings, JWT secrets, etc.
+*   **Views (`views/*.csp`)**: CppTemplate files for server-side HTML rendering.
 
-8.  **Error Handling (`com.mlutil.ml_utilities_system.exception`)**:
-    *   `GlobalExceptionHandler` centrally processes exceptions thrown by the application and returns standardized JSON error responses to the client.
-    *   Custom exceptions like `ResourceNotFoundException`, `InvalidDataException`, `UserAlreadyExistsException` enhance error clarity.
+### 4.4. Database (PostgreSQL)
 
-## 3. Data Flow Example: Dataset Upload
+*   **Relational Database**: Stores all structured data (users, posts, categories, etc.).
+*   **Drogon `DbClient`**: Used by the application to asynchronously interact with PostgreSQL.
+*   **Schema & Migrations (`db/schema.sql`, `db/migrations`)**: Defines table structures, relationships, indexes, and manages database evolution.
+*   **Seed Data (`db/seed.sql`)**: Populates the database with initial, essential data (e.g., an admin user).
 
-1.  **Frontend:** User selects a CSV file and clicks "Upload Dataset". `script.js` sends a `POST /api/datasets` request with `MultipartFile` and JWT.
-2.  **Rate Limiter:** `RateLimiterInterceptor` checks if the user/IP has exceeded their request limit. If so, request is rejected with `429 Too Many Requests`.
-3.  **Security Filter:** `JwtAuthFilter` intercepts the request, validates the JWT, and sets `SecurityContextHolder` with authenticated user details.
-4.  **Controller:** `DatasetController.uploadDataset()` receives the request. `@PreAuthorize` verifies user role.
-5.  **Service:** `DatasetService.saveDataset()` is called.
-    *   It generates a unique filename (UUID + original name).
-    *   Saves the `MultipartFile` content to the configured `upload-dir` on the file system.
-    *   Creates a `Dataset` entity with metadata (original filename, file path, size, type, owner, upload date).
-    *   Persists the `Dataset` entity to PostgreSQL via `DatasetRepository`.
-    *   `@CacheEvict` annotation ensures the cache for this user's datasets is cleared to reflect the new addition.
-6.  **Response:** The controller returns a `201 Created` status with the `DatasetMetadataDTO` of the newly uploaded dataset.
+### 4.5. Logging System
 
-## 4. Database Schema
+*   Drogon's built-in asynchronous logging capabilities are used (`trantor::Logger`).
+*   Logs are written to files within the container, mounted to a host volume for persistence.
+*   Log levels are configurable.
 
-The database is PostgreSQL, and its schema is managed by Flyway.
+### 4.6. Caching Layer
 
-*   **`users`**: Stores user authentication details (`username`, `email`, `password`, `registration_date`).
-*   **`roles`**: Stores defined roles (`ROLE_USER`, `ROLE_ADMIN`).
-*   **`user_roles`**: A many-to-many join table linking users to roles.
-*   **`datasets`**: Stores metadata about uploaded datasets (`id`, `filename`, `file_path`, `file_size`, `file_type`, `owner_username`, `upload_date`). `file_path` points to the physical location of the CSV.
+*   A simple, in-memory cache (`CMS::Utils::Cache`) is implemented for demo purposes.
+*   For high-scale production, this would be replaced by an external, distributed cache like Redis or Memcached.
 
-## 5. Scalability Considerations
+### 4.7. CI/CD Pipeline (Jenkins)
 
-*   **Stateless Backend:** The use of JWTs makes the backend stateless, allowing for easy horizontal scaling of the Spring Boot application instances.
-*   **Database:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding) depending on load.
-*   **File Storage:** While local filesystem is used in this example, a production system would integrate with distributed file storage solutions like AWS S3, Google Cloud Storage, or a Network File System (NFS) for scalability and reliability.
-*   **Caching:** Caffeine is an in-memory cache, suitable for single-instance applications or sticky sessions. For distributed scaling, a distributed cache (e.g., Redis, Memcached) would be necessary.
-*   **Rate Limiting:** The current rate limiter is in-memory. For a multi-instance deployment, a distributed rate limiter (e.g., using Redis) would be required.
+*   **Source Control (Git)**: Code changes are managed here.
+*   **Jenkinsfile**: Defines the automated pipeline stages:
+    *   **Build**: Compile the C++ application and build Docker images.
+    *   **Test**: Run unit, integration, and performance tests (against a temporary database).
+    *   **Push**: Push Docker images to a container registry.
+    *   **Deploy**: Deploy images to staging and production environments (often requires manual approval for production).
 
-## 6. Security Considerations
+### 4.8. Deployment Environment (Docker / Kubernetes)
 
-*   **Authentication:** JWTs ensure secure user identity verification.
-*   **Authorization:** Role-based access control restricts access to resources.
-*   **Password Hashing:** Passwords are never stored in plain text; BCrypt hashing is used.
-*   **Input Validation:** `jakarta.validation` annotations are used on DTOs to prevent malicious input and ensure data integrity.
-*   **CORS:** Configured to allow requests from specified frontend origins.
-*   **Environment Variables:** Sensitive configurations (like JWT secret key, database credentials) are externalized and should be managed via environment variables in production.
+*   **Docker Compose**: Used for local development and simple single-host deployments.
+*   **Kubernetes (K8s)**: Recommended for enterprise-grade production deployments, offering:
+    *   Container orchestration (scaling, self-healing, rolling updates).
+    *   Service discovery, load balancing, secret management.
+    *   Automated provisioning and management of underlying infrastructure.
 
-## 7. Observability
+## 5. Security Considerations
 
-*   **Structured Logging:** Application logs provide insights into runtime behavior, errors, and performance. Configured to output to console and file, with level control.
-*   **API Documentation:** Swagger UI provides a clear contract of the API, aiding debugging and integration.
-*   **Health Checks:** Docker Compose includes a health check for the database. Spring Boot Actuator can be added for application health endpoints (not explicitly added in this example but highly recommended).
+*   **Password Hashing**: Placeholder for Argon2/bcrypt.
+*   **JWT Security**: HS256 algorithm with a strong, secret key. Tokens have expiration.
+*   **Role-Based Access Control**: Granular permissions based on user roles.
+*   **Rate Limiting**: Mitigates brute-force attacks and resource exhaustion.
+*   **Input Validation**: Performed at controller/service layer to prevent injection attacks and ensure data integrity.
+*   **HTTPS**: Critical for production (handled by load balancer/reverse proxy).
+*   **Container Security**: Minimal base images, no unnecessary privileges.
 
-This architecture provides a solid foundation for a robust and maintainable ML utilities system, with clear pathways for future enhancements and scaling.
+## 6. Scalability Strategy
+
+*   **Stateless Application**: CMS application instances do not store user-specific session data locally (sessions are either JWT-based or backed by an external store if complex sessions are needed). This allows easy horizontal scaling.
+*   **Database**: PostgreSQL can be scaled vertically (more powerful hardware) or horizontally with read replicas and sharding for larger workloads.
+*   **Caching**: External distributed caches (e.g., Redis) would offload database reads.
+*   **Asynchronous Operations**: Drogon's asynchronous nature helps maximize resource utilization.
+
+## 7. Future Enhancements
+
+*   **Full-fledged Frontend**: Replace basic SSR with a modern SPA framework (React, Vue, Angular) consuming the REST API.
+*   **Media Management**: Upload, store, and serve images/videos (e.g., integration with S3-compatible storage).
+*   **Rich Text Editor Integration**: For content creation.
+*   **Advanced Search**: Full-text search capabilities (e.g., Elasticsearch, pg_search).
+*   **Permissions System**: More granular permissions beyond simple roles.
+*   **External Caching**: Integration with Redis for distributed caching.
+*   **Container Orchestration**: Production deployment with Kubernetes.
+*   **Advanced Monitoring**: Prometheus/Grafana integration for metrics.
+
 ```

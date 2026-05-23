@@ -1,142 +1,178 @@
-# ML Utilities System: Deployment Guide
+```markdown
+# CMS Drogon Project - Deployment Guide
 
-This document provides instructions for deploying the ML Utilities System using Docker and Docker Compose for local environments, and outlines considerations for production deployment.
+This guide outlines how to deploy the Comprehensive Enterprise-Grade C++ CMS to various environments. The primary focus is on Docker-based deployments.
 
-## 1. Local Deployment with Docker Compose
+## 1. Local Development (Docker Compose)
 
-The easiest way to run the entire system (backend and PostgreSQL database) locally is using Docker Compose.
+The easiest way to run the CMS for local development is using `docker-compose`.
 
-### Prerequisites:
+1.  **Prerequisites**:
+    *   Docker and Docker Compose installed.
+    *   Git installed.
 
-*   **Docker Desktop** (or Docker Engine and Docker Compose installed separately)
-*   **Maven** (to build the Java backend JAR)
+2.  **Steps**:
+    *   Clone the repository:
+        ```bash
+        git clone https://github.com/yourusername/cms-cpp-drogon.git
+        cd cms-cpp-drogon
+        ```
+    *   Copy the example environment file:
+        ```bash
+        cp .env.example .env
+        # Edit .env if you need to customize DB credentials or ports
+        ```
+    *   Run the setup script:
+        ```bash
+        chmod +x scripts/setup.sh
+        ./scripts/setup.sh
+        ```
+        This command will:
+        *   Build the `cms-app` Docker image.
+        *   Start `db` (PostgreSQL) and `cms-app` containers.
+        *   Initialize the database schema and seed data.
+        *   Wait for the database to be healthy.
 
-### Steps:
+3.  **Access**:
+    *   **CMS App**: `http://localhost:8080` (or the port specified in `.env` for `APP_PORT`).
+    *   **Admin Login**: `http://localhost:8080/admin/login`
+    *   **Default Admin**: `admin@example.com` / `password123`
 
-1.  **Clone the repository:**
+4.  **Stopping**:
     ```bash
-    git clone https://github.com/your-username/ml-utilities-system.git
-    cd ml-utilities-system
+    docker-compose down
+    ```
+    To also remove volumes (losing database data):
+    ```bash
+    docker-compose down -v
     ```
 
-2.  **Build the Spring Boot Backend JAR:**
-    Navigate to the `backend` directory and build the executable JAR. This JAR will be copied into the Docker image.
-    ```bash
-    cd backend
-    mvn clean install -DskipTests # -DskipTests to skip running tests during build
-    ```
-    Ensure the JAR file `ml_utilities_system-0.0.1-SNAPSHOT.jar` is created in `backend/target/`.
+## 2. Staging / Production Deployment (Docker Compose on a Single Server)
 
-3.  **Navigate to the Docker directory:**
-    ```bash
-    cd ../docker
-    ```
+For small-to-medium scale deployments on a single server, Docker Compose can be used with some enhancements.
 
-4.  **Start the services using Docker Compose:**
-    ```bash
-    docker-compose up --build -d
-    ```
-    *   `--build`: Rebuilds the `app` Docker image. This is important if you made changes to the Java code.
-    *   `-d`: Runs the containers in detached mode (in the background).
+1.  **Prerequisites**:
+    *   A Linux server (e.g., Ubuntu, CentOS) with Docker and Docker Compose installed.
+    *   SSH access to the server.
+    *   (Optional but highly recommended) A domain name pointing to your server's IP.
+    *   (Highly recommended) Nginx or Caddy as a reverse proxy for SSL termination and static file serving.
 
-### What `docker-compose up` does:
+2.  **Steps on Server**:
 
-*   **`db` service:**
-    *   Pulls the `postgres:15-alpine` Docker image.
-    *   Creates a container named `ml-utilities-db`.
-    *   Sets up environment variables for the PostgreSQL database (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`).
-    *   Maps port `5432` from the host to the container.
-    *   Creates a named volume `ml-utilities-db-data` for persistent database storage.
-    *   Includes a `healthcheck` to ensure the database is ready before the application tries to connect.
-*   **`app` service:**
-    *   Builds the Docker image for the Spring Boot application using the `Dockerfile` in the `docker` directory. The build context is set to the project root (`..`) to access the `backend/target/` directory.
-    *   Creates a container named `ml-utilities-app`.
-    *   Maps port `8080` from the host to the container.
-    *   Passes essential Spring Boot and application-specific environment variables (`SPRING_DATASOURCE_URL`, `APPLICATION_SECURITY_JWT_SECRET_KEY`, etc.) to override values in `application.properties`.
-        *   **Important:** The `SPRING_DATASOURCE_URL` uses `db` as the hostname, which is the service name defined in `docker-compose.yml`, allowing containers to communicate by service name within the Docker network.
-    *   Creates named volumes for `/app/data/datasets`, `/app/data/temp`, and `/app/logs` to ensure persistent storage for uploaded datasets, temporary files, and application logs even if the container is removed.
-    *   `depends_on: db: { condition: service_healthy }` ensures the application container only starts once the `db` container reports healthy.
+    *   **Install Docker & Docker Compose**: Follow official Docker documentation.
+    *   **Clone Repository**:
+        ```bash
+        git clone https://github.com/yourusername/cms-cpp-drogon.git
+        cd cms-cpp-drogon
+        ```
+    *   **Configure `.env`**: Create and configure the `.env` file with strong, production-ready passwords for `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+        ```bash
+        cp .env.example .env
+        # IMPORTANT: Change DB_PASSWORD to a strong password!
+        # Set DB_HOST to 'db' (the service name in docker-compose)
+        # Set APP_PORT to your desired host port, e.g., 80
+        ```
+    *   **Build & Run**:
+        ```bash
+        docker-compose pull # Pull latest postgres image
+        docker-compose up --build -d
+        ```
+        The `--build` ensures the latest application image is built from the `Dockerfile`.
 
-### Verify Deployment:
+    *   **Set up Reverse Proxy (Nginx Example)**:
+        *   Install Nginx: `sudo apt update && sudo apt install nginx`
+        *   Create an Nginx configuration file for your domain (`/etc/nginx/sites-available/yourdomain.com`):
+            ```nginx
+            server {
+                listen 80;
+                server_name yourdomain.com www.yourdomain.com;
 
-1.  **Check running containers:**
-    ```bash
-    docker-compose ps
-    ```
-    You should see `ml-utilities-db` and `ml-utilities-app` in a healthy state.
+                location / {
+                    proxy_pass http://localhost:8080; # Or whatever APP_PORT is set to
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                }
+            }
+            ```
+        *   Enable the site and restart Nginx:
+            ```bash
+            sudo ln -s /etc/nginx/sites-available/yourdomain.com /etc/nginx/sites-enabled/
+            sudo systemctl restart nginx
+            ```
+        *   **Secure with SSL (Certbot)**:
+            ```bash
+            sudo snap install core; sudo snap refresh core
+            sudo snap install --classic certbot
+            sudo ln -s /snap/bin/certbot /usr/bin/certbot
+            sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+            ```
+            Follow the prompts. Certbot will automatically configure Nginx for HTTPS.
 
-2.  **Access the application:**
-    *   Swagger UI: `http://localhost:8080/swagger-ui.html`
-    *   Frontend (basic): Open `frontend/index.html` in your browser.
+    *   **Health Checks and Monitoring**:
+        *   Use `docker-compose ps` and `docker-compose logs -f` to monitor your containers.
+        *   For more advanced monitoring, integrate with tools like Prometheus/Grafana.
 
-3.  **View logs:**
-    ```bash
-    docker-compose logs -f app
-    ```
+3.  **Updating the Application**:
+    *   Pull the latest code: `git pull origin main`
+    *   Rebuild and restart: `docker-compose up --build -d`
+    *   For zero-downtime updates, consider using more advanced deployment strategies or a blue/green deployment with Nginx.
 
-### Stop and Clean Up:
+## 3. Production Deployment (Kubernetes)
 
-To stop and remove the containers, networks, and volumes created by Docker Compose:
-```bash
-docker-compose down -v
-```
-*   `-v`: Removes named volumes, which is useful for starting fresh. Be cautious if you have important data in `ml-utilities-db-data`.
+For large-scale, highly available, and resilient production deployments, Kubernetes is the recommended orchestration platform. This guide provides a conceptual overview, as a full K8s YAML setup is extensive.
 
-## 2. Production Deployment Considerations
+1.  **Prerequisites**:
+    *   A Kubernetes cluster (e.g., EKS, GKE, AKS, or self-managed Kubeadm cluster).
+    *   `kubectl` configured to connect to your cluster.
+    *   A Docker Registry (e.g., Docker Hub, AWS ECR, GCR) where your application's Docker image is pushed.
+    *   A managed PostgreSQL service (e.g., AWS RDS, Google Cloud SQL) or a highly available PostgreSQL setup within Kubernetes.
 
-Deploying to production requires more robust strategies than local Docker Compose. Here are key considerations:
+2.  **Key Kubernetes Resources**:
 
-### Infrastructure:
+    *   **`Deployment`**: Manages stateless instances of your `cms-app`.
+        *   Specifies the Docker image (`your_docker_registry/cms-cpp-drogon:latest`).
+        *   Defines replica count (e.g., 3-5 instances).
+        *   Configures resource requests/limits (CPU, Memory).
+        *   Configures probes (liveness, readiness) for health checks.
+    *   **`Service`**: Exposes your `cms-app` deployment to the cluster and externally.
+        *   A `ClusterIP` service for internal communication between pods.
+        *   A `LoadBalancer` or `NodePort` service to expose the app externally, often fronted by an `Ingress`.
+    *   **`ConfigMap`**: Stores non-sensitive configuration data (e.g., `config.json` contents, `APP_PORT`).
+    *   **`Secret`**: Stores sensitive data (e.g., `DB_PASSWORD`, `JWT_SECRET`). Inject as environment variables into pods.
+    *   **`Ingress`**: Manages external access to services in the cluster, providing HTTP/HTTPS routing, SSL termination, and possibly load balancing. Requires an Ingress Controller (e.g., Nginx Ingress, Traefik).
+    *   **`PersistentVolume` / `PersistentVolumeClaim`**: For database data (if running PostgreSQL in K8s) and potentially application logs. However, for logs, it's often better to send them to a centralized logging system.
 
-*   **Container Orchestration:** Use a container orchestration platform like **Kubernetes (AWS EKS, GCP GKE, Azure AKS)**, Docker Swarm, or HashiCorp Nomad for managing containerized applications at scale.
-*   **Managed Database:** Use a managed database service (e.g., AWS RDS PostgreSQL, Google Cloud SQL, Azure Database for PostgreSQL) for high availability, backups, and easier management. Avoid running the database directly in a container orchestrator for production.
-*   **Object Storage for Datasets:** Store uploaded datasets in cloud object storage (e.g., **AWS S3, Google Cloud Storage, Azure Blob Storage**) instead of local filesystem volumes. This provides scalability, durability, and easier access from multiple application instances. Update `application.dataset.upload-dir` to use appropriate cloud storage configurations or libraries.
-*   **Centralized Logging:** Integrate with a centralized logging solution (e.g., **ELK Stack (Elasticsearch, Logstash, Kibana)**, Splunk, Datadog) to aggregate logs from multiple application instances.
-*   **Monitoring & Alerting:** Implement robust monitoring for application performance, resource utilization, and error rates (e.g., Prometheus, Grafana, CloudWatch, Stackdriver). Set up alerts for critical issues.
-*   **Distributed Caching & Rate Limiting:** For multiple application instances, replace in-memory Caffeine cache and Guava RateLimiter with distributed solutions like **Redis** or Memcached.
-*   **Load Balancing:** Place a load balancer (e.g., AWS ALB, Nginx, HAProxy) in front of your application instances to distribute traffic and provide high availability.
+3.  **Deployment Workflow (Conceptual)**:
 
-### Security:
+    *   **Build & Push Image**: Your CI/CD pipeline (Jenkins, GitLab CI, GitHub Actions) builds the `cms-app` Docker image and pushes it to your container registry.
+    *   **Database**: Ensure your PostgreSQL database is provisioned and accessible from the Kubernetes cluster. Store its connection details in a Kubernetes `Secret`.
+    *   **Apply Kubernetes Manifests**: Apply your YAML definitions to the cluster using `kubectl apply -f your-k8s-manifests/`.
+        *   `kubectl apply -f configmap.yaml`
+        *   `kubectl apply -f secret.yaml`
+        *   `kubectl apply -f deployment.yaml`
+        *   `kubectl apply -f service.yaml`
+        *   `kubectl apply -f ingress.yaml`
+    *   **Monitor**: Use `kubectl get pods`, `kubectl logs`, and K8s dashboard/monitoring tools to observe your deployment.
 
-*   **Network Security:** Implement strict firewall rules, security groups, and Network ACLs to limit access to your application and database.
-*   **Secrets Management:** Use a secrets management service (e.g., **AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets**) for sensitive information like API keys, database credentials, and JWT secret key. Never hardcode them.
-*   **HTTPS:** Always use HTTPS for all communication between clients, load balancers, and the application.
-*   **Vulnerability Scanning:** Regularly scan your Docker images and application dependencies for known vulnerabilities.
-*   **Principle of Least Privilege:** Configure IAM roles/service accounts with the minimum necessary permissions for your application to interact with cloud services.
+## 4. Database Migrations in Production
 
-### CI/CD:
+For production environments, direct manual execution of `schema.sql` and `seed.sql` on `docker-compose up` is generally suitable for initial setup. However, for subsequent schema changes, a more controlled migration strategy is needed.
 
-*   **Automated Pipelines:** Leverage the provided `cicd/github-actions-ci.yml` (or similar for Jenkins, GitLab CI, Azure DevOps) to automate:
-    *   Code build and testing.
-    *   Docker image building and pushing to a container registry (e.g., Docker Hub, AWS ECR, GCP Container Registry).
-    *   Deployment to staging and production environments (e.g., using Kubernetes manifests, Helm charts, Terraform, Ansible).
-*   **Deployment Strategies:** Implement blue/green deployments or canary releases to minimize downtime and risk during updates.
+*   **Flyway / Alembic (or custom C++ tool)**: For C++ projects, you could create a small standalone C++ migration tool that connects to the database and applies `db/migrations/*.sql` files in order.
+*   **Manual Application**: For simpler projects, apply migration SQL files manually (or via script) during deployment windows.
+    *   Ensure database backups are taken before applying migrations.
+    *   Run migrations *before* deploying the new application version that expects the updated schema.
 
-### Scalability:
+## 5. Security Best Practices
 
-*   **Horizontal Scaling:** Configure your container orchestrator to automatically scale the number of application instances based on CPU utilization, request load, or custom metrics.
-*   **Database Scaling:** Utilize database read replicas for read-heavy workloads. Consider sharding if your data volume becomes extremely large.
+*   **HTTPS Everywhere**: Use a reverse proxy (Nginx, Caddy) or Ingress Controller for SSL termination.
+*   **Strong Passwords**: For all database users, admin accounts, and system credentials.
+*   **Principle of Least Privilege**: Database users should only have necessary permissions. Application container should not run as root.
+*   **Regular Updates**: Keep OS, Docker, Drogon, and other dependencies updated.
+*   **Network Segmentation**: Isolate database and application networks.
+*   **Firewall Rules**: Restrict access to only necessary ports.
 
-### Example Production Architecture (Kubernetes with AWS):
-
-```mermaid
-graph TD
-    A[Clients] --> B(Route 53)
-    B --> C(AWS ALB - Load Balancer)
-    C --> D(AWS EKS - Kubernetes Cluster)
-
-    subgraph AWS EKS Cluster
-        D --> E(Application Pods - ML Utilities System)
-        D --> F(Ingress Controller)
-        E --o G(AWS S3 - Object Storage for Datasets)
-        E --o H(AWS ElastiCache - Redis for Caching/Rate Limiting)
-        E --o I(AWS CloudWatch/Fluentd - Logging)
-    end
-
-    J(AWS RDS PostgreSQL) --o E
-    K(AWS Secrets Manager) --o E
-    L(AWS ECR - Container Registry) --o D
-```
-
-This guide provides a starting point for deploying the ML Utilities System. Adapting it to a full production environment will involve choosing specific cloud providers and services, and implementing robust operations best practices.
+This guide provides a foundation for deploying the CMS. Adapt it to your specific cloud provider, tools, and security requirements.
 ```

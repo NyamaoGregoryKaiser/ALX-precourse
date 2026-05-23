@@ -2,54 +2,50 @@
 version: '3.8'
 
 services:
-  app:
+  db:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-cms_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cms_password}
+      POSTGRES_DB: ${DB_NAME:-cms_db}
+    volumes:
+      - cms_db_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/2-seed.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cms_user} -d ${DB_NAME:-cms_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cms-app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: task_api_app
+    restart: always
     ports:
-      - "9080:9080" # Map host port 9080 to container port 9080
+      - "${APP_PORT:-8080}:8080"
     environment:
-      # Pass environment variables from host or .env file
-      # For production, use Docker secrets or external config management
-      - SERVER_PORT=${SERVER_PORT}
-      - SERVER_THREADS=${SERVER_THREADS}
-      - DB_HOST=db
-      - DB_PORT=${DB_PORT}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRATION_SECONDS=${JWT_EXPIRATION_SECONDS}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED}
-      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS}
-    volumes:
-      - ./.env:/app/.env # Mount the .env file into the container
+      DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-cms_user}
+      DB_PASSWORD: ${DB_PASSWORD:-cms_password}
+      DB_NAME: ${DB_NAME:-cms_db}
+      # JWT_SECRET: ${JWT_SECRET} # Uncomment to override config.json via env
     depends_on:
-      - db
-    networks:
-      - task-network
-
-  db:
-    image: postgres:15-alpine
-    container_name: task_api_db
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432" # Expose DB port for local access/debugging
+      db:
+        condition: service_healthy
     volumes:
-      - db_data:/var/lib/postgresql/data # Persist database data
-    networks:
-      - task-network
-
-networks:
-  task-network:
-    driver: bridge
+      - ./logs:/app/logs # Mount for persistent logs
+    # For development, you might mount source code:
+    # - ./src:/app/src
+    # - ./views:/app/views
+    # This would require rebuilding the app inside the container or using a dev container setup.
+    # For production, build into image as above.
 
 volumes:
-  db_data:
+  cms_db_data:
 ```

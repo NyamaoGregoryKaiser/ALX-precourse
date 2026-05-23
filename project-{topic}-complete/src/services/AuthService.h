@@ -1,49 +1,35 @@
 ```cpp
-#ifndef AUTH_SERVICE_H
-#define AUTH_SERVICE_H
+#pragma once
 
 #include <string>
+#include <jwt-cpp/jwt.h>
+#include <drogon/drogon.h>
+#include "models/User.h"
 #include <optional>
-#include "../models/User.h"
-#include "../database/DatabaseManager.h"
-#include "../utils/Hasher.h"
-#include "../utils/JwtManager.h"
-#include "../exceptions/CustomExceptions.h"
-#include "../utils/Logger.h"
 
-namespace PaymentProcessor {
-namespace Services {
-
-using namespace PaymentProcessor::Models;
-using namespace PaymentProcessor::Database;
-using namespace PaymentProcessor::Utils;
-using namespace PaymentProcessor::Exceptions;
+namespace CMS::Services {
 
 class AuthService {
 public:
-    explicit AuthService(DatabaseManager& dbManager) : dbManager(dbManager) {}
+    explicit AuthService(drogon::orm::DbClientPtr dbClient);
 
-    // Registers a new user.
-    User registerUser(const std::string& username, const std::string& password, const std::string& email, UserRole role);
+    // Authenticate user by email and password, return JWT token and user info if successful
+    drogon::orm::Future<std::tuple<std::string, CMS::Models::User>> authenticate(const std::string& email, const std::string& password);
 
-    // Authenticates a user and returns a JWT token.
-    std::string login(const std::string& username, const std::string& password);
+    // Verify a JWT token and extract user ID and role
+    std::optional<std::pair<long long, std::string>> verifyToken(const std::string& token);
 
-    // Validates a JWT token.
-    bool validateToken(const std::string& token);
-
-    // Get user ID from token
-    std::string getUserIdFromToken(const std::string& token);
-
-    // Get user role from token
-    std::string getUserRoleFromToken(const std::string& token);
+    // Check if a user has a specific role
+    static bool hasRole(const std::string& userRole, const std::string& requiredRole);
+    static bool hasAnyRole(const std::string& userRole, const std::vector<std::string>& requiredRoles);
 
 private:
-    DatabaseManager& dbManager;
+    std::string generateToken(long long userId, const std::string& userRole);
+    drogon::orm::DbClientPtr dbClient_;
+    CMS::Models::UserMapper userMapper_;
+    std::string jwtSecret_;
+    int jwtExpirationSeconds_;
 };
 
-} // namespace Services
-} // namespace PaymentProcessor
-
-#endif // AUTH_SERVICE_H
+} // namespace CMS::Services
 ```

@@ -1,64 +1,28 @@
 ```sql
--- Seed Users (passwords are 'password123' for demo - in production, use strong hashing)
--- Note: password_hash here is a placeholder. A real system would use a robust hashing algorithm like bcrypt.
--- For this demo, we'll use a simple SHA256 simulation in C++ for the hash, but it's not truly secure.
--- admin@example.com / password123 (hash of 'password123' via simple SHA256 simulation: 3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1)
+-- Seed Data for CMS
+
+-- Users
+-- Passwords are 'password123'
 INSERT INTO users (username, email, password_hash, role) VALUES
-('AdminUser', 'admin@example.com', '3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1', 'admin');
+('adminuser', 'admin@example.com', 'hashed_salt_password123_secure', 'admin'),
+('editoruser', 'editor@example.com', 'hashed_salt_password123_secure', 'editor'),
+('vieweruser', 'viewer@example.com', 'hashed_salt_password123_secure', 'viewer');
 
--- user@example.com / password123 (same hash as above for simplicity)
-INSERT INTO users (username, email, password_hash, role) VALUES
-('TestCustomer', 'user@example.com', '3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1', 'customer');
+-- Categories
+INSERT INTO categories (name, description) VALUES
+('Technology', 'Articles related to software, hardware, and IT trends.'),
+('News', 'Latest global and local news updates.'),
+('Lifestyle', 'Topics on health, fitness, travel, and personal development.'),
+('Tutorials', 'Step-by-step guides and how-to articles.');
 
--- Seed Products
-INSERT INTO products (name, description, price, stock, image_url) VALUES
-('Laptop Pro X', 'Powerful laptop for professionals.', 1200.00, 50, 'https://example.com/laptop.jpg'),
-('Mechanical Keyboard', 'High-quality mechanical keyboard with RGB.', 150.00, 100, 'https://example.com/keyboard.jpg'),
-('Wireless Mouse', 'Ergonomic wireless mouse.', 45.50, 200, 'https://example.com/mouse.jpg'),
-('4K Monitor', '27-inch 4K IPS monitor.', 350.00, 30, 'https://example.com/monitor.jpg'),
-('Webcam HD', 'Full HD 1080p webcam for video calls.', 75.00, 120, 'https://example.com/webcam.jpg');
+-- Posts
+INSERT INTO posts (title, content, author_id, category_id, published, content_type) VALUES
+('Introduction to Drogon C++ Web Framework', 'Drogon is a C++17/20 based HTTP application framework. Lorem ipsum...', (SELECT id FROM users WHERE username = 'adminuser'), (SELECT id FROM categories WHERE name = 'Technology'), TRUE, 'markdown'),
+('The Future of AI in Content Management', 'Artificial intelligence is set to revolutionize how we create, manage, and distribute content. This article explores the implications...', (SELECT id FROM users WHERE username = 'editoruser'), (SELECT id FROM categories WHERE name = 'Technology'), TRUE, 'markdown'),
+('10 Tips for Effective Remote Work', 'Working from home can be challenging. Here are 10 tips to boost your productivity and well-being.', (SELECT id FROM users WHERE username = 'editoruser'), (SELECT id FROM categories WHERE name = 'Lifestyle'), TRUE, 'markdown'),
+('Breaking News: Global Economic Outlook', 'An analysis of the current global economic situation and predictions for the coming quarter.', (SELECT id FROM users WHERE username = 'adminuser'), (SELECT id FROM categories WHERE name = 'News'), FALSE, 'markdown'), -- Unpublished post
+('Getting Started with PostgreSQL', 'A beginner-friendly guide to installing and setting up PostgreSQL for your projects.', (SELECT id FROM users WHERE username = 'vieweruser'), (SELECT id FROM categories WHERE name = 'Tutorials'), TRUE, 'markdown');
 
--- Create initial carts for seeded users
-INSERT INTO carts (user_id) SELECT id FROM users WHERE email = 'admin@example.com';
-INSERT INTO carts (user_id) SELECT id FROM users WHERE email = 'user@example.com';
-
--- Optional: Add some items to the customer's cart
-INSERT INTO cart_items (cart_id, product_id, quantity)
-SELECT c.id, p.id, 1
-FROM carts c, products p
-WHERE c.user_id = (SELECT id FROM users WHERE email = 'user@example.com')
-  AND p.name = 'Mechanical Keyboard';
-
-INSERT INTO cart_items (cart_id, product_id, quantity)
-SELECT c.id, p.id, 2
-FROM carts c, products p
-WHERE c.user_id = (SELECT id FROM users WHERE email = 'user@example.com')
-  AND p.name = 'Wireless Mouse';
-
--- Optional: Create an initial order for the customer
--- This would typically be done via the application, not direct seeding,
--- but for demonstration of order data, we can manually add.
--- First, insert the order
-INSERT INTO orders (user_id, total_amount, status)
-SELECT id, 0.00, 'delivered' FROM users WHERE email = 'user@example.com';
-
--- Then, insert order items and update total_amount
-WITH last_order AS (
-    SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com') ORDER BY created_at DESC LIMIT 1
-)
-INSERT INTO order_items (order_id, product_id, quantity, price)
-SELECT (SELECT id FROM last_order), p.id, 1, p.price
-FROM products p WHERE p.name = 'Laptop Pro X';
-
-WITH last_order AS (
-    SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com') ORDER BY created_at DESC LIMIT 1
-)
-INSERT INTO order_items (order_id, product_id, quantity, price)
-SELECT (SELECT id FROM last_order), p.id, 1, p.price
-FROM products p WHERE p.name = '4K Monitor';
-
--- Update the total amount for the last order
-UPDATE orders
-SET total_amount = (SELECT SUM(oi.quantity * oi.price) FROM order_items oi WHERE oi.order_id = orders.id)
-WHERE id = (SELECT id FROM orders WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com') ORDER BY created_at DESC LIMIT 1);
+-- Note: In a real scenario, 'hashed_salt_password123_secure' would be a real Argon2/bcrypt hash.
+-- The actual hash generation is handled by `CMS::Models::UserMapper::hashPassword`.
 ```

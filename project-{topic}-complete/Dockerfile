@@ -1,63 +1,61 @@
 ```dockerfile
-# Use a C++ base image with build tools
-FROM ubuntu:22.04 AS builder
+# Stage 1: Build the C++ application
+FROM conanio/gcc11 AS builder
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libpistache-dev \
-    libpqxx-dev \
-    libjsoncpp-dev \
-    libspdlog-dev \
-    libjwt-dev \
-    libargon2-dev \
-    curl \
-    git \
-    pkg-config \
-    libssl-dev \
-    g++
-
-# Set working directory
 WORKDIR /app
 
-# Copy source code
-COPY . .
+# Install Drogon dependencies if not handled by Conan (though Conan should handle most)
+# This example relies heavily on Conan for C++ dependencies.
+# For runtime, usually just libpq (PostgreSQL client) is needed.
 
-# Build the application
-RUN cmake -B build -S .
-RUN cmake --build build
+# Copy Conan configuration and install dependencies
+COPY conanfile.txt .
+# --build=missing will build all missing packages from sources
+# If you encounter issues with Conan building dependencies, you might need a more specific Conan base image or pre-built binaries.
+RUN conan install . --output-folder=. --build=missing
 
-# --- Runtime Image ---
-FROM ubuntu:22.04
+# Copy source code and CMake files
+COPY CMakeLists.txt .
+COPY src src/
+COPY views views/
+COPY config.json .
+COPY tests tests/
 
-# Install only runtime dependencies
+# Configure and build the application
+RUN cmake -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release .
+RUN cmake --build . --config Release
+
+# Stage 2: Create the final runtime image
+FROM debian:bullseye-slim
+
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libpistache10 \
-    libpqxx9 \
-    libjsoncpp25 \
-    libspdlog1.9 \
-    libjwt0 \
-    libargon2-1 \
-    libssl3 \
-    # Clean up APT cache to reduce image size
-    && apt-get clean \
+    libpq-dev \
+    libjsoncpp-dev \
+    libfmt-dev \
+    # Other runtime libs that might be linked by Drogon or jwt-cpp
+    # Check `ldd cms_server` output from build stage to be sure
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy the built executable and its dependencies from the builder stage
-COPY --from=builder /app/build/TaskAPI .
-COPY --from=builder /app/src/db/migrations ./src/db/migrations
-COPY --from=builder /app/.env.example ./.env.example # Provide example .env
-COPY --from=builder /app/public ./public
+# Copy the built executable and its runtime dependencies
+COPY --from=builder /app/build/Release/cms_server .
+COPY --from=builder /app/build/Release/config.json .
+COPY --from=builder /app/build/Release/views views/
 
-# Expose the port (e.g., 9080, adjust if needed)
-EXPOSE 9080
+# Copy necessary shared libraries from Conan's installation path
+# This step might need adjustment based on Conan's exact installation path and required shared libs.
+# A common pattern is to copy all .so files from the Conan build output's lib directory.
+COPY --from=builder /app/build/Release/lib /app/lib
 
-# Run the application
-# For production, you'd manage .env externally (e.g., Kubernetes secrets, Docker secrets)
-# Here, we'll demonstrate using a copied .env.example that the user replaces.
-CMD ["./TaskAPI"]
+# Ensure libraries are found at runtime
+ENV LD_LIBRARY_PATH=/app/lib:${LD_LIBRARY_PATH}
+
+# Create logs directory
+RUN mkdir -p logs
+
+EXPOSE 8080
+
+CMD ["./cms_server"]
 ```

@@ -1,39 +1,57 @@
 ```cpp
 #pragma once
 
+#include <drogon/orm/Mapper.h>
+#include <drogon/orm/DbClient.h>
 #include <string>
+#include <vector>
 #include <json/json.h>
-#include <optional>
+
+namespace CMS::Models {
 
 struct User {
-    long id = 0;
+    long long id = 0;
     std::string username;
     std::string email;
-    std::string password_hash; // Store hashed password, not plain text
+    std::string password_hash;
+    std::string role; // e.g., "admin", "editor", "viewer"
     std::string created_at;
     std::string updated_at;
 
-    // Convert User struct to Json::Value for API responses
+    // Helper to convert User object to JSON
     Json::Value toJson() const {
         Json::Value root;
-        root["id"] = id;
+        root["id"] = (Json::Int64)id;
         root["username"] = username;
         root["email"] = email;
+        root["role"] = role;
         root["created_at"] = created_at;
         root["updated_at"] = updated_at;
-        // Do NOT expose password_hash
         return root;
     }
-
-    // Populate User struct from Json::Value (e.g., for registration input)
-    static User fromJson(const Json::Value& json) {
-        User user;
-        if (json.isMember("id") && json["id"].isNumeric()) user.id = json["id"].asInt64();
-        if (json.isMember("username") && json["username"].isString()) user.username = json["username"].asString();
-        if (json.isMember("email") && json["email"].isString()) user.email = json["email"].asString();
-        // password_hash is set by the service, not directly from input JSON
-        // created_at/updated_at are typically set by DB or service
-        return user;
-    }
 };
+
+// A simple ORM-like wrapper for User operations
+class UserMapper {
+public:
+    explicit UserMapper(drogon::orm::DbClientPtr dbClient);
+
+    // CRUD Operations
+    drogon::orm::Future<User> findById(long long id);
+    drogon::orm::Future<User> findByEmail(const std::string& email);
+    drogon::orm::Future<User> findByUsername(const std::string& username);
+    drogon::orm::Future<std::vector<User>> findAll();
+    drogon::orm::Future<User> create(const User& user);
+    drogon::orm::Future<User> update(const User& user);
+    drogon::orm::Future<void> remove(long long id);
+
+    // Utility
+    static std::string hashPassword(const std::string& password);
+    static bool verifyPassword(const std::string& password, const std::string& hashedPassword);
+
+private:
+    drogon::orm::DbClientPtr dbClient_;
+};
+
+} // namespace CMS::Models
 ```
