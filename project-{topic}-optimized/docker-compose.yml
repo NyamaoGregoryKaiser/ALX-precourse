@@ -2,67 +2,67 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:14-alpine
     restart: always
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: ${DB_USER:-mlutilshub_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-mlutilshub_db}
     ports:
-      - "5432:5432" # Expose DB port to host for external tools if needed, remove in production
-    healthcheck: # Basic health check for the database
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379" # Expose Redis port to host for external tools if needed, remove in production
+      - "5432:5432"
     volumes:
-      - redis_data:/data
-    healthcheck: # Basic health check for Redis
-      test: ["CMD", "redis-cli", "ping"]
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   backend:
     build:
-      context: .
+      context: ./server
       dockerfile: Dockerfile
     restart: always
-    env_file:
-      - .env
     ports:
-      - "8000:8000"
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DB_HOST: db # Service name in docker-compose
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-mlutilshub_user}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_NAME: ${DB_NAME:-mlutilshub_db}
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey_please_change_this_in_production!}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CACHE_TTL: ${CACHE_TTL:-3600}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      UPLOAD_DIR: /app/uploads # Path inside the container
     volumes:
-      - .:/app # Mount current directory for live development, remove or replace with named volume for production builds
+      - ./server/uploads:/app/uploads # Mount local uploads to container
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: >
-      sh -c "alembic upgrade head && python scripts/seed_data.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    healthcheck: # Health check for the FastAPI backend
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # Ensure wait-for-it.sh is available in the backend container
+    # This is handled by adding it to the Dockerfile or mount it.
+    # For simplicity, we assume `wait-for-it.sh` is copied into the image or
+    # already available if using an appropriate base image or multi-stage build.
+    # A cleaner approach is to use 'command' override and exec the entrypoint script
+    # with `wait-for-it.sh` in front of it, but `docker-entrypoint.sh` is more robust.
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api}
+    depends_on:
+      - backend
 
 volumes:
-  postgres_data:
-  redis_data:
+  db_data:
 ```
-
----
-
-### 4. Testing & Quality
-
-#### `tests/conftest.py`
-```python

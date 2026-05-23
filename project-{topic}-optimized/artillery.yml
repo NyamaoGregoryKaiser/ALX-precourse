@@ -1,0 +1,74 @@
+# Artillery configuration for performance testing ML Utils Hub backend
+
+config:
+  target: "http://localhost:3000/api" # Replace with your backend URL
+  phases:
+    - name: Warm-up
+      duration: 30
+      arrivalRate: 5
+      maxVusers: 10
+    - name: Load test
+      duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      maxVusers: 100
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  payload:
+    # Example for login (if you have pre-registered users)
+    # path: "./users.csv"
+    # fields:
+    #   - "username"
+    #   - "password"
+
+scenarios:
+  - name: "User login and retrieve datasets"
+    flow:
+      - post:
+          url: "/auth/login"
+          json:
+            username: "testuser" # Replace with valid test user
+            password: "password123" # Replace with valid test password
+          capture:
+            json: "$.token"
+            as: "authToken"
+      - get:
+          url: "/datasets"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - get:
+          url: "/models"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - get:
+          url: "/experiments"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
+  # Example for testing the preprocessing endpoint
+  # Note: Sending files in Artillery requires a bit more setup or
+  # mocking, so this is a simplified example.
+  # For full file upload testing, you'd usually use a custom JS processor.
+  # - name: "Preprocessing Transform (Simplified)"
+  #   flow:
+  #     - post:
+  #         url: "/auth/login"
+  #         json:
+  #           username: "testuser"
+  #           password: "password123"
+  #         capture:
+  #           json: "$.token"
+  #           as: "authToken"
+  #     - post:
+  #         url: "/preprocessing/transform"
+  #         headers:
+  #           Authorization: "Bearer {{ authToken }}"
+  #           Content-Type: "multipart/form-data" # Requires custom processor for file
+  #         formData:
+  #           # This is illustrative; actual file upload needs custom JS
+  #           file: "base64encoded_csv_data_here"
+  #           transformationType: "normalize"
+  #           columnName: "value"
+  #           outputFormat: "json"
+```
