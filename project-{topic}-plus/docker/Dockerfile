@@ -1,45 +1,49 @@
-```dockerfile
-# Stage 1: Build the application
-FROM node:20-alpine AS builder
+# Use a C++ base image
+# Debian Buster is a good choice for stability
+FROM debian:buster-slim
+
+# Install necessary build tools and libraries
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libpq-dev \
+    libpqxx-dev \
+    libssl-dev \
+    libcrypt-dev \
+    git \
+    wget \
+    pkg-config \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CrowCpp (header-only, clone directly)
+# For production, consider using a specific release tag or submodule
+RUN git clone https://github.com/crowcpp/crow.git /usr/local/include/crow \
+    && cd /usr/local/include/crow && git checkout v1.0+5 # Use a specific stable version
+
+# Install nlohmann/json (header-only)
+RUN mkdir -p /usr/local/include/nlohmann \
+    && wget -O /usr/local/include/nlohmann/json.hpp https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp
+
+# Install spdlog (header-only)
+RUN git clone https://github.com/gabime/spdlog.git /usr/local/include/spdlog_src \
+    && cd /usr/local/include/spdlog_src && git checkout v1.11.0 \
+    && cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && cmake --build build --target install \
+    && rm -rf /usr/local/include/spdlog_src
 
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# Copy source code
+COPY . /app
 
-# Install dependencies (only production dependencies by default)
-RUN npm install --omit=dev
+# Build application
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --target ecommerce_cpp_app
 
-# Copy Prisma schema and migrations (needed for prisma generate)
-# Ensure migrations are copied for `prisma generate` in production or for `prisma migrate deploy` if preferred
-COPY prisma ./prisma/
-
-# Generate Prisma Client
-RUN npx prisma generate
-
-# Copy the rest of the application code
-COPY . .
-
-# Stage 2: Create a slim production image
-FROM node:20-alpine
-
-# Set working directory
-WORKDIR /app
-
-# Copy production dependencies and generated Prisma client from builder stage
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/.env.example ./
-COPY --from=builder /app/package.json ./
-
-# Expose the port the app runs on
-EXPOSE 3000
-
-# Set environment variables for production
-ENV NODE_ENV=production
+# Expose the application port
+EXPOSE 8080
 
 # Command to run the application
-CMD ["node", "src/server.js"]
-```
+CMD ["/app/build/ecommerce_cpp_app"]

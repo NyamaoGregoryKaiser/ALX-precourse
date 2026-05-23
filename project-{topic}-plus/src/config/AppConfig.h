@@ -1,87 +1,44 @@
-```cpp
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 
 #include <string>
-#include <map>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include "../utils/Logger.h"
-#include "../utils/StringUtil.h"
 
-namespace TaskManager {
-namespace Config {
+// Simple struct to hold application configuration
+struct AppConfig {
+    // Database configuration
+    std::string db_host;
+    std::string db_port;
+    std::string db_name;
+    std::string db_user;
+    std::string db_password;
+    int db_pool_size;
 
-class AppConfig {
-public:
-    static AppConfig& getInstance() {
-        static AppConfig instance;
-        return instance;
-    }
+    // Server configuration
+    std::string server_host;
+    int server_port;
 
-    void load(const std::string& filepath = ".env") {
-        std::ifstream file(filepath);
-        if (!file.is_open()) {
-            TaskManager::Utils::Logger::getLogger()->error("Could not open config file: {}", filepath);
-            return;
-        }
+    // JWT configuration
+    std::string jwt_secret;
+    long jwt_expiry_seconds;
 
-        std::string line;
-        while (std::getline(file, line)) {
-            line = TaskManager::Utils::StringUtil::trim(line);
-            if (line.empty() || line[0] == '#') {
-                continue;
-            }
+    // Redis configuration (for caching/rate limiting)
+    std::string redis_host;
+    int redis_port;
 
-            size_t delimiterPos = line.find('=');
-            if (delimiterPos != std::string::npos) {
-                std::string key = TaskManager::Utils::StringUtil::trim(line.substr(0, delimiterPos));
-                std::string value = TaskManager::Utils::StringUtil::trim(line.substr(delimiterPos + 1));
-                configMap[key] = value;
-            }
-        }
-        file.close();
-        TaskManager::Utils::Logger::getLogger()->info("Configuration loaded from {}.", filepath);
-    }
+    // Logging configuration
+    std::string log_level; // e.g., "debug", "info", "warn", "error"
 
-    std::string get(const std::string& key, const std::string& defaultValue = "") const {
-        auto it = configMap.find(key);
-        if (it != configMap.end()) {
-            return it->second;
-        }
-        TaskManager::Utils::Logger::getLogger()->warn("Config key '{}' not found. Using default value: '{}'", key, defaultValue);
-        return defaultValue;
-    }
+    // Rate Limiting configuration
+    int rate_limit_requests_per_minute;
 
-    int getInt(const std::string& key, int defaultValue = 0) const {
-        try {
-            return std::stoi(get(key, std::to_string(defaultValue)));
-        } catch (const std::exception& e) {
-            TaskManager::Utils::Logger::getLogger()->error("Failed to convert config key '{}' to int. Error: {}", key, e.what());
-            return defaultValue;
-        }
-    }
-
-    long long getLong(const std::string& key, long long defaultValue = 0) const {
-        try {
-            return std::stoll(get(key, std::to_string(defaultValue)));
-        } catch (const std::exception& e) {
-            TaskManager::Utils::Logger::getLogger()->error("Failed to convert config key '{}' to long long. Error: {}", key, e.what());
-            return defaultValue;
-        }
-    }
+    static const AppConfig& get_instance(); // Singleton accessor
 
 private:
-    AppConfig() = default;
-    AppConfig(const AppConfig&) = delete;
-    AppConfig& operator=(const AppConfig&) = delete;
+    AppConfig(); // Private constructor for singleton
+    AppConfig(const AppConfig&) = delete; // Delete copy constructor
+    AppConfig& operator=(const AppConfig&) = delete; // Delete assignment operator
 
-    std::map<std::string, std::string> configMap;
+    void load_from_env(); // Load configuration from environment variables
 };
 
-} // namespace Config
-} // namespace TaskManager
-
 #endif // APP_CONFIG_H
-```

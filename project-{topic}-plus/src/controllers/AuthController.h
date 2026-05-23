@@ -1,30 +1,27 @@
-```cpp
 #ifndef AUTH_CONTROLLER_H
 #define AUTH_CONTROLLER_H
 
 #include <crow.h>
-#include "../services/AuthService.h"
 #include "../services/UserService.h"
-#include "../exceptions/CustomExceptions.h"
-#include "../utils/Logger.h"
-#include "../middleware/AuthMiddleware.h"
-
-namespace TaskManager {
-namespace Controllers {
+#include "../utils/JwtUtils.h"
+#include "../config/AppConfig.h"
 
 class AuthController {
 public:
-    AuthController(Services::AuthService& auth_service, Services::UserService& user_service);
+    AuthController();
 
-    void setupRoutes(crow::App<Middleware::ErrorHandlingMiddleware, Middleware::AuthMiddleware, Middleware::RateLimitingMiddleware>& app);
+    // Register API endpoint (POST /api/v1/auth/register)
+    crow::response registerUser(const crow::request& req);
+
+    // Login API endpoint (POST /api/v1/auth/login)
+    crow::response loginUser(const crow::request& req);
 
 private:
-    Services::AuthService& auth_service_;
-    Services::UserService& user_service_;
+    UserService _user_service;
+    const AppConfig& _app_config;
+
+    // Helper to generate JWT token
+    std::string generateAuthToken(const User& user);
 };
 
-} // namespace Controllers
-} // namespace TaskManager
-
 #endif // AUTH_CONTROLLER_H
-```

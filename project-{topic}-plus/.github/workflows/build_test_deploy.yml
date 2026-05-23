@@ -1,0 +1,140 @@
+name: Build, Test, and Deploy E-commerce C++ App
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Compose
+      run: docker-compose -f docker/docker-compose.test.yml pull
+
+    - name: Build and start services with test dependencies
+      run: docker-compose -f docker/docker-compose.test.yml up -d --build
+
+    - name: Wait for services to be healthy
+      run: |
+        docker-compose -f docker/docker-compose.test.yml ps
+        docker-compose -f docker/docker-compose.test.yml logs db
+        docker-compose -f docker/docker-compose.test.yml logs redis
+        ./wait-for-it.sh localhost:5432 --timeout=60 --strict -- echo "PostgreSQL is up"
+        ./wait-for-it.sh localhost:6379 --timeout=60 --strict -- echo "Redis is up"
+        # Add a delay for app to fully start and initialize its connections
+        echo "Waiting for app to initialize..."
+        sleep 10
+      env:
+        DB_NAME: ecommerce_test_db
+        DB_USER: testuser
+        DB_PASSWORD: testpassword
+        # Add other necessary env vars for testing
+
+    - name: Run Unit Tests
+      run: docker-compose -f docker/docker-compose.test.yml exec app /app/build/tests/unit_tests
+      env:
+        # Pass test-specific environment variables
+        DB_HOST: db
+        DB_PORT: 5432
+        DB_NAME: ecommerce_test_db
+        DB_USER: testuser
+        DB_PASSWORD: testpassword
+        JWT_SECRET: test_secret_for_unit_tests # Different from prod
+        LOG_LEVEL: debug # Detailed logs for testing
+        # Add other test-specific env vars
+
+    - name: Run Integration Tests
+      run: docker-compose -f docker/docker-compose.test.yml exec app /app/build/tests/integration_tests
+      env:
+        DB_HOST: db
+        DB_PORT: 5432
+        DB_NAME: ecommerce_test_db
+        DB_USER: testuser
+        DB_PASSWORD: testpassword
+        JWT_SECRET: test_secret_for_integration_tests
+        LOG_LEVEL: debug
+
+    - name: Run API Tests (e.g., using curl or Python requests)
+      run: |
+        docker-compose -f docker/docker-compose.test.yml ps
+        sleep 5 # Give app a moment to expose port
+        python3 -m pip install requests
+        # Example API test script (replace with your actual tests)
+        python3 tests/api/test_api.py http://localhost:8080
+      env:
+        API_BASE_URL: http://localhost:8080
+        # This requires the app service to expose its port for integration tests
+        # or run API tests from *inside* the Docker network.
+        # For simplicity, if running from host, ensure `ports` mapping for `app` in docker-compose.test.yml
+        JWT_SECRET: test_secret_for_integration_tests # For token generation
+      continue-on-error: true # Allow non-critical tests to fail without blocking deployment if desired
+
+    - name: Stop services
+      if: always()
+      run: docker-compose -f docker/docker-compose.test.yml down
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && success() # Deploy only on main branch after successful build & test
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://your-ecommerce.com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials (example for AWS ECR/ECS)
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: ecommerce-cpp-app
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Deploy to Amazon ECS (example)
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: your-task-definition.json # You would generate/update this with the new image tag
+        service: your-ecs-service
+        cluster: your-ecs-cluster
+        wait-for-service-stability: true
+
+    - name: Cleanup old Docker images (optional)
+      run: |
+        # Script to clean up old images in ECR to save space
+        echo "Cleaning up old ECR images..."
+        # Add AWS CLI commands here
+```
+**Note**: You would need a `docker-compose.test.yml` which might use different DB name/user/password and potentially a smaller `DB_POOL_SIZE` for tests. The `wait-for-it.sh` script is a common utility for waiting on services in CI.
+
+---
+
+### 4. Testing & Quality
+
+**`tests/CMakeLists.txt`**
+
+```cmake

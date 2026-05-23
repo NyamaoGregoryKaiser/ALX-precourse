@@ -1,51 +1,61 @@
-```cpp
 #ifndef USER_SERVICE_H
 #define USER_SERVICE_H
 
-#include <string>
-#include <vector>
-#include <optional>
 #include "../models/User.h"
-#include "../database/Database.h"
-#include "../utils/Logger.h"
-#include "../exceptions/CustomExceptions.h"
-#include "../cache/Cache.h"
+#include "../database/UserDAO.h"
+#include <string>
+#include <optional>
+#include <vector>
 
-namespace TaskManager {
-namespace Services {
+// Custom exceptions for service layer
+class UserServiceException : public std::runtime_error {
+public:
+    explicit UserServiceException(const std::string& message) : std::runtime_error(message) {}
+};
+
+class UserAlreadyExistsException : public UserServiceException {
+public:
+    explicit UserAlreadyExistsException(const std::string& message) : UserServiceException(message) {}
+};
+
+class UserNotFoundException : public UserServiceException {
+public:
+    explicit UserNotFoundException(const std::string& message) : UserServiceException(message) {}
+};
+
+class InvalidCredentialsException : public UserServiceException {
+public:
+    explicit InvalidCredentialsException(const std::string& message) : UserServiceException(message) {}
+};
 
 class UserService {
 public:
-    UserService(Database::Database& db, Cache::Cache& cache);
+    UserService();
 
-    // CRUD Operations
-    Models::User createUser(Models::User user);
-    std::optional<Models::User> getUserById(long long id);
-    std::optional<Models::User> getUserByUsername(const std::string& username);
-    std::vector<Models::User> getAllUsers(int limit = 100, int offset = 0);
-    Models::User updateUser(long long id, const Models::User& user_updates);
-    void deleteUser(long long id);
+    // Register a new user
+    std::optional<User> registerUser(const User& newUser, const std::string& rawPassword);
 
-    // Authentication-related (password handling)
-    bool verifyUserPassword(const std::string& username, const std::string& plain_password);
-    void changeUserPassword(long long id, const std::string& new_plain_password);
+    // Authenticate user, return user if successful
+    std::optional<User> authenticateUser(const std::string& username_or_email, const std::string& password);
 
-    // Authorization checks
-    bool isAdmin(long long user_id);
-    bool isOwner(long long user_id, long long resource_owner_id);
+    // Get user by ID
+    std::optional<User> getUserById(const std::string& id);
+
+    // Get all users (with pagination)
+    std::vector<User> getAllUsers(int limit = 100, int offset = 0);
+
+    // Update user details
+    std::optional<User> updateUser(const std::string& userId, const nlohmann::json& updateData);
+
+    // Delete user
+    bool deleteUser(const std::string& id);
 
 private:
-    Database::Database& db_;
-    Cache::Cache& cache_;
+    UserDAO _user_dao;
 
-    std::optional<Models::User> mapRowToUser(const Database::Row& row);
-    std::string generateCacheKey(long long userId);
-    void invalidateUserCache(long long userId);
-    void invalidateUserCache(const std::string& username);
+    // Helper for basic input validation (e.g., email format)
+    bool isValidEmail(const std::string& email);
+    bool isValidPassword(const std::string& password);
 };
 
-} // namespace Services
-} // namespace TaskManager
-
 #endif // USER_SERVICE_H
-```

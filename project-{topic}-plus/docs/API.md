@@ -1,304 +1,297 @@
-```markdown
-# Real-time Chat Application API Documentation
+# E-commerce C++ API Documentation (OpenAPI 3.0 Specification)
 
-This document describes the REST API endpoints and WebSocket events provided by the backend of the Real-time Chat Application.
+This document outlines the RESTful API endpoints for the E-commerce C++ backend. It follows the OpenAPI 3.0 specification structure, which can be used to generate interactive documentation (e.g., Swagger UI).
 
-**Base URL:** `/api` (for REST endpoints)
-**Socket URL:** `/` (for WebSocket connections)
+**Base URL**: `http://localhost:8080/api/v1`
 
 ---
 
-## Authentication
+## 1. Authentication
 
-### 1. User Registration
-*   **Endpoint:** `POST /api/auth/register`
-*   **Description:** Registers a new user account.
-*   **Request Body:**
+### `POST /auth/register`
+
+Registers a new user account.
+
+*   **Description**: Creates a new customer account in the system.
+*   **Request Body (application/json)**:
     ```json
     {
-      "username": "uniqueUsername",
-      "email": "user@example.com",
-      "password": "strongPassword123"
+      "username": "string",       // Required, unique username
+      "email": "string",          // Required, unique, valid email format
+      "password": "string",       // Required, strong password (min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special)
+      "first_name": "string",     // Required
+      "last_name": "string",      // Optional
+      "phone_number": "string",   // Optional
+      "address": "string",        // Optional
+      "role": "string"            // Optional, default "customer". Only "admin" role can set "admin".
     }
     ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "message": "User registered successfully",
-      "user": {
-        "id": "uuid",
-        "username": "uniqueUsername",
-        "email": "user@example.com",
-        "createdAt": "timestamp"
-      }
-    }
-    ```
-*   **Error (400 Bad Request):** If username/email already exists or validation fails.
-
-### 2. User Login
-*   **Endpoint:** `POST /api/auth/login`
-*   **Description:** Authenticates a user and returns a JWT token.
-*   **Request Body:**
-    ```json
-    {
-      "email": "user@example.com",
-      "password": "strongPassword123"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "message": "Login successful",
-      "token": "eyJhbGciOiJIUzI1Ni...",
-      "user": {
-        "id": "uuid",
-        "username": "uniqueUsername",
-        "email": "user@example.com"
-      }
-    }
-    ```
-*   **Error (401 Unauthorized):** Invalid credentials.
-
-### 3. Logout
-*   **Endpoint:** `POST /api/auth/logout`
-*   **Description:** (Optional - client-side token removal) Invalidates the JWT token on the client-side. Server-side logout could involve blacklisting tokens but is not implemented in this example for simplicity.
-*   **Authentication:** Required (Bearer Token)
-*   **Response (200 OK):**
-    ```json
-    {
-      "message": "Logged out successfully"
-    }
-    ```
-
----
-
-## Users (Requires Authentication)
-
-*   **Authentication:** All endpoints in this section require a valid JWT token in the `Authorization` header (`Bearer <token>`).
-
-### 1. Get Current User Profile
-*   **Endpoint:** `GET /api/users/me`
-*   **Description:** Retrieves the profile of the authenticated user.
-*   **Response (200 OK):**
-    ```json
-    {
-      "id": "uuid",
-      "username": "uniqueUsername",
-      "email": "user@example.com",
-      "createdAt": "timestamp",
-      "updatedAt": "timestamp"
-    }
-    ```
-
-### 2. Get User by ID
-*   **Endpoint:** `GET /api/users/:id`
-*   **Description:** Retrieves a user's profile by their ID.
-*   **Response (200 OK):**
-    ```json
-    {
-      "id": "uuid",
-      "username": "anotherUser",
-      "email": "another@example.com",
-      "createdAt": "timestamp",
-      "updatedAt": "timestamp"
-    }
-    ```
-*   **Error (404 Not Found):** If user does not exist.
-
-### 3. Search Users
-*   **Endpoint:** `GET /api/users/search`
-*   **Description:** Searches for users by username or email.
-*   **Query Parameters:**
-    *   `q` (string, required): The search query.
-*   **Response (200 OK):**
-    ```json
-    [
-      {
-        "id": "uuid",
-        "username": "matchingUser",
-        "email": "matching@example.com"
-      },
-      ...
-    ]
-    ```
-
----
-
-## Conversations (Requires Authentication)
-
-*   **Authentication:** All endpoints in this section require a valid JWT token.
-
-### 1. Get All Conversations for User
-*   **Endpoint:** `GET /api/conversations`
-*   **Description:** Retrieves all conversations the authenticated user is a part of.
-*   **Response (200 OK):**
-    ```json
-    [
-      {
-        "id": "conv-uuid-1",
-        "name": "Group Chat A" (or null for direct message),
-        "isGroup": true,
-        "createdAt": "timestamp",
-        "updatedAt": "timestamp",
-        "lastMessage": {
-            "id": "msg-uuid-1",
-            "senderId": "user-uuid-1",
-            "content": "Hey everyone!",
-            "createdAt": "timestamp"
-        },
-        "participants": [
-          { "id": "user-uuid-1", "username": "user1" },
-          { "id": "user-uuid-2", "username": "user2" }
-        ]
-      },
-      ...
-    ]
-    ```
-
-### 2. Get Conversation by ID with Messages
-*   **Endpoint:** `GET /api/conversations/:id`
-*   **Description:** Retrieves a specific conversation and its messages.
-*   **Response (200 OK):**
-    ```json
-    {
-      "id": "conv-uuid-1",
-      "name": "Group Chat A",
-      "isGroup": true,
-      "createdAt": "timestamp",
-      "updatedAt": "timestamp",
-      "participants": [
-        { "id": "user-uuid-1", "username": "user1" },
-        { "id": "user-uuid-2", "username": "user2" }
-      ],
-      "messages": [
-        {
-          "id": "msg-uuid-1",
-          "senderId": "user-uuid-1",
-          "content": "Hello world",
-          "createdAt": "timestamp",
-          "sender": { "id": "user-uuid-1", "username": "user1" }
-        },
-        ...
-      ]
-    }
-    ```
-*   **Error (403 Forbidden):** If user is not a participant of the conversation.
-*   **Error (404 Not Found):** If conversation does not exist.
-
-### 3. Create Conversation
-*   **Endpoint:** `POST /api/conversations`
-*   **Description:** Creates a new direct message or group conversation.
-*   **Request Body:**
-    *   **Direct Message:**
+*   **Responses**:
+    *   `201 Created`: User successfully registered.
         ```json
         {
-          "participantIds": ["target-user-uuid"]
+          "success": true,
+          "message": "User registered successfully.",
+          "user": {
+            "id": "usr_...",
+            "username": "string",
+            "email": "string",
+            "first_name": "string",
+            "last_name": "string | null",
+            "phone_number": "string | null",
+            "address": "string | null",
+            "role": "customer",
+            "created_at": "ISO 8601 timestamp",
+            "updated_at": "ISO 8601 timestamp"
+          },
+          "token": "string" // JWT Token
         }
         ```
-    *   **Group Message:**
+    *   `400 Bad Request`: Invalid input (e.g., weak password, invalid email, missing fields).
+    *   `409 Conflict`: Username or email already exists.
+    *   `500 Internal Server Error`: Database error or unexpected server issue.
+
+---
+
+### `POST /auth/login`
+
+Authenticates a user and returns a JWT token.
+
+*   **Description**: Verifies user credentials and issues a JSON Web Token for subsequent authenticated requests.
+*   **Request Body (application/json)**:
+    ```json
+    {
+      "username_or_email": "string", // Required, username or email
+      "password": "string"           // Required
+    }
+    ```
+*   **Responses**:
+    *   `200 OK`: Login successful.
         ```json
         {
-          "name": "My New Group",
-          "participantIds": ["user-uuid-2", "user-uuid-3"]
+          "success": true,
+          "message": "Login successful.",
+          "user": {
+            "id": "usr_...",
+            "username": "string",
+            "email": "string",
+            "first_name": "string",
+            "role": "customer",
+            "created_at": "ISO 8601 timestamp",
+            "updated_at": "ISO 8601 timestamp"
+          },
+          "token": "string" // JWT Token
         }
         ```
-        (Note: the authenticated user's ID is automatically added as a participant)
-*   **Response (201 Created):**
-    ```json
-    {
-      "message": "Conversation created successfully",
-      "conversation": {
-        "id": "new-conv-uuid",
-        "name": "My New Group",
-        "isGroup": true,
-        "createdAt": "timestamp",
-        "participants": [...]
-      }
-    }
-    ```
-*   **Error (400 Bad Request):** Invalid participants or missing name for group.
+    *   `401 Unauthorized`: Invalid credentials.
+    *   `400 Bad Request`: Missing required fields.
+    *   `500 Internal Server Error`: Database error or unexpected server issue.
 
 ---
 
-## Messages (Requires Authentication)
+## 2. Users
 
-*   **Authentication:** All endpoints in this section require a valid JWT token.
+All User endpoints except `POST /auth/register` and `POST /auth/login` require authentication.
+Authentication is done by providing a `Bearer` token in the `Authorization` header: `Authorization: Bearer <JWT_TOKEN>`.
 
-### 1. Send Message (REST - primarily for initial implementation, then WebSockets)
-*   **Endpoint:** `POST /api/conversations/:conversationId/messages`
-*   **Description:** Sends a new message to a specific conversation.
-*   **Request Body:**
-    ```json
-    {
-      "content": "This is my message content."
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "message": "Message sent successfully",
-      "message": {
-        "id": "new-msg-uuid",
-        "conversationId": "conv-uuid",
-        "senderId": "user-uuid",
-        "content": "This is my message content.",
-        "createdAt": "timestamp"
-      }
-    }
-    ```
-*   **Error (403 Forbidden):** If user is not a participant of the conversation.
-*   **Error (404 Not Found):** If conversation does not exist.
+### `GET /users`
+
+Retrieves a list of all users.
+
+*   **Description**: Fetches a paginated list of all registered users. **Requires `admin` role.**
+*   **Query Parameters**:
+    *   `limit`: (Optional) Number of users to return (default: 100).
+    *   `offset`: (Optional) Number of users to skip (default: 0).
+*   **Headers**:
+    *   `Authorization`: `Bearer <JWT_TOKEN>`
+*   **Responses**:
+    *   `200 OK`: List of users.
+        ```json
+        {
+          "success": true,
+          "data": [
+            {
+              "id": "usr_...",
+              "username": "string",
+              "email": "string",
+              "first_name": "string",
+              "last_name": "string | null",
+              "role": "customer",
+              "created_at": "ISO 8601 timestamp",
+              "updated_at": "ISO 8601 timestamp"
+            }
+          ]
+        }
+        ```
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: Authenticated user does not have `admin` role.
+    *   `500 Internal Server Error`: Database error or unexpected server issue.
+
+---
+
+### `GET /users/{userId}`
+
+Retrieves a specific user by ID.
+
+*   **Description**: Fetches details for a single user.
+*   **Path Parameters**:
+    *   `userId`: `string` (Required) The ID of the user to retrieve.
+*   **Headers**:
+    *   `Authorization`: `Bearer <JWT_TOKEN>`
+*   **Authorization**:
+    *   Authenticated users can retrieve their own profile.
+    *   Users with `admin` role can retrieve any user's profile.
+*   **Responses**:
+    *   `200 OK`: User details.
+        ```json
+        {
+          "success": true,
+          "data": {
+            "id": "usr_...",
+            "username": "string",
+            "email": "string",
+            "first_name": "string",
+            "last_name": "string | null",
+            "phone_number": "string | null",
+            "address": "string | null",
+            "role": "customer",
+            "created_at": "ISO 8601 timestamp",
+            "updated_at": "ISO 8601 timestamp"
+          }
+        }
+        ```
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: Authenticated user is not `admin` and trying to access another user's profile.
+    *   `404 Not Found`: User with the specified ID does not exist.
+    *   `500 Internal Server Error`: Database error or unexpected server issue.
 
 ---
 
-## WebSocket Events
+### `PUT /users/{userId}`
 
-The Socket.IO connection is authenticated using the JWT token passed either in the query string (`token=...`) or `auth` payload during connection.
+Updates a specific user's details.
 
-### Client Emits (to Server)
-
-*   `join_conversation`:
-    *   **Payload:** `{ conversationId: string }`
-    *   **Description:** Client joins a specific conversation room to receive messages.
-*   `leave_conversation`:
-    *   **Payload:** `{ conversationId: string }`
-    *   **Description:** Client leaves a conversation room.
-*   `send_message`:
-    *   **Payload:** `{ conversationId: string, content: string }`
-    *   **Description:** Client sends a new message to a conversation.
-*   `typing_start`:
-    *   **Payload:** `{ conversationId: string }`
-    *   **Description:** Client indicates they are typing in a conversation.
-*   `typing_stop`:
-    *   **Payload:** `{ conversationId: string }`
-    *   **Description:** Client indicates they stopped typing.
-
-### Server Emits (to Client)
-
-*   `receive_message`:
-    *   **Payload:** `{ id: string, conversationId: string, senderId: string, sender: { id: string, username: string }, content: string, createdAt: string }`
-    *   **Description:** A new message has been sent to a conversation the client is in.
-*   `user_joined`:
-    *   **Payload:** `{ userId: string, username: string }`
-    *   **Description:** A user has connected to the chat.
-*   `user_left`:
-    *   **Payload:** `{ userId: string }`
-    *   **Description:** A user has disconnected from the chat.
-*   `user_online`:
-    *   **Payload:** `{ userId: string }`
-    *   **Description:** A user has come online.
-*   `user_offline`:
-    *   **Payload:** `{ userId: string }`
-    *   **Description:** A user has gone offline.
-*   `typing_started`:
-    *   **Payload:** `{ conversationId: string, userId: string, username: string }`
-    *   **Description:** Another user in the conversation has started typing.
-*   `typing_stopped`:
-    *   **Payload:** `{ conversationId: string, userId: string }`
-    *   **Description:** Another user in the conversation has stopped typing.
-*   `error`:
-    *   **Payload:** `{ message: string }`
-    *   **Description:** An error occurred on the server related to a WebSocket event.
+*   **Description**: Modifies an existing user's information.
+*   **Path Parameters**:
+    *   `userId`: `string` (Required) The ID of the user to update.
+*   **Headers**:
+    *   `Authorization`: `Bearer <JWT_TOKEN>`
+*   **Authorization**:
+    *   Authenticated users can update their own profile.
+    *   Users with `admin` role can update any user's profile.
+    *   Non-admin users cannot change `role` or `password` (only `first_name`, `last_name`, `phone_number`, `address`, `email`, `username`).
+    *   Admin users cannot demote themselves from `admin` role.
+*   **Request Body (application/json)**: (Partial update, fields are optional)
+    ```json
+    {
+      "username": "string",       // Optional
+      "email": "string",          // Optional, must be unique if changed
+      "password": "string",       // Optional, new password (will be hashed)
+      "first_name": "string",     // Optional
+      "last_name": "string | null",      // Optional (can set to null)
+      "phone_number": "string | null",   // Optional (can set to null)
+      "address": "string | null",        // Optional (can set to null)
+      "role": "string"            // Optional, (admin only, with self-demotion restriction)
+    }
+    ```
+*   **Responses**:
+    *   `200 OK`: User successfully updated.
+        ```json
+        {
+          "success": true,
+          "message": "User updated successfully.",
+          "data": {
+            "id": "usr_...",
+            "username": "string",
+            "email": "string",
+            "first_name": "string",
+            "role": "customer",
+            "updated_at": "ISO 8601 timestamp"
+          }
+        }
+        ```
+    *   `400 Bad Request`: Invalid input (e.g., invalid email, weak password, invalid role change).
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: Authorization rules violated (e.g., non-admin changing role, admin self-demotion).
+    *   `404 Not Found`: User with the specified ID does not exist.
+    *   `409 Conflict`: Email or username already taken by another user.
+    *   `500 Internal Server Error`: Database error or unexpected server issue.
 
 ---
+
+### `DELETE /users/{userId}`
+
+Deletes a specific user by ID.
+
+*   **Description**: Removes a user account from the system. **Requires `admin` role.**
+*   **Path Parameters**:
+    *   `userId`: `string` (Required) The ID of the user to delete.
+*   **Headers**:
+    *   `Authorization`: `Bearer <JWT_TOKEN>`
+*   **Authorization**:
+    *   **Requires `admin` role.**
+    *   **Admins cannot delete their own account.**
+*   **Responses**:
+    *   `200 OK`: User successfully deleted.
+        ```json
+        {
+          "success": true,
+          "message": "User deleted successfully."
+        }
+        ```
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: Authenticated user is not `admin` or attempting to delete their own admin account.
+    *   `404 Not Found`: User with the specified ID does not exist.
+    *   `500 Internal Server Error`: Database error or unexpected server issue (e.g., user has existing orders preventing deletion).
+
+---
+
+## 3. Products (Conceptual - similar structure to Users)
+
+*(This section would be expanded with full CRUD for products)*
+
+### `GET /products`
+### `GET /products/{productId}`
+### `POST /products` (Admin only)
+### `PUT /products/{productId}` (Admin only)
+### `DELETE /products/{productId}` (Admin only)
+
+---
+
+## 4. Orders (Conceptual - similar structure)
+
+*(This section would be expanded with full CRUD for orders)*
+
+### `POST /orders` (Customer only)
+### `GET /orders` (Admin: all orders; Customer: own orders)
+### `GET /orders/{orderId}` (Admin: any order; Customer: own order)
+### `PUT /orders/{orderId}/status` (Admin only: update status)
+
+---
+
+## 5. Cart (Conceptual - similar structure)
+
+*(This section would be expanded with full CRUD for cart items)*
+
+### `GET /cart` (Customer: retrieve current cart)
+### `POST /cart/add` (Customer: add item to cart)
+### `PUT /cart/update/{cartItemId}` (Customer: update quantity)
+### `DELETE /cart/remove/{cartItemId}` (Customer: remove item)
+### `POST /cart/checkout` (Customer: convert cart to order)
+
+---
+
+## Error Responses
+
+All error responses follow a consistent JSON structure:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE_STRING", // e.g., "BAD_REQUEST", "UNAUTHORIZED", "NOT_FOUND", "CONFLICT", "SERVER_ERROR"
+    "message": "Human-readable error message explaining the issue.",
+    "status": 400 // HTTP status code
+  }
+}
 ```
