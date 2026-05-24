@@ -10,76 +10,137 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
+enum Role {
+  USER
   ADMIN
-  MANAGER
-  MEMBER
-}
-
-enum ProjectStatus {
-  ACTIVE
-  ARCHIVED
-  COMPLETED
+  MANAGER # Can manage projects/teams
 }
 
 enum TaskStatus {
-  PENDING
+  TODO
   IN_PROGRESS
-  COMPLETED
-  OVERDUE
+  DONE
+  BLOCKED
 }
 
 model User {
   id        String    @id @default(uuid())
   username  String    @unique
   email     String    @unique
-  password  String
-  role      UserRole  @default(MEMBER)
+  password  String    @map("password_hash") // Store hashed passwords
+  firstName String?
+  lastName  String?
+  role      Role      @default(USER)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  projects  Project[]
-  tasks     Task[]    @relation("AssignedTasks") // Tasks assigned to this user
-  createdTasks Task[] @relation("CreatedTasks")  // Tasks created by this user
 
-  @@map("users")
+  teams     TeamMember[] // Link to TeamMember join table
+  projects  Project[]    @relation("UserProjects") // User can own multiple projects
+  tasks     Task[]       @relation("AssigneeTasks") // User can be assigned multiple tasks
+  comments  Comment[]    @relation("CommentAuthor") // User can author multiple comments
+
+  @@map("users") // Map model to 'users' table
+}
+
+model Team {
+  id        String       @id @default(uuid())
+  name      String       @unique
+  description String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  members   TeamMember[] // Link to TeamMember join table
+  projects  Project[]    // Team can have multiple projects
+
+  @@map("teams")
+}
+
+// Join table for User and Team (Many-to-Many)
+model TeamMember {
+  id        String    @id @default(uuid())
+  userId    String
+  teamId    String
+  role      Role      @default(USER) // Role within the team (e.g., Team Lead, Member)
+  assignedAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId]) // A user can only be a member of a team once
+  @@map("team_members")
 }
 
 model Project {
-  id          String        @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
-  description String?       @db.VarChar(500)
-  status      ProjectStatus @default(ACTIVE)
-  owner       User          @relation(fields: [ownerId], references: [id])
-  ownerId     String
-  tasks       Task[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String    @default("active") // e.g., active, completed, on-hold
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  ownerId     String? // User who created/owns the project
+  owner       User?     @relation("UserProjects", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  teamId      String? // Optional: Project can belong to a team
+  team        Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  tasks       Task[]    // Project can have multiple tasks
 
   @@map("projects")
 }
 
 model Task {
-  id           String     @id @default(uuid())
-  title        String
-  description  String?    @db.VarChar(500)
-  status       TaskStatus @default(PENDING)
-  dueDate      DateTime?
-  tags         String[]   // Array of strings for tags
-  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-  assignedTo   User?      @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
-  assignedToId String?
-  creator      User       @relation("CreatedTasks", fields: [creatorId], references: [id])
-  creatorId    String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    Int          @default(1) // e.g., 1 (low) to 5 (critical)
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assigneeId  String? // User assigned to the task
+  assignee    User?        @relation("AssigneeTasks", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  comments    Comment[]    // Task can have multiple comments
+  attachments Attachment[] // Task can have multiple attachments
 
   @@map("tasks")
 }
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  filename  String
+  fileUrl   String // URL or path to the stored file
+  fileType  String?
+  fileSize  Int?     // Size in bytes
+  uploadedAt DateTime @default(now())
+
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
 ```
 
-#### Migration Script (generated by Prisma)
-
-Run `npx prisma migrate dev --name init` after setting up `schema.prisma` and `.env`. This will create a directory like `prisma/migrations/<timestamp>_init/migration.sql`.
-
-```sql
+```typescript

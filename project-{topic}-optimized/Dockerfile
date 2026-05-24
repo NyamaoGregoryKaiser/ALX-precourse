@@ -1,37 +1,33 @@
-# Use a slim Python image for smaller size
-FROM python:3.11-slim-buster
-
-# Set environment variables
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONDONTWRITEBYTECODE 1
+# Use a slim Node.js base image for smaller size
+FROM node:20-slim AS base
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (optional, adjust as needed)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#     build-essential \
-#     libpq-dev \
-#     && rm -rf /var/lib/apt/lists/*
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Copy requirements file and install dependencies
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install dependencies
+RUN npm install --omit=dev
 
 # Copy the rest of the application code
-COPY . /app
+COPY . .
 
-# Expose the port FastAPI runs on
-EXPOSE 8000
+# Generate Prisma client (important for Docker builds)
+RUN npx prisma generate
 
-# Command to run the application using Uvicorn
-# Use Gunicorn to manage Uvicorn workers in production for robustness
-# For a simple single worker:
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose the port your app runs on
+EXPOSE 3000
 
-# For a production-ready setup with Gunicorn (install gunicorn in requirements.txt)
-# CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
-```
+# Command to run the application
+CMD [ "npm", "start" ]
 
-#### `docker-compose.yml`
-```yaml
+# --- Development Stage (optional, for faster dev builds if needed) ---
+FROM base AS dev
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+# No CMD, as this stage is typically used for building images that
+# are then run with different commands in local dev setups (e.g., nodemon)
+# or for running tests in CI.

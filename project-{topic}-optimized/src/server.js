@@ -1,71 +1,70 @@
-const app = require('./app');
-const config = require('./config');
-const logger = require('./utils/logger');
-const prisma = require('../prisma/client');
-const cacheService = require('./services/cache.service');
+import app from './app.js';
+import config from '../config/config.js';
+import logger from './utils/logger.js';
+import prisma from './utils/prisma.js';
 
 let server;
 
-const startServer = async () => {
-  try {
-    // Connect to PostgreSQL database
-    await prisma.$connect();
-    logger.info('Connected to PostgreSQL database');
-
-    // Connect to Redis cache
-    await cacheService.connectRedis();
-
-    server = app.listen(config.port, () => {
-      logger.info(`Server listening on port ${config.port}`);
-      logger.info(`Environment: ${config.env}`);
+// Function to handle graceful shutdown
+const gracefulShutdown = async () => {
+  logger.info('Shutting down gracefully...');
+  if (server) {
+    server.close(() => {
+      logger.info('HTTP server closed.');
+      prisma.$disconnect().then(() => {
+        logger.info('Prisma client disconnected.');
+        process.exit(0);
+      });
     });
-  } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1); // Exit with failure code
+  } else {
+    process.exit(0);
   }
 };
 
-const exitHandler = async () => {
+// Start the server
+prisma.$connect()
+  .then(() => {
+    logger.info('Connected to PostgreSQL database');
+    server = app.listen(config.port, () => {
+      logger.info(`Server running on port ${config.port} in ${config.env} mode`);
+    });
+  })
+  .catch((err) => {
+    logger.error('Failed to connect to database', err);
+    process.exit(1);
+  });
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  logger.error('UNHANDLED REJECTION! 💥 Shutting down...');
+  logger.error(err.name, err.message, err);
   if (server) {
-    server.close(async () => {
-      logger.info('Server closed');
-      await prisma.$disconnect();
-      logger.info('Disconnected from PostgreSQL');
-      // No explicit disconnect for Redis needed if client handles it on process exit
+    server.close(() => {
       process.exit(1);
     });
   } else {
-    await prisma.$disconnect();
-    logger.info('Disconnected from PostgreSQL');
     process.exit(1);
   }
-};
+});
 
-const unexpectedErrorHandler = (error) => {
-  logger.error(error);
-  exitHandler();
-};
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  logger.error(err.name, err.message, err);
+  process.exit(1);
+});
 
-process.on('uncaughtException', unexpectedErrorHandler);
-process.on('unhandledRejection', unexpectedErrorHandler);
-
+// Handle SIGTERM (e.g., from Docker stop)
 process.on('SIGTERM', () => {
-  logger.info('SIGTERM received');
-  if (server) {
-    server.close(() => {
-      logger.info('Server closed gracefully due to SIGTERM');
-    });
-  }
+  logger.info('SIGTERM received. Initiating graceful shutdown.');
+  gracefulShutdown();
 });
 
+// Handle SIGINT (Ctrl+C)
 process.on('SIGINT', () => {
-  logger.info('SIGINT received');
-  if (server) {
-    server.close(() => {
-      logger.info('Server closed gracefully due to SIGINT');
-    });
-  }
+  logger.info('SIGINT received. Initiating graceful shutdown.');
+  gracefulShutdown();
 });
+```
 
-// Start the server
-startServer();
+```javascript
