@@ -1,89 +1,77 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { getMyChatRooms, getAllChatRooms, joinChatRoom } from '../api/chat';
-import ChatList from '../components/ChatList';
-import { useAuth } from '../context/AuthContext';
+```javascript
+import React, { useEffect, useState } from 'react';
+import { posts } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 const HomePage = () => {
-  const { user, loadUser } = useAuth();
-  const [myRooms, setMyRooms] = useState([]);
-  const [allRooms, setAllRooms] = useState([]);
+  const [allPosts, setAllPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const fetchRooms = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const myRoomsData = await getMyChatRooms();
-      setMyRooms(myRoomsData);
-
-      const allRoomsData = await getAllChatRooms();
-      setAllRooms(allRoomsData);
-    } catch (err) {
-      setError('Failed to fetch chat rooms.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [error, setError] = useState(null);
+  const { currentUser, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    fetchRooms();
-  }, [fetchRooms]);
+    const fetchPosts = async () => {
+      try {
+        setLoading(true);
+        const params = {
+          // If authenticated and is editor/admin, fetch all statuses
+          status: isAuthenticated && (currentUser?.role === 'admin' || currentUser?.role === 'editor') ? undefined : 'published',
+          populate: 'author,category',
+          limit: 10,
+          page: 1
+        };
+        const response = await posts.getAll(params);
+        setAllPosts(response.data.posts);
+      } catch (err) {
+        console.error("Failed to fetch posts:", err);
+        setError("Failed to load posts.");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleRoomCreated = (newRoom) => {
-    setMyRooms((prev) => [...prev, newRoom]);
-    setAllRooms((prev) => [...prev, newRoom]);
-    // Optionally redirect to the new room or show a success message
-  };
+    fetchPosts();
+  }, [currentUser, isAuthenticated]);
 
-  const handleJoinRoom = async (roomId) => {
-    try {
-      await joinChatRoom(roomId);
-      await fetchRooms(); // Re-fetch rooms to update 'my rooms' list
-    } catch (err) {
-      setError('Failed to join room.');
-      console.error(err);
-    }
-  };
-
-  if (loading) return <div className="text-center text-lg mt-10">Loading rooms...</div>;
-  if (error) return <div className="text-center text-red-500 text-lg mt-10">{error}</div>;
-
-  const availableRoomsToJoin = allRooms.filter(
-    (room) => !myRooms.some((myRoom) => myRoom.id === room.id)
-  );
+  if (loading) return <div>Loading posts...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      <ChatList title="My Chat Rooms" rooms={myRooms} onRoomCreated={handleRoomCreated} canCreate={true} />
-      <div className="bg-white p-6 rounded-lg shadow-md w-full lg:w-2/3">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-800">Available Rooms to Join</h2>
-        {availableRoomsToJoin.length === 0 ? (
-          <p className="text-gray-500">No other rooms to join.</p>
-        ) : (
-          <ul className="space-y-3">
-            {availableRoomsToJoin.map((room) => (
-              <li key={room.id}>
-                <div className="block p-4 bg-gray-50 hover:bg-green-100 rounded-md transition duration-300 flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">{room.name}</h3>
-                    <p className="text-sm text-gray-600">Created by: {room.creator.username}</p>
-                  </div>
-                  <button
-                    onClick={() => handleJoinRoom(room.id)}
-                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-300"
-                  >
-                    Join Room
-                  </button>
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-6">Latest Posts</h1>
+      {allPosts.length === 0 ? (
+        <p>No posts available.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {allPosts.map((post) => (
+            <div key={post.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+              {post.featuredImage && (
+                <img src={post.featuredImage} alt={post.title} className="w-full h-48 object-cover" />
+              )}
+              <div className="p-4">
+                <h2 className="text-xl font-semibold mb-2">{post.title}</h2>
+                <p className="text-gray-600 text-sm mb-2">
+                  By {post.author?.username || 'Unknown'} in {post.category?.name || 'Uncategorized'}
+                </p>
+                <p className="text-gray-700 text-base">{post.excerpt || post.content.substring(0, 150) + '...'}</p>
+                <div className="mt-4 flex justify-between items-center">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                    post.status === 'published' ? 'bg-green-100 text-green-800' :
+                    post.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {post.status.toUpperCase()}
+                  </span>
+                  <a href={`/posts/${post.slug}`} className="text-blue-500 hover:underline">Read More</a>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
 export default HomePage;
+```

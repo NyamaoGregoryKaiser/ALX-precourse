@@ -1,45 +1,48 @@
 ```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:18-alpine AS builder
+# Stage 1: Build the application
+FROM node:20-alpine as builder
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package.json yarn.lock ./
+# Install dependencies
+RUN npm install --frozen-lockfile # Use --frozen-lockfile for production builds
 
+# Copy the rest of the application code
 COPY . .
 
-# Build Prisma Client
-ENV DATABASE_URL="postgresql://user:password@db:5432/realtime_chat_db?schema=public"
-RUN npx prisma generate
+# Run build script if you have one (e.g., for frontend within backend for monolith)
+# In this microservice setup, backend is pure Node.js, so no build step needed here.
 
-RUN npm run build
-
-# Stage 2: Create the production-ready image
-FROM node:18-alpine
+# Stage 2: Create a slim production image
+FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
+# Copy only necessary files from the builder stage
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/.env.example ./.env.example
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/seeders ./seeders
+COPY --from=builder /app/sequelize_config.js ./sequelize_config.js # if exists, otherwise config is in src/config/config.js
 
 # Expose the port the app runs on
-EXPOSE 5000
+EXPOSE 3000
 
-# Set environment variables for production
+# Set environment variables
 ENV NODE_ENV=production
-# These should ideally be passed at runtime or via Docker secrets
-# ENV DATABASE_URL="postgresql://user:password@db:5432/realtime_chat_db?schema=public"
-# ENV JWT_SECRET="your_very_strong_and_secret_jwt_key_here"
-# ENV REDIS_URL="redis://redis:6379"
-# ENV PORT=5000
+ENV PORT=3000
 
-# Run Prisma migrations when the container starts
-# This ensures the database schema is up-to-date before the application starts.
-# For more complex deployments, consider running migrations as a separate step.
-CMD sh -c "npx prisma migrate deploy && node dist/server.js"
+# Run database migrations and seeders, then start the application
+# This command is run by docker-compose for convenience.
+# If running standalone, you might separate migration/seed jobs.
+CMD ["sh", "-c", "npx sequelize-cli db:migrate && npx sequelize-cli db:seed:all && npm start"]
+
+# Alternatively, for production, you might have separate entrypoint scripts:
+# ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# CMD ["npm", "start"]
+# And docker-entrypoint.sh would handle migrations/seeds.
 ```

@@ -1,109 +1,95 @@
 ```javascript
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import apiClient from '../api/apiClient';
-import { useNavigate } from 'react-router-dom';
+import { auth, users } from '../api'; // Your API service
+import { jwtDecode } from 'jwt-decode'; // npm i jwt-decode
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
-    const loadUserFromLocalStorage = () => {
+    const loadUser = async () => {
       try {
-        const storedUser = localStorage.getItem('user');
-        const accessToken = localStorage.getItem('accessToken');
-        if (storedUser && accessToken) {
-          setUser(JSON.parse(storedUser));
+        const tokens = JSON.parse(localStorage.getItem('tokens'));
+        if (tokens && tokens.access && tokens.access.token) {
+          const decodedToken = jwtDecode(tokens.access.token);
+          // Check if token is expired
+          if (decodedToken.exp * 1000 < Date.now()) {
+            // Token expired, attempt refresh or logout
+            console.log('Access token expired, attempting refresh...');
+            // The axios interceptor should handle this automatically.
+            // If it fails, it will redirect to login.
+            // For now, assume a successful refresh or simply consider user logged out if initial access token is expired
+            setCurrentUser(null);
+            localStorage.removeItem('tokens');
+            setLoading(false);
+            return;
+          }
+          
+          // Get user details from API using the user ID from the token payload
+          // This ensures we have the latest user data including role.
+          const userId = decodedToken.sub;
+          const userProfile = await users.getProfile(userId); // You might need to adjust your user API to allow getting profile by ID
+          setCurrentUser(userProfile.data);
         }
       } catch (error) {
-        console.error('Failed to parse user from local storage:', error);
-        localStorage.clear(); // Clear potentially corrupted storage
+        console.error('Failed to load user from localStorage or API:', error);
+        localStorage.removeItem('tokens'); // Clear invalid tokens
+        setCurrentUser(null);
       } finally {
         setLoading(false);
       }
     };
-    loadUserFromLocalStorage();
+
+    loadUser();
   }, []);
 
   const login = async (email, password) => {
-    try {
-      const response = await apiClient.post('/auth/login', { email, password });
-      const { user: userData, accessToken, refreshToken } = response.data.data;
-      
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
-      setUser(userData);
-      navigate('/products');
-      return true;
-    } catch (error) {
-      console.error('Login failed:', error.response?.data?.message || error.message);
-      throw error; // Re-throw to allow component to display error
-    }
-  };
-
-  const register = async (username, email, password, role) => {
-    try {
-      const response = await apiClient.post('/auth/register', { username, email, password, role });
-      const { user: userData, accessToken, refreshToken } = response.data.data;
-
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
-      setUser(userData);
-      navigate('/products');
-      return true;
-    } catch (error) {
-      console.error('Registration failed:', error.response?.data?.message || error.message);
-      throw error;
-    }
+    const response = await auth.login(email, password);
+    const { user, tokens } = response.data;
+    localStorage.setItem('tokens', JSON.stringify(tokens));
+    setCurrentUser(user);
+    return user;
   };
 
   const logout = async () => {
-    try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
-        await apiClient.post('/auth/logout', { refreshToken });
-      }
-    } catch (error) {
-      console.error('Logout failed on server:', error);
-      // Even if server logout fails, clear client-side data
-    } finally {
-      localStorage.removeItem('user');
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      setUser(null);
-      navigate('/login');
+    const tokens = JSON.parse(localStorage.getItem('tokens'));
+    if (tokens && tokens.refresh && tokens.refresh.token) {
+      await auth.logout(tokens.refresh.token);
     }
+    localStorage.removeItem('tokens');
+    setCurrentUser(null);
   };
 
-  const isAdmin = user?.role === 'admin';
+  const register = async (username, email, password, role) => {
+    const response = await auth.register(username, email, password, role);
+    const { user, tokens } = response.data;
+    localStorage.setItem('tokens', JSON.stringify(tokens));
+    setCurrentUser(user);
+    return user;
+  };
 
-  const authContextValue = {
-    user,
-    isAuthenticated: !!user,
+  const isAdmin = currentUser?.role === 'admin';
+  const isEditor = currentUser?.role === 'editor';
+  const isViewer = currentUser?.role === 'viewer';
+  const isAuthenticated = !!currentUser;
+
+  const value = {
+    currentUser,
+    isAuthenticated,
     isAdmin,
-    loading,
+    isEditor,
+    isViewer,
     login,
-    register,
     logout,
+    register,
+    loading,
   };
 
-  return (
-    <AuthContext.Provider value={authContextValue}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 ```

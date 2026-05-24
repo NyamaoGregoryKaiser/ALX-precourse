@@ -1,80 +1,69 @@
 ```javascript
 const express = require('express');
+const helmet = require('helmet');
 const cors = require('cors');
-const morgan = require('morgan');
+const passport = require('passport');
+const httpStatus = require('http-status');
+const xss = require('xss-clean'); // Removed, helmet already has equivalent for XSS. Add 'express-mongo-sanitize' if using Mongo.
+const { jwtStrategy } = require('./config/passport');
+const { config } = require('./config/config');
+const { errorHandler } = require('./middleware/errorHandler');
+const ApiError = require('./utils/ApiError');
+const httpLogger = require('./middleware/logger');
+const apiRateLimiter = require('./middleware/rateLimiter');
+const routes = require('./routes/v1'); // API routes
 const swaggerUi = require('swagger-ui-express');
-const swaggerJsdoc = require('swagger-jsdoc');
-const { v4: uuidv4 } = require('uuid'); // For unique request IDs
-
-const appConfig = require('./config/app');
-const logger = require('./utils/logger');
-const apiRateLimiter = require('./middlewares/rateLimitMiddleware');
-const errorHandler = require('./middlewares/errorHandler');
-const { AppError } = require('./utils/appError');
-
-// Import routes
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const productRoutes = require('./routes/productRoutes');
+const swaggerSpec = require('./config/swagger'); // Swagger configuration
 
 const app = express();
 
-// --- Global Middlewares ---
+// Set security HTTP headers
+app.use(helmet());
 
-// Add a unique ID to each request for logging/tracing
-app.use((req, res, next) => {
-  req.id = uuidv4();
-  next();
-});
-
-// CORS - Enable all CORS requests
-app.use(cors());
-
-// Request logging (Morgan)
-// 'dev' for development, 'combined' for production (more details)
-if (appConfig.env === 'development') {
-  app.use(morgan('dev'));
-} else {
-  // Custom token to include request ID
-  morgan.token('id', (req) => req.id);
-  app.use(morgan(':id :method :url :status :res[content-length] - :response-time ms'));
-}
-
-// Body parsing middleware
+// Parse json request body
 app.use(express.json());
+
+// Parse urlencoded request body
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting for API requests
-app.use(apiRateLimiter);
+// sanitize request data (if you need it, e.g. for MongoDB, or for general query/body sanitization)
+// app.use(xss()); // Helmet's `contentSecurityPolicy` or `noSniff` are better. If specific data sanitization is needed for inputs, implement it at validation level.
 
-// --- API Routes ---
+// enable cors
+app.use(cors({
+  origin: config.corsOrigin,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
 
-app.get('/', (req, res) => {
-  res.status(200).json({
-    message: 'Welcome to the Product Management API! Visit /api-docs for documentation.',
-    version: appConfig.version || '1.0.0',
-    environment: appConfig.env,
-  });
+// HTTP request logger
+app.use(httpLogger);
+
+// jwt authentication
+app.use(passport.initialize());
+passport.use('jwt', jwtStrategy);
+
+// Apply rate limiting to all API requests
+app.use(config.apiPrefix, apiRateLimiter);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(httpStatus.OK).send('OK');
 });
 
-// Base API endpoint
-const API_BASE_PATH = '/api/v1';
-app.use(`${API_BASE_PATH}/auth`, authRoutes);
-app.use(`${API_BASE_PATH}/users`, userRoutes);
-app.use(`${API_BASE_PATH}/products`, productRoutes);
+// Swagger API documentation
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// --- API Documentation (Swagger/OpenAPI) ---
-const swaggerSpec = swaggerJsdoc(require('../swagger'));
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// v1 api routes
+app.use(config.apiPrefix, routes);
 
-// --- Error Handling ---
-
-// Catch-all for undefined routes (404 Not Found)
-app.all('*', (req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+// send back a 404 error for any unknown api request
+app.use((req, res, next) => {
+  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
 });
 
-// Global error handling middleware
+// handle error
 app.use(errorHandler);
 
 module.exports = app;

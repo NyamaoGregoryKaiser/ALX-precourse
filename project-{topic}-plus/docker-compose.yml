@@ -1,83 +1,90 @@
+```yaml
 version: '3.8'
 
 services:
+  # PostgreSQL Database Service
   db:
-    image: postgres:15.3-alpine
-    container_name: alx-chat-db
+    image: postgres:15-alpine
+    container_name: cms_db
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-alxchatdb}
-      POSTGRES_USER: ${DB_USERNAME:-alxuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-alxpassword}
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - alxchat_pg_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data # Persist data
+    ports:
+      - "5432:5432" # Expose for local access if needed (remove in production)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-alxuser} -d ${DB_NAME:-alxchatdb}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # Redis Caching Service
   redis:
-    image: redis:7.0.12-alpine
-    container_name: alx-chat-redis
+    image: redis:7-alpine
+    container_name: cms_redis
+    restart: always
     ports:
-      - "6379:6379"
+      - "6379:6379" # Expose for local access if needed (remove in production)
+    command: redis-server --appendonly yes
     volumes:
-      - alxchat_redis_data:/data
+      - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  alx-chat-backend:
+  # Backend Application Service
+  backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.backend
-    container_name: alx-chat-backend
+      dockerfile: Dockerfile
+    container_name: cms_backend
+    restart: always
     ports:
-      - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-alxchatdb}
-      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-alxuser}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-alxpassword}
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET:-a_very_secret_key_that_should_be_at_least_256_bits_long_and_randomly_generated_in_production}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
+      - "3000:3000" # Expose backend port
+    env_file:
+      - ./backend/.env # Load backend environment variables
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - alxchat_network
+    volumes:
+      - ./backend:/app # Mount host directory for live changes (dev only)
+      - /app/node_modules # Exclude node_modules from host mount
+    # Commands to run migrations and seeders before starting the app
+    # This assumes `sequelize-cli` is installed globally in the container
+    command: >
+      sh -c "npx sequelize-cli db:migrate &&
+             npx sequelize-cli db:seed:all &&
+             npm start"
+    # In production, you might separate migration/seed to a dedicated job or entrypoint.
 
-  alx-chat-frontend:
+  # Frontend Application Service
+  frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.frontend
-    container_name: alx-chat-frontend
+      dockerfile: Dockerfile
+    container_name: cms_frontend
+    restart: always
     ports:
-      - "3000:80" # Map host port 3000 to container's Nginx port 80
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:8080 # This will be proxied by Nginx
-      REACT_APP_WEBSOCKET_URL: http://localhost:8080/websocket # This will be proxied by Nginx
+      - "3001:3001" # Expose frontend port (React dev server)
+    env_file:
+      - ./frontend/.env # Load frontend environment variables
     depends_on:
-      - alx-chat-backend
-    networks:
-      - alxchat_network
-
-networks:
-  alxchat_network:
-    driver: bridge
+      - backend # Frontend depends on backend for API calls
+    volumes:
+      - ./frontend:/app # Mount host directory for live changes (dev only)
+      - /app/node_modules # Exclude node_modules from host mount
+    # For production, you'd typically build the static assets and serve them with Nginx.
+    # The current setup is for development convenience.
+    command: npm start
 
 volumes:
-  alxchat_pg_data:
-  alxchat_redis_data:
+  pgdata:    # Volume for PostgreSQL data persistence
+  redisdata: # Volume for Redis data persistence
+```

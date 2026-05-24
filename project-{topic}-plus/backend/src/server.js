@@ -1,41 +1,51 @@
 ```javascript
 const app = require('./app');
-const db = require('./database');
+const { config } = require('./config/config');
 const logger = require('./utils/logger');
-const appConfig = require('./config/app');
+const db = require('./models'); // Ensure database connection is established
 
-const startServer = async () => {
-  try {
-    // Connect to PostgreSQL database
-    await db.connect();
+let server;
 
-    // Start the Express server
-    const server = app.listen(appConfig.port, () => {
-      logger.info(`Server is running on port ${appConfig.port} in ${appConfig.env} mode.`);
-      logger.info(`API Documentation: http://localhost:${appConfig.port}/api-docs`);
+// Connect to database (handled in models/index.js)
+// Then start the server
+db.sequelize.authenticate()
+  .then(() => {
+    logger.info('Database synchronized and connected.');
+    server = app.listen(config.port, () => {
+      logger.info(`Server listening on port ${config.port} in ${config.env} mode`);
+      logger.info(`Access API at: http://localhost:${config.port}${config.apiPrefix}`);
+      logger.info(`Access API docs at: http://localhost:${config.port}/docs`);
     });
+  })
+  .catch((err) => {
+    logger.error('Database connection failed!', err);
+    process.exit(1);
+  });
 
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (err) => {
-      logger.error('UNHANDLED REJECTION! Shutting down...', err);
-      server.close(() => {
-        process.exit(1); // Exit with failure code
-      });
+
+const exitHandler = () => {
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(1);
     });
-
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (err) => {
-      logger.error('UNCAUGHT EXCEPTION! Shutting down...', err);
-      server.close(() => {
-        process.exit(1); // Exit with failure code
-      });
-    });
-
-  } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1); // Exit with failure code
+  } else {
+    process.exit(1);
   }
 };
 
-startServer();
+const unexpectedErrorHandler = (error) => {
+  logger.error('Unhandled error:', error);
+  exitHandler();
+};
+
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close();
+  }
+});
 ```

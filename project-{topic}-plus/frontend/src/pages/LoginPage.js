@@ -1,82 +1,69 @@
+```javascript
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setError(null);
     try {
-      await login(username, password);
+      await login(email, password);
+      navigate('/dashboard'); // Redirect to dashboard or home after successful login
     } catch (err) {
-      setError(err || 'Failed to log in. Please check your credentials.');
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.message || 'Failed to login');
+      console.error(err);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-120px)]">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">Login to ALX Chat</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
-              Username
-            </label>
+    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+      <div className="px-8 py-6 mt-4 text-left bg-white shadow-lg rounded-lg">
+        <h3 className="text-2xl font-bold text-center">Login to your account</h3>
+        <form onSubmit={handleSubmit} className="mt-4">
+          <div>
+            <label className="block" htmlFor="email">Email</label>
             <input
-              type="text"
-              id="username"
-              className="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              placeholder="Email"
+              className="w-full px-4 py-2 mt-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={loading}
             />
           </div>
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-              Password
-            </label>
+          <div className="mt-4">
+            <label className="block" htmlFor="password">Password</label>
             <input
               type="password"
-              id="password"
-              className="shadow appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="********"
+              placeholder="Password"
+              className="w-full px-4 py-2 mt-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-600"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={loading}
             />
           </div>
-          {error && <p className="text-red-500 text-xs italic mb-4 text-center">{error}</p>}
-          <div className="flex items-center justify-between">
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 w-full"
-              disabled={loading}
-            >
-              {loading ? 'Logging in...' : 'Sign In'}
+          {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+          <div className="flex items-baseline justify-between">
+            <button type="submit" className="px-6 py-2 mt-4 text-white bg-blue-600 rounded-lg hover:bg-blue-900">
+              Login
             </button>
+            <a href="#" className="text-sm text-blue-600 hover:underline">Forgot password?</a>
+          </div>
+          <div className="mt-6 text-center text-sm">
+            Don't have an account? <a href="/register" className="text-blue-600 hover:underline">Register</a>
           </div>
         </form>
-        <p className="text-center text-gray-600 text-sm mt-6">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-blue-600 hover:underline">
-            Register here
-          </Link>
-        </p>
       </div>
     </div>
   );
 };
 
 export default LoginPage;
+```
