@@ -1,84 +1,70 @@
 import os
 from datetime import timedelta
-from dotenv import load_dotenv
-
-load_dotenv() # Load environment variables from .env
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key')
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'a_very_secret_key_that_should_be_changed_in_production')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ECHO = False # Set to True to log all SQL statements for debugging
-
-    # Database configuration for DBOptiFlow's own system database
-    DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/dboptiflow')
-    SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'postgresql://user:password@db:5432/auth_db')
 
     # JWT Configuration
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_SECONDS', 3600))) # 1 hour
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'super-secret-jwt-key')
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
+    JWT_TOKEN_LOCATION = ["headers"] # Specify where JWT is expected (e.g., 'Authorization: Bearer <token>')
+    JWT_BLACKLIST_ENABLED = True
+    JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
 
-    # Caching Configuration
-    CACHE_TYPE = os.getenv('CACHE_TYPE', 'SimpleCache') # Options: RedisCache, SimpleCache
-    CACHE_DEFAULT_TIMEOUT = int(os.getenv('CACHE_DEFAULT_TIMEOUT', 300)) # 5 minutes
-    if CACHE_TYPE == 'RedisCache':
-        CACHE_REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    # Mail Configuration (for password reset, email verification)
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.mailtrap.io')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 2525))
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'your_mailtrap_username')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', 'your_mailtrap_password')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@authsystem.com')
 
-    # Celery Configuration
-    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
-    CELERY_TASK_TRACK_STARTED = True
-    CELERY_ACCEPT_CONTENT = ['json']
-    CELERY_TASK_SERIALIZER = 'json'
-    CELERY_RESULT_SERIALIZER = 'json'
-    CELERY_TIMEZONE = 'UTC' # Or your desired timezone
+    # Cache Configuration
+    CACHE_TYPE = os.environ.get('CACHE_TYPE', 'redis')
+    CACHE_REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
+    CACHE_REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+    CACHE_REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+    CACHE_REDIS_URL = f"redis://{CACHE_REDIS_HOST}:{CACHE_REDIS_PORT}/{CACHE_REDIS_DB}"
+    CACHE_DEFAULT_TIMEOUT = 300 # seconds
 
     # Rate Limiting Configuration
-    RATELIMIT_STORAGE_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-    RATELIMIT_DEFAULT = "100 per hour" # Default rate limit for all routes
-    RATELIMIT_HEADERS_ENABLED = True # Include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers
+    RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', f"redis://{CACHE_REDIS_HOST}:{CACHE_REDIS_PORT}/{CACHE_REDIS_DB}/1")
+    RATELIMIT_DEFAULT = "200 per day;50 per hour" # Global default
+    RATELIMIT_HEADERS_ENABLED = True
+
+    # Application Settings
+    APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:5000') # Base URL for frontend links
 
 class DevelopmentConfig(Config):
     """Development configuration."""
-    FLASK_ENV = 'development'
     DEBUG = True
-    SQLALCHEMY_ECHO = False # Enable to see SQL queries in logs
-    # Override with development-specific settings if needed
+    SQLALCHEMY_ECHO = False # Set to True to see SQL queries in console
 
 class TestingConfig(Config):
     """Testing configuration."""
-    FLASK_ENV = 'testing'
     TESTING = True
-    DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://testuser:testpassword@localhost:5432/testdb')
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5) # Shorter expiration for tests
-    CELERY_ALWAYS_EAGER = True # Run Celery tasks synchronously in tests
-    CELERY_BROKER_URL = 'memory://' # Use in-memory broker for tests
-    CELERY_RESULT_BACKEND = 'memory://' # Use in-memory backend for tests
-    CACHE_TYPE = 'SimpleCache' # Use simple in-memory cache for tests
-    # Ensure a dedicated test database is used to avoid data corruption
-    # EXTERNAL_TEST_DB_CONFIG = {
-    #     'db_type': os.getenv('EXTERNAL_DB_TYPE', 'postgresql'),
-    #     'host': os.getenv('EXTERNAL_DB_HOST', 'localhost'),
-    #     'port': int(os.getenv('EXTERNAL_DB_PORT', 5432)),
-    #     'username': os.getenv('EXTERNAL_DB_USER', 'testuser'),
-    #     'password': os.getenv('EXTERNAL_DB_PASS', 'testpass'),
-    #     'database': os.getenv('EXTERNAL_DB_NAME', 'testdb')
-    # }
-
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL', 'postgresql://test_user:test_password@db_test:5432/test_auth_db')
+    MAIL_SUPPRESS_SEND = True # Do not send emails during tests
+    CACHE_TYPE = "simple" # Use in-memory cache for tests
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=1) # Short expiration for testing
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=2)
+    SECRET_KEY = 'test_secret_key'
+    JWT_SECRET_KEY = 'test_jwt_secret_key'
 
 class ProductionConfig(Config):
     """Production configuration."""
-    FLASK_ENV = 'production'
     DEBUG = False
     SQLALCHEMY_ECHO = False
-    # For production, ensure `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `JWT_SECRET_KEY`
-    # are set via environment variables and are highly secure.
-    # Consider using a more robust logging solution like Sentry or ELK stack.
+    # Ensure all sensitive configs are loaded from environment variables in production
+    # Error logging to external service (e.g., Sentry) would be configured here.
 
 config_by_name = {
     'development': DevelopmentConfig,
     'testing': TestingConfig,
-    'production': ProductionConfig
+    'production': ProductionConfig,
+    'default': DevelopmentConfig
 }
-```

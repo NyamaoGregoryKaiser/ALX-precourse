@@ -1,158 +1,127 @@
-```markdown
-# ALX-ECommerce-Pro: Architecture Documentation
+# Architecture Documentation
 
-This document outlines the architectural design of the ALX-ECommerce-Pro system, focusing on its structure, components, interactions, and key design decisions.
+This document provides a high-level overview of the architecture for the Enterprise-Grade Authentication System.
 
-## 1. High-Level Architecture
+## 1. System Overview
 
-The system follows a classic **Client-Server Architecture** with a clear separation of concerns between the frontend (client) and the backend (API server). It is designed as a **Microservices-Lite** approach, where different functionalities are grouped into logical modules within a single codebase (monorepo structure) but with clear boundaries that *could* be extracted into separate services if scalability demands it.
+The authentication system is built as a RESTful API service using Flask, designed to be stateless and scalable. It provides all core functionalities required for user management, secure authentication, and role-based authorization. The system leverages Docker for containerization, PostgreSQL as the primary database, and Redis for caching and token blacklisting.
 
-```
-+----------------+       +-------------------+       +-------------------+
-|    Client      |       |  API Gateway/     |       |   External Services|
-| (React Frontend)| <---> |  Load Balancer    | <---> | (e.g., Payment, SMS)|
-+----------------+       | (e.g., Nginx, ALB)|       +-------------------+
-        ^                +---------+---------+
-        |                          |
-        |                          | HTTP/HTTPS
-        |                +----------+-----------+
-        |                |     Backend Service  |
-        |                | (Node.js/Express/TS) |
-        |                +----------+-----------+
-        |                          |
-        |      +-------------------+-----------------+
-        |      |                   |                 |
-        |      |                   |                 |
-        v      v                   v                 v
-+--------------+-----------+ +------------+       +------------+
-|  PostgreSQL Database     | |  Redis Cache |       | Cloud Storage|
-| (Prisma ORM for Access)  | | (Session, Data)|      | (Images, CDN)|
-+--------------------------+ +------------+       +------------+
-```
+## 2. Architectural Diagram
 
-## 2. Core Components
+```mermaid
+graph TD
+    A[Client - Browser/Mobile App] -->|HTTPS Requests| B(Load Balancer / Reverse Proxy - Nginx/Caddy)
+    B --> C[Auth System API - Flask/Gunicorn]
+    C -->|Reads/Writes| D[PostgreSQL Database]
+    C -->|Reads/Writes/Cache| E[Redis Cache/Blacklist]
+    C -->|Sends Emails| F[Email Service - e.g., Mailtrap/SendGrid/SES]
 
-### 2.1. Frontend (React / TypeScript)
+    subgraph Core Components
+        C --- C1(Flask App Factory)
+        C --- C2(Configuration)
+        C --- C3(Extensions - JWT, Bcrypt, Mail, Limiter, Cache)
+        C --- C4(Models - User, TokenBlacklist)
+        C --- C5(Services - Auth, User, Email)
+        C --- C6(Routes - Auth, User, Admin)
+        C --- C7(Utilities - Decorators, JWT Handler, Helpers)
+        C --- C8(Error Handling)
+        C --- C9(CLI Commands)
+    end
 
-*   **Technology:** React, TypeScript, Tailwind CSS, React Router DOM, Axios.
-*   **Purpose:** Provides the user interface for customers to browse products, manage their cart, place orders, and manage their profiles.
-*   **Key Design Principles:**
-    *   **Component-Based:** UI built from reusable, isolated components.
-    *   **State Management:** Primarily React Context API for global state (e.g., authentication), `useState`/`useReducer` for local component state.
-    *   **Routing:** Client-side routing with `react-router-dom`.
-    *   **API Interaction:** Uses `axios` with interceptors for centralized error handling and JWT attachment.
-    *   **Responsive Design:** Tailwind CSS ensures the application adapts to various screen sizes.
-    *   **Accessibility:** Focus on semantic HTML and ARIA attributes where necessary.
+    subgraph External Integrations
+        F --> G[SMTP Server / Email API]
+    end
 
-### 2.2. Backend (Node.js / Express / TypeScript)
+    subgraph Infrastructure
+        D --- D1(Persistent Volume)
+        E --- E1(Persistent Volume)
+    end
 
-*   **Technology:** Node.js, Express.js, TypeScript, Prisma ORM, JWT, Joi, Winston, Redis, Express-Rate-Limit.
-*   **Purpose:** Exposes RESTful API endpoints for data management, business logic execution, authentication, and authorization.
-*   **Architecture Pattern:** **Layered Architecture**
-    *   **`routes`**: Define API endpoint paths and delegate to controllers.
-    *   **`controllers`**: Handle incoming HTTP requests, validate input, and orchestrate the response by calling appropriate services. They should remain thin.
-    *   **`services`**: Contain the core business logic. They interact with the database (via repositories/Prisma Client) and potentially other services or external APIs. This layer is responsible for data manipulation, calculations, and complex workflows.
-    *   **`repositories` (implicitly Prisma Client)**: Directly interact with the database. In this setup, Prisma Client acts as the data access layer.
-    *   **`middleware`**: Functions that execute during the request-response cycle (e.g., authentication, authorization, error handling, logging, caching, rate limiting).
-    *   **`validators`**: Define schemas (using Joi) for input validation, ensuring data integrity and security.
-    *   **`config`**: Manages environment-specific configurations.
-    *   **`utils`**: Contains shared helper functions (e.g., logging utility, custom error classes).
-
-```
-+-------------------------------------------------+
-|               Client HTTP Request               |
-+-------------------------------------------------+
-        |
-        v
-+-----------------------+
-|   Global Middleware   | (Helmet, CORS, Morgan, Rate Limiter)
-+-----------------------+
-        |
-        v
-+-----------------------+
-|       Router          | (Maps URL to Handler)
-+-----------------------+
-        |
-        v
-+-----------------------+
-|  Route-Specific       | (Protect, Authorize, Cache)
-|    Middleware         |
-+-----------------------+
-        |
-        v
-+-----------------------+
-|      Controller       | (Validate Request, Delegate to Service)
-+-----------------------+
-        |
-        v
-+-----------------------+
-|        Service        | (Business Logic, Orchestration)
-+-----------------------+
-        |     /|\
-        |      |
-        v      | (Data Access)
-+-----------------------+
-|  Prisma Client (ORM)  |
-+-----------------------+
-        |
-        v
-+-----------------------+
-|   PostgreSQL Database |
-+-----------------------+
+    subgraph CI/CD
+        H[Code Repository - GitHub] --> I[CI/CD Pipeline - GitHub Actions]
+        I --> J[Docker Registry - Docker Hub]
+        I --> K[Deployment Target - Server/Cloud]
+        K --> B
+    end
 ```
 
-### 2.3. Database (PostgreSQL)
+## 3. Key Architectural Decisions
 
-*   **Technology:** PostgreSQL.
-*   **ORM:** Prisma.
-*   **Schema:** Relational schema including `User`, `Category`, `Product`, `Cart`, `CartItem`, `Order`, `OrderItem`.
-*   **Key Design Principles:**
-    *   **Data Integrity:** Foreign keys, unique constraints, and validation ensure data consistency.
-    *   **Scalability:** PostgreSQL is horizontally and vertically scalable.
-    *   **Performance:** Proper indexing on frequently queried columns (`id`, `categoryId`, `name`, `email`, `createdAt`, `price`, etc.)
-    *   **Migrations:** Prisma Migrate manages schema changes reliably.
+*   **Microservice vs. Monolith**: Started as a monolithic Flask application for simplicity and rapid development of core authentication features. This allows for easier management of shared resources (DB, Redis) and a single deployment unit. However, the modular structure (blueprints, services) facilitates a future transition to a microservices architecture if specific functionalities (e.g., email service, notification service) need to scale independently.
+*   **RESTful API**: Uses a standard RESTful approach for API design, ensuring statelessness and predictable resource-oriented URLs. JSON is used for request and response bodies.
+*   **JWT for Authentication**:
+    *   **Statelessness**: JWTs enable stateless authentication, reducing server load by removing the need for session storage on the server-side.
+    *   **Access & Refresh Tokens**: Separating access (short-lived) and refresh (long-lived) tokens enhances security. Access tokens are used for API calls, while refresh tokens are used to obtain new access tokens.
+    *   **Token Blacklisting**: Implemented using Redis to immediately invalidate tokens upon logout or revocation, mitigating the risk of stolen tokens.
+*   **Role-Based Access Control (RBAC)**: Simplistic RBAC with `user` and `admin` roles, enforced through custom Flask decorators (`@roles_required`). This allows for clear separation of permissions.
+*   **Database Choice (PostgreSQL)**: Selected for its robustness, reliability, ACID compliance, and extensive feature set, suitable for production environments.
+*   **ORM (SQLAlchemy)**: Provides an object-relational mapping layer, abstracting raw SQL queries and promoting a Pythonic way of interacting with the database, while also preventing SQL injection vulnerabilities.
+*   **Database Migrations (Alembic/Flask-Migrate)**: Essential for managing schema changes in a controlled and versioned manner, crucial for team development and production deployments.
+*   **Caching (Redis)**: Used for high-speed lookups for JWT blacklisting and general caching needs. Redis is an in-memory data store, providing low-latency access.
+*   **Rate Limiting (Flask-Limiter)**: Implemented to protect against various forms of abuse (e.g., brute-force attacks, excessive API calls), enhancing system stability and security.
+*   **Containerization (Docker & Docker Compose)**:
+    *   **Portability**: Ensures the application runs consistently across different environments (development, testing, production).
+    *   **Isolation**: Each service (app, db, redis) runs in its own isolated container.
+    *   **Ease of Setup**: Docker Compose simplifies local development by orchestrating multiple services.
+*   **Structured Logging**: Utilizes Python's `logging` module with JSON formatting in production, making logs easily consumable by log aggregation systems (e.g., ELK stack).
+*   **Centralized Error Handling**: Custom error handlers ensure consistent, informative JSON error responses across the API.
+*   **Modularity**: Code is organized into blueprints, services, and utilities to improve maintainability, testability, and separation of concerns.
 
-### 2.4. Caching Layer (Redis)
+## 4. Components Breakdown
 
-*   **Technology:** Redis (in-memory data store).
-*   **Purpose:** Improves API response times and reduces database load by storing frequently accessed data (e.g., product listings, individual product details).
-*   **Integration:** Custom Express middleware `cacheMiddleware` for GET requests, and `clearCacheByPrefix` utility to invalidate cache on data mutations.
+### 4.1. `app` Directory
+*   **`__init__.py`**: The application factory, responsible for creating the Flask app, loading configurations, initializing extensions, registering blueprints, and setting up error handlers.
+*   **`config.py`**: Defines environment-specific configuration classes (Development, Testing, Production) inherited from a base `Config` class.
+*   **`extensions.py`**: Centralizes the initialization and configuration of Flask extensions (SQLAlchemy, JWTManager, Bcrypt, Mail, Limiter, Cache). Also contains JWT callbacks for token blacklisting.
+*   **`models.py`**: Defines the SQLAlchemy ORM models, including `User` (with password hashing and role management) and `TokenBlacklist` (for JWT revocation).
+*   **`routes/`**: Contains Flask Blueprints, grouping API endpoints by resource type:
+    *   `auth.py`: User registration, login, logout, refresh token, password reset, email verification.
+    *   `user.py`: Authenticated user profile management (view, update).
+    *   `admin.py`: Admin-specific user management (view all, view by ID, update, delete).
+*   **`services/`**: Implements the business logic for each domain, decoupling it from the route handlers:
+    *   `auth_service.py`: Handles user authentication workflows, token generation, password resets.
+    *   `user_service.py`: Manages user profile operations.
+    *   `email_service.py`: Abstraction for sending emails (verification, password reset).
+*   **`utils/`**: Helper modules:
+    *   `decorators.py`: Custom decorators for JWT authentication (`@jwt_required`) and role-based authorization (`@roles_required`).
+    *   `jwt_handler.py`: Functions for managing JWT (blacklisting, decoding).
+    *   `helpers.py`: General utility functions (e.g., UUID generation).
+*   **`errors.py`**: Defines custom exception classes and registers error handlers to provide consistent JSON error responses.
+*   **`cli.py`**: Registers custom Flask CLI commands for database seeding and creating admin users.
 
-### 2.5. Containerization (Docker & Docker Compose)
+### 4.2. Database Layer
+*   **PostgreSQL**: The relational database used for persistent storage of user data, token blacklist entries, etc.
+*   **Redis**: An in-memory data store used for fast lookups of blacklisted JWTs and for rate limiting storage.
+*   **Flask-Migrate**: Integrates Alembic with Flask to manage database migrations, allowing for schema evolution.
 
-*   **Technology:** Docker, Docker Compose.
-*   **Purpose:** Ensures consistent development and production environments, simplifies setup, and facilitates deployment.
-*   **Structure:** Separate Dockerfiles for frontend (Nginx serves React build) and backend (Node.js app). `docker-compose.yml` orchestrates all services (db, redis, backend, frontend).
+### 4.3. Testing
+*   **Pytest**: The chosen testing framework.
+*   **`tests/conftest.py`**: Defines pytest fixtures for setting up the Flask app, test client, and a clean database session for each test.
+*   **`tests/unit/`**: Contains tests for individual functions and models in isolation.
+*   **`tests/integration/`**: Tests the interaction between multiple components (e.g., a full user journey).
+*   **`tests/api/`**: Tests the API endpoints end-to-end, simulating HTTP requests.
 
-## 3. Key Architectural Decisions & Patterns
+### 4.4. CI/CD
+*   **GitHub Actions**: Configured to automate the build, test, and deployment process.
+*   **`main.yml`**: Defines workflows for running tests on push/pull request and deploying to production from the `main` branch.
+*   **Docker Registry**: Docker Hub (or a private registry) used to store built Docker images.
 
-*   **Monorepo Structure (Logical):** While presented as separate `backend` and `frontend` folders, the project encourages a monorepo approach for easier management of shared types, consistent tooling, and atomic commits across layers. (This specific example uses separate package.json for clarity, but monorepo tooling like `pnpm workspaces` is viable).
-*   **TypeScript Everywhere:** Enhances code quality, maintainability, and developer experience through static typing.
-*   **JSON Web Tokens (JWT) for Authentication:** Stateless, scalable authentication mechanism.
-*   **Role-Based Access Control (RBAC):** `authorize` middleware enforces permissions based on user roles (`USER`, `ADMIN`).
-*   **Centralized Error Handling:** Global middleware catches errors, provides consistent error responses, and logs details for debugging without exposing sensitive information in production. Custom `AppError` class for operational errors.
-*   **Input Validation:** `Joi` schemas ensure incoming data adheres to expected formats and constraints, preventing common security vulnerabilities and logical errors.
-*   **Logging:** `Winston` for structured, configurable logging across different environments, aiding in debugging and monitoring.
-*   **Environment Configuration:** `.env` files managed by `dotenv` ensures sensitive information and environment-specific settings are externalized.
-*   **CI/CD Pipelines:** GitHub Actions automate build, lint, and test processes for both frontend and backend, ensuring code quality and rapid feedback.
-*   **Database Management with ORM:** Prisma simplifies database interactions, provides type safety, and handles migrations, reducing boilerplate SQL.
-*   **API Design:** RESTful principles with clear resource naming, HTTP verbs, and consistent response structures.
-*   **Scalability Considerations:**
-    *   **Stateless Backend:** JWTs enable scaling by easily distributing requests across multiple backend instances.
-    *   **Caching:** Reduces load on the database.
-    *   **Database Indexing:** Improves query performance.
-    *   **Containerization:** Facilitates horizontal scaling by running multiple instances of services.
+## 5. Scalability Considerations
 
-## 4. Future Expansion & Improvements
+*   **Stateless API**: JWTs facilitate horizontal scaling of the Flask application instances, as no session data needs to be shared between them.
+*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding for very large datasets).
+*   **Redis Scaling**: Redis can be clustered for high availability and sharded for larger datasets.
+*   **Load Balancing**: A load balancer (Nginx, AWS ELB, etc.) is essential in production to distribute requests across multiple Flask application instances.
+*   **Asynchronous Tasks**: For long-running operations (e.g., sending emails), an asynchronous task queue (e.g., Celery with RabbitMQ/Redis backend) would be integrated to offload work from the main web server, improving responsiveness.
 
-*   **Order Fulfillment:** Implement full order lifecycle (creation, status updates, history).
-*   **Payment Gateway Integration:** Integrate with Stripe, PayPal, etc.
-*   **Admin Dashboard:** Dedicated frontend for admin users to manage products, users, orders.
-*   **Search & Filtering Enhancements:** Advanced full-text search, more sophisticated filtering options.
-*   **Image Uploads:** Integrate with cloud storage (e.g., AWS S3) for product images.
-*   **Notifications:** Email/SMS notifications for order status changes.
-*   **Monitoring & Alerting:** Integrate with Prometheus/Grafana or cloud-native monitoring solutions.
-*   **GraphQL API:** Consider a GraphQL layer for more flexible data fetching.
-*   **Webhooks:** For integration with other services.
-*   **Frontend State Management:** Consider Redux or Zustand for more complex global state management.
-```
+## 6. Security Considerations (Architectural)
+
+*   **HTTPS Everywhere**: All communication between clients and the API (and ideally between internal services) should be encrypted using HTTPS.
+*   **Environment Variables for Secrets**: Sensitive information (API keys, database credentials, JWT secrets) is never hardcoded but injected via environment variables.
+*   **Input Validation**: Strict validation of all incoming API request data prevents common vulnerabilities like injection attacks and malformed data.
+*   **Rate Limiting**: Protects against brute-force attacks and resource exhaustion.
+*   **Cross-Origin Resource Sharing (CORS)**: If the frontend is hosted on a different domain, explicit CORS configuration will be necessary to control which origins can access the API.
+*   **Principle of Least Privilege**: Services and users are granted only the minimum necessary permissions to perform their functions.
+*   **Auditing and Logging**: Comprehensive logging provides an audit trail for security investigations.
+
+This architecture provides a solid, secure, and maintainable foundation for building modern web applications requiring robust authentication and authorization.

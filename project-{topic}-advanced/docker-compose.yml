@@ -1,48 +1,65 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: appinsight_db
-    environment:
-      POSTGRES_DB: ${DB_NAME:-appinsight_db}
-      POSTGRES_USER: ${DB_USER:-appinsight_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-appinsight_user} -d ${DB_NAME:-appinsight_db}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  appinsight:
+  app:
     build: .
-    container_name: appinsight_backend
-    ports:
-      - "8080:8080"
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-appinsight_db}
-      DB_USER: ${DB_USER:-appinsight_user}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      JWT_SECRET: ${JWT_SECRET:-verySecretKeyForAppInsightMonitoringSystemThatIsLongAndSecureForProductionUse}
+    container_name: auth-app
+    restart: always
+    env_file:
+      - .env
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+      - redis
+    ports:
+      - "5000:5000"
+    command: gunicorn --bind 0.0.0.0:5000 --worker-class gevent --workers 4 --threads 2 wsgi:app # Use gevent for async
+    networks:
+      - auth_network
+
+  db:
+    image: postgres:13-alpine
+    container_name: auth-db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
     volumes:
-      - ./logs:/app/logs # Mount volume for application logs
-    # Optional: If you want to run the frontend locally with the backend
-    # command: ["/bin/sh", "-c", "java -jar appinsight.jar & npm start --prefix src/main/frontend"] # Example for combined run
-    # For a simple setup, the frontend will be served statically from the Spring Boot app
+      - auth_db_data:/var/lib/postgresql/data
+    networks:
+      - auth_network
+
+  db_test: # Separate database for testing
+    image: postgres:13-alpine
+    container_name: auth-db-test
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${TEST_POSTGRES_USER:-test_user}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-test_password}
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-test_auth_db}
+    volumes:
+      - auth_db_test_data:/var/lib/postgresql/data
+    networks:
+      - auth_network
+
+  redis:
+    image: redis:6-alpine
+    container_name: auth-redis
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - auth_redis_data:/data
+    networks:
+      - auth_network
 
 volumes:
-  postgres_data:
-```
+  auth_db_data:
+  auth_db_test_data:
+  auth_redis_data:
 
-#### CI/CD Pipeline (Conceptual - GitHub Actions)
-
-```yaml
+networks:
+  auth_network:
+    driver: bridge

@@ -1,276 +1,471 @@
-# AppInsight: Production-Ready Performance Monitoring System
+# Enterprise-Grade Authentication System
 
-AppInsight is a robust, full-stack application designed to monitor the performance of various client applications. It allows for the definition of custom metrics, ingestion of time-series data, and retrieval for analysis. Built with Spring Boot, PostgreSQL, and a touch of modern web frontend, it emphasizes enterprise-grade features like security, scalability, and maintainability.
+This project implements a comprehensive, production-ready authentication and authorization system using Flask, SQLAlchemy, PostgreSQL, and Redis. It's designed to be modular, scalable, and secure, serving as a robust foundation for any web application requiring user management.
 
 ## Table of Contents
 
 1.  [Features](#features)
 2.  [Architecture](#architecture)
-3.  [Technologies Used](#technologies-used)
-4.  [Prerequisites](#prerequisites)
-5.  [Setup and Installation](#setup-and-installation)
-    *   [Local Development (Docker Compose)](#local-development-docker-compose)
-    *   [Manual Setup](#manual-setup)
-6.  [Running the Application](#running-the-application)
-7.  [API Endpoints](#api-endpoints)
-8.  [Authentication & Authorization](#authentication--authorization)
-9.  [Frontend Usage](#frontend-usage)
-10. [Testing](#testing)
-11. [CI/CD](#cicd)
-12. [Contributing](#contributing)
-13. [License](#license)
+3.  [Getting Started](#getting-started)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Development Setup](#local-development-setup)
+    *   [Running the Application](#running-the-application)
+    *   [Database Migrations](#database-migrations)
+    *   [Seed Data & Admin User](#seed-data--admin-user)
+4.  [API Documentation](#api-documentation)
+    *   [Authentication Endpoints](#authentication-endpoints)
+    *   [User Endpoints](#user-endpoints)
+    *   [Admin Endpoints](#admin-endpoints)
+    *   [Error Responses](#error-responses)
+5.  [Testing](#testing)
+6.  [Deployment](#deployment)
+7.  [Logging & Monitoring](#logging--monitoring)
+8.  [Security Considerations](#security-considerations)
+9.  [Future Enhancements](#future-enhancements)
+10. [License](#license)
+
+---
 
 ## 1. Features
 
-*   **Application Management**: CRUD operations for `MonitoredApplication` entities.
-*   **Metric Definition**: CRUD operations for `Metric` entities tied to applications.
-*   **Metric Data Ingestion**: Secure API for external systems to push `MetricData`.
-*   **Metric Data Retrieval**: Query historical `MetricData` by time range or paginated.
-*   **Authentication**: JWT-based authentication for API access.
-*   **Authorization**: Role-based access control (`ADMIN`, `USER`) using Spring Security's `@PreAuthorize`.
-*   **Logging**: Structured logging with Logback, configured for console and rolling file appenders.
-*   **Error Handling**: Centralized global exception handling with consistent error responses.
-*   **Caching**: In-memory caching with Caffeine for frequently accessed application/metric data.
-*   **Rate Limiting**: API rate limiting using Bucket4j to prevent abuse.
-*   **Database Migrations**: Flyway for managing database schema evolution.
-*   **Containerization**: Docker and Docker Compose for easy setup and deployment.
-*   **Testing**: Comprehensive Unit, Integration, and API tests.
-*   **Frontend**: A simple HTML/JavaScript interface for basic interaction.
-*   **Monitoring**: Spring Boot Actuator endpoints for operational insights.
+*   **User Management**:
+    *   User Registration (username, email, password).
+    *   User Login (JWT-based access and refresh tokens).
+    *   User Profile Management (view, update).
+    *   Password Hashing (Bcrypt).
+    *   Password Reset (token-based via email).
+    *   Email Verification for new accounts.
+*   **Authentication & Authorization**:
+    *   JSON Web Tokens (JWT) for stateless authentication.
+    *   Refresh Tokens for extending user sessions securely.
+    *   Token Blacklisting (using Redis) for immediate logout and revocation.
+    *   Role-Based Access Control (RBAC): `user` and `admin` roles with protected endpoints.
+*   **Database**:
+    *   PostgreSQL for robust data storage.
+    *   SQLAlchemy ORM for Pythonic database interactions.
+    *   Alembic (via Flask-Migrate) for database schema migrations.
+*   **Caching**:
+    *   Redis integration for high-performance token blacklisting and potential general caching.
+*   **Rate Limiting**:
+    *   Protects API endpoints from abuse (e.g., brute-force attacks on login, excessive registration attempts).
+*   **Error Handling**:
+    *   Centralized error handling middleware with consistent JSON error responses.
+*   **Logging**:
+    *   Structured application logging to console and file.
+*   **Containerization**:
+    *   Docker and Docker Compose for easy setup, development, and deployment.
+*   **Testing**:
+    *   Unit, Integration, and API tests using Pytest.
+    *   Aims for high test coverage (80%+).
+*   **Documentation**:
+    *   Comprehensive README, API docs, Architecture docs, Deployment guide.
+
+---
 
 ## 2. Architecture
 
-AppInsight follows a standard N-tier architecture:
+The system follows a typical N-tier architecture:
 
-*   **Presentation Layer (Frontend)**: A basic static HTML/JS application served by the Spring Boot backend.
-*   **API Layer (Controllers)**: RESTful endpoints exposed by Spring Boot, handling request/response mapping and delegating to services.
-*   **Service Layer (Services)**: Contains the core business logic, orchestrates data access, applies validation, caching, and rate limiting.
-*   **Persistence Layer (Repositories)**: Spring Data JPA interfaces interacting with the PostgreSQL database.
-*   **Database Layer (PostgreSQL)**: Stores all application, metric, and metric data.
-*   **Security Layer**: Integrated Spring Security with JWT for authentication and authorization.
+*   **Presentation Layer (Minimal Frontend)**: A basic HTML/JS page (`templates/index.html`) demonstrating how to interact with the API (register, login, view profile). In a full application, this would be a separate frontend client (React, Angular, Vue, etc.).
+*   **Application Layer (Flask Backend)**:
+    *   **`app/__init__.py`**: Application factory for creating and configuring the Flask app.
+    *   **`app/config.py`**: Manages configuration settings for different environments (development, testing, production).
+    *   **`app/extensions.py`**: Initializes Flask extensions (DB, JWT, Mail, Cache, Limiter) and houses JWT token blacklisting logic.
+    *   **`app/models.py`**: Defines SQLAlchemy ORM models (`User`, `TokenBlacklist`).
+    *   **`app/routes/`**: Blueprints for API endpoints, grouped by functionality (`auth.py`, `user.py`, `admin.py`).
+    *   **`app/services/`**: Contains business logic, separating it from route handlers (`auth_service.py`, `user_service.py`, `email_service.py`).
+    *   **`app/utils/`**: Helper functions, custom decorators (`@jwt_required`, `@roles_required`), JWT token handling, and general utilities.
+    *   **`app/errors.py`**: Custom error handlers for a consistent API error response format.
+    *   **`app/cli.py`**: Custom Flask CLI commands for database management (seed, create-admin).
+*   **Database Layer**:
+    *   **PostgreSQL**: Primary data store for user accounts and other persistent data.
+    *   **Redis**: Used for high-speed token blacklisting and potentially for caching.
+    *   **SQLAlchemy**: ORM for Python-PostgreSQL interaction.
+    *   **Flask-Migrate (Alembic)**: For managing database schema changes.
 
-## 3. Technologies Used
+**Data Flow (Login Example):**
+1.  Client sends `POST /api/v1/auth/login` with credentials.
+2.  Flask route (`app/routes/auth.py`) receives the request.
+3.  Request is validated (e.g., password length, email format).
+4.  `AuthService` (`app/services/auth_service.py`) handles business logic:
+    *   Queries `User` model (`app/models.py`) via `db` (`app/extensions.py`) to find user.
+    *   Verifies password using `bcrypt` (`app/extensions.py`).
+    *   Checks account verification status.
+    *   If successful, generates JWT access and refresh tokens using `jwt` (`app/extensions.py`).
+5.  Tokens are returned to the client.
+6.  Client stores tokens (e.g., in `localStorage` or `httpOnly` cookies).
+7.  For subsequent requests to protected endpoints, client includes the access token in `Authorization: Bearer <token>` header.
+8.  `@jwt_required` decorator (`app/utils/decorators.py`) validates the token. If valid, `current_user` is set.
+9.  `@roles_required` decorator checks `current_user`'s role against required roles.
+10. If validation/authorization passes, the request proceeds to the endpoint logic.
 
-*   **Backend**: Java 17, Spring Boot 3.2.x
-*   **Database**: PostgreSQL
-*   **ORM**: Spring Data JPA, Hibernate
-*   **Migrations**: Flyway
-*   **Authentication**: Spring Security, JWT (jjwt)
-*   **Caching**: Caffeine
-*   **Rate Limiting**: Bucket4j
-*   **Logging**: SLF4j, Logback
-*   **Build Tool**: Maven
-*   **Containerization**: Docker, Docker Compose
-*   **Testing**: JUnit 5, Mockito, Spring Boot Test, Testcontainers
-*   **Frontend**: HTML, CSS, JavaScript (minimal)
+---
 
-## 4. Prerequisites
+## 3. Getting Started
 
-*   Java Development Kit (JDK) 17 or higher
-*   Maven 3.x
+### Prerequisites
+
 *   Docker and Docker Compose (recommended for easy setup)
-*   A text editor or IDE (e.g., IntelliJ IDEA, VS Code)
+*   Python 3.10+ (if running without Docker)
 
-## 5. Setup and Installation
-
-### Local Development (Docker Compose) - Recommended
-
-This is the quickest way to get the entire stack (PostgreSQL + Spring Boot app) running.
+### Local Development Setup (with Docker Compose)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/appinsight.git
-    cd appinsight
+    git clone https://github.com/your-username/auth-system.git
+    cd auth-system
     ```
 
-2.  **Build the Docker image for the Spring Boot application:**
+2.  **Create `.env` file:**
+    Copy the example environment variables file and fill in your details.
     ```bash
-    docker build -t appinsight-backend .
+    cp .env.example .env
+    # Open .env in your editor and replace placeholders (e.g., Mailtrap credentials, secret keys)
     ```
-    (The `docker-compose.yml` also includes `build: .`, so `docker compose up` will build if the image doesn't exist, but it's good practice to build explicitly first if you change code.)
 
-3.  **Start the services using Docker Compose:**
+3.  **Build and run Docker containers:**
+    This will build the Flask app image, and start PostgreSQL and Redis containers.
     ```bash
-    docker compose up -d
+    docker-compose up --build -d
     ```
-    This will:
-    *   Start a PostgreSQL database container.
-    *   Apply Flyway database migrations.
-    *   Start the AppInsight Spring Boot backend application.
-    *   Mount a `logs` directory from your host into the container for easy log access.
+    *   `db`: PostgreSQL database for development.
+    *   `db_test`: Separate PostgreSQL database for running tests.
+    *   `redis`: Redis server for caching and JWT blacklisting.
+    *   `app`: The Flask application.
 
-4.  **Verify services are running:**
+4.  **Install `wait-for-it.sh` (for CI/CD and potentially local scripts):**
+    If you plan to use the `wait-for-it.sh` script, download it to your project root and make it executable:
     ```bash
-    docker compose ps
+    wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh
+    chmod +x wait-for-it.sh
     ```
-    You should see `appinsight_db` and `appinsight_backend` in a healthy state.
+    _Note: For local development with `docker-compose up`, services are usually started in the correct order, but `wait-for-it` is crucial for CI/CD._
 
-The backend application will be accessible at `http://localhost:8080`.
-The frontend `index.html` is served directly from the Spring Boot app at `http://localhost:8080`.
+### Running the Application
 
-### Manual Setup (without Docker Compose for backend)
+Once Docker Compose is up, the Flask application will be accessible at `http://localhost:5000`.
 
-1.  **Clone the repository:**
+You can also run it locally (outside Docker) after installing `requirements.txt`:
+```bash
+pip install -r requirements.txt
+python wsgi.py # Or flask run (if FLASK_APP is set)
+```
+_Note: If running locally, ensure your `DATABASE_URL`, `REDIS_HOST`, etc. in `.env` point to your Docker containers (e.g., `localhost` instead of `db`/`redis`)._
+
+### Database Migrations
+
+After the `db` service is running:
+
+1.  **Initialize migration repository (first time only):**
     ```bash
-    git clone https://github.com/yourusername/appinsight.git
-    cd appinsight
+    docker exec auth-app flask db init
+    ```
+2.  **Create initial migration script (first time or after model changes):**
+    ```bash
+    docker exec auth-app flask db migrate -m "Initial migration."
+    ```
+3.  **Apply migrations to the database:**
+    ```bash
+    docker exec auth-app flask db upgrade
     ```
 
-2.  **Set up PostgreSQL Database:**
-    *   Install PostgreSQL (if not already installed).
-    *   Create a database: `appinsight_db`
-    *   Create a user: `appinsight_user` with password: `password`
-    *   Grant necessary privileges to the user on the database.
-    *   Alternatively, run *only* the PostgreSQL container from `docker-compose.yml`:
-        ```bash
-        docker compose up -d db
+### Seed Data & Admin User
+
+After migrations, you can populate the database:
+
+1.  **Seed dummy users:**
+    ```bash
+    docker exec auth-app flask db-commands seed --count 20
+    ```
+2.  **Create an admin user:**
+    ```bash
+    docker exec auth-app flask db-commands create-admin
+    ```
+    Follow the prompts for username, email, and password. This user will have the `admin` role and be automatically verified.
+
+---
+
+## 4. API Documentation
+
+All API endpoints return JSON responses. Errors are returned with appropriate HTTP status codes and a JSON body containing `{"message": "Error description", "errors": {"field": "Validation error"}}`.
+
+**Base URL**: `/api/v1`
+
+### Authentication Endpoints
+
+*   **`POST /auth/register`**
+    *   Registers a new user. Sends a verification email.
+    *   **Request Body**:
+        ```json
+        {
+          "username": "john_doe",
+          "email": "john.doe@example.com",
+          "password": "StrongPassword123!"
+        }
         ```
+    *   **Responses**:
+        *   `201 Created`: `{"message": "User registered successfully. Please check your email to verify your account."}`
+        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}` (e.g., duplicate username/email, invalid password format).
 
-3.  **Configure `application.yml`:**
-    *   Update `src/main/resources/application.yml` with your PostgreSQL connection details if they differ from the defaults (`localhost:5432`, `appinsight_db`, `appinsight_user`, `password`).
-    *   Ensure `JWT_SECRET` is set in your environment variables or directly in `application.yml` for production (a very strong, long, random string).
+*   **`GET /auth/verify-email/<token>`**
+    *   Verifies a user's email address using a token sent to their email.
+    *   **Parameters**: `token` (path parameter) - The verification token.
+    *   **Responses**:
+        *   `200 OK`: Renders a success HTML page or returns `{"message": "Email verified successfully."}`
+        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
+        *   `404 Not Found`: `{"message": "Verification token not found or user already verified."}`
 
-4.  **Run Flyway Migrations:**
-    *   Flyway migrations are automatically applied by Spring Boot on startup if `spring.flyway.enabled=true`.
-    *   If you encounter issues, ensure `hibernate.ddl-auto` is set to `none` in `application.yml`.
+*   **`POST /auth/login`**
+    *   Authenticates a user and returns JWT access and refresh tokens.
+    *   **Request Body**:
+        ```json
+        {
+          "username": "john_doe",
+          "password": "StrongPassword123!"
+        }
+        ```
+    *   **Responses**:
+        *   `200 OK`: `{"access_token": "...", "refresh_token": "..."}`
+        *   `401 Unauthorized`: `{"message": "Invalid username or password"}`
+        *   `403 Forbidden`: `{"message": "Account not verified. Please verify your email."}`
 
-5.  **Build the Spring Boot application:**
+*   **`POST /auth/refresh`**
+    *   Generates a new access token using a valid refresh token.
+    *   **Authorization Header**: `Bearer <refresh_token>`
+    *   **Responses**:
+        *   `200 OK`: `{"access_token": "..."}`
+        *   `401 Unauthorized`: `{"message": "Invalid or expired refresh token"}`
+
+*   **`POST /auth/logout`**
+    *   Invalidates the current access token (and optionally refresh token) by blacklisting it.
+    *   **Authorization Header**: `Bearer <access_token>`
+    *   **Responses**:
+        *   `200 OK`: `{"message": "Successfully logged out."}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+
+*   **`POST /auth/forgot-password`**
+    *   Sends a password reset link to the user's email.
+    *   **Request Body**:
+        ```json
+        {
+          "email": "john.doe@example.com"
+        }
+        ```
+    *   **Responses**:
+        *   `200 OK`: `{"message": "Password reset link sent to your email."}`
+        *   `404 Not Found`: `{"message": "User with that email not found."}`
+
+*   **`GET /auth/reset-password/<token>`**
+    *   Renders an HTML form for setting a new password.
+    *   **Parameters**: `token` (path parameter) - The password reset token.
+    *   **Responses**:
+        *   `200 OK`: Renders `reset_password.html`
+        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
+
+*   **`POST /auth/reset-password/<token>`**
+    *   Sets a new password using a valid reset token.
+    *   **Parameters**: `token` (path parameter)
+    *   **Request Body**:
+        ```json
+        {
+          "new_password": "NewStrongPassword123!"
+        }
+        ```
+    *   **Responses**:
+        *   `200 OK`: `{"message": "Password reset successfully."}`
+        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
+
+### User Endpoints (Protected by `@jwt_required`)
+
+*   **`GET /user/profile`**
+    *   Retrieves the authenticated user's profile information.
+    *   **Authorization Header**: `Bearer <access_token>`
+    *   **Responses**:
+        *   `200 OK`: `{"id": "...", "username": "...", "email": "...", "is_verified": true, ...}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+
+*   **`PUT /user/profile`**
+    *   Updates the authenticated user's profile information.
+    *   **Authorization Header**: `Bearer <access_token>`
+    *   **Request Body**:
+        ```json
+        {
+          "username": "new_john_doe",
+          "email": "new.john.doe@example.com"
+        }
+        ```
+        (Fields are optional, only provide what needs to be updated)
+    *   **Responses**:
+        *   `200 OK`: `{"message": "User profile updated successfully."}`
+        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+
+### Admin Endpoints (Protected by `@jwt_required` and `@roles_required('admin')`)
+
+*   **`GET /admin/users`**
+    *   Retrieves a list of all registered users.
+    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
+    *   **Responses**:
+        *   `200 OK`: `[{"id": "...", "username": "...", "email": "...", "role": "user", ...}, ...]`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
+
+*   **`GET /admin/users/<user_id>`**
+    *   Retrieves a specific user's profile by ID.
+    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
+    *   **Parameters**: `user_id` (path parameter) - The UUID of the user.
+    *   **Responses**:
+        *   `200 OK`: `{"id": "...", "username": "...", "email": "...", "role": "user", ...}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
+        *   `404 Not Found`: `{"message": "User not found."}`
+
+*   **`PUT /admin/users/<user_id>`**
+    *   Updates a specific user's information (e.g., role, active status).
+    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
+    *   **Parameters**: `user_id` (path parameter)
+    *   **Request Body**:
+        ```json
+        {
+          "role": "admin",
+          "is_active": false,
+          "is_verified": true
+        }
+        ```
+        (Fields are optional, only provide what needs to be updated. `username` and `email` can also be updated.)
+    *   **Responses**:
+        *   `200 OK`: `{"message": "User updated successfully."}`
+        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
+        *   `404 Not Found`: `{"message": "User not found."}`
+
+*   **`DELETE /admin/users/<user_id>`**
+    *   Deletes a specific user by ID.
+    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
+    *   **Parameters**: `user_id` (path parameter)
+    *   **Responses**:
+        *   `200 OK`: `{"message": "User deleted successfully."}`
+        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
+        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
+        *   `404 Not Found`: `{"message": "User not found."}`
+
+### Error Responses
+
+All error responses follow a consistent JSON format:
+
+```json
+{
+  "message": "A descriptive error message",
+  "errors": {
+    "field_name_1": ["Error detail 1", "Error detail 2"],
+    "field_name_2": ["Error detail 3"]
+  }
+}
+```
+*   `message`: A general description of the error.
+*   `errors`: (Optional) An object containing field-specific validation errors.
+
+Common HTTP Status Codes:
+*   `400 Bad Request`: Client-side validation failed, malformed request.
+*   `401 Unauthorized`: Authentication required or failed (invalid/missing token).
+*   `403 Forbidden`: Authenticated but lacks necessary permissions (e.g., wrong role, unverified account).
+*   `404 Not Found`: Resource not found.
+*   `405 Method Not Allowed`: HTTP method not supported for the endpoint.
+*   `429 Too Many Requests`: Rate limit exceeded.
+*   `500 Internal Server Error`: Server-side error.
+
+---
+
+## 5. Testing
+
+The project uses `pytest` for testing.
+
+To run tests:
+1.  Ensure your `db_test` and `redis` Docker services are running (`docker-compose up -d db_test redis`).
+2.  Set `FLASK_ENV=testing` (it's automatically set in `conftest.py` for `pytest`).
+3.  Run pytest from the project root:
     ```bash
-    mvn clean install -DskipTests
+    docker exec auth-app pytest --cov=app --cov-report=term-missing tests/
+    ```
+    (Or, if running Python locally and pointing to Docker DBs):
+    ```bash
+    pytest --cov=app --cov-report=term-missing tests/
     ```
 
-6.  **Run the Spring Boot application:**
-    ```bash
-    java -jar target/appinsight-0.0.1-SNAPSHOT.jar
-    ```
+*   **Unit Tests**: Focus on individual components (models, utility functions) in isolation. (`tests/unit/`)
+*   **Integration Tests**: Verify the interaction between multiple components (e.g., full auth flow: register -> login -> protected access -> logout). (`tests/integration/`)
+*   **API Tests**: Test specific API endpoints with various valid and invalid inputs, checking status codes and response bodies. (`tests/api/`)
 
-## 6. Running the Application
+**Test Coverage**: The goal is 80%+ test coverage to ensure critical parts of the application are well-tested.
 
-Once setup is complete:
+---
 
-*   **Backend API**: `http://localhost:8080/api`
-*   **Frontend UI**: `http://localhost:8080/index.html` (or simply `http://localhost:8080`)
-*   **Swagger UI**: `http://localhost:8080/swagger-ui.html`
-*   **Spring Boot Actuator**: `http://localhost:8080/actuator`
+## 6. Deployment
 
-## 7. API Endpoints
+A detailed deployment guide is available in `docs/DEPLOYMENT.md`.
 
-All API endpoints are prefixed with `/api`.
+In summary, for production, you would:
+1.  **Build the Docker image**: `docker build -t your-repo/auth-system:latest .`
+2.  **Push to a registry**: `docker push your-repo/auth-system:latest`
+3.  **Provision a server**: (e.g., AWS EC2, Google Cloud Run, DigitalOcean Droplet).
+4.  **Configure environment variables**: Set all production-sensitive variables in the `.env` file or directly in your deployment environment (e.g., Kubernetes secrets, EC2 user data).
+5.  **Deploy with Docker Compose/Kubernetes**:
+    *   For a simple setup, copy `docker-compose.yml` (modified for production, e.g., removing `db_test`) and your `.env` to the server.
+    *   Run `docker-compose pull` and `docker-compose up -d`.
+6.  **Run migrations**: `docker exec auth-app flask db upgrade`.
+7.  **Set up reverse proxy**: Use Nginx or Caddy to proxy requests to the Flask app (Gunicorn) and handle SSL termination.
+8.  **Monitoring**: Integrate with monitoring tools (Prometheus, Grafana, ELK stack).
 
-### Authentication
+---
 
-*   `POST /api/auth/register` - Register a new user.
-    *   Request Body: `{"username": "...", "password": "...", "email": "...", "roles": ["USER"]}`
-*   `POST /api/auth/login` - Authenticate and get a JWT token.
-    *   Request Body: `{"username": "...", "password": "..."}`
-    *   Response: `{"jwt": "..."}`
+## 7. Logging & Monitoring
 
-### Monitored Applications
+*   **Logging**: The application uses Python's standard `logging` module.
+    *   In development, logs are printed to the console.
+    *   In production, logs are formatted as JSON and written to `app.log` (rotating file handler) and stderr, making them suitable for centralized log management systems (e.g., ELK stack, Splunk, Datadog).
+    *   Errors are caught by central error handlers and logged.
+*   **Monitoring**:
+    *   While not fully implemented (due to scope), a production setup would include:
+        *   **Application Performance Monitoring (APM)**: Tools like New Relic, Datadog APM, or Prometheus/Grafana for monitoring request latency, error rates, resource utilization.
+        *   **Health Checks**: Endpoints for checking application health (`/healthz`, `/readyz`).
+        *   **Alerting**: Configure alerts for critical errors, high latency, or service unavailability.
 
-*   `GET /api/applications` - Get all monitored applications. (Roles: ADMIN, USER)
-*   `GET /api/applications/{id}` - Get a single application by ID. (Roles: ADMIN, USER)
-*   `POST /api/applications` - Create a new application. (Role: ADMIN)
-    *   Request Body: `{"name": "...", "description": "..."}`
-*   `PUT /api/applications/{id}` - Update an existing application. (Role: ADMIN)
-    *   Request Body: `{"name": "...", "description": "..."}`
-*   `DELETE /api/applications/{id}` - Delete an application. (Role: ADMIN)
+---
 
-### Metrics
+## 8. Security Considerations
 
-*   `GET /api/applications/{applicationId}/metrics` - Get all metrics for a specific application. (Roles: ADMIN, USER)
-*   `GET /api/applications/{applicationId}/metrics/{metricId}` - Get a single metric by ID. (Roles: ADMIN, USER)
-*   `POST /api/applications/{applicationId}/metrics` - Create a new metric for an application. (Role: ADMIN)
-    *   Request Body: `{"name": "...", "description": "...", "type": "GAUGE"}` (Type can be GAUGE, COUNTER, HISTOGRAM, SUMMARY)
-*   `PUT /api/applications/{applicationId}/metrics/{metricId}` - Update an existing metric. (Role: ADMIN)
-    *   Request Body: `{"name": "...", "description": "...", "type": "GAUGE"}`
-*   `DELETE /api/applications/{applicationId}/metrics/{metricId}` - Delete a metric. (Role: ADMIN)
+*   **Password Hashing**: Bcrypt is used with a strong work factor.
+*   **JWT Security**:
+    *   Secret keys are stored securely via environment variables.
+    *   Tokens have short expiry times.
+    *   Refresh tokens are used to issue new access tokens.
+    *   Token blacklisting prevents reuse of revoked tokens.
+    *   Tokens are sent via `Authorization` header, not URL parameters.
+*   **Rate Limiting**: Protects against brute-force attacks and DDoS attempts on login, registration, and password reset.
+*   **Input Validation**: All API inputs are rigorously validated using `webargs` and `marshmallow`.
+*   **CORS**: `Flask-CORS` would be configured in a real-world scenario if a separate frontend is hosted on a different domain. For this project, it's omitted for simplicity or can be added in `app/__init__.py`.
+*   **Environment Variables**: All sensitive configuration (secret keys, database credentials) are loaded from environment variables and not hardcoded.
+*   **HTTPS**: Critical for production; requests should always be served over HTTPS. This is typically handled by a reverse proxy (e.g., Nginx).
+*   **Principle of Least Privilege**: User roles are enforced, limiting access to resources based on permissions.
+*   **SQL Injection**: SQLAlchemy ORM inherently protects against most SQL injection attacks.
 
-### Metric Data
+---
 
-*   `POST /api/metric-data/ingest` - Ingest metric data points from an external application. (Requires `X-API-KEY` header)
-    *   Headers: `X-API-KEY: <application_api_key>`
-    *   Request Body: `[{"metricName": "...", "value": 123.45, "timestamp": "ISO_DATE_TIME", "tags": "..."}]`
-*   `GET /api/metric-data/{metricId}` - Get historical metric data for a specific metric within a time range. (Roles: ADMIN, USER)
-    *   Query Params: `startTime=ISO_DATE_TIME`, `endTime=ISO_DATE_TIME`
-*   `GET /api/metric-data/{metricId}/paginated` - Get paginated metric data. (Roles: ADMIN, USER)
-    *   Query Params: `page=0`, `size=100`
+## 9. Future Enhancements
 
-For detailed API documentation, refer to the [API Documentation](#api-documentation) section.
+*   **Two-Factor Authentication (2FA)**: Integrate with TOTP (Time-based One-Time Password) or SMS-based 2FA.
+*   **Social Logins**: Allow users to register/login using Google, Facebook, GitHub, etc.
+*   **User Roles & Permissions Management**: A more granular RBAC system allowing dynamic permission assignments.
+*   **Audit Logging**: Track significant user actions (e.g., password changes, role updates).
+*   **Microservices Architecture**: Break down the authentication system into smaller, independently deployable services.
+*   **GraphQL API**: Provide a GraphQL interface for more flexible data fetching.
+*   **Container Orchestration**: Deploy with Kubernetes for advanced scaling, self-healing, and management.
+*   **Asynchronous Tasks**: Use Celery/RabbitMQ for background tasks like sending emails or processing large data.
+*   **Frontend**: A complete frontend application (React/Angular/Vue) interacting with the API.
 
-## 8. Authentication & Authorization
+---
 
-*   **Login Credentials (default seed data):**
-    *   **Admin User:** `username: admin`, `password: adminpass`
-    *   **Regular User:** `username: user`, `password: userpass`
-*   **JWT Tokens:** After successful login, a JWT token is returned. This token must be included in the `Authorization` header of subsequent requests in the format `Bearer <YOUR_JWT_TOKEN>`.
-*   **Role-Based Access Control:**
-    *   **ADMIN**: Can perform all CRUD operations on Applications and Metrics, view all data.
-    *   **USER**: Can view Applications, Metrics, and Metric Data. Cannot create, update, or delete.
-    *   **MONITORING_AGENT**: (Currently not tied to JWT, uses API Key for data ingestion). Can only ingest data via the `X-API-KEY` header.
+## 10. License
 
-## 9. Frontend Usage
-
-The simple frontend (`index.html` and `script.js`) demonstrates basic interaction with the backend:
-
-1.  Open `http://localhost:8080` in your browser.
-2.  **Register/Login**: Use the forms to register a new user or log in with the default `admin`/`adminpass` or `user`/`userpass`.
-3.  **Manage Applications**: After logging in, you can create new applications and view existing ones. Note their generated API Keys.
-4.  **Manage Metrics**: Click "View Metrics" for an application to define new metrics for it.
-5.  **Ingest & View Data**: For a specific metric, you can use the "Ingest Sample Metric Data" form (it uses the associated application's API Key) and view recent historical data.
-
-This frontend is a minimal demonstration. For a production-grade UI, a dedicated frontend framework like React, Angular, or Vue.js would be used, consuming these APIs.
-
-## 10. Testing
-
-The project includes various types of tests to ensure quality:
-
-*   **Unit Tests**: Located in `src/test/java/.../service` and `src/test/java/.../util`. These focus on individual components (e.g., business logic in services, utility functions like `JwtUtil`) in isolation using Mockito for dependencies. Target: 80%+ coverage.
-*   **Integration Tests**: Located in `src/test/java/.../repository` and `src/test/java/.../controller`.
-    *   **Repository Tests**: Use `@DataJpaTest` with `Testcontainers` (PostgreSQL) to verify database interactions.
-    *   **Controller Tests**: Use `@WebMvcTest` to test REST endpoints, including authentication and authorization flows, with `MockMvc`.
-*   **API Tests**: (Conceptual) A Postman collection or `curl` scripts would be used to test the full API endpoints from an external perspective.
-*   **Performance Tests**: (Conceptual) Using tools like JMeter or Gatling to simulate high load on the system, focusing on `POST /api/metric-data/ingest` and `GET /api/metric-data/{metricId}` endpoints.
-
-To run all tests:
-```bash
-mvn clean test
-```
-To generate a JaCoCo coverage report (usually run after `mvn install` to ensure code is built):
-```bash
-mvn jacoco:report
-# Report will be in target/site/jacoco/index.html
-```
-
-## 11. CI/CD
-
-A basic GitHub Actions workflow (`.github/workflows/main.yml`) is provided:
-
-*   **Triggers**: On `push` and `pull_request` to `main` branch.
-*   **Steps**:
-    1.  Checkout code.
-    2.  Set up JDK 17.
-    3.  Build the project with Maven (`mvn clean install`).
-    4.  Run unit and integration tests (`mvn test`).
-    5.  Generate JaCoCo test coverage report.
-    6.  Build a Docker image for the application.
-    7.  (On `main` branch push): Log in to Docker Hub and push the image.
-    8.  (On `main` branch push): Placeholder for deployment to a staging/production environment.
-
-**Note**: For production CI/CD, you would replace the deployment placeholder with actual deployment steps (e.g., Kubernetes deployment with Helm, cloud provider deployment tools, blue/green deployments, etc.) and use secure secrets management.
-
-## 12. Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Write comprehensive tests for your changes.
-5.  Ensure all tests pass and code coverage is maintained.
-6.  Commit your changes (`git commit -m 'feat: Add new feature X'`).
-7.  Push to the branch (`git push origin feature/your-feature-name`).
-8.  Open a Pull Request.
-
-## 13. License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details (not included in this response, but implied).
+This project is licensed under the MIT License - see the `LICENSE` file for details. (A `LICENSE` file would be present in a real project).
