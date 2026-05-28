@@ -1,43 +1,17 @@
+```javascript
 const jwt = require('jsonwebtoken');
-const jwtConfig = require('../config/jwt');
-const AppError = require('./appError');
-const logger = require('../config/logger');
+const config = require('../config/config');
 
 /**
- * Generates a JWT token.
- * @param {object} payload - The data to store in the token (e.g., user ID, role).
- * @returns {string} The generated JWT token.
+ * Generates a JSON Web Token for a given user ID.
+ * @param {string} id - The user's ID.
+ * @returns {string} The generated JWT.
  */
-const generateToken = (payload) => {
-  try {
-    return jwt.sign(payload, jwtConfig.secret, {
-      expiresIn: jwtConfig.expiresIn,
+const generateToken = (id) => {
+    return jwt.sign({ id }, config.jwt.secret, {
+        expiresIn: config.jwt.expiresIn,
     });
-  } catch (error) {
-    logger.error('Error generating JWT token:', error);
-    throw new AppError('Failed to generate authentication token.', 500);
-  }
 };
 
-/**
- * Verifies a JWT token.
- * @param {string} token - The JWT token to verify.
- * @returns {object} The decoded payload if the token is valid.
- * @throws {Error} If the token is invalid or expired.
- */
-const verifyToken = (token) => {
-  try {
-    return jwt.verify(token, jwtConfig.secret);
-  } catch (error) {
-    logger.warn(`JWT verification failed: ${error.message}`);
-    if (error.name === 'TokenExpiredError') {
-      throw new AppError('Token expired', 401);
-    }
-    throw new AppError('Invalid token', 401);
-  }
-};
-
-module.exports = {
-  generateToken,
-  verifyToken,
-};
+module.exports = { generateToken };
+```

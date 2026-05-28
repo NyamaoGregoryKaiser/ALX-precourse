@@ -1,74 +1,74 @@
-const logger = require('../middleware/logger');
+```javascript
+const NodeCache = require('node-cache');
+const config = require('../config/config');
+const logger = require('./logger');
 
-const cache = new Map();
-const TTL = parseInt(process.env.CACHE_TTL || 3600) * 1000; // Default 1 hour in milliseconds
+// Initialize NodeCache with a default TTL
+const cache = new NodeCache({ stdTTL: config.cache.ttlSeconds });
 
 /**
  * Sets a value in the cache.
  * @param {string} key - The cache key.
- * @param {*} value - The value to store.
- * @param {number} [ttl=TTL] - Time to live in milliseconds for this specific item.
+ * @param {any} value - The value to store.
+ * @param {number} [ttl] - Optional TTL in seconds for this specific item. Defaults to global stdTTL.
  */
-const setCache = (key, value, ttl = TTL) => {
-    const expiresAt = Date.now() + ttl;
-    cache.set(key, { value, expiresAt });
-    logger.debug(`Cache set for key: ${key}, expires in ${ttl / 1000}s`);
+const setCache = (key, value, ttl) => {
+    const success = cache.set(key, value, ttl);
+    if (success) {
+        logger.debug(`Cache set: ${key}`);
+    } else {
+        logger.warn(`Failed to set cache for key: ${key}`);
+    }
+    return success;
 };
 
 /**
- * Gets a value from the cache. If expired, it's removed and returns undefined.
+ * Gets a value from the cache.
  * @param {string} key - The cache key.
- * @returns {*} The cached value or undefined.
+ * @returns {any | undefined} The cached value or undefined if not found.
  */
 const getCache = (key) => {
-    const item = cache.get(key);
-    if (!item) {
-        return undefined;
+    const value = cache.get(key);
+    if (value) {
+        logger.debug(`Cache hit: ${key}`);
+    } else {
+        logger.debug(`Cache miss: ${key}`);
     }
-
-    if (Date.now() > item.expiresAt) {
-        cache.delete(key);
-        logger.debug(`Cache expired and deleted for key: ${key}`);
-        return undefined;
-    }
-
-    logger.debug(`Cache hit for key: ${key}`);
-    return item.value;
+    return value;
 };
 
 /**
- * Deletes an item from the cache.
- * @param {string} key - The cache key.
+ * Deletes a value or multiple values from the cache.
+ * @param {string | string[]} keys - The key or an array of keys to delete.
+ * @returns {number} The number of keys deleted.
  */
-const deleteCache = (key) => {
-    const deleted = cache.delete(key);
-    if (deleted) {
-        logger.debug(`Cache deleted for key: ${key}`);
-    }
+const deleteCache = (keys) => {
+    const count = cache.del(keys);
+    logger.debug(`Cache deleted for key(s): ${keys}. Count: ${count}`);
+    return count;
 };
 
 /**
  * Clears the entire cache.
  */
-const clearCache = () => {
-    cache.clear();
-    logger.info('Cache cleared.');
+const clearAllCache = () => {
+    cache.flushAll();
+    logger.info('All cache cleared.');
 };
 
-// Periodically clean up expired items (optional, as getCache also cleans on access)
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, item] of cache.entries()) {
-        if (now > item.expiresAt) {
-            cache.delete(key);
-            logger.debug(`Background cache cleanup: deleted expired key ${key}`);
-        }
-    }
-}, 300000); // Run every 5 minutes
+// Listen for cache events (optional, for monitoring)
+cache.on('del', (key, value) => {
+    logger.debug(`Cache entry deleted: ${key}`);
+});
+
+cache.on('expired', (key, value) => {
+    logger.debug(`Cache entry expired: ${key}`);
+});
 
 module.exports = {
     setCache,
     getCache,
     deleteCache,
-    clearCache
+    clearAllCache
 };
+```

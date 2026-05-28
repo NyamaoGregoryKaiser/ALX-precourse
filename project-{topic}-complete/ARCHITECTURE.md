@@ -1,215 +1,262 @@
-# ML Utilities System (MLU-Sys) - Architecture Documentation
+```markdown
+# E-commerce Solution: Architecture Document
 
-## 1. High-Level Architecture
+## 1. Introduction
 
-The ML Utilities System follows a **monorepo structure** (for development convenience) and a **microservice-lite/layered architecture** approach for its core components. It consists of a decoupled frontend and a robust backend API, interacting with a PostgreSQL database and Redis cache.
+This document outlines the architectural design of the enterprise-grade E-commerce Solution. The system is designed to be robust, scalable, maintainable, and secure, leveraging a microservices-inspired approach with a clear separation of concerns between frontend and backend.
 
-```mermaid
-graph TD
-    User -->|Accesses via Browser| Frontend(React App)
-    Frontend -->|HTTP/HTTPS API Calls| Nginx(Reverse Proxy/Load Balancer)
-    Nginx -->|Routes Requests to| Backend(NestJS API)
+## 2. High-Level Architecture
 
-    subgraph Backend Services
-        Backend -->|Writes/Reads Metadata| PostgreSQL(Database)
-        Backend -->|Caches Data / Pub/Sub| Redis(Cache / Message Broker)
-        Backend -->|Stores Files| LocalStorage(File System) -->|or Cloud Storage (S3/GCS)|
-    end
-
-    Backend --Optional--> ExternalMLService(TensorFlow/PyTorch Serving, FastAPI ML API)
-    ExternalMLService --|Makes Predictions| Backend
-```
-
-**Key Principles:**
-
-*   **Separation of Concerns**: Frontend and backend are independent. Backend modules are also separated (Auth, Users, Datasets, Models, Predictions).
-*   **API-First Design**: All frontend-backend communication happens via a well-defined RESTful API.
-*   **Scalability**: Components can be scaled independently (e.g., multiple backend instances).
-*   **Security**: Authentication, authorization, input validation, and secure defaults.
-*   **Observability**: Centralized logging and error handling.
-
-## 2. Backend Architecture (NestJS)
-
-The backend is built with NestJS, leveraging its modularity, dependency injection, and decorators for a structured and maintainable codebase.
+The E-commerce solution follows a **Monolithic (Modular) Backend with a Separate Frontend (SPA)** architecture, often referred to as a "decoupled" or "hybrid" approach.
 
 ```mermaid
 graph TD
-    A[Client Request] --> B(Global Middlewares/Guards/Interceptors)
-    B --> C{Controller}
-    C --> D[DTO Validation]
-    D --> E(Service Layer)
-    E --> F[Repository/ORM (TypeORM)]
-    F --> G(PostgreSQL Database)
-    E --> H(FilesService)
-    H --> I(Local File Storage)
-    E --> J(CacheManager)
-    J --> K(Redis Cache)
-    E --Optional--> L(External ML Service)
-    L --&gt; E
-    E --> M(AppLogger)
-    M --> N(Winston Logs)
-    B --> O{Authentication Guard (JWT)}
-    B --> P{Authorization Guard (Roles)}
-    B --> Q{Global Exception Filter}
-    Q --> M
-    C --> R[Swagger/API Docs]
+    User(Browser / Mobile App) -->|HTTP/HTTPS| CDN(CDN)
+    CDN -->|HTTP/HTTPS| Nginx(Nginx - Frontend Server)
+    Nginx -->|Static Files| ReactApp(React.js Single Page Application)
+    ReactApp -->|AJAX/REST APIs| Nginx
+    Nginx -->|API Proxy| Backend(Node.js/Express Backend API)
 
-    subgraph NestJS Modules
-        subgraph AuthModule
-            authC[AuthController] --- authS[AuthService]
-            authS --- usersS[UsersService]
-            authS --- jwtS[JwtService]
-            jwtS --- jwtStrat[JwtStrategy]
-        end
+    Backend -->|Database Queries| PostgreSQL(PostgreSQL Database)
+    Backend -- Cache --> Redis(Redis Cache - Optional, Production)
+    Backend -- Logs --> ELK(ELK Stack - Optional, Production Logging)
+    Backend -- Monitoring --> PrometheusGrafana(Prometheus/Grafana - Optional, Production Monitoring)
 
-        subgraph UsersModule
-            usersC[UsersController] --- usersS[UsersService]
-            usersS --- usersRepo[UsersRepository]
-        end
+    SubGraph Ops
+        CI/CD(CI/CD Pipeline) --> DockerRegistry(Docker Registry)
+        DockerRegistry --> Orchestration(Docker Compose / Kubernetes)
+        Orchestration --> Backend
+        Orchestration --> Nginx
+        Orchestration --> PostgreSQL
+        Orchestration --> Redis
+    End
 
-        subgraph DatasetsModule
-            datasetsC[DatasetsController] --- datasetsS[DatasetsService]
-            datasetsS --- datasetsRepo[DatasetsRepository]
-            datasetsS --- filesS[FilesService]
-        end
-
-        subgraph ModelsModule
-            modelsC[ModelsController] --- modelsS[ModelsService]
-            modelsS --- modelsRepo[ModelsRepository]
-            modelsS --- filesS[FilesService]
-        end
-
-        subgraph PredictionsModule
-            predictionsC[PredictionsController] --- predictionsS[PredictionsService]
-            predictionsS --- predictionsRepo[PredictionLogsRepository]
-            predictionsS --- modelsS
-        end
-
-        subgraph FilesModule
-            filesS[FilesService]
-        end
-
-        subgraph CommonModule
-            guards[RolesGuard]
-            filters[AllExceptionsFilter]
-            interceptors[HttpCacheInterceptor]
-            logger[AppLogger]
-        end
-
-        authC --- usersS
-        authS --- usersS
-        datasetsS --- filesS
-        modelsS --- filesS
-        predictionsS --- modelsS
-    end
+    Developer(Developer) --> Git(Git Repository)
+    Git --> CI/CD
 ```
 
-### 2.1. Key Components
+### Key Components:
 
-*   **Controllers**: Handle incoming HTTP requests, route them to appropriate services, and return responses. They define API endpoints and integrate with DTOs for input validation.
-*   **Services**: Encapsulate the core business logic. They orchestrate data operations, interact with repositories, and perform computations. Designed to be reusable and testable.
-*   **Repositories (TypeORM)**: Provide an abstraction layer over the database. They manage entities and perform CRUD operations, query building, and transactional logic.
-*   **Entities (TypeORM)**: Define the structure of database tables and their relationships.
-*   **DTOs (Data Transfer Objects)**: Define the shape of data exchanged between client and server. Used for request payload validation and response structuring.
-*   **Authentication (JWT)**: Users authenticate by sending credentials to `AuthController`. Upon successful login, a JWT token is issued. Subsequent requests include this token in the `Authorization` header. `JwtStrategy` validates the token.
-*   **Authorization (RolesGuard)**: Role-based access control using `@Roles()` decorator. The `RolesGuard` checks the user's role from the JWT payload against required roles for a given route.
-*   **Global Exception Filter**: Catches all unhandled exceptions across the application and formats them into a consistent JSON error response, providing better client experience and simplifying error logging.
-*   **Logging (Winston)**: `AppLogger` service provides structured, context-aware logging to both console and daily rotating files, with different levels (debug, info, warn, error).
-*   **Caching (Redis)**: `HttpCacheInterceptor` caches GET requests globally, reducing database load and improving response times for frequently accessed data.
-*   **File Storage (`FilesService`)**: Handles uploading, retrieving, and deleting files (datasets, models) from the local filesystem. Designed to be extensible for cloud storage.
-*   **Configuration (`ConfigModule`)**: Manages environment variables, allowing seamless switching between development, testing, and production settings.
-*   **Database Migrations**: TypeORM migrations are used for versioning the database schema, ensuring smooth updates without data loss.
+*   **Client (Frontend)**: A Single Page Application (SPA) built with React.js, responsible for rendering the UI and interacting with the backend API. Served statically, often via Nginx.
+*   **API Gateway / Reverse Proxy (Nginx)**: Forwards requests to the appropriate backend service. In this setup, it primarily serves the static frontend assets and proxies API calls to the Node.js backend.
+*   **Backend (Node.js/Express)**: A RESTful API that handles all business logic, data processing, authentication, authorization, and interacts with the database. It is structured in a modular fashion to maintain separation of concerns.
+*   **Database (PostgreSQL)**: A robust relational database for persistent storage of application data.
+*   **Caching Layer (Redis/Node-Cache)**: Improves performance by storing frequently accessed data, reducing database load.
+*   **Logging & Monitoring (Winston, ELK, Prometheus/Grafana)**: Essential for observing system health, performance, and diagnosing issues in production.
+*   **CI/CD Pipeline (GitHub Actions)**: Automates the build, test, and deployment process.
+*   **Containerization (Docker & Docker Compose/Kubernetes)**: Ensures consistent environments and facilitates scalable deployment.
 
-## 3. Frontend Architecture (React)
+## 3. Backend Architecture (Node.js/Express)
 
-The frontend is a Single Page Application (SPA) built with React, styled with Tailwind CSS, and using React Router for navigation.
+The backend follows a layered, modular architecture:
 
 ```mermaid
 graph TD
-    A[User's Browser] --> B(index.html)
-    B --> C(main.tsx - React App Entry)
-    C --> D(App.tsx - Main Router)
-    D --> E{Routes}
-    E --> F[LoginPage]
-    E --> G[RegisterPage]
-    E --> H[ProtectedRoute]
-    H --> I[DashboardPage]
-    H --> J[DatasetsPage]
-    J --> J1[DatasetDetailPage]
-    H --> K[ModelsPage]
-    K --> K1[ModelDetailPage]
-    H --> L[AdminRoute]
-    L --> M[UsersPage]
+    ClientReq(Client Request) --> Router(Routes)
+    Router --> Middleware(Middleware: Auth, Rate Limit, Logger)
+    Middleware --> Controller(Controllers)
+    Controller --> Service(Services)
+    Service --> Model(Models - Sequelize ORM)
+    Model --> DB(PostgreSQL Database)
+    Service --> Cache(Caching Layer)
+    Service --> ThirdParty(Third-Party Services: Payment Gateway, Email)
+    Controller --> ErrorHandling(Error Handling Middleware)
+    ErrorHandling --> ClientRes(Client Response: Error)
 
-    F --&gt;|Authenticates| N(AuthContext - login)
-    N --> O(API Service - Axios)
-    O --> P(Backend API)
+    DB -- Reads/Writes --> PostgreSQL
+    Cache -- Reads/Writes --> Redis
 
-    I, J, K, M --&gt;|Fetches Data| O
-    N --&gt;|Manages JWT| Cookies
-
-    subgraph Reusable Components
-        Q[Navbar]
-        R[Forms]
-        S[Tables]
-        T[Modals]
+    subgraph Backend Layers
+        Router
+        Middleware
+        Controller
+        Service
+        Model
     end
-
-    D --&gt; Q
-    J, K, M --&gt; R, S, T
 ```
 
-### 3.1. Key Components
+### Layers:
 
-*   **`main.tsx`**: Entry point, renders the `App` component within `BrowserRouter` and `AuthProvider`.
-*   **`App.tsx`**: Main component defining the application's routes using `react-router-dom`.
-*   **`AuthContext` & `useAuth` Hook**: Manages user authentication state (user object, JWT token) globally. Stores the token in browser cookies.
-*   **`ProtectedRoute` & `AdminRoute`**: HOCs/components that ensure only authenticated users (or admins) can access specific routes, redirecting otherwise.
-*   **API Service (`api/api.ts`)**: An Axios instance configured with the backend API base URL. It includes an interceptor to automatically attach the JWT token to outgoing requests and handle common error responses (e.g., 401 Unauthorized).
-*   **Pages (`pages/`)**: Top-level components representing distinct views/pages (e.g., Login, Dashboard, Datasets List, Model Detail).
-*   **Components (`components/`)**: Reusable UI elements (e.g., Navbar, forms, tables, buttons).
-*   **`utils/types.ts`**: Centralized TypeScript interfaces and enums for data consistency between frontend and backend.
+*   **Routes**: Define API endpoints and map them to controller functions. Encapsulate path definitions (e.g., `/api/v1/products`).
+*   **Middleware**: Functions executed before/after route handlers. This includes authentication (`authMiddleware`), error handling (`errorMiddleware`), logging (`loggerMiddleware`), rate limiting (`rateLimitMiddleware`), and security headers (`helmet`, `hpp`, `cors`).
+*   **Controllers**: Handle incoming HTTP requests, perform input validation, extract data from `req` object, and delegate business logic to services. They orchestrate the flow and prepare responses. They should be thin.
+*   **Services**: Encapsulate the core business logic of the application. They interact with models, perform complex calculations, enforce rules, and can integrate with external services or the caching layer. Services should be decoupled from HTTP specifics.
+*   **Models**: Represent the data structure and handle database interactions through Sequelize ORM. They define schema, relationships, and lifecycle hooks (e.g., password hashing before save).
+*   **Utilities**: Helper functions for common tasks like logging (`logger`), JWT generation (`jwt`), custom error handling (`appError`), and caching (`cache`).
+*   **Configuration**: Manages environment variables and application settings (`config`).
 
-## 4. Data Flow
+### Data Flow for a typical request (e.g., Get Product):
 
-1.  **User Authentication**:
-    *   User submits login/register form on Frontend.
-    *   Frontend `API` service sends credentials to Backend `AuthController`.
-    *   Backend `AuthService` validates credentials/creates user, interacts with `UsersService` and `UserRepository`.
-    *   `AuthService` generates a JWT token using `JwtService` and returns it.
-    *   Frontend `AuthContext` stores the token in cookies and user data in state.
+1.  **Client Request**: Frontend sends `GET /api/v1/products/:id`.
+2.  **Nginx**: Forwards the request to the `backend` service.
+3.  **Routes**: `productRoutes` matches the path to `ProductController.getProductById`.
+4.  **Middleware**: `requestLogger` logs the incoming request. `limiter` checks for rate limits. (No `protect` middleware needed for public product viewing).
+5.  **Controller (`ProductController.getProductById`)**: Extracts `id` from `req.params`. Calls `ProductService.getProductById(id)`.
+6.  **Service (`ProductService.getProductById`)**:
+    *   Checks the cache for `product_${id}`.
+    *   If found, returns cached data.
+    *   If not found, queries the `Product` model to fetch the product and its related `Category` and `Reviews`.
+    *   Stores the fetched product in the cache.
+7.  **Models (`Product`, `Category`, `Review`)**: Sequelize converts the query into SQL, interacts with PostgreSQL, and returns data.
+8.  **Service**: Returns the product data to the controller.
+9.  **Controller**: Formats the response and sends it back to the client with `200 OK`.
+10. **Error Handling**: If any layer throws an `AppError` or a system error occurs, the `errorMiddleware` catches it, logs it, and sends a standardized error response.
 
-2.  **Protected Resource Access**:
-    *   User navigates to a protected route (e.g., `/datasets`).
-    *   `ProtectedRoute` checks `AuthContext` for `user` and `token`.
-    *   Frontend `API` service makes a request, attaching the JWT from cookies via an interceptor.
-    *   Backend `AuthGuard` and `RolesGuard` validate the JWT and user's role before controller execution.
-    *   Controller calls appropriate Service.
-    *   Service interacts with Repository/Database, `FilesService`, or `CacheManager`.
-    *   Data is returned through the layers to the Frontend.
+## 4. Database Schema Design (PostgreSQL)
 
-3.  **File Uploads (Datasets/Models)**:
-    *   User selects a file and provides metadata in the Frontend.
-    *   Frontend sends a `multipart/form-data` request to the Backend `DatasetsController` or `ModelsController`.
-    *   `FileInterceptor` processes the file.
-    *   Controller calls `DatasetsService`/`ModelsService`.
-    *   Service uses `FilesService` to save the file to local storage and `Repository` to save metadata to PostgreSQL.
+The database schema is designed for an e-commerce platform, focusing on normalized data and clear relationships.
 
-4.  **Predictions**:
-    *   User provides input data for a deployed model on the Frontend (simulated).
-    *   Frontend sends input data to Backend `PredictionsController`.
-    *   `PredictionsService` retrieves model metadata, checks `deployed` status.
-    *   `PredictionsService` simulates ML inference (or would call an `ExternalMLService`).
-    *   `PredictionsService` logs the input/output to `PredictionLogsRepository`.
-    *   Returns simulated prediction to Frontend.
+```mermaid
+erDiagram
+    USERS {
+        UUID id PK
+        VARCHAR username UK
+        VARCHAR email UK
+        VARCHAR password
+        ENUM role
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
 
-## 5. Deployment Considerations
+    CATEGORIES {
+        UUID id PK
+        VARCHAR name UK
+        TEXT description
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
 
-*   **Environment Variables**: Different `.env` files for `development`, `test`, `production` ensure environment-specific configurations. Docker Compose uses `.env.development` by default.
-*   **Containerization**: Docker containers ensure consistent environments from development to production.
-*   **Orchestration**: Docker Compose is used for local orchestration. For production, Kubernetes or AWS ECS/Fargate would be used.
-*   **Reverse Proxy**: Nginx serves the static frontend assets and acts as a reverse proxy for the backend API, handling SSL termination, load balancing, and static file serving.
-*   **Database & Cache**: PostgreSQL and Redis are run as separate services, managed by Docker Compose locally, or by managed cloud services (AWS RDS, ElastiCache) in production.
-*   **Scalability**: The stateless nature of the backend (except for file storage, which should be externalized in production) allows for easy horizontal scaling of backend instances.
-*   **Security**: Ensure HTTPS is enabled in production (handled by Nginx). Implement stricter CORS policies, regularly update dependencies, and follow security best practices.
+    PRODUCTS {
+        UUID id PK
+        VARCHAR name UK
+        TEXT description
+        DECIMAL price
+        VARCHAR imageUrl
+        INTEGER stock
+        UUID categoryId FK
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    CARTS {
+        UUID id PK
+        UUID userId FK UK
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    CART_ITEMS {
+        UUID id PK
+        UUID cartId FK
+        UUID productId FK
+        INTEGER quantity
+        DECIMAL priceAtAddition
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    ORDERS {
+        UUID id PK
+        UUID userId FK
+        DECIMAL totalAmount
+        ENUM status
+        VARCHAR shippingAddress
+        ENUM paymentStatus
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    ORDER_ITEMS {
+        UUID id PK
+        UUID orderId FK
+        UUID productId FK
+        INTEGER quantity
+        DECIMAL price
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    REVIEWS {
+        UUID id PK
+        UUID userId FK
+        UUID productId FK
+        INTEGER rating
+        TEXT comment
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    PAYMENTS {
+        UUID id PK
+        UUID orderId FK UK
+        DECIMAL amount
+        ENUM paymentMethod
+        VARCHAR transactionId UK
+        ENUM status
+        DATETIME createdAt
+        DATETIME updatedAt
+    }
+
+    USERS ||--o{ CARTS : "has"
+    USERS ||--o{ ORDERS : "places"
+    USERS ||--o{ REVIEWS : "writes"
+    CATEGORIES ||--o{ PRODUCTS : "contains"
+    PRODUCTS ||--o{ REVIEWS : "receives"
+    PRODUCTS ||--o{ CART_ITEMS : "is_in"
+    PRODUCTS ||--o{ ORDER_ITEMS : "is_part_of"
+    CARTS ||--o{ CART_ITEMS : "contains"
+    ORDERS ||--o{ ORDER_ITEMS : "contains"
+    ORDERS ||--o| PAYMENTS : "has"
+
+    CART_ITEMS }|..| PRODUCTS : "includes_product"
+    ORDER_ITEMS }|..| PRODUCTS : "includes_product"
+```
+
+## 5. Security Considerations
+
+*   **Authentication**: JWT for secure, stateless user sessions.
+*   **Authorization**: Role-based access control (RBAC) enforced via middleware.
+*   **Password Security**: `bcrypt.js` for hashing passwords, preventing plaintext storage.
+*   **Input Validation**: Should be implemented in controllers/services to prevent SQL injection, XSS, etc. (Leveraging Sequelize model validations as well).
+*   **Middleware**:
+    *   `helmet`: Sets various HTTP headers to secure the app.
+    *   `cors`: Configured to allow specific origins.
+    *   `hpp`: Protects against HTTP Parameter Pollution.
+    *   `express-rate-limit`: Prevents brute-force and DoS attacks.
+*   **Environment Variables**: Sensitive information stored in `.env` files and not committed to version control.
+*   **HTTPS**: Essential for production deployment to encrypt traffic. (Handled by reverse proxy/load balancer).
+
+## 6. Scalability and Performance
+
+*   **Stateless Backend**: JWTs make the backend stateless, allowing for easy horizontal scaling of Node.js instances.
+*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding for very large scale). ORM (Sequelize) usage does not inherently prevent this.
+*   **Caching**: `node-cache` (in-memory) provides immediate performance gains. For multi-instance deployments, transitioning to a distributed cache like **Redis** is crucial to avoid stale data and ensure consistency across instances.
+*   **Load Balancing**: Essential in production to distribute traffic across multiple backend instances.
+*   **CDN**: For serving frontend static assets and product images, reducing load on the origin server and improving global response times.
+*   **Optimized Queries**: Eager loading in Sequelize to reduce N+1 queries. Proper indexing on frequently queried columns.
+*   **Background Jobs**: For non-critical, time-consuming tasks (e.g., sending emails, processing large data imports), a separate worker service (e.g., using RabbitMQ, Kafka, or AWS SQS/Lambda) would be implemented to offload from the main API.
+
+## 7. Error Handling and Logging
+
+*   **Centralized Error Handling**: A global `errorMiddleware` catches all errors, distinguishes between operational (`AppError`) and programming errors, logs them, and sends standardized JSON responses to the client.
+*   **Structured Logging**: `Winston` is used to create structured, searchable logs. Logs are written to console (for dev), files (for local persistence), and can be easily extended to cloud logging services (e.g., AWS CloudWatch, Google Cloud Logging, or ELK stack for enterprise).
+*   **Monitoring**: Integration with tools like Prometheus for metrics collection and Grafana for visualization is critical in production to track system health, performance trends, and alerts.
+
+## 8. Development Workflow
+
+*   **Docker Compose**: Provides a consistent development environment, allowing developers to spin up all services (DB, backend, frontend) with a single command.
+*   **Hot-reloading**: `nodemon` for backend and React's dev server for frontend enable rapid iteration.
+*   **Linting & Formatting**: ESLint and Prettier ensure code quality and consistency across the team.
+
+## 9. Future Enhancements
+
+*   **Microservices**: Breaking down the monolithic backend into smaller, independently deployable services (e.g., User Service, Product Catalog Service, Order Service, Payment Service).
+*   **Asynchronous Processing**: Introduce message queues (RabbitMQ, Kafka) for event-driven architecture and background job processing.
+*   **Payment Gateway Integration**: Integrate with real payment providers (Stripe, PayPal) instead of simulation.
+*   **Search Engine**: Implement a dedicated search engine (Elasticsearch, Algolia) for advanced product search capabilities.
+*   **Real-time Features**: WebSockets for real-time order updates, chat support, etc.
+*   **Advanced Analytics**: Integrate with analytics platforms for business intelligence.
+*   **Admin Dashboard**: A richer, dedicated admin interface for managing products, users, orders, etc.
+*   **Image Optimization/CDN Integration**: For product images.
+*   **Email Notifications**: For order confirmations, shipping updates, etc.
 ```

@@ -1,5 +1,5 @@
 ```yaml
-name: CI/CD Pipeline for C++ E-commerce
+name: E-commerce CI/CD Pipeline
 
 on:
   push:
@@ -10,93 +10,120 @@ on:
       - main
 
 jobs:
-  build_and_test:
+  lint-and-test:
+    name: Lint and Test
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonPath: '${{ github.workspace }}/vcpkg.json'
-        vcpkgTriplet: x64-linux
-        # If your C++ version is specific, define it here
-        # vcpkgHostTriplet: x64-linux # This is often automatically handled
-        # runVcpkgInstall: false # Set to true if vcpkg install should run separately
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-          -DVCPKG_TARGET_TRIPLET=x64-linux \
-          -DCROW_BUILD_EXAMPLES=OFF \
-          -DCROW_BUILD_TESTS=OFF \
-          -DCROW_AMALGAMATION=OFF \
-          -DCROW_MSVC_USE_LIBCPP=OFF
-      working-directory: ${{ github.workspace }}
+      - name: Install Backend Dependencies
+        run: npm install
+        working-directory: ./backend
 
-    - name: Build C++ project
-      run: cmake --build build --config Release
-      working-directory: ${{ github.workspace }}
+      - name: Run Backend Lint
+        run: npm run lint
+        working-directory: ./backend
 
-    - name: Set up PostgreSQL for integration tests
-      uses: Harmonize-IO/postgresql-action@v1.0.0
-      with:
-        postgresql-version: '13'
-        postgresql-user: 'test_user'
-        postgresql-password: 'test_password'
-        postgresql-db: 'test_db'
+      - name: Set up PostgreSQL for Backend Tests
+        run: |
+          docker run --name test-db -e POSTGRES_USER=${{ secrets.DB_USER }} -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} -e POSTGRES_DB=${{ secrets.DB_TEST_NAME }} -p 5432:5432 -d postgres:14-alpine
+          # Wait for PostgreSQL to be ready
+          sleep 10
+        env:
+          DB_USER: ecommerce_test_user
+          DB_PASSWORD: ecommerce_test_password
+          DB_TEST_NAME: ecommerce_test_db
 
-    - name: Configure .env for tests
-      run: |
-        echo "DB_HOST=localhost" >> config/.env
-        echo "DB_PORT=5432" >> config/.env
-        echo "DB_NAME=test_db" >> config/.env
-        echo "DB_USER=test_user" >> config/.env
-        echo "DB_PASSWORD=test_password" >> config/.env
-        echo "APP_PORT=8080" >> config/.env
-        echo "JWT_SECRET=super_secret_test_jwt_key_for_ci" >> config/.env
-      working-directory: ${{ github.workspace }}
+      - name: Run Backend Tests
+        run: npm test
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          DB_DIALECT: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: ecommerce_test_user
+          DB_PASSWORD: ecommerce_test_password
+          DB_NAME: ecommerce_test_db # Use test DB name for migrations
+          DB_TEST_NAME: ecommerce_test_db
+          JWT_SECRET: testsecret
+          JWT_EXPIRES_IN: 1m
+        
+      - name: Install Frontend Dependencies
+        run: npm install
+        working-directory: ./frontend
 
-    - name: Run Schema and Seed for tests
-      run: |
-        psql -h localhost -U test_user -d test_db -f db/schema.sql
-        psql -h localhost -U test_user -d test_db -f db/seed.sql
-      env:
-        PGPASSWORD: test_password # Pass password to psql
-      working-directory: ${{ github.workspace }}
+      - name: Run Frontend Lint
+        run: npm run lint
+        working-directory: ./frontend
 
-    - name: Run Unit Tests
-      run: ./build/tests/unit/ecommerce_unit_tests
-      working-directory: ${{ github.workspace }}
+      - name: Run Frontend Tests
+        run: npm test -- --watchAll=false
+        working-directory: ./frontend
+        env:
+          CI: true # Required for create-react-app test in CI environments
+          REACT_APP_API_BASE_URL: http://localhost:5000/api/v1 # Dummy URL for tests
 
-    - name: Run Integration Tests
-      run: ./build/tests/integration/ecommerce_integration_tests
-      working-directory: ${{ github.workspace }}
+      - name: Stop PostgreSQL container
+        if: always()
+        run: docker stop test-db && docker rm test-db
 
-    # Optional: Build Docker Image (for pushes to main)
-    # This step would typically push to a container registry like Docker Hub, ECR, GCR
-    - name: Build and Push Docker Image
-      if: github.ref == 'refs/heads/main'
-      uses: docker/build-push-action@v3
-      with:
-        context: .
-        push: false # Set to true to push to registry
-        tags: your-dockerhub-username/ecommerce-cpp:latest,your-dockerhub-username/ecommerce-cpp:${{ github.sha }}
-        # username: ${{ secrets.DOCKER_USERNAME }}
-        # password: ${{ secrets.DOCKER_PASSWORD }}
+  build-and-deploy:
+    name: Build and Deploy Docker Images
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' # Only deploy on push to main
 
-    # Optional: Deployment (for pushes to main)
-    # This is a placeholder for actual deployment steps
-    - name: Deploy to Production
-      if: github.ref == 'refs/heads/main'
-      run: |
-        echo "Deploying to production environment..."
-        # Add your deployment commands here, e.g.:
-        # - SSH into server
-        # - Pull new image
-        # - Restart services
-        # echo "ssh user@your-server 'cd /path/to/app && docker-compose pull ecommerce_backend && docker-compose up -d --force-recreate ecommerce_backend'"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Backend Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/ecommerce-backend:latest
+          build-args: |
+            NODE_ENV=production
+
+      - name: Build and Push Frontend Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:latest
+          build-args: |
+            REACT_APP_API_BASE_URL=/api/v1 # Nginx proxies /api to backend
+
+      - name: Deploy to Server (Example - requires SSH setup)
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /path/to/your/deployment/directory
+            # Pull the latest images
+            docker pull ${{ secrets.DOCKER_USERNAME }}/ecommerce-backend:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/ecommerce-frontend:latest
+            # Update docker-compose.yml to use the 'latest' tags and restart services
+            # (You'd usually have a more robust deployment strategy, like blue/green or rolling updates)
+            docker-compose down && docker-compose up -d --force-recreate
+            echo "Deployment successful!"
 ```

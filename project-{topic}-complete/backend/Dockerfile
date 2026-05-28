@@ -1,58 +1,46 @@
-# Stage 1: Build the NestJS application
-FROM node:18-alpine as build
+```dockerfile
+# Stage 1: Build Node.js application
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package.json ./
-COPY package-lock.json ./
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package*.json ./
+
+# Install dependencies
 RUN npm install
 
-# Copy source code and build
+# Copy the rest of the application code
 COPY . .
-RUN npm run build
 
-# Stage 2: Run the production application
+# Run tests (optional for build stage, can be done in CI/CD)
+# RUN npm test
+
+# Build any frontend assets if this was a monolithic app (not applicable for separate frontend)
+# RUN npm run build
+
+# Stage 2: Production-ready image
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install production dependencies only
-COPY package.json ./
-COPY package-lock.json ./
-RUN npm install --only=production
+# Copy node_modules from builder stage
+COPY --from=builder /app/node_modules ./node_modules
 
-# Copy built application from the build stage
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/.env.development ./
-COPY --from=build /app/.env ./ # Copy default .env as fallback
-COPY --from=build /app/nest-cli.json ./ # Needed for TypeORM CLI scripts at runtime
-COPY --from=build /app/src/database/typeorm.config.ts ./src/database/typeorm.config.ts
-COPY --from=build /app/src/database/seed.ts ./src/database/seed.ts
-
-# Create an 'uploads' directory for storing files (datasets/models)
-RUN mkdir -p uploads
-# Create a 'logs' directory for storing logs
-RUN mkdir -p logs
+# Copy only necessary application files for production
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/seeders ./seeders
+COPY --from=builder /app/.sequelizerc ./
+COPY --from=builder /app/package*.json ./
 
 # Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 5000
 
-# Set environment variables (production specific if needed)
-ENV NODE_ENV=production
-# ENV PORT=3000 # Configured via .env or docker-compose
-
-# Run migrations and seed data before starting the app
-# Use a custom entrypoint script to handle this
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-ENTRYPOINT ["docker-entrypoint.sh"]
-
-# Start the application
-CMD ["npm", "run", "start:prod"]
+# Run database migrations and then start the application
+# In a real production environment, migrations and seeding are often
+# separate steps orchestrated by the CI/CD pipeline or a dedicated
+# migration service before the application containers start.
+# This approach is suitable for simple deployments or dev setups.
+CMD ["sh", "-c", "npx sequelize db:migrate && npx sequelize db:seed:all && npm start"]
 ```
-
-### `backend/docker-entrypoint.sh`
-
-```bash

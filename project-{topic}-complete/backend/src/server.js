@@ -1,31 +1,47 @@
-require('dotenv').config();
+```javascript
 const app = require('./app');
-const sequelize = require('./config/database');
-const logger = require('./config/logger');
+const { sequelize } = require('./config/db');
+const logger = require('./utils/logger');
+const config = require('./config/config');
 
-const PORT = process.env.PORT || 5000;
+const PORT = config.port;
 
-async function startServer() {
-  try {
-    // Test database connection and apply migrations
-    await sequelize.authenticate();
-    logger.info('Database connection has been established successfully.');
+const startServer = async () => {
+    try {
+        // Connect to the database
+        await sequelize.authenticate();
+        logger.info('Database connected successfully.');
 
-    // Apply migrations
-    // In production, migrations are often run as a separate step.
-    // For simplicity in this comprehensive example, we run them on server start.
-    // Consider using `npx sequelize-cli db:migrate` in CI/CD or deployment scripts.
-    await sequelize.sync({ alter: true }); // 'alter: true' will modify tables to reflect model changes without dropping data.
-                                         // Use `force: true` for development to drop and recreate tables.
-    logger.info('Database synchronized (migrations applied or schema updated).');
+        // Apply migrations (optional, can be done separately in CI/CD)
+        // For development convenience, we can run migrations here.
+        // In production, migrations should typically be run as a separate step
+        // before the application starts, to avoid race conditions or errors
+        // during scaling.
+        // await sequelize.sync({ alter: true }); // Use `alter: true` for schema changes, `force: true` to drop and recreate
+        // logger.info('Database migrations applied (if any).');
 
-    app.listen(PORT, () => {
-      logger.info(`Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    logger.error('Unable to connect to the database or start the server:', error);
-    process.exit(1); // Exit process with failure
-  }
-}
+        // Start the Express server
+        app.listen(PORT, () => {
+            logger.info(`Server running on port ${PORT} in ${config.env} mode`);
+            logger.info(`API Documentation: /${config.apiVersion}/docs (if enabled)`);
+        });
+    } catch (error) {
+        logger.error('Failed to connect to the database or start server:', error);
+        process.exit(1); // Exit process with failure
+    }
+};
 
 startServer();
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught Exception:', error);
+    process.exit(1);
+});
+```

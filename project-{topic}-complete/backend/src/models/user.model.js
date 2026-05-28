@@ -1,46 +1,81 @@
 ```javascript
-const db = require('../db');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
-class User {
-    static table = 'users';
-
-    static async create(username, email, password, role = 'user') {
-        const passwordHash = await bcrypt.hash(password, 10);
-        const [user] = await db(User.table).insert({
-            username,
-            email,
-            password_hash: passwordHash,
-            role,
-        }, ['id', 'username', 'email', 'role']);
-        return user;
-    }
-
-    static async findById(id) {
-        return db(User.table).select('id', 'username', 'email', 'role', 'created_at', 'updated_at').where({ id }).first();
-    }
-
-    static async findByEmail(email) {
-        return db(User.table).select('id', 'username', 'email', 'role', 'password_hash').where({ email }).first();
-    }
-
-    static async update(id, data) {
-        if (data.password) {
-            data.password_hash = await bcrypt.hash(data.password, 10);
-            delete data.password;
+module.exports = (sequelize, DataTypes) => {
+    const User = sequelize.define('User', {
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: () => uuidv4(),
+            primaryKey: true,
+            allowNull: false,
+            unique: true
+        },
+        username: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: true,
+            validate: {
+                len: {
+                    args: [3, 30],
+                    msg: 'Username must be between 3 and 30 characters.'
+                }
+            }
+        },
+        email: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: true,
+            validate: {
+                isEmail: {
+                    msg: 'Please enter a valid email address.'
+                }
+            }
+        },
+        password: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            validate: {
+                len: {
+                    args: [6, 255],
+                    msg: 'Password must be at least 6 characters long.'
+                }
+            }
+        },
+        role: {
+            type: DataTypes.ENUM('user', 'admin'),
+            defaultValue: 'user',
+            allowNull: false
         }
-        await db(User.table).where({ id }).update({ ...data, updated_at: db.fn.now() });
-        return this.findById(id);
-    }
+    }, {
+        tableName: 'users',
+        timestamps: true,
+        hooks: {
+            beforeCreate: async (user) => {
+                if (user.password) {
+                    const salt = await bcrypt.genSalt(10);
+                    user.password = await bcrypt.hash(user.password, salt);
+                }
+            },
+            beforeUpdate: async (user) => {
+                if (user.changed('password')) {
+                    const salt = await bcrypt.genSalt(10);
+                    user.password = await bcrypt.hash(user.password, salt);
+                }
+            }
+        }
+    });
 
-    static async delete(id) {
-        return db(User.table).where({ id }).del();
-    }
+    User.prototype.comparePassword = async function (candidatePassword) {
+        return bcrypt.compare(candidatePassword, this.password);
+    };
 
-    static async comparePassword(candidatePassword, userPasswordHash) {
-        return bcrypt.compare(candidatePassword, userPasswordHash);
-    }
-}
+    User.associate = (models) => {
+        User.hasOne(models.Cart, { foreignKey: 'userId', as: 'cart' });
+        User.hasMany(models.Order, { foreignKey: 'userId', as: 'orders' });
+        User.hasMany(models.Review, { foreignKey: 'userId', as: 'reviews' });
+    };
 
-module.exports = User;
+    return User;
+};
 ```

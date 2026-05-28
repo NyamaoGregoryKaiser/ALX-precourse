@@ -1,57 +1,85 @@
-import React, { useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+```javascript
+import React, { useContext } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import Header from './components/Layout/Header';
+import Footer from './components/Layout/Footer';
+import HomePage from './pages/HomePage';
+import ProductListPage from './pages/ProductListPage';
+import ProductDetailPage from './pages/ProductDetailPage';
+import CartPage from './pages/CartPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
-import ProjectsPage from './pages/ProjectsPage';
-import TasksPage from './pages/TasksPage';
-import UserProfilePage from './pages/UserProfilePage';
-import NotFoundPage from './pages/NotFoundPage';
-import Layout from './components/Layout';
-import ProtectedRoute from './components/ProtectedRoute';
-import { useAuth } from './contexts/AuthContext';
+import ProfilePage from './pages/ProfilePage';
+import CheckoutPage from './pages/CheckoutPage';
+import OrderHistoryPage from './pages/OrderHistoryPage';
+import { AuthContext } from './context/AuthContext'; // Import AuthContext
 
-function App() {
-  const { isAuthenticated, isLoading, checkAuth } = useAuth();
-  const navigate = useNavigate();
+// A simple PrivateRoute component
+const PrivateRoute = ({ children, allowedRoles = [] }) => {
+  const { authState } = useContext(AuthContext);
 
-  useEffect(() => {
-    // Initial authentication check on app load
-    // This can be used to re-validate token or fetch user details
-    checkAuth();
-  }, [checkAuth]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        Loading application...
-      </div>
-    );
+  if (!authState.isAuthenticated) {
+    // Not logged in, redirect to login page
+    return <Navigate to="/login" replace />;
   }
 
+  if (allowedRoles.length > 0 && !allowedRoles.includes(authState.user.role)) {
+    // Logged in but not authorized for this role, redirect to home or unauthorized page
+    return <Navigate to="/" replace />; // Or a dedicated unauthorized page
+  }
+
+  return children;
+};
+
+function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
-        {/* Public Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+    <div className="App">
+      <Header />
+      <main className="container mt-4">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/products" element={<ProductListPage />} />
+          <Route path="/products/:id" element={<ProductDetailPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
 
-        {/* Protected Routes */}
-        <Route path="/" element={<ProtectedRoute isAuthenticated={isAuthenticated} />}>
-          <Route index element={<DashboardPage />} /> {/* Default route after login */}
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<ProjectsPage />} /> {/* For specific project view */}
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/tasks/:taskId" element={<TasksPage />} /> {/* For specific task view */}
-          <Route path="/profile" element={<UserProfilePage />} />
-        </Route>
+          {/* Protected Routes */}
+          <Route path="/cart" element={
+            <PrivateRoute>
+              <CartPage />
+            </PrivateRoute>
+          } />
+          <Route path="/checkout" element={
+            <PrivateRoute>
+              <CheckoutPage />
+            </PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute>
+              <ProfilePage />
+            </PrivateRoute>
+          } />
+          <Route path="/orders" element={
+            <PrivateRoute>
+              <OrderHistoryPage />
+            </PrivateRoute>
+          } />
 
-        {/* Catch-all for 404 */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+          {/* Admin Routes Example */}
+          <Route path="/admin/dashboard" element={
+            <PrivateRoute allowedRoles={['admin']}>
+              <div>Admin Dashboard (Placeholder)</div>
+            </PrivateRoute>
+          } />
+          {/* ... other admin routes ... */}
+
+          <Route path="*" element={<h2>404 Not Found</h2>} /> {/* Catch-all for undefined routes */}
+        </Routes>
+      </main>
+      <Footer />
+    </div>
   );
 }
 
 export default App;
+```
