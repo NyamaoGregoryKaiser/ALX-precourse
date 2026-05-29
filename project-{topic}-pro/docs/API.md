@@ -1,309 +1,275 @@
-# ALXPay API Documentation
+```markdown
+# E-commerce API Documentation
 
-This document describes the RESTful API endpoints for the ALXPay payment processing system.
+This document outlines the RESTful API endpoints for the E-commerce Solution System.
+The API follows a standard REST convention for resource manipulation and is protected with JWT authentication.
 
-## Base URL
-
-`http://localhost:5000/api` (or your deployed backend URL)
+**Base URL:** `http://localhost:5000/api/v1` (or `http://localhost/api/v1` if using Nginx)
 
 ## Authentication
 
-All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token:
+Authentication is performed using JSON Web Tokens (JWT).
+Upon successful login or registration, the API returns `accessToken` and `refreshToken`.
+The `accessToken` should be included in the `Authorization` header of subsequent requests as a Bearer token.
 
-`Authorization: Bearer <YOUR_JWT_TOKEN>`
+**Header Example:**
+`Authorization: Bearer <accessToken>`
 
-## Error Handling
-
-API errors are returned in a consistent JSON format:
-
-```json
-{
-  "status": "fail" | "error",
-  "message": "Error description",
-  "statusCode": 4xx | 5xx,
-  "stack": "..." // Only in development mode
-}
-```
-
-*   `status`: `"fail"` for operational errors (e.g., validation), `"error"` for server-side exceptions.
-*   `statusCode`: HTTP status code.
+### Endpoints
 
 ---
 
-## 1. Authentication Endpoints (`/api/auth`)
+### 1. Auth
 
-### 1.1 Register User
-
-*   `POST /api/auth/register`
-*   **Description:** Creates a new user account.
-*   **Rate Limit:** 10 requests per 5 minutes per IP.
-*   **Request Body:**
-    ```json
-    {
-      "email": "user@example.com",
-      "password": "strongpassword123",
-      "role": "user" | "merchant" | "admin" // Optional, defaults to "user"
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "status": "success",
-      "token": "eyJhbGciOiJIUzI1Ni...",
-      "data": {
-        "user": {
-          "id": "uuid-of-user",
-          "email": "user@example.com",
-          "role": "user"
+*   **`POST /auth/register`**
+    *   **Description**: Register a new user.
+    *   **Access**: Public
+    *   **Request Body**:
+        ```json
+        {
+          "firstName": "John",
+          "lastName": "Doe",
+          "email": "john.doe@example.com",
+          "password": "Password123!"
         }
-      }
-    }
-    ```
-*   **Errors:** `400 Bad Request` (missing fields), `409 Conflict` (email already exists).
-
-### 1.2 Login User
-
-*   `POST /api/auth/login`
-*   **Description:** Authenticates a user and returns a JWT token.
-*   **Rate Limit:** 10 requests per 5 minutes per IP.
-*   **Request Body:**
-    ```json
-    {
-      "email": "user@example.com",
-      "password": "strongpassword123"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "token": "eyJhbGciOiJIUzI1Ni...",
-      "data": {
-        "user": {
-          "id": "uuid-of-user",
-          "email": "user@example.com",
-          "role": "user"
+        ```
+    *   **Response**:
+        ```json
+        {
+          "user": {
+            "id": "uuid",
+            "firstName": "John",
+            "lastName": "Doe",
+            "email": "john.doe@example.com",
+            "role": "user",
+            "isEmailVerified": false,
+            "createdAt": "timestamp",
+            "updatedAt": "timestamp"
+          },
+          "tokens": {
+            "access": {
+              "token": "jwt_token",
+              "expires": "timestamp"
+            },
+            "refresh": {
+              "token": "jwt_token",
+              "expires": "timestamp"
+            }
+          }
         }
-      }
-    }
-    ```
-*   **Errors:** `400 Bad Request` (missing fields), `401 Unauthorized` (invalid credentials).
+        ```
+    *   **Error Codes**: `400 Bad Request` (e.g., email already taken, invalid input)
 
-### 1.3 Get Current User Profile
-
-*   `GET /api/auth/me`
-*   **Description:** Retrieves the profile of the authenticated user.
-*   **Authentication:** Required (Bearer Token)
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "user": {
-          "id": "uuid-of-user",
-          "email": "user@example.com",
-          "role": "user",
-          "isEmailVerified": true,
-          "createdAt": "2023-10-27T10:00:00.000Z",
-          "updatedAt": "2023-10-27T10:00:00.000Z"
+*   **`POST /auth/login`**
+    *   **Description**: Authenticate user and get access and refresh tokens.
+    *   **Access**: Public
+    *   **Request Body**:
+        ```json
+        {
+          "email": "john.doe@example.com",
+          "password": "Password123!"
         }
-      }
-    }
-    ```
-*   **Errors:** `401 Unauthorized` (no token/invalid token), `404 Not Found` (user not found, though unlikely after auth).
+        ```
+    *   **Response**: Same as register response, but without `isEmailVerified` initially.
+    *   **Error Codes**: `401 Unauthorized` (incorrect email/password)
+
+*   **`POST /auth/logout`**
+    *   **Description**: Invalidate the current access token. (Note: Refresh token remains valid until expiry or explicit invalidation).
+    *   **Access**: Authenticated User
+    *   **Response**: `204 No Content`
+
+*   **`POST /auth/refresh-tokens`**
+    *   **Description**: Generate new access and refresh tokens using a valid refresh token.
+    *   **Access**: Public (requires a valid refresh token in the request body or Authorization header)
+    *   **Request Body**:
+        ```json
+        {
+          "refreshToken": "your_refresh_token_here"
+        }
+        ```
+    *   **Response**:
+        ```json
+        {
+          "user": { /* user details */ },
+          "tokens": {
+            "access": {
+              "token": "new_access_token",
+              "expires": "timestamp"
+            },
+            "refresh": {
+              "token": "new_refresh_token",
+              "expires": "timestamp"
+            }
+          }
+        }
+        ```
+    *   **Error Codes**: `401 Unauthorized` (invalid or expired refresh token)
 
 ---
 
-## 2. Payment Endpoints (`/api/payments`)
+### 2. Users
 
-### 2.1 Initiate a Payment
-
-*   `POST /api/payments/initiate`
-*   **Description:** Creates a new payment request, marking it as `initiated`. This is the first step before actual processing.
-*   **Authentication:** Required (Bearer Token) - `MERCHANT` or `ADMIN` roles.
-*   **Request Body:**
-    ```json
-    {
-      "merchantId": "uuid-of-merchant",
-      "amount": 100.50,
-      "currency": "USD",
-      "method": "card" | "bank_transfer" | "ussd" | "wallet",
-      "customerEmail": "customer@email.com",
-      "metadata": { // Optional: additional payment details
-        "productName": "ALX Course",
-        "quantity": 1
-      }
-    }
-    ```
-*   **Response (202 Accepted):**
-    ```json
-    {
-      "status": "success",
-      "message": "Payment initiation successful. Awaiting processing.",
-      "data": {
-        "payment": {
-          "id": "uuid-of-payment",
-          "amount": "100.50",
-          "currency": "USD",
-          "status": "initiated",
-          "method": "card",
-          "customerEmail": "customer@email.com",
-          "metadata": { ... },
-          "merchant": { "id": "uuid-of-merchant", "name": "ALX Store" },
-          "createdAt": "2023-10-27T10:00:00.000Z"
+*   **`GET /users`**
+    *   **Description**: Get a list of all users. Can be filtered and paginated.
+    *   **Access**: Admin
+    *   **Query Parameters**: `firstName`, `lastName`, `email`, `role`, `sortBy`, `limit`, `page`.
+    *   **Response**: Paginated user list.
+        ```json
+        {
+          "results": [{ ...user_object }, ...],
+          "totalResults": 100,
+          "page": 1,
+          "limit": 10,
+          "totalPages": 10
         }
-      }
-    }
-    ```
-*   **Errors:** `400 Bad Request` (invalid input, amount <= 0, invalid method), `401 Unauthorized`, `403 Forbidden` (user not authorized), `404 Not Found` (merchant not found).
+        ```
 
-### 2.2 Process Payment Webhook (Callback from Gateway)
+*   **`GET /users/:userId`**
+    *   **Description**: Get user details by ID.
+    *   **Access**: Admin or Owner of the user ID.
+    *   **Response**: `200 OK` with user object. `404 Not Found` if user doesn't exist.
 
-*   `POST /api/payments/process-webhook`
-*   **Description:** This endpoint is designed to be called by an external payment gateway to notify ALXPay about the final status of an initiated payment. **Does not require JWT authentication for this demo, but a real system would use HMAC signature verification and IP whitelisting for security.**
-*   **Authentication:** None (external system authentication via HMAC recommended).
-*   **Request Body:**
-    ```json
-    {
-      "paymentId": "uuid-of-payment-initiated-earlier",
-      "externalId": "id-from-external-gateway",
-      "status": "success" | "failed" | "pending" | "cancelled",
-      "message": "Optional message from gateway (e.g., 'Approved', 'Insufficient Funds')"
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "message": "Payment uuid-of-payment updated to success",
-      "data": {
-        "payment": {
-          "id": "uuid-of-payment",
-          "amount": "100.50",
-          "currency": "USD",
-          "status": "success", // Updated status
-          "method": "card",
-          "externalId": "id-from-external-gateway",
-          "customerEmail": "customer@email.com",
-          // ... other payment details
-        }
-      }
-    }
-    ```
-*   **Errors:** `400 Bad Request` (missing fields, invalid status), `404 Not Found` (payment not found).
+*   **`PATCH /users/:userId`**
+    *   **Description**: Update user details by ID.
+    *   **Access**: Admin or Owner of the user ID (limited fields). Admin can update more fields including role.
+    *   **Request Body**: `{ "firstName": "NewName", "email": "new@example.com", ... }`
+    *   **Response**: `200 OK` with updated user object.
+    *   **Error Codes**: `403 Forbidden` (non-admin trying to change role), `400 Bad Request` (email already taken).
 
-### 2.3 Get Payment Details
-
-*   `GET /api/payments/:id`
-*   **Description:** Retrieves details for a specific payment.
-*   **Authentication:** Required (Bearer Token) - `MERCHANT` (for their own payments) or `ADMIN` roles.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "data": {
-        "payment": {
-          "id": "uuid-of-payment",
-          "amount": "100.50",
-          "currency": "USD",
-          "status": "success",
-          "method": "card",
-          "externalId": "id-from-external-gateway",
-          "metadata": { ... },
-          "customerEmail": "customer@email.com",
-          "merchant": { "id": "uuid-of-merchant", "name": "ALX Store" },
-          "createdAt": "2023-10-27T10:00:00.000Z",
-          "updatedAt": "2023-10-27T10:05:00.000Z"
-        }
-      }
-    }
-    ```
-*   **Errors:** `401 Unauthorized`, `403 Forbidden` (not authorized to view this payment), `404 Not Found`.
-
-### 2.4 Get All Payments for a Merchant
-
-*   `GET /api/payments/merchant/:merchantId`
-*   **Description:** Retrieves a list of all payments associated with a specific merchant.
-*   **Authentication:** Required (Bearer Token) - `MERCHANT` (for their own merchant) or `ADMIN` roles.
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "results": 2,
-      "data": {
-        "payments": [
-          { "id": "payment-uuid-1", "amount": "50.00", ... },
-          { "id": "payment-uuid-2", "amount": "75.00", ... }
-        ]
-      }
-    }
-    ```
-*   **Errors:** `401 Unauthorized`, `403 Forbidden` (not authorized to view payments for this merchant), `404 Not Found` (merchant ID not found).
-
-### 2.5 Refund a Payment
-
-*   `POST /api/payments/:id/refund`
-*   **Description:** Initiates a refund for a successful payment.
-*   **Authentication:** Required (Bearer Token) - `MERCHANT` (for their own payments) or `ADMIN` roles.
-*   **Request Body:**
-    ```json
-    {
-      "amount": 25.00 // The amount to refund. Must be > 0 and <= original payment amount.
-      // "merchantId": "uuid-of-merchant" // Optional, but useful for cache invalidation.
-    }
-    ```
-*   **Response (200 OK):**
-    ```json
-    {
-      "status": "success",
-      "message": "Payment uuid-of-payment successfully refunded for 25.00 USD",
-      "data": {
-        "payment": {
-          "id": "uuid-of-payment",
-          "amount": "100.50",
-          "currency": "USD",
-          "status": "refunded", // Status changed to refunded
-          // ... other payment details
-        }
-      }
-    }
-    ```
-*   **Errors:** `400 Bad Request` (invalid amount, payment not successful, insufficient merchant balance), `401 Unauthorized`, `403 Forbidden`, `404 Not Found`.
+*   **`DELETE /users/:userId`**
+    *   **Description**: Delete a user by ID.
+    *   **Access**: Admin
+    *   **Response**: `204 No Content`
 
 ---
 
-## 3. Webhook Endpoints (Example - Merchant-side)
+### 3. Products
 
-This system *sends* webhooks. A merchant's system would have an endpoint to *receive* them. Below is an example of what a merchant's endpoint might look like.
+*   **`POST /products`**
+    *   **Description**: Create a new product.
+    *   **Access**: Admin
+    *   **Request Body**:
+        ```json
+        {
+          "name": "New Gadget",
+          "description": "A cool new gadget.",
+          "price": 49.99,
+          "stockQuantity": 100,
+          "imageUrl": "https://example.com/gadget.jpg",
+          "categoryId": "uuid_of_category"
+        }
+        ```
+    *   **Response**: `201 Created` with product object.
 
-### 3.1 Receive Payment Success Webhook
+*   **`GET /products`**
+    *   **Description**: Get a list of all products. Supports filtering, pagination, sorting, and population of related `category`.
+    *   **Access**: Public (cached)
+    *   **Query Parameters**: `name`, `categoryId`, `minPrice`, `maxPrice`, `availability`, `sortBy`, `limit`, `page`, `populate=category`.
+    *   **Response**: Paginated product list.
 
-*   `POST /webhooks` (example URL on a merchant's server)
-*   **Description:** An example endpoint a merchant would expose to receive payment success notifications from ALXPay.
-*   **Request Body (Example from ALXPay):**
-    ```json
-    {
-      "eventType": "payment.success",
-      "resourceId": "uuid-of-payment",
-      "payload": {
-        "paymentId": "uuid-of-payment",
-        "merchantId": "uuid-of-merchant",
-        "amount": 100.50,
-        "currency": "USD",
-        "status": "success",
-        "customerEmail": "customer@email.com",
-        "metadata": { "orderId": "ORD-123" }
-      },
-      "webhookUrl": "http://localhost:3001/webhooks",
-      "merchantId": "uuid-of-merchant",
-      "status": "pending",
-      "createdAt": "2023-10-27T10:00:00.000Z"
-    }
-    ```
-*   **Expected Response:** `200 OK` (to acknowledge receipt and prevent retries)
-*   **Security Note:** Merchant should verify the webhook's authenticity (e.g., using `X-Webhook-Signature` header and `WEBHOOK_SECRET`).
+*   **`GET /products/:productId`**
+    *   **Description**: Get product details by ID.
+    *   **Access**: Public (cached)
+    *   **Response**: `200 OK` with product object.
+
+*   **`PATCH /products/:productId`**
+    *   **Description**: Update product details by ID.
+    *   **Access**: Admin
+    *   **Request Body**: `{ "price": 55.00, "stockQuantity": 90, ... }`
+    *   **Response**: `200 OK` with updated product object.
+
+*   **`DELETE /products/:productId`**
+    *   **Description**: Delete a product by ID.
+    *   **Access**: Admin
+    *   **Response**: `204 No Content`
 
 ---
 
-*(Additional sections for Merchants CRUD, Users CRUD, etc. would follow here in a complete system)*
+### 4. Categories
+
+*   **`POST /products/categories`**
+    *   **Description**: Create a new product category.
+    *   **Access**: Admin
+    *   **Request Body**: `{ "name": "Electronics", "description": "Electronic gadgets and devices" }`
+    *   **Response**: `201 Created` with category object.
+
+*   **`GET /products/categories`**
+    *   **Description**: Get a list of all categories.
+    *   **Access**: Public (cached)
+    *   **Response**: Array of category objects.
+
+*   **`GET /products/categories/:categoryId`**
+    *   **Description**: Get category details by ID.
+    *   **Access**: Public (cached)
+    *   **Response**: `200 OK` with category object.
+
+*   **`PATCH /products/categories/:categoryId`**
+    *   **Description**: Update category details by ID.
+    *   **Access**: Admin
+    *   **Request Body**: `{ "name": "Consumer Electronics" }`
+    *   **Response**: `200 OK` with updated category object.
+
+*   **`DELETE /products/categories/:categoryId`**
+    *   **Description**: Delete a category by ID. Products associated with this category will have their `categoryId` set to `NULL`.
+    *   **Access**: Admin
+    *   **Response**: `204 No Content`
+
+---
+
+### 5. Orders
+
+*   **`POST /orders`**
+    *   **Description**: Create a new order. Deducts stock quantities.
+    *   **Access**: Authenticated User
+    *   **Request Body**:
+        ```json
+        {
+          "items": [
+            { "productId": "uuid1", "quantity": 1 },
+            { "productId": "uuid2", "quantity": 2 }
+          ],
+          "shippingAddress": {
+            "street": "123 Main St",
+            "city": "Anytown",
+            "state": "Anystate",
+            "zipCode": "12345",
+            "country": "USA"
+          },
+          "paymentMethod": "credit_card"
+        }
+        ```
+    *   **Response**: `201 Created` with order object.
+    *   **Error Codes**: `400 Bad Request` (insufficient stock, invalid items), `404 Not Found` (product not found).
+
+*   **`GET /orders`**
+    *   **Description**: Get a list of orders. Users can view their own orders. Admins can view all orders and filter by `userId`.
+    *   **Access**: Authenticated User or Admin
+    *   **Query Parameters**: `userId` (Admin only), `status`, `paymentStatus`, `sortBy`, `limit`, `page`, `populate=user,orderItems,orderItems.product`.
+    *   **Response**: Paginated order list.
+
+*   **`GET /orders/:orderId`**
+    *   **Description**: Get order details by ID.
+    *   **Access**: Owner of the order or Admin.
+    *   **Response**: `200 OK` with order object including `user` and `orderItems`.
+
+*   **`PATCH /orders/:orderId/status`**
+    *   **Description**: Update the status of an order (e.g., `processing`, `shipped`, `delivered`).
+    *   **Access**: Admin
+    *   **Request Body**: `{ "status": "shipped" }`
+    *   **Response**: `200 OK` with updated order object.
+    *   **Error Codes**: `400 Bad Request` (invalid status, invalid state transition), `404 Not Found`.
+
+*   **`PATCH /orders/:orderId/payment-status`**
+    *   **Description**: Update the payment status of an order (e.g., `paid`, `refunded`).
+    *   **Access**: Admin (or triggered by payment gateway webhooks).
+    *   **Request Body**: `{ "paymentStatus": "paid" }`
+    *   **Response**: `200 OK` with updated order object.
+
+*   **`PATCH /orders/:orderId/cancel`**
+    *   **Description**: Cancel an order and restore product stock.
+    *   **Access**: Owner of the order or Admin.
+    *   **Response**: `200 OK` with updated order object (status set to `cancelled`).
+    *   **Error Codes**: `400 Bad Request` (cannot cancel delivered orders).
+
+---
 ```

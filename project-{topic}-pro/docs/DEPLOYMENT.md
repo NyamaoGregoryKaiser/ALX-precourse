@@ -1,275 +1,303 @@
-# ALXPay Deployment Guide
+```markdown
+# Deployment Guide for E-commerce System
 
-This guide provides instructions for deploying the ALXPay system to a production environment using Docker and Docker Compose. For more advanced deployments (e.g., Kubernetes), these steps can be adapted.
-
-## Table of Contents
-
-1.  [Prerequisites](#prerequisites)
-2.  [Production Environment Setup](#production-environment-setup)
-3.  [Configuration](#configuration)
-    *   [Backend .env](#backend-env)
-    *   [Frontend .env](#frontend-env)
-4.  [Building and Deploying with Docker Compose](#building-and-deploying-with-docker-compose)
-5.  [Post-Deployment Steps](#post-deployment-steps)
-    *   [Database Migrations](#database-migrations)
-    *   [Database Seeding](#database-seeding)
-    *   [Webhook Processing](#webhook-processing)
-6.  [Monitoring and Logging](#monitoring-and-logging)
-7.  [Scaling](#scaling)
-8.  [CI/CD with GitHub Actions](#cicd-with-github-actions)
+This guide outlines the steps to deploy the E-commerce Solution System to a production environment. We assume a cloud environment (e.g., AWS, GCP, Azure) where you have access to a Linux server (VM or container instance) and a domain name.
 
 ## 1. Prerequisites
 
-*   A Linux server (e.g., Ubuntu, CentOS)
-*   Git installed
-*   Docker installed (`sudo apt-get install docker.io`)
-*   Docker Compose installed (`sudo apt-get install docker-compose`)
-*   SSH access to your server
-*   Domain name configured with DNS records pointing to your server's IP.
-*   (Optional but Recommended) Nginx installed on the host or as a separate container for reverse proxy and SSL termination.
+*   **Cloud Provider Account**: AWS, GCP, Azure, DigitalOcean, etc.
+*   **Domain Name**: Purchased and configured with DNS records.
+*   **Server (VM/EC2/Droplet)**:
+    *   Linux OS (Ubuntu, CentOS recommended)
+    *   Docker and Docker Compose installed.
+    *   Minimum 2GB RAM (4GB recommended), 2 vCPU for a small-scale deployment.
+*   **SSH Access** to your server.
+*   **Git** installed on your local machine and server.
+*   **SSL Certificates**: Obtain free certificates from Let's Encrypt (using Certbot) or purchase from a CA.
 
-## 2. Production Environment Setup
+## 2. Server Setup
 
-1.  **SSH into your server:**
-    ```bash
-    ssh user@your_server_ip
-    ```
+**2.1. Connect to your server:**
 
-2.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/alxpay-system.git
-    cd alxpay-system
-    ```
-
-## 3. Configuration
-
-### Backend `.env`
-
-Create a `.env` file in the `alxpay-system/backend` directory. **Crucially, fill in strong, unique secrets and production-ready database/Redis credentials.**
-
-```dotenv
-# Backend/.env (example production values)
-PORT=5000
-NODE_ENV=production
-
-# Database (PostgreSQL) - Use external managed DB if possible or ensure strong passwords
-DB_HOST=postgres # If running as docker-compose service
-# DB_HOST=your_managed_db_host.com # If using external cloud DB
-DB_PORT=5432
-DB_USER=alxpay_prod_user
-DB_PASSWORD=YOUR_VERY_STRONG_DB_PASSWORD
-DB_NAME=alxpay_production
-DB_SSL=false # Set to true if connecting to a cloud DB requiring SSL
-
-# JWT Authentication - GENERATE A LONG, RANDOM, UNIQUE KEY
-JWT_SECRET=super_long_random_jwt_secret_for_production_env
-JWT_EXPIRES_IN=7d
-REFRESH_TOKEN_SECRET=super_long_random_refresh_token_secret_for_production_env
-
-# Hashing
-HASH_SALT_ROUNDS=12 # Higher rounds for production
-
-# Redis Cache & Rate Limiting - Use external managed Redis if possible
-REDIS_URL=redis://redis:6379 # If running as docker-compose service
-# REDIS_URL=redis://your_managed_redis_host.com:6379 # If using external cloud Redis
-
-# External Payment Gateway URL (Replace with actual production URL)
-PAYMENT_GATEWAY_URL=https://api.stripe.com/v1 # Or Paystack/Flutterwave etc.
-
-# Webhook Secret - GENERATE A LONG, RANDOM, UNIQUE KEY
-WEBHOOK_SECRET=super_long_random_webhook_secret_for_production
-
-# Other settings
-MAX_PAYMENT_AMOUNT=500000
-FRONTEND_URL=https://your-frontend-domain.com
+```bash
+ssh user@your_server_ip
 ```
 
-### Frontend `.env`
+**2.2. Update system and install necessary packages:**
 
-Create a `.env` file in the `alxpay-system/frontend` directory.
-
-```dotenv
-# Frontend/.env
-NODE_ENV=production
-REACT_APP_API_BASE_URL=https://api.your-domain.com/api # Points to your Nginx proxy that routes to backend
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl git
 ```
 
-## 4. Building and Deploying with Docker Compose
+**2.3. Install Docker:**
 
-1.  **Ensure `.env` files are correctly set up** in both `backend` and `frontend` directories.
-    *   **Crucial:** For production, you might want to remove the `volumes` for `./backend` and `./frontend` in `docker-compose.yml` to ensure that only the built images are used, and no local changes overwrite the container's files.
-    *   Modify the `command` for `backend` service in `docker-compose.yml` from `npm run dev` to `npm run start` or `node dist/server.js`. Also consider making migrations/seeds a separate `exec` step, not part of the `command`.
+Follow the official Docker installation guide for your Linux distribution.
+Example for Ubuntu:
+```bash
+sudo apt-get install ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=\"$(dpkg --print-architecture)\" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
 
-    **Modified `docker-compose.yml` (for production):**
-    ```yaml
-    # ... (other services like postgres, redis)
-    backend:
-      build:
-        context: ./backend
-        dockerfile: Dockerfile
-      container_name: alxpay_backend
-      environment:
-        # ... your .env variables here ...
-      ports:
-        - "5000:5000" # Expose internally, Nginx will handle external
-      depends_on:
-        postgres: { condition: service_healthy }
-        redis: { condition: service_healthy }
-      # Remove volumes for production to avoid local code overriding built image
-      # volumes:
-      #   - ./backend:/app
-      #   - /app/node_modules
-      command: sh -c "npm install --production && npm run start" # Install only production deps and start
-      # Alternatively, use a multi-stage build in Dockerfile to copy only build artifacts.
-      restart: always
+**2.4. Add your user to the `docker` group (to run Docker without `sudo`):**
 
-    frontend:
-      build:
-        context: ./frontend
-        dockerfile: Dockerfile
-      container_name: alxpay_frontend
-      environment:
-        # ... your .env variables here ...
-      # Remove volumes for production
-      # volumes:
-      #   - ./frontend:/app
-      #   - /app/node_modules
-      # Frontend typically runs behind Nginx. Only expose to Nginx internally.
-      # ports:
-      #   - "3000:3000"
-      restart: always
+```bash
+sudo usermod -aG docker $USER
+newgrp docker # Apply group changes immediately
+```
+*You may need to log out and log back in for the changes to take effect.*
 
-    # Add Nginx service for reverse proxy and SSL
-    nginx:
-      image: nginx:alpine
-      container_name: alxpay_nginx
-      ports:
-        - "80:80"
-        - "443:443"
-      volumes:
-        - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf # Your Nginx config
-        - ./certbot/conf:/etc/letsencrypt # For SSL certificates
-        - ./certbot/www:/var/www/certbot # For SSL challenges
-      depends_on:
-        - backend
-        - frontend
-      command: "/bin/sh -c 'while :; do sleep 6h & wait $!; nginx -s reload; done & nginx -g \"daemon off;\"'"
-      restart: always
-    ```
-    **Example `nginx/nginx.conf`:**
+## 3. Project Deployment
+
+**3.1. Clone the repository to your server:**
+
+```bash
+git clone https://github.com/your-username/ecommerce-system.git
+cd ecommerce-system
+```
+
+**3.2. Configure Environment Variables:**
+
+Create `.env` files in `api/` and `frontend/` directories by copying their `.env.example` counterparts. **Crucially, replace placeholder values with secure, production-ready values.**
+
+`api/.env`:
+*   `NODE_ENV=production`
+*   `PORT=5000` (internal port, Nginx handles external)
+*   `DB_HOST=postgres_db` (Docker service name)
+*   `DB_USER`, `DB_PASSWORD`, `DB_NAME`: **Generate strong, unique credentials.**
+*   `JWT_SECRET`: **Generate a very long, complex, random string.**
+*   `REDIS_HOST=redis_cache` (Docker service name)
+*   `LOG_LEVEL=info` (or `warn`, `error` for less verbose logging)
+
+`frontend/.env`:
+*   `REACT_APP_API_URL=/api/v1` (Relative path, Nginx will handle proxying)
+
+**3.3. Build Frontend for Production:**
+
+Navigate to the `frontend/` directory and build the production-ready static assets.
+```bash
+cd frontend
+npm install
+npm run build
+cd .. # Go back to project root
+```
+This will create a `frontend/build` directory with optimized static files.
+
+**3.4. Configure Nginx for Production:**
+
+**a. Update `docker/nginx/nginx.conf`:**
+*   Change `server_name localhost;` to `server_name your_domain.com www.your_domain.com;`.
+*   Uncomment and modify the `location /` block to serve static files from `frontend/build`.
     ```nginx
-    # nginx/nginx.conf
+    # Existing upstream blocks...
+
     server {
         listen 80;
-        server_name your-domain.com api.your-domain.com;
+        server_name your_domain.com www.your_domain.com;
 
-        location /.well-known/acme-challenge/ {
-            root /var/www/certbot;
+        # Redirect HTTP to HTTPS (RECOMMENDED for production)
+        # return 301 https://$host$request_uri;
+
+        # For serving static frontend files directly
+        location / {
+            root /var/www/frontend; # This path should match your docker-compose volume mount
+            try_files $uri $uri/ /index.html;
         }
 
-        location / {
-            return 301 https://your-domain.com$request_uri;
-        }
-    }
-
-    server {
-        listen 443 ssl;
-        server_name your-domain.com;
-
-        ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-        include /etc/letsencrypt/options-ssl-nginx.conf;
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-        location / {
-            proxy_pass http://frontend:3000;
+        location /api/v1/ {
+            proxy_pass http://api_upstream/api/v1/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 90;
         }
-    }
 
-    server {
-        listen 443 ssl;
-        server_name api.your-domain.com;
-
-        ssl_certificate /etc/letsencrypt/live/api.your-domain.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/api.your-domain.com/privkey.pem;
-        include /etc/letsencrypt/options-ssl-nginx.conf;
-        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-        location /api/ {
-            proxy_pass http://backend:5000/api/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
+        # ... other configurations
     }
     ```
-    You would use Certbot to generate the SSL certificates for your domains.
+*   **Update `docker-compose.yml` for Nginx:**
+    *   Mount the built frontend assets:
+        ```yaml
+        nginx:
+          # ...
+          volumes:
+            - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./frontend/build:/var/www/frontend # <-- Add this line
+        ```
 
-2.  **Build and run the Docker containers:**
-    ```bash
-    docker-compose up -d --build
-    ```
-    *   `-d` runs containers in detached mode (background).
-    *   `--build` rebuilds images to ensure latest code is used.
+**3.5. Update API Dockerfile for Production (Optional but good practice):**
 
-3.  **Verify container status:**
-    ```bash
-    docker-compose ps
-    ```
-    All containers should be `Up` and `healthy`.
+In `docker/api/Dockerfile`, change the `CMD` instruction to run migrations and then start the server in production mode. This ensures dependencies are minimized and the server runs efficiently.
 
-## 5. Post-Deployment Steps
-
-### Database Migrations
-
-It's safer to run migrations as a separate step rather than part of the main `command` in `docker-compose.yml`, especially if you have sensitive data.
-
-1.  **Run migrations:**
-    ```bash
-    docker-compose exec backend npm run typeorm migration:run
-    ```
-
-### Database Seeding (Optional, for initial setup)
-
-1.  **Run seed script:**
-    ```bash
-    docker-compose exec backend npm run seed
-    ```
-    *   **Caution:** This typically clears the database. Use only for initial setup or test environments.
-
-### Webhook Processing
-
-The `WebhookService.processPendingWebhooks` method is designed to be called periodically. In a production environment, you would set up a cron job on your host machine or a dedicated job processing service within your containerized setup.
-
-**Example Cron Job (on host machine):**
-```bash
-# Add to cron: `crontab -e`
-# Run every 5 minutes
-*/5 * * * * cd /path/to/alxpay-system/backend && docker-compose exec backend ts-node src/services/WebhookService.ts processPendingWebhooks > /dev/null 2>&1
+```dockerfile
+# ... (Stage 1 and 2 headers)
+# Last part of Stage 2 (FROM node:18-alpine)
+# ...
+# CMD ["sh", "-c", "npm install && npm run migrate && npm run seed && npm run dev"] # Development command
+CMD ["sh", "-c", "npm install --production && npm run migrate && npm start"] # Production command
 ```
-*(Note: This requires `ts-node` to be installed globally or available in the container and the command to correctly execute the method.)* A better approach would be to expose an internal API endpoint on the backend that a cron job (or another service) can hit, or use a dedicated job queue.
 
-## 6. Monitoring and Logging
+**3.6. Run the Application in Production Mode:**
 
-*   **Logging:** The backend uses `winston` for structured logging. In production, configure `winston` to output to files or directly to a log aggregation service (e.g., ELK stack, Datadog, CloudWatch Logs).
-*   **Container Logs:** `docker-compose logs -f` can be used to view real-time logs from all services.
-*   **Health Checks:** Configure health checks for your containers (already in `docker-compose.yml`) to ensure services are running correctly.
+From the project root:
 
-## 7. Scaling
+```bash
+docker-compose up --build -d
+```
+*   `--build`: Rebuilds images to ensure latest code and production optimizations.
+*   `-d`: Runs containers in detached mode (background).
 
-*   **Horizontal Scaling:** For more traffic, you can scale the `backend` and `frontend` services by running multiple instances. This requires a load balancer (like Nginx configured in `docker-compose.yml`) to distribute traffic.
-    *   `docker-compose up --scale backend=3 -d`
-*   **Database:** For heavy database loads, consider using a managed cloud database service (AWS RDS, Google Cloud SQL) which offers easy scaling, backups, and high availability.
-*   **Redis:** Similarly, use a managed Redis service for high availability and performance.
+**3.7. Verify Deployment:**
 
-## 8. CI/CD with GitHub Actions
+*   Check container status: `docker ps`
+*   View logs for any service: `docker-compose logs api`
+*   Access your domain in a browser: `http://your_domain.com`
 
-The `.github/workflows/main.yml` file provides a basic CI/CD pipeline.
+## 4. HTTPS Setup (Highly Recommended)
 
-**`alxpay-system/.github/workflows/main.yml`**
-```yaml
+For production, you **must** secure your application with HTTPS.
+
+**4.1. Install Certbot (for Let's Encrypt certificates):**
+
+```bash
+sudo snap install core
+sudo snap refresh core
+sudo snap install --classic certbot
+sudo ln -s /snap/bin/certbot /usr/bin/certbot
+```
+
+**4.2. Stop Nginx container to free port 80/443 (if already running):**
+
+```bash
+docker-compose stop nginx
+```
+
+**4.3. Obtain SSL certificates:**
+
+Use Certbot with the `webroot` authenticator. You'll need to specify a directory Nginx can serve for challenge.
+A simpler approach with Nginx already running (requires Nginx plugin for Certbot):
+
+```bash
+sudo certbot --nginx -d your_domain.com -d www.your_domain.com
+```
+Follow the prompts. This will automatically update your Nginx configuration.
+
+**Alternatively (manual with webroot):**
+
+If Certbot's Nginx plugin doesn't work, you can use the `webroot` method. This requires Nginx to serve a `.well-known` directory.
+
+1.  Create a shared volume for Let's Encrypt challenge. Add this to `docker-compose.yml`:
+    ```yaml
+    nginx:
+      volumes:
+        - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        - ./frontend/build:/var/www/frontend
+        - certbot_certs:/etc/letsencrypt # For Certbot
+        - certbot_www:/var/www/certbot # For Certbot webroot challenge
+    # ...
+    volumes:
+      pgdata:
+      redisdata:
+      certbot_certs:
+      certbot_www:
+    ```
+2.  Add a temporary `location /.well-known/acme-challenge/` block to your `nginx.conf` (HTTP server) to serve files from `/var/www/certbot`.
+3.  Restart Nginx container: `docker-compose restart nginx`
+4.  Run Certbot (from host machine):
+    ```bash
+    sudo certbot certonly --webroot -w /path/to/your/project/certbot_www -d your_domain.com -d www.your_domain.com
+    ```
+    Replace `/path/to/your/project/certbot_www` with the host path mapped to `/var/www/certbot` in Docker.
+5.  Once certificates are obtained (usually in `/etc/letsencrypt/live/your_domain.com/`), update `nginx.conf` to configure an HTTPS server block, referencing these paths:
+
+    ```nginx
+    server {
+        listen 443 ssl;
+        server_name your_domain.com www.your_domain.com;
+
+        ssl_certificate /etc/letsencrypt/live/your_domain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/your_domain.com/privkey.pem;
+
+        # Recommended SSL parameters for better security
+        include /etc/nginx/snippets/ssl-params.conf; # You'll need to create this file
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
+        ssl_prefer_server_ciphers on;
+
+        # Force HTTP to HTTPS redirection
+        if ($scheme = http) {
+            return 301 https://$server_name$request_uri;
+        }
+
+        # Frontend static files
+        location / {
+            root /var/www/frontend;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # API proxy
+        location /api/v1/ {
+            proxy_pass http://api_upstream/api/v1/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 90;
+        }
+    }
+    ```
+6.  Create `/etc/nginx/snippets/ssl-params.conf` (on your host machine, then ensure it's mapped into the container):
+    ```nginx
+    ssl_dhparam /etc/nginx/dhparam.pem; # Generate this: sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    ```
+7.  Restart `docker-compose`: `docker-compose up --build -d`
+
+**4.4. Automate Certificate Renewal:**
+
+Let's Encrypt certificates expire after 90 days. Set up a cron job on your host machine to renew them automatically.
+```bash
+sudo crontab -e
+```
+Add the following line:
+```
+0 0 * * * sudo certbot renew --nginx --quiet && docker-compose restart nginx
+```
+This attempts renewal daily at midnight, restarts Nginx if successful.
+
+## 5. Continuous Integration / Continuous Deployment (CI/CD)
+
+See `/.github/workflows/main.yml` for a conceptual GitHub Actions pipeline. For actual deployment, you would extend this to:
+1.  Push images to a container registry (Docker Hub, AWS ECR, GCP GCR).
+2.  SSH into the server.
+3.  Pull the latest images.
+4.  Run migrations.
+5.  Restart containers.
+
+## 6. Monitoring and Maintenance
+
+*   **Logs**: Regularly check logs for all services: `docker-compose logs -f`.
+*   **Health Checks**: Implement more sophisticated health checks for services.
+*   **Backups**: Set up automated backups for your PostgreSQL database.
+*   **Updates**: Keep Docker, Node.js, and other dependencies updated.
+*   **Security Patches**: Apply security patches to your OS and software.
+
+This guide provides a robust starting point for deploying your e-commerce system. Remember to adapt it to your specific cloud provider and requirements.
+```
