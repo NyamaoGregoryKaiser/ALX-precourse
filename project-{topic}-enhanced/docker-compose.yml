@@ -1,58 +1,104 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   db:
-    image: postgres:15-alpine
-    container_name: database_optimizer_db
-    restart: always
+    image: postgres:14-alpine
+    container_name: task-management-db
     environment:
-      POSTGRES_USER: ${DB_USER:-dbo_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-dbo_password_secure}
-      POSTGRES_DB: ${DB_NAME:-database_optimizer_db}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # Initial script to run after DB is up
-      # This approach runs *after* the DB is started, so migrations should ideally be handled by the app.
-      # For initial setup, we can use a custom entrypoint script.
-      # For now, migrations are handled by the C++ app on startup.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: database_optimizer_app
-    restart: always
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: task-management-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
     ports:
-      - "8080:8080"
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
+
+  # Node.js Backend Application
+  backend:
+    build:
+      context: ./server # Build from the 'server' directory
+      dockerfile: Dockerfile
+    container_name: task-management-backend
+    ports:
+      - "5000:5000"
     environment:
-      SERVER_PORT: ${SERVER_PORT:-8080}
-      SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
-      STATIC_FILES_PATH: /usr/local/web
-      DB_HOST: db
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      DB_HOST: db # Service name in docker-compose is the hostname
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-dbo_user}
-      DB_PASSWORD: ${DB_PASSWORD:-dbo_password_secure}
-      DB_NAME: ${DB_NAME:-database_optimizer_db}
-      DB_CONNECTION_STRING: "postgresql://${DB_USER:-dbo_user}:${DB_PASSWORD:-dbo_password_secure}@db:5432/${DB_NAME:-database_optimizer_db}"
-      JWT_SECRET: ${JWT_SECRET:-a_very_long_and_secure_random_string_for_jwt_signing_which_is_at_least_32_characters_long}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FILE: /app/logs/app.log
-      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-50.0}
-      MIN_INDEX_SUGGESTION_USAGE: ${MIN_INDEX_SUGGESTION_USAGE:-5}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRATION_MINUTES: ${JWT_ACCESS_EXPIRATION_MINUTES}
+      JWT_REFRESH_EXPIRATION_DAYS: ${JWT_REFRESH_EXPIRATION_DAYS}
+      REDIS_HOST: redis # Service name in docker-compose is the hostname
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
     volumes:
-      - app_logs:/app/logs # Persist logs
+      - ./server:/app # Mount the server folder for development hot-reloading (remove for production builds)
+      - /app/node_modules # Keep node_modules inside container, important for nodemon/dev-env
+    command: ["npm", "run", "dev"] # Use nodemon for development
+
+  # React Frontend Application
+  frontend:
+    build:
+      context: ./client # Build from the 'client' directory
+      dockerfile: Dockerfile.client
+    container_name: task-management-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      REACT_APP_API_URL: http://localhost:5000/v1 # This might be configured via proxy in React app
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    volumes:
+      - ./client:/app # Mount client folder for development hot-reloading
+      - /app/node_modules # Keep node_modules inside container
+    command: ["npm", "start"]
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
-  db_data:
-  app_logs:
-```
+  pgdata:
+  redisdata:

@@ -1,179 +1,264 @@
-# Database Optimization System (DBO)
+# Enterprise Task Management System
 
-The Database Optimization System (DBO) is an enterprise-grade C++ application designed to provide comprehensive tools for monitoring, analyzing, and optimizing PostgreSQL databases. It aims to improve database performance by detecting slow queries, suggesting index improvements, identifying schema issues, and offering a robust API for integration.
+This project is a full-scale, production-ready Task Management system built with Node.js (Express), React.js, PostgreSQL, and Redis. It focuses heavily on security best practices, comprehensive testing, and enterprise-grade features.
 
-## Features
+## Table of Contents
 
-*   **HTTP/JSON API**: RESTful API for all functionalities, built with Boost.Beast.
-*   **Database Interaction**: PostgreSQL integration using `libpqxx` with a connection pool.
-*   **Query Analysis**: Monitors and analyzes query logs to identify performance bottlenecks and suggest index recommendations.
-*   **Schema Analysis**: Detects common schema issues (e.g., missing foreign keys, suboptimal data types).
-*   **Authentication & Authorization**: JWT-based authentication with role-based access control.
-*   **Configuration Management**: `.env` file for easy environment configuration.
-*   **Logging**: Structured logging using `spdlog`.
-*   **Error Handling**: Centralized error handling for API responses.
-*   **Caching Layer**: In-memory caching for frequently accessed data (e.g., recommendations).
-*   **Rate Limiting**: Protects API endpoints from abuse.
-*   **Migrations**: Custom SQL migration system for database schema evolution.
-*   **Containerization**: Docker support for easy deployment and isolation.
-*   **CI/CD**: GitHub Actions pipeline for automated build, test, and deployment.
+1.  [Features](#features)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup Instructions](#setup-instructions)
+    *   [Prerequisites](#prerequisites)
+    *   [Environment Variables](#environment-variables)
+    *   [Running with Docker Compose (Recommended)](#running-with-docker-compose-recommended)
+    *   [Running Backend Locally](#running-backend-locally)
+    *   [Running Frontend Locally](#running-frontend-locally)
+5.  [Database Management](#database-management)
+6.  [Testing](#testing)
+7.  [API Documentation](#api-documentation)
+8.  [Architecture](#architecture)
+9.  [Deployment](#deployment)
+10. [Security Considerations](#security-considerations)
+11. [Contributing](#contributing)
+12. [License](#license)
+
+## 1. Features
+
+*   **User Management**: Register, Login, Logout, Profile management.
+*   **Authentication**: JWT-based (Access & Refresh Tokens), secure password hashing.
+*   **Authorization**: Role-Based Access Control (RBAC) with `Admin`, `ProjectOwner`, `Member` roles.
+*   **Project Management**: Create, view, update, delete projects.
+*   **Task Management**: Create, view, update, delete tasks within projects. Assign tasks to users.
+*   **Comment System**: Add comments to tasks.
+*   **Robust Error Handling**: Centralized error middleware.
+*   **Logging & Monitoring**: Structured logging with Winston.
+*   **Input Validation**: Joi schemas for all API inputs.
+*   **Rate Limiting**: Protection against brute-force attacks and DDoS.
+*   **HTTP Security Headers**: Implemented with Helmet.js.
+*   **CORS Configuration**: Secure Cross-Origin Resource Sharing.
+*   **Caching**: Redis for refresh token invalidation (blacklisting).
 *   **Comprehensive Testing**: Unit, Integration, and API tests.
-*   **Minimal Web UI**: A simple HTML/CSS frontend served directly by the C++ backend.
+*   **Dockerization**: Containerized applications for consistent environments.
+*   **CI/CD Ready**: Example GitLab CI/CD pipeline.
 
-## Architecture
+## 2. Technology Stack
 
-The DBO system follows a layered architecture:
+**Backend (Node.js)**:
+*   **Framework**: Express.js
+*   **Database ORM**: Sequelize
+*   **Authentication**: JSON Web Tokens (JWT)
+*   **Password Hashing**: bcrypt.js
+*   **Input Validation**: Joi
+*   **Logging**: Winston
+*   **Caching**: Redis
+*   **Security**: Helmet.js, express-rate-limit, xss-clean
+*   **Testing**: Jest, Supertest
 
-1.  **Presentation Layer (API/Web)**: Handles HTTP requests, routing, authentication, and serves minimal static assets/HTML. Built on Boost.Beast.
-2.  **Application/Service Layer**: Contains the core business logic, orchestrating interactions between repositories and external services (e.g., `QueryAnalyzerService`, `AuthService`).
-3.  **Domain/Model Layer**: Defines data structures and business objects (`User`, `QueryLog`, `IndexRecommendation`, etc.).
-4.  **Data Access Layer (Repository)**: Abstracts database operations, providing an interface for CRUD operations on models (`UserRepository`, `QueryLogRepository`). Uses `libpqxx` for PostgreSQL.
-5.  **Infrastructure Layer**: Handles cross-cutting concerns like logging (`spdlog`), configuration, and connection pooling.
+**Database**:
+*   PostgreSQL
 
-**Database**: PostgreSQL is used as the primary data store.
+**Cache/Message Broker**:
+*   Redis
 
-## Getting Started
+**Frontend (React.js)**:
+*   **Framework**: React (Create React App)
+*   **Routing**: React Router DOM
+*   **HTTP Client**: Axios
+*   **Styling**: Tailwind CSS (implicitly used in provided examples)
+
+**Deployment & Infrastructure**:
+*   Docker, Docker Compose
+*   GitLab CI/CD (example configuration)
+
+## 3. Project Structure
+
+```
+task-management-system/
+├── client/                     # React Frontend Application
+│   ├── src/                    # React source code
+│   └── package.json            # Frontend dependencies
+├── server/                     # Node.js Backend Application
+│   ├── src/                    # Backend source code
+│   │   ├── config/             # Environment, DB, security settings
+│   │   ├── middleware/         # Custom Express middleware
+│   │   ├── models/             # Sequelize models
+│   │   ├── migrations/         # Sequelize migration scripts
+│   │   ├── seeders/            # Sequelize seed data scripts
+│   │   ├── services/           # Business logic
+│   │   ├── controllers/        # Request handlers
+│   │   ├── routes/             # API route definitions
+│   │   ├── utils/              # Helper utilities
+│   │   ├── app.js              # Express app setup
+│   │   └── server.js           # Server entry point
+│   ├── tests/                  # Backend tests (unit, integration, API)
+│   ├── Dockerfile              # Dockerfile for backend
+│   └── package.json            # Backend dependencies
+├── docker-compose.yml          # Docker Compose for services (backend, DB, Redis, frontend)
+├── .env.example                # Example environment variables
+├── README.md                   # Project setup and usage instructions
+├── .gitlab-ci.yml              # Example CI/CD pipeline configuration
+└── docs/                       # Project documentation
+    ├── api.md                  # API documentation
+    ├── architecture.md         # Architecture documentation
+    └── deployment.md           # Deployment guide
+```
+
+## 4. Setup Instructions
 
 ### Prerequisites
 
-*   **Docker** & **Docker Compose**: For containerized development and deployment.
-*   **C++ Toolchain**:
-    *   C++17 compatible compiler (g++ or clang++)
-    *   CMake (3.10+)
-    *   Boost (1.70+ components: system, program_options, asio, json)
-    *   libpqxx (PostgreSQL C++ client library)
-    *   nlohmann/json (JSON library)
-    *   spdlog (logging library)
-    *   Crypto++ (for password hashing, optional if using simpler hash)
-    *   Google Test (for running tests)
+*   Docker & Docker Compose (Recommended for easy setup)
+*   Node.js (v18 or higher) and npm (if running locally without Docker)
+*   PostgreSQL client (optional, for direct DB access)
+*   Git
 
-    *Self-note: Using `vcpkg` or `Conan` is highly recommended for C++ dependency management.*
+### Environment Variables
 
-### Setup
+Create a `.env` file in the root of the `task-management-system/` directory based on `.env.example`.
+
+**`.env` example:**
+
+```dotenv
+NODE_ENV=development
+PORT=5000
+
+# Database Configuration
+DB_HOST=db # Use 'localhost' if running backend locally, 'db' for Docker Compose
+DB_PORT=5432
+DB_USER=user
+DB_PASSWORD=password
+DB_NAME=task_management_db
+
+# JWT Secret and Expiration Times
+JWT_SECRET=super_secret_jwt_key_please_change_this_in_production
+JWT_ACCESS_EXPIRATION_MINUTES=30
+JWT_REFRESH_EXPIRATION_DAYS=7
+
+# Redis Configuration
+REDIS_HOST=redis # Use 'localhost' if running backend locally, 'redis' for Docker Compose
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# CORS
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+
+### Running with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/database-optimizer.git
-    cd database-optimizer
+    git clone https://github.com/your-username/task-management-system.git
+    cd task-management-system
     ```
-
-2.  **Configure Environment Variables:**
-    Copy the example environment file and populate it with your settings.
-    ```bash
-    cp .env.example .env
-    # Open .env and fill in your DB credentials, JWT_SECRET, etc.
-    # Ensure JWT_SECRET is a strong, random string at least 32 characters long.
-    ```
-
-3.  **Build and Run with Docker Compose:**
-    This will build the C++ application image, start a PostgreSQL container, and run the DBO application.
+2.  **Create `.env` file:** Copy `.env.example` to `.env` in the root directory and fill in the values.
+3.  **Build and run containers:**
     ```bash
     docker-compose up --build -d
     ```
-    Wait for the services to start. You can check their status:
+    This will:
+    *   Build Docker images for the backend (`server/`) and frontend (`client/`).
+    *   Start PostgreSQL, Redis, backend, and frontend containers.
+    *   The backend will be accessible on `http://localhost:5000`.
+    *   The frontend will be accessible on `http://localhost:3000`.
+4.  **Run Database Migrations and Seeders:**
+    Once the `db` service is healthy, you need to run migrations and seed initial data.
     ```bash
-    docker-compose ps
-    docker-compose logs -f db # Check DB logs for 'database system is ready to accept connections'
-    docker-compose logs -f app # Check app logs for 'HTTP Server listening on 0.0.0.0:8080'
+    docker-compose exec backend npm run migrate
+    docker-compose exec backend npm run seed
+    ```
+    (Note: The `db:reset` command in `package.json` can be used for development, but `migrate` and `seed` are safer for CI/CD or production.)
+
+    **Default Admin User (seeded):**
+    *   **Email**: `admin@example.com`
+    *   **Password**: `Admin@123`
+    (Change this immediately in a production environment!)
+
+5.  **Stop containers:**
+    ```bash
+    docker-compose down
     ```
 
-4.  **Access the Application:**
-    *   **API**: `http://localhost:8080/api/v1/...`
-    *   **Minimal Web UI**: `http://localhost:8080/`
+### Running Backend Locally (without Docker Compose for Backend)
 
-    The default admin user created by the seed script is `admin` with password `admin_password_secure`. **Change this immediately in a production environment!**
-
-### Manual Build (without Docker)
-
-If you prefer to build natively:
-
-1.  **Install Dependencies:**
-    Refer to your OS package manager for `cmake`, `libboost-dev`, `libpqxx-dev`, `libssl-dev`, `spdlog`, `nlohmann-json-dev` (package names may vary).
-    For Crypto++, you might need to build from source:
+1.  **Navigate to the backend directory:**
     ```bash
-    wget https://www.cryptopp.com/cryptopp890.zip
-    unzip cryptopp890.zip
-    cd cryptopp890
-    make -j$(nproc)
-    sudo make install
+    cd task-management-system/server
     ```
-
-2.  **Build the Project:**
+2.  **Install dependencies:**
     ```bash
-    mkdir build
-    cd build
-    cmake ..
-    make -j$(nproc)
+    npm install
     ```
-
-3.  **Run Migrations & Seed Data (Manual DB Setup):**
-    If running without Docker, you'll need a local PostgreSQL instance.
-    *   Create the database and user as specified in your `.env`.
-    *   Run migrations:
-        ```bash
-        psql -h <DB_HOST> -p <DB_PORT> -U <DB_USER> -d <DB_NAME> -f ../database/migrations/V1__create_initial_tables.sql
-        psql -h <DB_HOST> -p <DB_PORT> -U <DB_USER> -d <DB_NAME> -f ../database/migrations/V2__add_index_recommendations_table.sql
-        psql -h <DB_HOST> -p <DB_PORT> -U <DB_USER> -d <DB_NAME> -f ../database/migrations/V3__add_schema_issues_table.sql
-        ```
-    *   Run seed data:
-        ```bash
-        psql -h <DB_HOST> -p <DB_PORT> -U <DB_USER> -d <DB_NAME> -f ../database/seed/seed_data.sql
-        ```
-    *Note*: The C++ application's `MigrationManager` will handle this automatically if it connects to an empty database, but manual seeding might still be desired for base data.
-
-4.  **Run the Application:**
+3.  **Ensure PostgreSQL and Redis are running:**
+    You can use Docker Compose to just run the `db` and `redis` services:
     ```bash
-    ./DatabaseOptimizer
+    docker-compose up db redis -d
     ```
-
-## Testing
-
-### Unit and Integration Tests
-
-The project uses Google Test for C++ unit and integration tests.
-
-1.  **Build Tests:**
-    If you built manually, the test executable will be in the `build/tests/` directory.
-    If using Docker Compose, the `build-and-test` stage of the CI/CD pipeline demonstrates how to run them.
-
-2.  **Run Tests:**
+    *Make sure to update `DB_HOST` to `localhost` and `REDIS_HOST` to `localhost` in your `server/.env` file if not using the full docker-compose.*
+4.  **Run migrations and seeders:**
     ```bash
-    # If built manually:
-    ./build/tests/DatabaseOptimizerTests
-
-    # Via Docker Compose (after starting services with 'docker-compose up -d'):
-    docker-compose exec app /app/build/tests/DatabaseOptimizerTests
+    npm run migrate
+    npm run seed
     ```
-    The integration tests require a running PostgreSQL instance and the DBO application.
-
-### API Tests
-
-API tests are performed using `curl` or similar HTTP clients, often automated in CI/CD.
-
-```bash
-# Example: Login (default admin user)
-curl -X POST -H "Content-Type: application/json" -d '{"username": "admin", "password": "admin_password_secure"}' http://localhost:8080/api/v1/auth/login
-
-# Example: Get recommendations (requires JWT token from login)
-ADMIN_TOKEN="<paste_your_jwt_token_here>"
-curl -H "Authorization: Bearer ${ADMIN_TOKEN}" http://localhost:8080/api/v1/recommendations
-```
-
-### Performance Tests
-
-For performance testing, tools like `JMeter`, `Locust`, or `wrk` can be used to simulate load on the API.
-
-*   **wrk example**:
+5.  **Start the backend server:**
     ```bash
-    wrk -t4 -c100 -d30s http://localhost:8080/api/v1/recommendations -H "Authorization: Bearer ${ADMIN_TOKEN}"
+    npm run dev  # For development with nodemon
+    # or
+    npm start    # For production mode
     ```
-    (Ensure you replace `${ADMIN_TOKEN}` with a valid JWT obtained from a login.)
+    The backend will run on `http://localhost:5000`.
 
-## Contributing
+### Running Frontend Locally (without Docker Compose for Frontend)
 
-Contributions are welcome! Please fork the repository, create a new branch, and submit a pull request.
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd task-management-system/client
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Start the React development server:**
+    ```bash
+    npm start
+    ```
+    The frontend will run on `http://localhost:3000`. It is configured to proxy API requests to `http://localhost:5000`.
 
-## License
+## 5. Database Management
 
-This project is licensed under the MIT License. See the LICENSE file for details.
-```
+The backend uses `sequelize-cli` for database migrations and seeding.
+
+*   **Run migrations:** `npm run migrate` (from `server/` directory)
+*   **Undo last migration:** `npm run migrate:undo`
+*   **Seed data:** `npm run seed`
+*   **Reset database (development only):** `npm run db:reset` (Drops all tables, recreates them via migrations, then seeds data). **Use with extreme caution in non-development environments.**
+
+## 6. Testing
+
+Tests are written using Jest and Supertest.
+
+1.  **Ensure test database setup:** The `server/tests/setup.js` file handles dropping and recreating a dedicated test database (`task_management_db_test`) before tests run, and connects to Redis.
+2.  **Run all tests (from `server/` directory):**
+    ```bash
+    npm test
+    ```
+    This command will run unit, integration, and API tests, and generate a coverage report. Aiming for 80%+ coverage.
+
+**Test Types:**
+*   **Unit Tests**: Located in `server/tests/unit/`, these test individual functions/modules (e.g., `user.service.js` functions) in isolation.
+*   **Integration Tests**: Located in `server/tests/integration/`, these test the interaction between different layers (e.g., controllers interacting with services and models).
+*   **API Tests**: Located in `server/tests/integration/` (often combined with integration tests), these use `Supertest` to make actual HTTP requests to the Express app and assert on responses.
+*   **Performance Tests**: A conceptual K6 script (`k6/login_performance.js`) is provided for demonstrating performance testing. These are typically run in a separate environment against a deployed application, not as part of the standard `npm test`.
+
+## 7. API Documentation
+
+Comprehensive API documentation is crucial for enterprise applications. This project is structured to be compatible with OpenAPI/Swagger.
+
+A conceptual API documentation example can be found in `docs/api.md`. In a real-world scenario, you would integrate a tool like `swagger-jsdoc` and `swagger-ui-express` to generate interactive documentation directly from your route definitions and Joi schemas.
+
+**Example Endpoint Documented:**
+
+```markdown

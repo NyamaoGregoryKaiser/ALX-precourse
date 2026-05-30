@@ -1,227 +1,277 @@
-```markdown
-# Task Management System - Deployment Guide
+# Deployment Guide: Enterprise Task Management System
 
-This guide provides instructions and considerations for deploying the Task Management System to a production environment.
+This guide outlines the steps to deploy the Task Management System to a production environment. The recommended approach involves containerization with Docker and orchestration with Kubernetes for scalability and reliability.
 
 ## 1. Prerequisites
 
-Before deploying, ensure you have:
+*   **Docker & Docker Compose**: For local development and testing, and for building container images.
+*   **Cloud Provider Account**: AWS, Google Cloud, Azure, DigitalOcean, etc.
+*   **Kubernetes Cluster**: A managed Kubernetes service (EKS, GKE, AKS, DigitalOcean Kubernetes) is highly recommended.
+*   **Helm**: Kubernetes package manager for deploying applications.
+*   **kubectl**: Kubernetes command-line tool.
+*   **GitLab CI/CD Runner**: Configured to build Docker images and interact with your Kubernetes cluster (if using GitLab CI).
+*   **Domain Name**: Configured with DNS records pointing to your load balancer.
+*   **SSL Certificates**: For HTTPS (e.g., Let's Encrypt, Cloudflare, AWS ACM).
 
-*   **Production Server:** A Linux-based server (e.g., Ubuntu, CentOS) with Docker and Docker Compose installed.
-*   **Domain Name:** A registered domain name pointing to your server's IP address.
-*   **SSL/TLS Certificate:** For securing HTTPS traffic (e.g., Let's Encrypt).
-*   **Firewall Configuration:** Properly configured firewall (e.g., `ufw`, `firewalld`, AWS Security Groups) to allow traffic only on necessary ports (e.g., 80, 443).
-*   **Git:** For cloning the repository.
-*   **Nginx/Caddy/Envoy:** A reverse proxy server installed on your host.
+## 2. Docker Images
 
-## 2. Environment Configuration
+Ensure your Docker images are built and pushed to a container registry (e.g., Docker Hub, GitLab Container Registry, AWS ECR).
 
-### 2.1. `.env` File
-
-Create a `config/.env` file on your production server. **This file should never be committed to source control.**
+**Build and Push Backend Image:**
 
 ```bash
-mkdir -p /path/to/your/app/config
-nano /path/to/your/app/config/.env
+cd task-management-system/server
+docker build -t your-registry/task-management-backend:latest .
+docker push your-registry/task-management-backend:latest
 ```
 
-Populate `config/.env` with production-ready values. Key considerations:
+**Build and Push Frontend Image:**
 
-*   **`APP_ENV=production`**: Ensures production-specific logging and error handling.
-*   **`APP_PORT=8080`**: The internal port of the C++ application inside the Docker container.
-*   **`DATABASE_PATH=/app/data/app.db`**: Keep this path, as it maps to a Docker volume.
-*   **`JWT_SECRET_KEY`**: **CRITICAL!** Generate a very strong, unique, and long (e.g., 64+ characters) secret key. Use a strong random generator. Never reuse this key.
-    ```bash
-    # Example for generating a strong secret (use a more robust tool for production)
-    openssl rand -base64 64
-    ```
-*   **`JWT_EXPIRATION_SECONDS`**: Adjust based on security needs (e.g., 3600 for 1 hour).
-*   **`LOG_LEVEL=info`** (or `warn`, `error`): Reduce verbosity for production.
-*   **`LOG_FILE=/app/logs/app.log`**: Ensure logs go to the designated volume.
-*   **`CACHE_TTL_SECONDS`**: Adjust based on your caching strategy.
-*   **`RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`**: Tune these values to prevent abuse while allowing legitimate traffic.
-*   **`ADMIN_USERNAME`, `ADMIN_PASSWORD`**: Set secure credentials for the initial admin user. The application will hash this password on first run/update. **Change this after initial setup if it's a default!**
+```bash
+cd task-management-system/client
+docker build -f Dockerfile.client -t your-registry/task-management-frontend:latest .
+docker push your-registry/task-management-frontend:latest
+```
+Replace `your-registry` with your actual container registry path.
 
-### 2.2. Docker Compose File
+## 3. Environment Configuration
 
-The `docker-compose.yml` provided in the repository is suitable for production, but ensure the `volumes` section for `.env` is correctly mapped:
+### 3.1. `.env` file
+
+The `.env` file should contain all sensitive information and environment-specific settings. For production, these should be managed as Kubernetes Secrets or environment variables in your deployment system, not directly committed to version control.
+
+**Critical Production Variables:**
+*   `NODE_ENV=production`
+*   `DB_HOST`: Address of your managed PostgreSQL instance.
+*   `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+*   `JWT_SECRET`: A very strong, long, random secret.
+*   `REDIS_HOST`: Address of your managed Redis instance.
+*   `REDIS_PORT`, `REDIS_PASSWORD`
+*   `CORS_ORIGINS`: Production frontend URL(s) (e.g., `https://yourdomain.com`).
+
+### 3.2. Database and Redis Provisioning
+
+Provision managed instances of PostgreSQL and Redis from your cloud provider.
+*   **PostgreSQL**: Configure backups, replication, and high availability.
+*   **Redis**: Configure persistence (AOF/RDB) and replication for high availability.
+*   **Network Security**: Ensure these services are only accessible from your backend application instances (e.g., via private VPC networks, security groups).
+
+## 4. Kubernetes Deployment (Recommended)
+
+Using Helm charts is the standard way to deploy complex applications to Kubernetes.
+
+### 4.1. Helm Chart Structure (Conceptual)
+
+Create a `helm-chart/` directory in your project root with the following structure:
+
+```
+helm-chart/
+├── Chart.yaml
+├── values.yaml
+├── templates/
+│   ├── deployment-backend.yaml
+│   ├── service-backend.yaml
+│   ├── ingress.yaml
+│   ├── deployment-frontend.yaml
+│   ├── service-frontend.yaml
+│   └── secrets.yaml  # Kubernetes Secrets for sensitive env vars
+└── _helpers.tpl
+```
+
+### 4.2. Kubernetes Secrets
+
+Instead of passing sensitive variables directly in deployments, use Kubernetes Secrets.
+
+**Example `secrets.yaml` (within `helm-chart/templates/`):**
 
 ```yaml
-# ...
-services:
-  app:
-    # ...
-    volumes:
-      - app_data:/app/data
-      - app_logs:/app/logs
-      - /path/to/your/app/config/.env:/app/.env:ro # Mount the production .env file
-    # Ensure environment variables are correctly passed or read by the app
-    environment:
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY} # Passed from host env to docker-compose
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      # Other variables will be read by the app from the mounted .env file.
-      # It's good practice to explicitly pass critical secrets like JWT_SECRET_KEY
-      # as Docker environment variables as well, for redundancy and direct access.
-# ...
+# secrets.yaml (conceptual)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "task-management.fullname" . }}-backend-secrets
+type: Opaque
+data:
+  DB_PASSWORD: {{ .Values.backend.env.DB_PASSWORD | b64enc }}
+  JWT_SECRET: {{ .Values.backend.env.JWT_SECRET | b64enc }}
+  REDIS_PASSWORD: {{ .Values.backend.env.REDIS_PASSWORD | b64enc }}
+# Add other sensitive variables here
 ```
-Ensure that `JWT_SECRET_KEY`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` are set as environment variables on your *host machine* where `docker-compose` is run, or directly in the `docker-compose.yml` if you embed them (less secure for secrets).
+Then, reference these secrets in your `deployment-backend.yaml`.
 
-Example for setting host environment variables:
-```bash
-export JWT_SECRET_KEY="your_strong_production_jwt_secret"
-export ADMIN_USERNAME="prod_admin"
-export ADMIN_PASSWORD="your_super_secure_admin_password"
-```
+### 4.3. Deployment Configuration
 
-## 3. Deployment Steps
+**Example `deployment-backend.yaml` (within `helm-chart/templates/`):**
 
-### 3.1. Clone Repository
-
-```bash
-git clone https://github.com/your-repo/task-management-system.git /path/to/your/app
-cd /path/to/your/app
-```
-
-### 3.2. Build and Run Docker Containers
-
-```bash
-# Ensure you are in the project root directory /path/to/your/app
-docker-compose up --build -d
-```
-This command will:
-1.  Build the Docker image for the C++ application.
-2.  Create `app_data` and `app_logs` Docker volumes for persistent storage.
-3.  Mount your `config/.env` file into the container.
-4.  Run the `migrations.sh` script (which applies schema and seeds data).
-5.  Start the C++ application.
-
-### 3.3. Verify Deployment
-
-Check the container status:
-```bash
-docker-compose ps
-```
-Check logs for any errors:
-```bash
-docker-compose logs -f app
-```
-Verify the health check:
-```bash
-curl http://localhost:18080/health # If accessing directly on the host
-```
-
-## 4. Setting up a Reverse Proxy (Nginx Example)
-
-In a production environment, you should always place a reverse proxy in front of your Docker container. This handles SSL/TLS termination, HTTP to HTTPS redirection, request logging, and potentially load balancing if you scale horizontally.
-
-### 4.1. Install Nginx
-
-```bash
-sudo apt update
-sudo apt install nginx -y
-```
-
-### 4.2. Configure Nginx
-
-Create a new Nginx configuration file for your domain:
-
-```bash
-sudo nano /etc/nginx/sites-available/your_domain.conf
-```
-
-Add the following configuration (replace `your_domain.com` with your actual domain):
-
-```nginx
-server {
-    listen 80;
-    listen [::]:80;
-    server_name your_domain.com www.your_domain.com;
-
-    # Redirect all HTTP traffic to HTTPS
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name your_domain.com www.your_domain.com;
-
-    # SSL Certificate configuration (replace with your certificate paths)
-    ssl_certificate /etc/letsencrypt/live/your_domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your_domain.com/privkey.pem;
-    ssl_trusted_certificate /etc/letsencrypt/live/your_domain.com/chain.pem;
-
-    # Recommended SSL settings for security
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
-    ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 1d;
-    ssl_session_tickets off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
-    add_header X-Frame-Options DENY;
-    add_header X-Content-Type-Options nosniff;
-    add_header X-XSS-Protection "1; mode=block";
-
-    location / {
-        # Proxy requests to your Docker container (replace 18080 with your APP_PORT)
-        proxy_pass http://localhost:18080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-        send_timeout 60s;
-    }
-
-    # Optional: Log directory for Nginx access and error logs
-    access_log /var/log/nginx/your_domain.access.log;
-    error_log /var/log/nginx/your_domain.error.log;
-}
+```yaml
+# deployment-backend.yaml (conceptual)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "task-management.fullname" . }}-backend
+  labels:
+    {{- include "task-management.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "task-management.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "task-management.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "{{ .Values.backend.service.port }}"
+            - name: DB_HOST
+              value: "{{ .Values.backend.env.DB_HOST }}"
+            - name: DB_PORT
+              value: "{{ .Values.backend.env.DB_PORT }}"
+            - name: DB_USER
+              value: "{{ .Values.backend.env.DB_USER }}"
+            - name: DB_NAME
+              value: "{{ .Values.backend.env.DB_NAME }}"
+            - name: REDIS_HOST
+              value: "{{ .Values.backend.env.REDIS_HOST }}"
+            - name: REDIS_PORT
+              value: "{{ .Values.backend.env.REDIS_PORT }}"
+            - name: CORS_ORIGINS
+              value: "{{ .Values.backend.env.CORS_ORIGINS }}"
+            # Reference secrets
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "task-management.fullname" . }}-backend-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "task-management.fullname" . }}-backend-secrets
+                  key: JWT_SECRET
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "task-management.fullname" . }}-backend-secrets
+                  key: REDIS_PASSWORD
+          livenessProbe:
+            httpGet:
+              path: /v1/health # Implement a health check endpoint
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
 ```
 
-### 4.3. Enable Nginx Configuration
+### 4.4. Ingress for External Access
 
-```bash
-sudo ln -s /etc/nginx/sites-available/your_domain.conf /etc/nginx/sites-enabled/
-sudo nginx -t # Test Nginx configuration for syntax errors
-sudo systemctl restart nginx
+An Ingress resource exposes your services to the outside world, managing external access to services in a cluster, typically HTTP.
+
+**Example `ingress.yaml` (within `helm-chart/templates/`):**
+
+```yaml
+# ingress.yaml (conceptual)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "task-management.fullname" . }}
+  labels:
+    {{- include "task-management.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: "letsencrypt-prod" # If using cert-manager for SSL
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m" # Example annotation
+spec:
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tlsSecretName }} # Managed by cert-manager or manual
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /v1(/|$)(.*) # Path for backend API
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "task-management.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "task-management.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
 ```
 
-### 4.4. Obtain SSL/TLS Certificate (e.g., Let's Encrypt with Certbot)
+### 4.5. Helm Deployment Steps
 
-```bash
-sudo apt install certbot python3-certbot-nginx -y
-sudo certbot --nginx -d your_domain.com -d www.your_domain.com
-```
-Follow the prompts. Certbot will automatically configure Nginx for HTTPS and set up auto-renewal.
+1.  **Install Helm Chart:**
+    ```bash
+    helm upgrade --install task-management ./helm-chart \
+      --namespace task-management \
+      --create-namespace \
+      -f values-production.yaml # Or provide values directly via --set
+    ```
+2.  **Run Database Migrations in Kubernetes:**
+    This is a critical step and should be done carefully. You can use a Kubernetes Job:
+    ```bash
+    # Create a temporary pod to run migrations
+    kubectl run migration-pod --image=your-registry/task-management-backend:latest \
+      --restart=Never --command -- npm run migrate \
+      --env="DB_HOST=your_db_host" --env="DB_USER=..." --envFrom=secret/your-backend-secrets
 
-## 5. Security Best Practices for Production
+    # Wait for completion and check logs
+    kubectl logs -f migration-pod
 
-*   **Firewall:** Only open ports 80 (HTTP) and 443 (HTTPS) to the public. Internal services (like your Docker container's 18080) should only be accessible from `localhost` or specific internal IPs.
-*   **Secrets Management:** Never hardcode secrets. Use environment variables. For highly sensitive secrets, consider dedicated secret management services (e.g., HashiCorp Vault, AWS Secrets Manager, Azure Key Vault).
-*   **User Privileges:** Run containers with a non-root user. Our `Dockerfile` aims for this in the runtime stage.
-*   **Docker Security:**
-    *   Use minimal base images (e.g., `debian:bullseye-slim`).
-    *   Regularly update base images.
-    *   Scan images for vulnerabilities.
-*   **Backup Strategy:** Implement regular backups for your `app_data` Docker volume containing the SQLite database.
-*   **Monitoring & Alerting:** Set up robust monitoring for application health, performance metrics, and security events (from `app.log`). Configure alerts for critical issues.
-*   **Log Management:** Centralize logs using a log aggregator (e.g., ELK Stack, Splunk, Graylog).
-*   **Regular Updates:** Keep your OS, Docker, Nginx, and application dependencies updated to patch security vulnerabilities.
-*   **Code Audits:** Periodically review your code for security flaws.
-*   **Penetration Testing:** Conduct professional penetration tests.
+    # Delete the migration pod
+    kubectl delete pod migration-pod
+    ```
+    Alternatively, you can integrate a pre-install/pre-upgrade Helm hook for migrations.
 
-## 6. Scaling Considerations
+## 5. CI/CD Integration
 
-*   **Horizontal Scaling:** For higher traffic, run multiple instances of your C++ application behind a load balancer (e.g., Nginx, HAProxy, AWS ALB).
-*   **Database:** SQLite is excellent for small to medium scale. For very high concurrency or large datasets, migrate to a dedicated, external relational database (e.g., PostgreSQL, MySQL).
-*   **Caching:** For a distributed cache, replace the in-memory `CacheService` with an external solution like Redis or Memcached.
+The provided `.gitlab-ci.yml` demonstrates a basic CI/CD pipeline for:
+*   Building Docker images for backend and frontend.
+*   Pushing images to GitLab Container Registry.
+*   Running backend tests.
+*   (Manual) deployment to staging and production environments using Helm.
 
-By following this deployment guide and adhering to security best practices, you can successfully deploy your Task Management System in a production environment.
-```
+**Key considerations for CI/CD:**
+*   **Automated Tests**: All unit, integration, and API tests should run automatically.
+*   **Code Quality**: Integrate linters, static analysis tools.
+*   **Security Scans**: Include dependency vulnerability scans (`npm audit`), container image scanning (e.g., Trivy), and SAST/DAST tools.
+*   **Environment Parity**: Ensure your CI/CD and deployment environments closely match production.
+*   **Secrets Management**: Integrate with a secure secrets management system (e.g., Vault, AWS Secrets Manager) instead of storing secrets in CI/CD variables directly if not absolutely necessary.
+
+## 6. Post-Deployment Checks
+
+*   **Access Application**: Verify the frontend is accessible via your domain.
+*   **API Health**: Check backend API endpoints (e.g., `/v1/health` if implemented).
+*   **Logs**: Monitor application logs for errors or unusual activity.
+*   **Metrics**: Monitor performance metrics (CPU, Memory, Request Latency).
+*   **Functionality**: Perform smoke tests to ensure core features work.
+
+This guide provides a robust framework for deploying your enterprise-grade application securely and efficiently. Remember to adapt it to your specific cloud provider and organizational requirements.

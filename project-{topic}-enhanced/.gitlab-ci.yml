@@ -1,0 +1,168 @@
+image: docker:latest
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "" # Disable TLS for local docker daemon access if running in DinD
+  # Backend
+  BACKEND_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH/backend
+  BACKEND_CONTAINER_NAME: task-management-backend
+  # Frontend
+  FRONTEND_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH/frontend
+  FRONTEND_CONTAINER_NAME: task-management-frontend
+  # Database
+  DB_IMAGE: postgres:14-alpine
+  DB_CONTAINER_NAME: task-management-db
+  DB_NAME: task_management_db
+  DB_USER: ci_user
+  DB_PASSWORD: ci_password
+  # Redis
+  REDIS_IMAGE: redis:7-alpine
+  REDIS_CONTAINER_NAME: task-management-redis
+  REDIS_PASSWORD: ci_redis_password
+
+stages:
+  - build
+  - test
+  - deploy
+
+# Service definitions for test stage
+services:
+  - docker:dind # Docker in Docker for building images and running containers during tests
+  - name: ${DB_IMAGE}
+    alias: db # Alias so backend can connect using 'db' as hostname
+    variables:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+  - name: ${REDIS_IMAGE}
+    alias: redis
+    command: [ "redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}" ]
+
+.backend_template: &backend_build_test
+  image: node:18-alpine
+  before_script:
+    - apk add --no-cache postgresql-client # For `sequelize-cli` to connect to Postgres
+    - cd server
+    - npm ci
+
+build-backend:
+  stage: build
+  <<: *backend_build_test
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA -t $BACKEND_IMAGE:latest .
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $BACKEND_IMAGE:latest
+  artifacts:
+    paths:
+      - server/node_modules/ # Cache node_modules for subsequent stages if needed
+    expire_in: 1 day
+  only:
+    - main
+    - merge_requests
+  tags:
+    - docker
+
+build-frontend:
+  stage: build
+  image: node:18-alpine
+  before_script:
+    - cd client
+    - npm ci
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -f Dockerfile.client -t $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA -t $FRONTEND_IMAGE:latest .
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $FRONTEND_IMAGE:latest
+  artifacts:
+    paths:
+      - client/build/ # Cache built frontend for deployment
+    expire_in: 1 day
+  only:
+    - main
+    - merge_requests
+  tags:
+    - docker
+
+test-backend:
+  stage: test
+  <<: *backend_build_test
+  environment:
+    # Environment variables for tests to connect to the DB and Redis services
+    DB_HOST: db
+    DB_PORT: 5432
+    DB_USER: ${DB_USER}
+    DB_PASSWORD: ${DB_PASSWORD}
+    DB_NAME: ${DB_NAME}_test # Use a dedicated test database
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    REDIS_PASSWORD: ${REDIS_PASSWORD}
+    JWT_SECRET: test_jwt_secret
+    JWT_ACCESS_EXPIRATION_MINUTES: 1
+    JWT_REFRESH_EXPIRATION_DAYS: 1
+    CORS_ORIGINS: http://localhost:3000
+    RATE_LIMIT_WINDOW_MS: 1000
+    RATE_LIMIT_MAX_REQUESTS: 5
+  script:
+    - npm run db:reset # Drop, create, migrate, seed the test database
+    - npm test
+  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)/'
+  artifacts:
+    when: always
+    paths:
+      - server/coverage/
+    reports:
+      junit: server/junit.xml # if you set up JUnit reporter in Jest
+      coverage_report:
+        coverage_format: cobertura
+        path: server/coverage/cobertura-coverage.xml # if you generate cobertura report
+  only:
+    - main
+    - merge_requests
+  tags:
+    - docker
+
+# Optional: Frontend tests (e.g., Cypress E2E tests, Jest for unit)
+# test-frontend:
+#   stage: test
+#   image: cypress/base:16.14.0 # Or node:18-alpine for Jest
+#   script:
+#     - cd client
+#     - npm ci
+#     - npm test # For unit tests
+#     # - npm run cypress:run # For E2E tests against deployed backend or mocked backend
+#   only:
+#     - main
+#     - merge_requests
+
+deploy-staging:
+  stage: deploy
+  image: alpine/helm:3.10.0 # Or specific deployment tool image
+  script:
+    - echo "Deploying to staging environment..."
+    # - helm upgrade --install task-management ./helm-chart --namespace task-management --set backend.image=$BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA --set frontend.image=$FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - echo "Deployment to staging complete."
+  environment:
+    name: staging
+    url: https://staging.yourdomain.com
+  only:
+    - main
+  when: manual # Manual deploy to staging
+  tags:
+    - kubernetes
+
+deploy-production:
+  stage: deploy
+  image: alpine/helm:3.10.0
+  script:
+    - echo "Deploying to production environment..."
+    # - helm upgrade --install task-management ./helm-chart --namespace task-management --set backend.image=$BACKEND_IMAGE:latest --set frontend.image=$FRONTEND_IMAGE:latest
+    - echo "Deployment to production complete."
+  environment:
+    name: production
+    url: https://yourdomain.com
+  only:
+    - main
+  when: manual # Manual deploy to production
+  tags:
+    - kubernetes
