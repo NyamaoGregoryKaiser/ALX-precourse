@@ -4,48 +4,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShopSwift - {% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.css">
+    <title>{{ app_name }}</title>
     <style>
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
-        header { background: #333; color: #fff; padding: 10px 0; text-align: center; }
-        header a { color: #fff; text-decoration: none; margin: 0 15px; }
-        footer { background: #eee; padding: 10px 0; text-align: center; margin-top: auto; }
-        h1, h2, h3, h4, h5, h6 { margin-top: 0; }
-        form { margin-top: 20px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-        form label { font-weight: bold; }
-        .error-message { color: red; margin-top: 10px; }
-        .success-message { color: green; margin-top: 10px; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        header {
+            background-color: #333;
+            color: #fff;
+            padding: 1em 0;
+            text-align: center;
+        }
+        nav {
+            background-color: #444;
+            color: #fff;
+            padding: 0.5em 0;
+            text-align: center;
+        }
+        nav a {
+            color: #fff;
+            margin: 0 15px;
+            text-decoration: none;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            overflow: hidden;
+            padding: 20px 0;
+        }
+        footer {
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            padding: 1em 0;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
     <header>
-        <div class="container">
-            <a href="/">ShopSwift Home</a>
-            <a href="/products">Products</a>
-            <a href="/cart">Cart</a>
-            <a href="/orders">Orders</a>
-            <a href="/login">Login</a>
-            <a href="/register">Register</a>
-        </div>
+        <h1>{{ app_name }}</h1>
     </header>
-    <main class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <ul class="flashes">
-                    {% for category, message in messages %}
-                        <li class="{{ category }}">{{ message }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
+    <nav>
+        <a href="/">Home</a>
+        <a href="/api/users">Users API</a>
+        <a href="/api/posts">Posts API</a>
+        <a href="/api/categories">Categories API</a>
+        <a href="/api/media">Media API</a>
+        <!-- Add more navigation links as needed -->
+    </nav>
+    <div class="container">
         {% block content %}{% endblock %}
-    </main>
+    </div>
     <footer>
-        <div class="container">
-            <p>&copy; 2023 ShopSwift. All rights reserved.</p>
-        </div>
+        <p>&copy; 2023 ALX CMS. All rights reserved.</p>
     </footer>
 </body>
 </html>

@@ -1,47 +1,75 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+```python
 import datetime
-from app.schemas.user import UserRole
+from werkzeug.security import generate_password_hash, check_password_hash
+from app.extensions import db
+from enum import Enum
 
-# Shared properties
-class UserBase(BaseModel):
-    username: str = Field(min_length=3, max_length=50)
-    email: EmailStr
-    full_name: Optional[str] = Field(None, max_length=100)
-    is_active: Optional[bool] = True
-    role: Optional[UserRole] = UserRole.MEMBER
+class UserRole(Enum):
+    ADMIN = 'admin'
+    EDITOR = 'editor'
+    USER = 'user'
 
-# Properties to receive via API on creation
-class UserCreate(UserBase):
-    password: str = Field(min_length=6)
+    def __str__(self):
+        return self.value
 
-# Properties to receive via API on update
-class UserUpdate(UserBase):
-    username: Optional[str] = Field(None, min_length=3, max_length=50)
-    email: Optional[EmailStr] = None
-    password: Optional[str] = Field(None, min_length=6)
-    role: Optional[UserRole] = None
+class User(db.Model):
+    """
+    Represents a user in the CMS.
+    Users can have different roles (admin, editor, user).
+    """
+    __tablename__ = 'users'
 
-# Properties stored in DB
-class UserInDBBase(UserBase):
-    id: int
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    role = db.Column(db.Enum(UserRole), default=UserRole.USER, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now, nullable=False)
 
-    class Config:
-        from_attributes = True
+    # Relationships
+    posts = db.relationship('Post', backref='author', lazy=True)
+    media_items = db.relationship('Media', backref='uploader', lazy=True)
 
-# Properties to return to API
-class User(UserInDBBase):
-    pass
+    def __init__(self, username, email, password, role=UserRole.USER):
+        self.username = username
+        self.email = email
+        self.set_password(password)
+        self.role = role
 
-# For response that doesn't include sensitive info like email (e.g., assignee)
-class UserPublic(BaseModel):
-    id: int
-    username: str
-    full_name: Optional[str]
-    role: UserRole
+    def set_password(self, password):
+        """Hashes the password and stores it."""
+        self.password_hash = generate_password_hash(password)
 
-    class Config:
-        from_attributes = True
+    def check_password(self, password):
+        """Checks if the provided password matches the stored hash."""
+        return check_password_hash(self.password_hash, password)
+
+    def is_admin(self):
+        return self.role == UserRole.ADMIN
+
+    def is_editor(self):
+        return self.role == UserRole.EDITOR or self.is_admin()
+
+    def has_role(self, required_roles):
+        """
+        Checks if the user has any of the required roles.
+        `required_roles` can be a single UserRole enum or a list/tuple of them.
+        """
+        if not isinstance(required_roles, (list, tuple)):
+            required_roles = [required_roles]
+
+        for required_role in required_roles:
+            if required_role == UserRole.ADMIN and self.is_admin():
+                return True
+            if required_role == UserRole.EDITOR and self.is_editor():
+                return True
+            if required_role == UserRole.USER and self.role == UserRole.USER:
+                return True
+        return False
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
 ```

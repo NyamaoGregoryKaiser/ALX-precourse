@@ -1,34 +1,33 @@
-# Use a slim Python image for smaller size
-FROM python:3.11-slim-bookworm
+```dockerfile
+# Use a lightweight base image for Python
+FROM python:3.10-slim-buster
 
-# Set environment variables
+# Set environment variables for non-interactive commands
+ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
-ENV APP_HOME=/app
 
-# Create and set working directory
-WORKDIR $APP_HOME
+# Set the working directory in the container
+WORKDIR /app
 
-# Install system dependencies required for psycopg2
+# Install system dependencies (if any, e.g., for psycopg2-binary)
+# This is often needed for database drivers
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file and install python dependencies
+# Copy requirements file and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
-COPY . $APP_HOME
+# Copy the rest of the application code
+COPY . .
 
-# Expose the port FastAPI will run on
-EXPOSE 8000
+# Expose the port the application runs on
+EXPOSE 5000
 
-# Command to run the application
-# Use uvicorn with gunicorn for production deployment (more robust process management)
-# For development, just uvicorn is fine.
-# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] # For development with hot-reloads
-CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
-
+# Command to run the application using Gunicorn (production-ready WSGI server)
+# Use 4 workers, bind to 0.0.0.0, and specify the Flask app entry point
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app.main:app"]
 ```

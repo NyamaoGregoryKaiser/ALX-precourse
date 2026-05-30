@@ -1,73 +1,101 @@
 ```python
+import time
 from locust import HttpUser, task, between
 
-class WebsiteUser(HttpUser):
-    wait_time = between(1, 5) # Users will wait between 1 and 5 seconds between tasks
+class CMSUser(HttpUser):
+    wait_time = between(1, 2.5) # Users will wait between 1 and 2.5 seconds between tasks
 
-    host = "http://localhost:5000" # Replace with your app's host
+    # Assume we have an admin user for getting tokens for privileged actions
+    # In a real scenario, you'd register/login a user to get these dynamically
+    # For simplicity, we hardcode, but recommended is dynamic login.
+    admin_access_token = "" # Placeholder: Get this from a /login call
+    editor_access_token = "" # Placeholder
+    regular_user_access_token = "" # Placeholder
 
+    # Store some IDs for common operations
+    post_ids = []
+    category_ids = []
+    user_ids = []
+    
     def on_start(self):
-        """On start of user, log in and get token."""
-        self.client.post("/api/auth/register", json={
-            "username": "locust_user",
-            "email": "locust@example.com",
-            "password": "locustpassword"
-        })
-        response = self.client.post("/api/auth/login", json={
-            "email": "locust@example.com",
-            "password": "locustpassword"
-        })
-        self.token = response.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
+        """ on_start is called when a Locust user starts running """
+        # Perform initial login to get tokens
+        # Example:
+        # login_data = {"username": "admin_test", "password": "password"}
+        # response = self.client.post("/api/auth/login", json=login_data)
+        # if response.status_code == 200:
+        #     self.admin_access_token = response.json().get("access_token")
+        # else:
+        #     print("Admin login failed. Cannot perform privileged tasks.")
         
-        # Get some product IDs to use in cart/order tasks
-        products_response = self.client.get("/api/products", headers=self.headers)
-        if products_response.status_code == 200:
-            self.product_ids = [p['id'] for p in products_response.json()['products']]
-        else:
-            self.product_ids = []
-            self.environment.events.request_failure.fire(
-                request_type="GET", name="/api/products",
-                response_time=0, response_length=0,
-                exception=f"Failed to fetch products: {products_response.text}"
-            )
+        # Populate IDs for tasks
+        self._get_initial_data()
 
-    @task(3) # 3 times more likely to run than tasks with no weight
-    def get_products(self):
-        """Browse products."""
-        self.client.get("/api/products", headers=self.headers, name="Get all products")
+    def _get_initial_data(self):
+        # Fetch some posts
+        response = self.client.get("/api/posts?status=published")
+        if response.status_code == 200:
+            self.post_ids = [p['id'] for p in response.json() if 'id' in p]
+
+        # Fetch some categories
+        response = self.client.get("/api/categories")
+        if response.status_code == 200:
+            self.category_ids = [c['id'] for c in response.json() if 'id' in c]
+        
+        # Fetch some users (requires admin token)
+        # if self.admin_access_token:
+        #     response = self.client.get("/api/users", headers={"Authorization": f"Bearer {self.admin_access_token}"})
+        #     if response.status_code == 200:
+        #         self.user_ids = [u['id'] for u in response.json() if 'id' in u]
+        # else:
+        #    print("Skipping fetching user IDs as admin token is not available.")
+
+
+    @task(10) # 10 times more likely to run than a task with weight 1
+    def view_homepage(self):
+        self.client.get("/")
+
+    @task(5)
+    def view_all_published_posts(self):
+        self.client.get("/api/posts?status=published")
+
+    @task(3)
+    def view_single_post(self):
+        if self.post_ids:
+            post_id = self.post_ids[0] # Just pick one for simplicity
+            self.client.get(f"/api/posts/{post_id}")
 
     @task(2)
-    def get_categories(self):
-        """Browse categories."""
-        self.client.get("/api/categories", headers=self.headers, name="Get all categories")
+    def view_all_categories(self):
+        self.client.get("/api/categories")
 
-    @task(1)
-    def add_to_cart(self):
-        """Add a random product to cart."""
-        if not self.product_ids:
-            return
+    # Example of a POST request (requires authentication)
+    # This would typically be done by an editor/admin
+    # @task(1)
+    # def create_new_post(self):
+    #     if self.editor_access_token and self.category_ids:
+    #         post_data = {
+    #             "title": f"Load Test Post {time.time()}",
+    #             "slug": f"load-test-post-{time.time()}",
+    #             "content": "This is a post generated by a load test.",
+    #             "category_id": self.category_ids[0],
+    #             "status": "draft"
+    #         }
+    #         self.client.post("/api/posts", json=post_data, headers={
+    #             "Authorization": f"Bearer {self.editor_access_token}"
+    #         })
+    #     else:
+    #         print("Skipping post creation: editor token or category not available.")
 
-        product_id = self.product_ids[0] # Just pick first for simplicity
-        self.client.post(f"/api/cart/items", json={
-            "product_id": product_id,
-            "quantity": 1
-        }, headers=self.headers, name="Add item to cart")
-
-    @task(1)
-    def view_cart(self):
-        """View own cart."""
-        self.client.get("/api/cart/", headers=self.headers, name="View cart")
-
-    # Add more tasks as your application grows
-    # For example:
+    # Example of a PUT request (requires authentication and specific post ownership/admin)
     # @task(0.5)
-    # def create_order(self):
-    #     self.client.post("/api/orders/", json={"shipping_address": "Locust Test Address"}, headers=self.headers, name="Create order")
+    # def update_post_status(self):
+    #     if self.admin_access_token and self.post_ids:
+    #         post_id = self.post_ids[0]
+    #         update_data = {"status": "published"}
+    #         self.client.put(f"/api/posts/{post_id}", json=update_data, headers={
+    #             "Authorization": f"Bearer {self.admin_access_token}"
+    #         })
+    #     else:
+    #         print("Skipping post update: admin token or post not available.")
 ```
-**How to run Locust:**
-1.  Install Locust: `pip install locust`
-2.  Navigate to the `tests/performance` directory.
-3.  Run command: `locust -f locustfile.py`
-4.  Open your browser to `http://localhost:8089` (or the port Locust tells you).
-5.  Enter the host (e.g., `http://localhost:5000`) and the number of users/spawn rate. Start swarming!

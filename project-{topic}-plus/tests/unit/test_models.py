@@ -1,113 +1,156 @@
+```python
 import pytest
-from app.models import User, Task, Role, TaskStatus
-from datetime import datetime, timedelta
+from app.models.user import User, UserRole
+from app.models.category import Category
+from app.models.post import Post, PostStatus
+from app.models.media import Media, MediaType
+from app.extensions import db
+import datetime
 
-def test_user_creation(init_database):
-    """Test creating a new user."""
-    user = User(username='testuser', email='test@example.com', role=Role.USER)
-    user.set_password('password123')
-    init_database.session.add(user)
-    init_database.session.commit()
+@pytest.mark.usefixtures("app", "session")
+class TestUserModel:
+    def test_create_user(self):
+        user = User(username='testuser', email='test@example.com', password='password123', role=UserRole.USER)
+        db.session.add(user)
+        db.session.commit()
+        assert user.id is not None
+        assert user.username == 'testuser'
+        assert user.email == 'test@example.com'
+        assert user.role == UserRole.USER
+        assert user.is_active is True
+        assert user.created_at is not None
+        assert user.updated_at is not None
 
-    retrieved_user = User.query.filter_by(username='testuser').first()
-    assert retrieved_user is not None
-    assert retrieved_user.email == 'test@example.com'
-    assert retrieved_user.check_password('password123')
-    assert retrieved_user.role == Role.USER
-    assert retrieved_user.created_at is not None
-    assert retrieved_user.updated_at is not None
+    def test_set_and_check_password(self):
+        user = User(username='passuser', email='pass@example.com', password='securepassword')
+        assert user.password_hash is not None
+        assert user.check_password('securepassword') is True
+        assert user.check_password('wrongpassword') is False
 
-def test_user_password_hashing(init_database):
-    """Test password hashing and checking."""
-    user = User(username='hashuser', email='hash@example.com', role=Role.USER)
-    user.set_password('strongpassword')
-    init_database.session.add(user)
-    init_database.session.commit()
+    def test_user_roles(self):
+        admin = User(username='adm', email='adm@ex.com', password='p', role=UserRole.ADMIN)
+        editor = User(username='edt', email='edt@ex.com', password='p', role=UserRole.EDITOR)
+        regular = User(username='reg', email='reg@ex.com', password='p', role=UserRole.USER)
 
-    assert user.password_hash is not None
-    assert user.check_password('strongpassword')
-    assert not user.check_password('wrongpassword')
+        assert admin.is_admin() is True
+        assert admin.is_editor() is True # Admin is also an editor
+        assert admin.has_role(UserRole.ADMIN) is True
+        assert admin.has_role([UserRole.ADMIN, UserRole.USER]) is True
+        assert admin.has_role(UserRole.USER) is False # Admin is not a "regular user" only
 
-def test_user_to_dict(init_database):
-    """Test User.to_dict() method."""
-    user = User(username='dictuser', email='dict@example.com', role=Role.ADMIN)
-    user.set_password('password')
-    init_database.session.add(user)
-    init_database.session.commit()
+        assert editor.is_admin() is False
+        assert editor.is_editor() is True
+        assert editor.has_role(UserRole.EDITOR) is True
+        assert editor.has_role(UserRole.ADMIN) is False
 
-    user_dict = user.to_dict(include_email=True)
-    assert 'id' in user_dict
-    assert user_dict['username'] == 'dictuser'
-    assert user_dict['email'] == 'dict@example.com'
-    assert user_dict['role'] == 'admin'
-    assert 'created_at' in user_dict
-    assert 'updated_at' in user_dict
+        assert regular.is_admin() is False
+        assert regular.is_editor() is False
+        assert regular.has_role(UserRole.USER) is True
+        assert regular.has_role(UserRole.EDITOR) is False
 
-    user_dict_no_email = user.to_dict(include_email=False)
-    assert 'email' not in user_dict_no_email
+@pytest.mark.usefixtures("app", "session")
+class TestCategoryModel:
+    def test_create_category(self):
+        category = Category(name='News', slug='news', description='Latest happenings')
+        db.session.add(category)
+        db.session.commit()
+        assert category.id is not None
+        assert category.name == 'News'
+        assert category.slug == 'news'
 
-def test_user_is_admin(init_database):
-    """Test is_admin method."""
-    admin_user = User(username='admin', email='a@a.com', role=Role.ADMIN)
-    regular_user = User(username='regular', email='r@r.com', role=Role.USER)
+    def test_unique_category_slug(self):
+        category1 = Category(name='UniqueCat', slug='unique-cat')
+        category2 = Category(name='AnotherCat', slug='unique-cat')
+        db.session.add(category1)
+        db.session.commit()
+        db.session.add(category2)
+        with pytest.raises(Exception): # Expecting an IntegrityError or similar due to unique constraint
+            db.session.commit()
+        db.session.rollback() # Rollback the failed transaction
 
-    assert admin_user.is_admin() is True
-    assert regular_user.is_admin() is False
 
-def test_task_creation(init_database, seed_users):
-    """Test creating a new task."""
-    user = seed_users['user1']
-    due = datetime.utcnow() + timedelta(days=5)
+@pytest.mark.usefixtures("app", "session")
+class TestPostModel:
+    @pytest.fixture(autouse=True)
+    def setup_users_categories_for_posts(self, session):
+        self.user = User(username='postauthor', email='post@example.com', password='password', role=UserRole.EDITOR)
+        self.category = Category(name='Tech', slug='tech')
+        session.add_all([self.user, self.category])
+        session.commit()
 
-    task = Task(
-        title='New Task',
-        description='This is a new task description.',
-        status=TaskStatus.PENDING,
-        due_date=due,
-        created_by_id=user.id,
-        assigned_to_id=user.id
-    )
-    init_database.session.add(task)
-    init_database.session.commit()
+    def test_create_post(self):
+        post = Post(title='My First Post', slug='my-first-post', content='Hello world!', author_id=self.user.id, category_id=self.category.id)
+        db.session.add(post)
+        db.session.commit()
+        assert post.id is not None
+        assert post.title == 'My First Post'
+        assert post.author.username == 'postauthor'
+        assert post.category.name == 'Tech'
+        assert post.status == PostStatus.DRAFT
+        assert post.published_at is None
 
-    retrieved_task = Task.query.filter_by(title='New Task').first()
-    assert retrieved_task is not None
-    assert retrieved_task.description == 'This is a new task description.'
-    assert retrieved_task.status == TaskStatus.PENDING
-    assert retrieved_task.due_date.date() == due.date()
-    assert retrieved_task.created_by_id == user.id
-    assert retrieved_task.assigned_to_id == user.id
-    assert retrieved_task.created_at is not None
-    assert retrieved_task.updated_at is not None
+    def test_publish_post(self):
+        post = Post(title='Draft Post', slug='draft-post', content='Draft content', author_id=self.user.id)
+        db.session.add(post)
+        db.session.commit()
+        assert post.status == PostStatus.DRAFT
+        assert post.published_at is None
 
-def test_task_to_dict(init_database, seed_users):
-    """Test Task.to_dict() method."""
-    user = seed_users['user1']
-    due = datetime.utcnow() + timedelta(days=10)
+        post.publish()
+        db.session.commit()
+        assert post.status == PostStatus.PUBLISHED
+        assert post.published_at is not None
 
-    task = Task(
-        title='Dict Task',
-        description='Description for dict task.',
-        status=TaskStatus.IN_PROGRESS,
-        due_date=due,
-        created_by_id=user.id,
-        assigned_to_id=user.id
-    )
-    init_database.session.add(task)
-    init_database.session.commit()
+    def test_unpublish_post(self):
+        post = Post(title='Published Post', slug='published-post-unpub', content='Published content', author_id=self.user.id, status=PostStatus.PUBLISHED, published_at=datetime.datetime.now())
+        db.session.add(post)
+        db.session.commit()
+        assert post.status == PostStatus.PUBLISHED
+        assert post.published_at is not None
 
-    task_dict = task.to_dict()
-    assert 'id' in task_dict
-    assert task_dict['title'] == 'Dict Task'
-    assert task_dict['description'] == 'Description for dict task.'
-    assert task_dict['status'] == 'in_progress'
-    assert task_dict['due_date'] == due.isoformat()
-    assert task_dict['created_by'] == user.id
-    assert task_dict['assigned_to'] == user.id
+        post.unpublish()
+        db.session.commit()
+        assert post.status == PostStatus.DRAFT
+        assert post.published_at is None
 
-    # Test with None due_date
-    task.due_date = None
-    init_database.session.commit()
-    task_dict_no_due = task.to_dict()
-    assert task_dict_no_due['due_date'] is None
+    def test_archive_post(self):
+        post = Post(title='Active Post', slug='active-post', content='Active content', author_id=self.user.id, status=PostStatus.PUBLISHED)
+        db.session.add(post)
+        db.session.commit()
+        assert post.status == PostStatus.PUBLISHED
+
+        post.archive()
+        db.session.commit()
+        assert post.status == PostStatus.ARCHIVED
+
+@pytest.mark.usefixtures("app", "session")
+class TestMediaModel:
+    @pytest.fixture(autouse=True)
+    def setup_users_mediatype_for_media(self, session):
+        self.user = User(username='mediauploader', email='media@example.com', password='password', role=UserRole.USER)
+        self.media_type = MediaType(name='image', description='Image files')
+        session.add_all([self.user, self.media_type])
+        session.commit()
+
+    def test_create_media(self):
+        media = Media(filename='pic.jpg', filepath='/uploads/pic.jpg', uploader_id=self.user.id, media_type_id=self.media_type.id, filesize=1024, width=800, height=600)
+        db.session.add(media)
+        db.session.commit()
+        assert media.id is not None
+        assert media.filename == 'pic.jpg'
+        assert media.filepath == '/uploads/pic.jpg'
+        assert media.uploader.username == 'mediauploader'
+        assert media.media_type.name == 'image'
+        assert media.filesize == 1024
+
+    def test_unique_media_filepath(self):
+        media1 = Media(filename='f1.jpg', filepath='/uploads/f1.jpg', uploader_id=self.user.id, media_type_id=self.media_type.id)
+        media2 = Media(filename='f2.jpg', filepath='/uploads/f1.jpg', uploader_id=self.user.id, media_type_id=self.media_type.id)
+        db.session.add(media1)
+        db.session.commit()
+        db.session.add(media2)
+        with pytest.raises(Exception):
+            db.session.commit()
+        db.session.rollback()
+
 ```

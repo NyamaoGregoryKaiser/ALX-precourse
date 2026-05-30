@@ -1,186 +1,134 @@
 ```python
-"""
-User service module for ALX-Shop.
-
-This module encapsulates the business logic for managing users, including:
-- CRUD operations for users.
-- Querying users by various criteria.
-- Ensuring data integrity and applying business rules related to users.
-- Interacting with the database via SQLAlchemy.
-"""
-
+from app.extensions import db
+from app.models.user import User, UserRole
+from app.schemas.user import user_register_schema, user_update_schema, user_schema
+from app.utils.errors import NotFoundError, ConflictError, BadRequestError
+from sqlalchemy.exc import IntegrityError
 import logging
-from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
-
-from app.core.database import get_db_session
-from app.models.user import User # Import the SQLAlchemy ORM model
-from app.schemas.user import UserCreate, UserUpdate, UserRead, UserRole
-from app.core.security import get_password_hash
-
-logger = logging.getLogger(__name__)
-
-async def get_user_by_id(user_id: int, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
+class UserService:
     """
-    Retrieves a user by their ID.
-
-    Args:
-        user_id (int): The ID of the user to retrieve.
-        db (AsyncSession): The database session.
-
-    Returns:
-        Optional[UserRead]: The user's data if found, else None.
+    Service layer for User-related business logic.
+    Handles CRUD operations and user-specific actions like password changes.
     """
-    logger.debug(f"Fetching user with ID: {user_id}")
-    result = await db.execute(select(User).filter(User.id == user_id))
-    user_orm = result.scalar_one_or_none()
-    if user_orm:
-        logger.debug(f"Found user: {user_orm.email}")
-        return UserRead.model_validate(user_orm)
-    logger.debug(f"User with ID {user_id} not found.")
-    return None
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
 
-async def get_user_by_email(email: str, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
-    """
-    Retrieves a user by their email address.
+    def get_all_users(self):
+        """Retrieves all users."""
+        self.logger.info("Fetching all users.")
+        users = User.query.all()
+        return users_schema.dump(users)
 
-    Args:
-        email (str): The email address of the user to retrieve.
-        db (AsyncSession): The database session.
+    def get_user_by_id(self, user_id):
+        """Retrieves a single user by ID."""
+        self.logger.info(f"Fetching user with ID: {user_id}")
+        user = User.query.get(user_id)
+        if not user:
+            raise NotFoundError(f"User with ID {user_id} not found.")
+        return user_schema.dump(user)
 
-    Returns:
-        Optional[UserRead]: The user's data if found, else None.
-    """
-    logger.debug(f"Fetching user with email: {email}")
-    result = await db.execute(select(User).filter(User.email == email))
-    user_orm = result.scalar_one_or_none()
-    if user_orm:
-        logger.debug(f"Found user: {user_orm.email}")
-        return UserRead.model_validate(user_orm)
-    logger.debug(f"User with email {email} not found.")
-    return None
+    def get_user_by_username(self, username):
+        """Retrieves a single user by username."""
+        self.logger.info(f"Fetching user with username: {username}")
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            raise NotFoundError(f"User with username '{username}' not found.")
+        return user
 
-async def get_users(
-    skip: int = 0,
-    limit: int = 100,
-    search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db_session)
-) -> List[UserRead]:
-    """
-    Retrieves a paginated list of users, with optional search functionality.
+    def create_user(self, user_data):
+        """
+        Creates a new user.
+        Validates input and handles password hashing.
+        """
+        self.logger.info(f"Attempting to create user with data: {user_data.get('username')}")
+        
+        # Validate input using Marshmallow schema
+        errors = user_register_schema.validate(user_data)
+        if errors:
+            raise BadRequestError(f"Validation errors: {errors}")
 
-    Args:
-        skip (int): The number of records to skip.
-        limit (int): The maximum number of records to return.
-        search (Optional[str]): A search term to filter users by email or full name.
-        db (AsyncSession): The database session.
+        # Check for existing username or email before attempting to add
+        if User.query.filter_by(username=user_data['username']).first():
+            raise ConflictError(f"Username '{user_data['username']}' already exists.")
+        if User.query.filter_by(email=user_data['email']).first():
+            raise ConflictError(f"Email '{user_data['email']}' already exists.")
 
-    Returns:
-        List[UserRead]: A list of user data.
-    """
-    logger.debug(f"Fetching users with skip={skip}, limit={limit}, search='{search}'")
-    query = select(User)
-    if search:
-        search_pattern = f"%{search.lower()}%"
-        query = query.filter(
-            (func.lower(User.email).like(search_pattern)) |
-            (func.lower(User.full_name).like(search_pattern))
-        )
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
-    users_orm = result.scalars().all()
-    logger.debug(f"Retrieved {len(users_orm)} users.")
-    return [UserRead.model_validate(user) for user in users_orm]
+        try:
+            user = User(
+                username=user_data['username'],
+                email=user_data['email'],
+                password=user_data['password'], # Password will be hashed by model's constructor
+                role=UserRole(user_data.get('role', UserRole.USER.value)) # Default to USER
+            )
+            db.session.add(user)
+            db.session.commit()
+            self.logger.info(f"User '{user.username}' created successfully with ID: {user.id}")
+            return user_schema.dump(user)
+        except IntegrityError as e:
+            db.session.rollback()
+            self.logger.error(f"Error creating user: {e}", exc_info=True)
+            if "duplicate key value violates unique constraint" in str(e):
+                raise ConflictError("A user with this username or email already exists.")
+            raise
 
-async def create_user(user_data: Dict[str, Any], db: AsyncSession = Depends(get_db_session)) -> UserRead:
-    """
-    Creates a new user in the database.
+    def update_user(self, user_id, update_data):
+        """
+        Updates an existing user's information.
+        Handles password changes if 'new_password' is provided.
+        """
+        self.logger.info(f"Attempting to update user ID: {user_id} with data: {update_data}")
+        user = User.query.get(user_id)
+        if not user:
+            raise NotFoundError(f"User with ID {user_id} not found.")
 
-    Args:
-        user_data (Dict[str, Any]): A dictionary containing user data,
-                                     including 'email', 'hashed_password', etc.
-                                     This dictionary should already have the password hashed.
-        db (AsyncSession): The database session.
+        # Validate input using Marshmallow schema for updates
+        errors = user_update_schema.validate(update_data, partial=True)
+        if errors:
+            raise BadRequestError(f"Validation errors: {errors}")
 
-    Returns:
-        UserRead: The newly created user's data.
-    """
-    logger.info(f"Creating user with email: {user_data.get('email')}")
-    # Ensure role is converted to enum if passed as string
-    if isinstance(user_data.get('role'), str):
-        user_data['role'] = UserRole(user_data['role'])
+        try:
+            # Handle unique constraints for username and email
+            if 'username' in update_data and update_data['username'] != user.username:
+                if User.query.filter_by(username=update_data['username']).first():
+                    raise ConflictError(f"Username '{update_data['username']}' already exists.")
+                user.username = update_data['username']
+            
+            if 'email' in update_data and update_data['email'] != user.email:
+                if User.query.filter_by(email=update_data['email']).first():
+                    raise ConflictError(f"Email '{update_data['email']}' already exists.")
+                user.email = update_data['email']
 
-    db_user = User(**user_data)
-    db.add(db_user)
-    await db.flush() # Flush to get the ID for relationships if needed later, before commit
-    await db.refresh(db_user) # Refresh to load default values like created_at, updated_at, and ID
-    logger.info(f"User {db_user.email} created successfully with ID: {db_user.id}")
-    return UserRead.model_validate(db_user)
+            if 'role' in update_data:
+                user.role = UserRole(update_data['role'])
+            
+            if 'is_active' in update_data:
+                user.is_active = update_data['is_active']
+            
+            # Handle password change
+            if 'new_password' in update_data and update_data['new_password']:
+                user.set_password(update_data['new_password'])
 
+            db.session.commit()
+            self.logger.info(f"User ID: {user.id} updated successfully.")
+            return user_schema.dump(user)
+        except IntegrityError as e:
+            db.session.rollback()
+            self.logger.error(f"Error updating user ID {user_id}: {e}", exc_info=True)
+            if "duplicate key value violates unique constraint" in str(e):
+                raise ConflictError("A user with this username or email already exists.")
+            raise
 
-async def update_user(user_id: int, user_in: UserUpdate, db: AsyncSession = Depends(get_db_session)) -> Optional[UserRead]:
-    """
-    Updates an existing user's details.
-
-    Args:
-        user_id (int): The ID of the user to update.
-        user_in (UserUpdate): The Pydantic model with updated user data.
-        db (AsyncSession): The database session.
-
-    Returns:
-        Optional[UserRead]: The updated user's data if found and updated, else None.
-    """
-    logger.info(f"Updating user with ID: {user_id}")
-    result = await db.execute(select(User).filter(User.id == user_id))
-    db_user = result.scalar_one_or_none()
-
-    if not db_user:
-        logger.warning(f"User with ID {user_id} not found for update.")
-        return None
-
-    update_data = user_in.model_dump(exclude_unset=True)
-
-    if "password" in update_data:
-        update_data["hashed_password"] = get_password_hash(update_data["password"])
-        del update_data["password"]
-
-    for field, value in update_data.items():
-        if field == "role" and isinstance(value, str):
-            setattr(db_user, field, UserRole(value)) # Convert string to Enum
-        else:
-            setattr(db_user, field, value)
-
-    db.add(db_user)
-    await db.flush()
-    await db.refresh(db_user)
-    logger.info(f"User {user_id} updated successfully.")
-    return UserRead.model_validate(db_user)
-
-async def delete_user(user_id: int, db: AsyncSession = Depends(get_db_session)) -> bool:
-    """
-    Deletes a user from the database.
-
-    Args:
-        user_id (int): The ID of the user to delete.
-        db (AsyncSession): The database session.
-
-    Returns:
-        bool: True if the user was deleted, False if not found.
-    """
-    logger.info(f"Attempting to delete user with ID: {user_id}")
-    result = await db.execute(select(User).filter(User.id == user_id))
-    db_user = result.scalar_one_or_none()
-
-    if not db_user:
-        logger.warning(f"User with ID {user_id} not found for deletion.")
-        return False
-
-    await db.delete(db_user)
-    # The session commit in `get_db_session` will finalize the deletion
-    logger.info(f"User {user_id} deleted successfully.")
-    return True
+    def delete_user(self, user_id):
+        """Deletes a user by ID."""
+        self.logger.info(f"Attempting to delete user ID: {user_id}")
+        user = User.query.get(user_id)
+        if not user:
+            raise NotFoundError(f"User with ID {user_id} not found.")
+        
+        db.session.delete(user)
+        db.session.commit()
+        self.logger.info(f"User ID: {user.id} deleted successfully.")
+        return {"message": f"User with ID {user_id} deleted successfully."}
 
 ```

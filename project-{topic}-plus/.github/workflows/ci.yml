@@ -1,4 +1,5 @@
-name: Project Management API CI/CD
+```yaml
+name: Python CI/CD
 
 on:
   push:
@@ -13,15 +14,17 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # Set a timeout for the entire job
+
     services:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_DB: test_project_db
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
+          POSTGRES_DB: cms_test_db
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
         ports:
-          - 5433:5432 # Use a different port for tests
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -30,7 +33,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379 # Standard Redis port
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -39,171 +42,67 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install Alembic (needed for migrations in CI)
-        run: pip install alembic
-
-      - name: Create .env file for testing
+      - name: Install dependencies
         run: |
-          echo "DATABASE_URL=postgresql://user:password@localhost:5433/project_db" > .env # Points to main DB
-          echo "TEST_DATABASE_URL=postgresql://user:password@localhost:5433/test_project_db" >> .env # Points to test DB
-          echo "ASYNC_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/project_db" >> .env
-          echo "ASYNC_TEST_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/test_project_db" >> .env
-          echo "SECRET_KEY=test-secret-key" >> .env
-          echo "ENVIRONMENT=testing" >> .env
-          echo "DEBUG=True" >> .env
-          echo "REDIS_HOST=localhost" >> .env
-          echo "REDIS_PORT=6379" >> .env
-          echo "REDIS_DB=0" >> .env
-          echo "LOG_LEVEL=DEBUG" >> .env
-          echo "APP_NAME=Project Management API Test" >> .env
-          echo "APP_VERSION=1.0.0-test" >> .env
-          echo "ACCESS_TOKEN_EXPIRE_MINUTES=5" >> .env
-          echo "BACKEND_CORS_ORIGINS=http://localhost" >> .env
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install alembic # ensure alembic is available for migrations
 
       - name: Wait for PostgreSQL and Redis to be ready
         run: |
           echo "Waiting for PostgreSQL..."
           for i in `seq 1 10`; do
-            docker exec $(docker ps -f ancestor=postgres:15-alpine -q) pg_isready -h localhost -p 5432 -U user && break
-            echo "PostgreSQL not ready, sleeping..."
+            nc -z localhost 5432 && break
+            echo "PostgreSQL not ready, waiting..."
             sleep 5
           done
-          echo "PostgreSQL is ready!"
+          nc -z localhost 5432 || (echo "PostgreSQL not available after 50 seconds. Exiting." && exit 1)
+
           echo "Waiting for Redis..."
           for i in `seq 1 10`; do
-            docker exec $(docker ps -f ancestor=redis:7-alpine -q) redis-cli ping && break
-            echo "Redis not ready, sleeping..."
+            nc -z localhost 6379 && break
+            echo "Redis not ready, waiting..."
             sleep 5
           done
-          echo "Redis is ready!"
-
-      - name: Run Alembic migrations for test DB
-        # Point alembic to the test database for schema creation
-        run: |
-          alembic -c alembic.ini --raiseerr upgrade head
-        working-directory: ${{ github.workspace }}/app # alembic.ini is at project root, but env.py needs access to app/core/config
+          nc -z localhost 6379 || (echo "Redis not available after 50 seconds. Exiting." && exit 1)
+        
         env:
-          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
-          ASYNC_DATABASE_URL: ${{ env.ASYNC_TEST_DATABASE_URL }}
-          # Pass other .env variables if alembic env.py needs them for startup config
-          SECRET_KEY: test-secret-key
-          ENVIRONMENT: testing
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          REDIS_DB: 0
+          POSTGRES_USER: testuser
+          POSTGRES_DB: cms_test_db
 
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=app --cov-report=xml
+      - name: Run Alembic Migrations
         env:
-          # Ensure tests use the test database
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          ASYNC_DATABASE_URL: ${{ env.ASYNC_DATABASE_URL }}
-          SECRET_KEY: ${{ env.SECRET_KEY }}
-          ENVIRONMENT: ${{ env.ENVIRONMENT }}
-          REDIS_HOST: ${{ env.REDIS_HOST }}
-          REDIS_PORT: ${{ env.REDIS_PORT }}
-          REDIS_DB: ${{ env.REDIS_DB }}
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cms_test_db
+        run: |
+          # Initialize Alembic if not already
+          # alembic init -t generic alembic_migrations_temp_dir && mv alembic_migrations_temp_dir/* alembic/ && rm -rf alembic_migrations_temp_dir
+          # For an existing project, just use 'alembic upgrade head'
+          alembic upgrade head
 
+      - name: Run tests with pytest and coverage
+        env:
+          FLASK_ENV: testing
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cms_test_db
+          SECRET_KEY: ci_secret_key
+          JWT_SECRET_KEY: ci_jwt_secret_key
+          REDIS_URL: redis://localhost:6379/0
+          JWT_ACCESS_TOKEN_EXPIRES_SECONDS: 1 # Short expiry for tests
+          JWT_REFRESH_TOKEN_EXPIRES_DAYS: 1 # Short expiry for tests
+        run: |
+          pytest --cov=app --cov-report=xml --cov-report=term-missing
+          
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3
         with:
-          files: ./coverage.xml
-          fail_ci_if_error: true # Keep CI from passing if Codecov fails
-
-  deploy-development:
-    needs: build-and-test
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    environment:
-      name: development
-      url: https://dev.your-app.com # Replace with actual dev URL
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: your-dockerhub-username/project-management-api:develop-${{ github.sha }}
-
-      - name: Deploy to development server (example using SSH)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEV_SSH_HOST }}
-          username: ${{ secrets.DEV_SSH_USERNAME }}
-          key: ${{ secrets.DEV_SSH_KEY }}
-          script: |
-            cd /path/to/your/app
-            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-            docker pull your-dockerhub-username/project-management-api:develop-${{ github.sha }}
-            docker-compose down # Or use a more sophisticated zero-downtime deployment
-            docker-compose pull # Ensures latest images are fetched
-            docker-compose up -d --build # Rebuilds and restarts services
-            docker image prune -f # Clean up old images
-
-  deploy-production:
-    needs: build-and-test
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://your-app.com # Replace with actual prod URL
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: your-dockerhub-username/project-management-api:latest
-
-      - name: Deploy to production server (example using SSH)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_SSH_HOST }}
-          username: ${{ secrets.PROD_SSH_USERNAME }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /path/to/your/app
-            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
-            docker pull your-dockerhub-username/project-management-api:latest
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d --build
-            docker image prune -f
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          verbose: true
 ```

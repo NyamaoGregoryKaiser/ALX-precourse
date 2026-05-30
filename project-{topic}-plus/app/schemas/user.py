@@ -1,34 +1,78 @@
-import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum
-from sqlalchemy.orm import relationship
-from app.core.database import Base
-from enum import Enum as PyEnum
+```python
+from app.extensions import ma
+from app.models.user import User, UserRole
 
-class UserRole(PyEnum):
-    ADMIN = "admin"
-    MANAGER = "manager"
-    MEMBER = "member"
-
-class User(Base):
+class UserSchema(ma.SQLAlchemyAutoSchema):
     """
-    SQLAlchemy model for a user in the project management system.
+    Marshmallow schema for User model.
+    Used for serializing User objects to JSON and deserializing JSON to User objects.
     """
-    __tablename__ = "users"
+    class Meta:
+        model = User
+        load_instance = True # Optional: deserialize to model instances
+        include_fk = True # Include foreign keys like author_id if applicable
+        # Define fields to expose or hide
+        fields = (
+            'id', 'username', 'email', 'role', 'is_active',
+            'created_at', 'updated_at'
+        )
+        # Exclude sensitive fields by default
+        dump_only = ('id', 'created_at', 'updated_at', 'is_active')
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.timezone.utc), onupdate=datetime.datetime.now(datetime.timezone.utc))
+    # Custom field for role to ensure it's handled as a string
+    role = ma.Function(lambda obj: obj.role.value if obj.role else None, deserialize=lambda value: UserRole(value) if value else None)
 
-    # Relationships
-    owned_projects = relationship("Project", back_populates="owner", lazy="noload")
-    assigned_tasks = relationship("Task", back_populates="assignee", lazy="noload")
+class UserRegisterSchema(ma.Schema):
+    """
+    Schema for user registration.
+    Includes password field for input, which is not dumped.
+    """
+    username = ma.Str(required=True, unique=True, error_messages={"unique": "Username already exists."})
+    email = ma.Email(required=True, unique=True, error_messages={"unique": "Email already exists."})
+    password = ma.Str(required=True, load_only=True, validate=lambda s: len(s) >= 8)
+    role = ma.Str(
+        load_only=True,
+        required=False,
+        validate=lambda r: r in [e.value for e in UserRole],
+        missing=UserRole.USER.value # Default role
+    )
 
-    def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
+class UserLoginSchema(ma.Schema):
+    """
+    Schema for user login.
+    """
+    username = ma.Str(required=True)
+    password = ma.Str(required=True, load_only=True)
+
+class UserUpdateSchema(ma.SQLAlchemyAutoSchema):
+    """
+    Schema for updating user information.
+    """
+    class Meta:
+        model = User
+        load_instance = True
+        # Fields that can be updated
+        fields = ('username', 'email', 'role', 'is_active', 'password_hash')
+        load_only = ('password_hash',) # Password hash should only be loaded, not dumped
+        dump_only = ('id', 'created_at', 'updated_at')
+
+    # Optional: allow role to be updated, but validate against UserRole enum values
+    role = ma.Str(
+        required=False,
+        validate=lambda r: r in [e.value for e in UserRole],
+        attribute='role.value', # Map to enum value for dumping
+        deserialize=lambda value: UserRole(value) if value else None # Deserialize to enum
+    )
+    email = ma.Email(required=False, unique=True, error_messages={"unique": "Email already exists."})
+    username = ma.Str(required=False, unique=True, error_messages={"unique": "Username already exists."})
+
+    # Add a separate password field for update, only for loading
+    new_password = ma.Str(required=False, load_only=True, validate=lambda s: len(s) >= 8)
+
+# Initialize schemas
+user_schema = UserSchema()
+users_schema = UserSchema(many=True)
+user_register_schema = UserRegisterSchema()
+user_login_schema = UserLoginSchema()
+user_update_schema = UserUpdateSchema()
 ```

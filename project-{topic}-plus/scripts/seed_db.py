@@ -1,221 +1,212 @@
-from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.contrib.auth import get_user_model
-from django.contrib.contenttypes.models import ContentType
-from cms_app.models import Category, Tag, Article, Page, Comment, MediaFile
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.utils import timezone
-import os
+```python
+from faker import Faker
 import random
-import logging
+import datetime
+from sqlalchemy.exc import IntegrityError
+from app.models.user import User, UserRole
+from app.models.category import Category
+from app.models.post import Post, PostStatus
+from app.models.media import Media, MediaType
+from app.extensions import db
 
-logger = logging.getLogger(__name__)
+fake = Faker()
 
-User = get_user_model()
+def seed_data(app, num_users=10, num_categories=5, num_posts_per_user=5, num_media_per_user=3):
+    """
+    Seeds the database with sample data.
+    """
+    with app.app_context():
+        app.logger.info("Starting database seeding...")
 
-class Command(BaseCommand):
-    help = 'Seeds the database with initial data for development and testing.'
+        # Ensure all tables exist
+        db.create_all()
 
-    def add_arguments(self, parser):
-        parser.add_argument('--count', type=int, default=10, help='Number of articles/pages to create.')
-        parser.add_argument('--clear', action='store_true', help='Clear existing data before seeding.')
+        # 1. Create Media Types
+        media_types_data = [
+            {'name': 'image', 'description': 'Image files (JPEG, PNG, GIF)'},
+            {'name': 'video', 'description': 'Video files (MP4, AVI, MOV)'},
+            {'name': 'document', 'description': 'Document files (PDF, DOCX)'},
+        ]
+        media_types = {}
+        for mt_data in media_types_data:
+            media_type = MediaType.query.filter_by(name=mt_data['name']).first()
+            if not media_type:
+                media_type = MediaType(**mt_data)
+                db.session.add(media_type)
+                app.logger.info(f"Created Media Type: {media_type.name}")
+            media_types[media_type.name] = media_type
+        db.session.commit()
 
-    @transaction.atomic
-    def handle(self, *args, **options):
-        count = options['count']
-        clear = options['clear']
-
-        if clear:
-            self.stdout.write(self.style.WARNING("Clearing existing data..."))
-            Comment.objects.all().delete()
-            Article.objects.all().delete()
-            Page.objects.all().delete()
-            MediaFile.objects.all().delete()
-            Tag.objects.all().delete()
-            Category.objects.all().delete()
-            User.objects.filter(is_superuser=False).delete() # Keep superuser if it exists
-            self.stdout.write(self.style.SUCCESS("Data cleared."))
-
-        self.stdout.write(self.style.SUCCESS(f"Seeding {count} items of data..."))
-
-        # Create a superuser if it doesn't exist
-        if not User.objects.filter(username='admin').exists():
-            admin_user = User.objects.create_superuser('admin', 'admin@example.com', 'adminpassword')
-            self.stdout.write(self.style.SUCCESS(f"Created superuser: {admin_user.username}"))
+        # 2. Create Admin User
+        admin_user = User.query.filter_by(username='admin').first()
+        if not admin_user:
+            admin_user = User(
+                username='admin',
+                email='admin@example.com',
+                password='adminpassword', # Use a strong password in production
+                role=UserRole.ADMIN
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+            app.logger.info("Created Admin User: admin@example.com")
         else:
-            admin_user = User.objects.get(username='admin')
-            self.stdout.write(self.style.SUCCESS(f"Superuser '{admin_user.username}' already exists."))
+            app.logger.info("Admin user already exists.")
 
-        # Create a regular user
-        if not User.objects.filter(username='testuser').exists():
-            test_user = User.objects.create_user('testuser', 'test@example.com', 'testpassword')
-            self.stdout.write(self.style.SUCCESS(f"Created regular user: {test_user.username}"))
+        # 3. Create Editor User
+        editor_user = User.query.filter_by(username='editor').first()
+        if not editor_user:
+            editor_user = User(
+                username='editor',
+                email='editor@example.com',
+                password='editorpassword',
+                role=UserRole.EDITOR
+            )
+            db.session.add(editor_user)
+            db.session.commit()
+            app.logger.info("Created Editor User: editor@example.com")
         else:
-            test_user = User.objects.get(username='testuser')
-            self.stdout.write(self.style.SUCCESS(f"Regular user '{test_user.username}' already exists."))
+            app.logger.info("Editor user already exists.")
 
-        users = [admin_user, test_user]
+        # 4. Create other Users
+        users = [admin_user, editor_user]
+        for _ in range(num_users - len(users)):
+            while True:
+                username = fake.user_name()
+                email = fake.unique.email()
+                if not User.query.filter_by(username=username).first() and \
+                   not User.query.filter_by(email=email).first():
+                    break
+            user = User(
+                username=username,
+                email=email,
+                password='password123',
+                role=random.choice([UserRole.USER, UserRole.EDITOR]) # Mix of user and editor roles
+            )
+            users.append(user)
+            db.session.add(user)
+        try:
+            db.session.commit()
+            app.logger.info(f"Created {len(users) - 2} additional users.")
+        except IntegrityError:
+            db.session.rollback()
+            app.logger.warning("Could not create some users due to integrity error (e.g., duplicate username/email).")
+        
+        # Ensure 'users' list contains committed objects
+        users = User.query.all()
 
-        # Create Categories
-        categories = ['Technology', 'Science', 'Nature', 'Travel', 'Food', 'Health', 'Sports', 'Education']
-        for cat_name in categories:
-            Category.objects.get_or_create(name=cat_name)
-        categories = list(Category.objects.all())
-        self.stdout.write(self.style.SUCCESS(f"Created {len(categories)} categories."))
 
-        # Create Tags
-        tags = ['Python', 'Django', 'WebDev', 'AI', 'MachineLearning', 'DataScience', 'Adventure', 'Cooking', 'Fitness']
-        for tag_name in tags:
-            Tag.objects.get_or_create(name=tag_name)
-        tags = list(Tag.objects.all())
-        self.stdout.write(self.style.SUCCESS(f"Created {len(tags)} tags."))
+        # 5. Create Categories
+        categories = []
+        for _ in range(num_categories):
+            while True:
+                name = fake.unique.word().capitalize() + " Category"
+                slug = name.replace(" ", "-").lower()
+                if not Category.query.filter_by(slug=slug).first():
+                    break
+            category = Category(
+                name=name,
+                slug=slug,
+                description=fake.sentence()
+            )
+            categories.append(category)
+            db.session.add(category)
+        try:
+            db.session.commit()
+            app.logger.info(f"Created {len(categories)} categories.")
+        except IntegrityError:
+            db.session.rollback()
+            app.logger.warning("Could not create some categories due to integrity error (e.g., duplicate slug).")
+        
+        # Ensure 'categories' list contains committed objects
+        categories = Category.query.all()
 
-        # Create Media Files (dummy images)
-        dummy_image_path = os.path.join(os.path.dirname(__file__), 'dummy_image.jpg')
-        if not os.path.exists(dummy_image_path):
-            # Create a simple dummy image if it doesn't exist
-            from PIL import Image
-            img = Image.new('RGB', (600, 400), color = 'red')
-            img.save(dummy_image_path)
-
-        media_files = []
-        for i in range(min(count, 5)): # Create up to 5 dummy media files
-            with open(dummy_image_path, 'rb') as f:
-                image_file = SimpleUploadedFile(name=f'dummy_image_{i+1}.jpg', content=f.read(), content_type='image/jpeg')
-                media = MediaFile.objects.create(
-                    title=f'Dummy Image {i+1}',
-                    file=image_file,
-                    media_type='image',
-                    uploaded_by=random.choice(users),
-                    description=f'A placeholder image for content {i+1}.'
+        # 6. Create Media Items for each user
+        media_items = []
+        for user in users:
+            for _ in range(num_media_per_user):
+                filename = fake.file_name(category='image')
+                filepath = f"/uploads/{user.username}/{filename}"
+                media_type = random.choice(list(media_types.values()))
+                media = Media(
+                    filename=filename,
+                    filepath=filepath,
+                    uploader_id=user.id,
+                    media_type_id=media_type.id,
+                    alt_text=fake.sentence(),
+                    caption=fake.text(max_nb_chars=100),
+                    filesize=random.randint(10000, 5000000), # 10KB to 5MB
+                    width=random.choice([800, 1024, 1280]),
+                    height=random.choice([600, 768, 960])
                 )
-                media_files.append(media)
-        self.stdout.write(self.style.SUCCESS(f"Created {len(media_files)} media files."))
+                media_items.append(media)
+                db.session.add(media)
+        try:
+            db.session.commit()
+            app.logger.info(f"Created {len(media_items)} media items.")
+        except IntegrityError:
+            db.session.rollback()
+            app.logger.warning("Could not create some media items due to integrity error.")
+        
+        media_items = Media.query.all() # Refresh media items after commit
 
-        # Create Articles
-        article_titles = [
-            "The Future of AI in Content Creation", "Exploring Remote Work Destinations",
-            "A Beginner's Guide to Django Development", "Healthy Eating Habits for Busy Professionals",
-            "Understanding Climate Change: A Scientific Perspective", "Mastering Python for Data Science",
-            "The Art of Travel Photography", "Innovative Solutions for Sustainable Living"
-        ]
-        articles = []
-        for i in range(count):
-            title = random.choice(article_titles) + f" (Seed {i+1})"
-            content = f"""
-            ## {title}
-
-            This is a generated article content for demonstration purposes. It includes multiple paragraphs
-            to simulate real-world text.
-
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut
-            labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
-            laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in
-            voluptate velit esse cillum dolore eu fugiat nulla pariatur.
-
-            Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit
-            anim id est laborum.
-
-            ### Key Takeaways
-
-            *   Point 1: Emphasize the importance of continuous learning.
-            *   Point 2: Highlight the benefits of adopting new technologies.
-            *   Point 3: Encourage critical thinking and problem-solving.
-
-            This article was seeded on {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}.
-            """
-            article = Article.objects.create(
-                title=title,
-                author=random.choice(users),
-                excerpt=content[:200] + "...",
-                content=content,
-                status=random.choice(['published', 'draft', 'archived']),
-                published_at=timezone.now() - timezone.timedelta(days=random.randint(1, 365)),
-                featured_image=random.choice(media_files) if media_files else None
-            )
-            article.categories.set(random.sample(categories, random.randint(1, min(3, len(categories)))))
-            article.tags.set(random.sample(tags, random.randint(1, min(4, len(tags)))))
-            articles.append(article)
-        self.stdout.write(self.style.SUCCESS(f"Created {len(articles)} articles."))
-
-        # Create Pages
-        page_titles = [
-            "About Us", "Contact", "Privacy Policy", "Terms of Service",
-            "Our Mission", "Team", "Services"
-        ]
-        pages = []
-        for i in range(min(count, 5)): # Create up to 5 dummy pages
-            title = random.choice(page_titles) + f" (Seed {i+1})"
-            content = f"""
-            # {title}
-
-            This is a generated page content.
-
-            Our vision is to build a comprehensive and user-friendly platform that empowers
-            individuals and businesses to manage their digital content effectively.
-
-            Feel free to explore our services and learn more about what we offer.
-            """
-            page = Page.objects.create(
-                title=title,
-                author=random.choice(users),
-                content=content,
-                status=random.choice(['published', 'draft']),
-                published_at=timezone.now() - timezone.timedelta(days=random.randint(1, 100)),
-                featured_image=random.choice(media_files) if media_files else None
-            )
-            page.categories.set(random.sample(categories, random.randint(0, min(2, len(categories)))))
-            page.tags.set(random.sample(tags, random.randint(0, min(3, len(tags)))))
-            pages.append(page)
-
-        # Set parent pages for some pages
-        if len(pages) > 1:
-            for i in range(1, len(pages)):
-                if random.random() < 0.5: # 50% chance to have a parent
-                    pages[i].parent_page = random.choice(pages[:i])
-                    pages[i].save()
-        self.stdout.write(self.style.SUCCESS(f"Created {len(pages)} pages."))
-
-        # Create Comments
-        for _ in range(count * 2): # Create twice as many comments as content items
-            content_type_choice = random.choice([Article, Page])
-            if content_type_choice == Article and articles:
-                content_object = random.choice(articles)
-            elif content_type_choice == Page and pages:
-                content_object = random.choice(pages)
-            else:
+        # 7. Create Posts for each user
+        posts = []
+        for user in users:
+            if user.role == UserRole.USER: # Only editors and admins can create posts
                 continue
 
-            parent_comment = None
-            if random.random() < 0.3: # 30% chance to be a reply
-                existing_comments = Comment.objects.filter(
-                    content_type=ContentType.objects.get_for_model(content_object),
-                    object_id=content_object.id
+            user_media = [m for m in media_items if m.uploader_id == user.id] or media_items[:5] # Fallback to some media
+            
+            for _ in range(num_posts_per_user):
+                title = fake.sentence(nb_words=6)
+                slug = title.lower().replace(" ", "-").strip(".").replace(",", "") + "-" + fake.slug()
+                content = fake.paragraphs(nb=random.randint(3, 10), ext_word_list=None)
+                content = "\n\n".join(content)
+                summary = fake.text(max_nb_chars=200)
+                status = random.choice([PostStatus.DRAFT, PostStatus.PUBLISHED, PostStatus.ARCHIVED])
+                
+                # Assign a random category if available
+                category = random.choice(categories) if categories else None
+                category_id = category.id if category else None
+
+                # Assign a random featured image
+                featured_image_url = random.choice(user_media).filepath if user_media else None
+
+                post = Post(
+                    title=title,
+                    slug=slug,
+                    content=content,
+                    summary=summary,
+                    author_id=user.id,
+                    category_id=category_id,
+                    status=status,
+                    featured_image_url=featured_image_url
                 )
-                if existing_comments.exists():
-                    parent_comment = random.choice(list(existing_comments))
+                if status == PostStatus.PUBLISHED:
+                    post.published_at = fake.date_time_between(start_date="-1y", end_date="now")
 
-            Comment.objects.create(
-                content_object=content_object,
-                author=random.choice(users),
-                body=f"This is a sample comment on '{content_object.title}'. " +
-                     "It's a really insightful piece! Thanks for sharing.",
-                approved=random.choice([True, False]),
-                parent_comment=parent_comment
-            )
-        self.stdout.write(self.style.SUCCESS(f"Created numerous comments."))
+                # Attach some random media assets
+                if user_media and random.random() > 0.3: # Attach media to 70% of posts
+                    num_assets = random.randint(1, min(3, len(user_media)))
+                    selected_assets = random.sample(user_media, num_assets)
+                    for asset in selected_assets:
+                        post.media_assets.append(asset)
+                
+                posts.append(post)
+                db.session.add(post)
+        try:
+            db.session.commit()
+            app.logger.info(f"Created {len(posts)} posts.")
+        except IntegrityError as e:
+            db.session.rollback()
+            app.logger.error(f"Could not create some posts due to integrity error: {e}")
 
-        self.stdout.write(self.style.SUCCESS("Database seeding complete!"))
+        app.logger.info("Database seeding completed.")
 
-# To use this command:
-# 1. Ensure 'scripts' is a package (add __init__.py).
-# 2. Place this file at my_enterprise_cms/scripts/management/commands/seed_db.py
-# (Django auto-discovers commands in management/commands of an app/project)
-# Or, if directly under `scripts/seed_db.py`, you'd call it `python manage.py runscript seed_db`
-# using `django-extensions`, but sticking to native Django management command for this.
-# So, it should be placed in `cms_app/management/commands/seed_db.py` or similar.
-# For simplicity in this long output, I will assume a direct path and modify manage.py
-# If placing it in `cms_app/management/commands/`, the app must be in INSTALLED_APPS.
-# I will place it in `cms_app/management/commands/seed_db.py` to be discoverable.
-
+if __name__ == '__main__':
+    # This block allows you to run seed_db.py directly for quick testing
+    # Make sure your .env is configured or DATABASE_URL is set.
+    from app import create_app
+    app = create_app()
+    seed_data(app)
 ```

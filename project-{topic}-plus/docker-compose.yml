@@ -2,89 +2,65 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      # Load environment variables from .env file directly (for development)
+      # In production, these would be managed by your orchestrator or CI/CD
+      FLASK_ENV: development
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+      JWT_ACCESS_TOKEN_EXPIRES_SECONDS: ${JWT_ACCESS_TOKEN_EXPIRES_SECONDS}
+      JWT_REFRESH_TOKEN_EXPIRES_DAYS: ${JWT_REFRESH_TOKEN_EXPIRES_DAYS}
+    volumes:
+      - .:/app # Mount current directory to /app in container for live code changes (dev)
+    depends_on:
+      - db
+      - redis
+    # Command to run alembic migrations and then start the app
+    # In a real production setup, migrations might be run as a separate step/container
+    command: >
+      sh -c "alembic upgrade head && python scripts/seed_db.py && gunicorn --bind 0.0.0.0:5000 --workers 4 app.main:app"
+    # Added health check for robust deployment - depends_on doesn't wait for "ready" state
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   db:
     image: postgres:15-alpine
-    container_name: cms_db
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data # Persist data
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432" # Expose for local access if needed (remove in production)
+      - "5432:5432" # Expose for local debugging, remove in prod if not needed
+    volumes:
+      - cms_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Caching Service
   redis:
     image: redis:7-alpine
-    container_name: cms_redis
     restart: always
     ports:
-      - "6379:6379" # Expose for local access if needed (remove in production)
-    command: redis-server --appendonly yes
+      - "6379:6379" # Expose for local debugging, remove in prod if not needed
     volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Backend Application Service
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: cms_backend
-    restart: always
-    ports:
-      - "3000:3000" # Expose backend port
-    env_file:
-      - ./backend/.env # Load backend environment variables
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app # Mount host directory for live changes (dev only)
-      - /app/node_modules # Exclude node_modules from host mount
-    # Commands to run migrations and seeders before starting the app
-    # This assumes `sequelize-cli` is installed globally in the container
-    command: >
-      sh -c "npx sequelize-cli db:migrate &&
-             npx sequelize-cli db:seed:all &&
-             npm start"
-    # In production, you might separate migration/seed to a dedicated job or entrypoint.
-
-  # Frontend Application Service
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: cms_frontend
-    restart: always
-    ports:
-      - "3001:3001" # Expose frontend port (React dev server)
-    env_file:
-      - ./frontend/.env # Load frontend environment variables
-    depends_on:
-      - backend # Frontend depends on backend for API calls
-    volumes:
-      - ./frontend:/app # Mount host directory for live changes (dev only)
-      - /app/node_modules # Exclude node_modules from host mount
-    # For production, you'd typically build the static assets and serve them with Nginx.
-    # The current setup is for development convenience.
-    command: npm start
+      - redis_data:/data
 
 volumes:
-  pgdata:    # Volume for PostgreSQL data persistence
-  redisdata: # Volume for Redis data persistence
+  cms_data:
+  redis_data:
 ```
