@@ -1,131 +1,136 @@
-```yaml
 name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  backend-build-test:
+  build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: payments_user
+          POSTGRES_PASSWORD: secure_password
+          POSTGRES_DB: payment_system_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
 
-      - name: Install Backend Dependencies
-        run: npm install
-        working-directory: ./backend
+    - name: Install dependencies
+      run: npm install
 
-      - name: Build Backend (TypeScript compilation)
-        run: npm run build
-        working-directory: ./backend
+    - name: Wait for services (DB and Redis)
+      run: |
+        echo "Waiting for PostgreSQL..."
+        while ! nc -z localhost 5432; do
+          sleep 1
+        done
+        echo "PostgreSQL started."
+        echo "Waiting for Redis..."
+        while ! nc -z localhost 6379; do
+          sleep 1
+        done
+        echo "Redis started."
 
-      - name: Set up Docker Compose for Backend Tests
-        run: |
-          docker-compose -f docker-compose.test.yml up -d db redis
-        working-directory: ./backend
+    - name: Create .env file for tests
+      run: |
+        echo "NODE_ENV=test" > .env
+        echo "PORT=5000" >> .env
+        echo "DB_HOST=localhost" >> .env
+        echo "DB_PORT=5432" >> .env
+        echo "DB_USER=payments_user" >> .env
+        echo "DB_PASSWORD=secure_password" >> .env
+        echo "DB_NAME=payment_system_db_test" >> .env
+        echo "JWT_SECRET=testjwtsecret" >> .env
+        echo "JWT_EXPIRES_IN=1h" >> .env
+        echo "REDIS_HOST=localhost" >> .env
+        echo "REDIS_PORT=6379" >> .env
+        echo "PAYMENT_GATEWAY_API_KEY=test_api_key" >> .env
+        echo "PAYMENT_GATEWAY_SECRET=test_secret" >> .env
+        echo "PAYMENT_GATEWAY_BASE_URL=http://localhost:5001/mock-gateway" >> .env # Or a mock service URL
+        echo "MOCK_PAYMENT_SUCCESS_RATE=1.0" >> .env # Make mock payments always succeed in tests
+        echo "MOCK_PAYMENT_PROCESSING_TIME_MS=10" >> .env
+      env:
+        DB_USER: ${{ services.postgres.env.POSTGRES_USER }}
+        DB_PASSWORD: ${{ services.postgres.env.POSTGRES_PASSWORD }}
+        DB_NAME: ${{ services.postgres.env.POSTGRES_DB }}
 
-      - name: Wait for DB and Redis to be healthy
-        run: |
-          ./wait-for-it.sh db:5432 --timeout=60 --strict -- echo "PostgreSQL is up"
-          ./wait-for-it.sh redis:6379 --timeout=60 --strict -- echo "Redis is up"
-        working-directory: ./backend
-        env:
-          WAIT_FOR_IT_FILE: ./wait-for-it.sh # Assuming wait-for-it.sh is present
+    - name: Run database migrations
+      run: npm run migrate:latest
 
-      - name: Run Backend Tests
-        run: npm test -- --coverage
-        working-directory: ./backend
-        env:
-          # Use test environment variables
-          NODE_ENV: test
-          DB_HOST: db
-          DB_PORT: 5432
-          DB_USERNAME: admin
-          DB_PASSWORD: admin_password
-          DB_DATABASE: task_manager_test_db
-          JWT_SECRET: test_jwt_secret
-          REDIS_HOST: redis
-          REDIS_PORT: 6379
-          LOG_LEVEL: error # Suppress logs during tests
+    - name: Run tests (Unit, Integration, API) with coverage
+      run: npm run test:coverage
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v3
-        with:
-          name: backend-coverage-report
-          path: backend/coverage
+    - name: Lint code
+      run: npm run lint
 
-      - name: Stop Docker Compose for Backend Tests
-        run: docker-compose -f docker-compose.test.yml down
-        working-directory: ./backend
-        if: always() # Ensure this runs even if tests fail
+    - name: Build Docker image
+      run: docker build -t payment-system-backend:${{ github.sha }} .
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
 
-  frontend-build-lint:
+    - name: Push Docker image to registry (e.g., Docker Hub, ECR)
+      # This step requires you to configure Docker Hub/ECR credentials in GitHub Secrets
+      # e.g., DOCKER_USERNAME, DOCKER_PASSWORD
+      if: github.ref == 'refs/heads/main' && success()
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        docker tag payment-system-backend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/payment-system-backend:latest
+        docker push ${{ secrets.DOCKER_USERNAME }}/payment-system-backend:latest
+
+  # Optional: Deployment job (e.g., to AWS ECS, Kubernetes, etc.)
+  deploy:
     runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && success() # Deploy only on successful push to main
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install Frontend Dependencies
-        run: npm install
-        working-directory: ./frontend
-
-      - name: Lint Frontend
-        run: npm run lint
-        working-directory: ./frontend
-
-      - name: Build Frontend
-        run: npm run build
-        working-directory: ./frontend
-
-  # Placeholder for Deployment Stage (e.g., to Docker Hub, AWS ECR, etc.)
-  # This stage would typically run after successful build and test stages.
-  # deployment:
-  #   needs: [backend-build-test, frontend-build-lint]
-  #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v3
-
-  #     - name: Docker Login (e.g., to Docker Hub)
-  #       uses: docker/login-action@v2
-  #       with:
-  #         username: ${{ secrets.DOCKER_USERNAME }}
-  #         password: ${{ secrets.DOCKER_PASSWORD }}
-
-  #     - name: Build and Push Backend Docker image
-  #       run: |
-  #         docker build ./backend -t yourusername/task-manager-backend:latest
-  #         docker push yourusername/task-manager-backend:latest
-  #     - name: Build and Push Frontend Docker image
-  #       run: |
-  #         docker build ./frontend -t yourusername/task-manager-frontend:latest
-  #         docker push yourusername/task-manager-frontend:latest
-
-  #     - name: Deploy to Server (e.g., SSH into server and run docker-compose pull/up)
-  #       uses: appleboy/ssh-action@master
-  #       with:
-  #         host: ${{ secrets.SSH_HOST }}
-  #         username: ${{ secrets.SSH_USERNAME }}
-  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #         script: |
-  #           cd /path/to/your/app
-  #           docker-compose pull
-  #           docker-compose up -d --build
-  #           docker system prune -f # Clean up old images
-```
+      - name: Deploy to Production
+        run: echo "Deployment script goes here (e.g., AWS CLI, kubectl, Capistrano)"
+        # Example for ECS:
+        # - uses: aws-actions/configure-aws-credentials@v1
+        #   with:
+        #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        #     aws-region: us-east-1
+        # - name: Fill in the new image ID in the Amazon ECS task definition
+        #   id: task-def
+        #   uses: aws-actions/amazon-ecs-render-task-definition@v1
+        #   with:
+        #     task-definition: your-task-definition.json
+        #     container-name: backend
+        #     image: ${{ secrets.DOCKER_USERNAME }}/payment-system-backend:latest
+        # - name: Deploy Amazon ECS task definition
+        #   uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        #   with:
+        #     task-definition: ${{ steps.task-def.outputs.task-definition }}
+        #     service: your-ecs-service-name
+        #     cluster: your-ecs-cluster-name

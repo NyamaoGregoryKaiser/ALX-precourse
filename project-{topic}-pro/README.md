@@ -1,205 +1,314 @@
-```markdown
-# E-commerce Solution System
+# Payment Processing System
 
-A comprehensive, full-stack e-commerce platform built with Node.js (Express) for the backend API, React for the frontend, and PostgreSQL for the database. This project is designed as an enterprise-grade solution, focusing on modularity, scalability, security, and maintainability, aligning with ALX Software Engineering principles.
+A comprehensive, production-ready payment processing system built with Node.js, Express, PostgreSQL, and Redis. This project demonstrates best practices for architecture, security, scalability, and quality assurance in an enterprise-grade application.
+
+## Table of Contents
+1.  [Features](#features)
+2.  [Technologies Used](#technologies-used)
+3.  [Project Structure](#project-structure)
+4.  [Setup and Installation](#setup-and-installation)
+    *   [Prerequisites](#prerequisites)
+    *   [Local Setup](#local-setup)
+    *   [Docker Setup](#docker-setup)
+5.  [Running the Application](#running-the-application)
+6.  [Database Management](#database-management)
+7.  [API Endpoints](#api-endpoints)
+8.  [Testing](#testing)
+    *   [Unit Tests](#unit-tests)
+    *   [Integration Tests](#integration-tests)
+    *   [API Tests](#api-tests)
+    *   [Performance Tests (k6)](#performance-tests-k6)
+9.  [Code Quality](#code-quality)
+10. [Authentication & Authorization](#authentication--authorization)
+11. [Error Handling](#error-handling)
+12. [Logging & Monitoring](#logging--monitoring)
+13. [Caching](#caching)
+14. [Rate Limiting](#rate-limiting)
+15. [CI/CD](#cicd)
+16. [Architecture](#architecture)
+17. [Deployment](#deployment)
+18. [Frontend (Conceptual)](#frontend-conceptual)
+19. [Contribution](#contribution)
+20. [License](#license)
 
 ## Features
+*   **User Management:** Registration, Login, Profile Management.
+*   **Account Management:** Create, view, update user accounts (e.g., NGN, USD wallets).
+*   **Transaction Processing:**
+    *   Initiate debit/credit transactions.
+    *   Integration with external payment gateways (mocked).
+    *   Refund processing.
+    *   Webhook handling for asynchronous payment status updates.
+*   **Security:** JWT authentication, password hashing, input validation, Helmet.
+*   **Scalability:** Microservice-oriented design (conceptual), Redis for caching/rate limiting, PostgreSQL for robust data.
+*   **Observability:** Comprehensive logging with Winston, error handling.
+*   **Development Tools:** Docker, Knex.js for migrations, Objection.js for ORM.
+*   **Quality Assurance:** Extensive unit, integration, and API tests, performance testing framework.
 
-**Core Application (Backend - API)**
-*   User Management (Registration, Login, CRUD operations for users)
-*   Authentication & Authorization (JWT-based, Role-based Access Control - RBAC: User, Admin)
-*   Product Management (CRUD for products, including categorization, stock, price, images)
-*   Category Management (CRUD for product categories)
-*   Order Processing (Creating orders, managing order status, stock deduction, order item snapshots)
-*   Shopping Cart (Conceptual, typically managed on frontend or simple database entries)
-*   API Endpoints (RESTful, with full CRUD support)
-*   Data Validation (Joi schema validation)
-*   Pagination, Sorting, Filtering for lists
-
-**Database Layer (PostgreSQL with Sequelize ORM)**
-*   Defined schemas for Users, Products, Categories, Orders, OrderItems, Carts.
-*   Database migrations (using `sequelize-cli`) for schema versioning.
-*   Seed data for initial setup (admin user, categories, products).
-*   Optimized queries with proper indexing and eager loading for associations.
-
-**Configuration & Setup**
-*   `package.json` with all necessary Node.js dependencies for both backend and frontend.
-*   Environment-specific configurations (`.env` files).
-*   Docker setup (`docker-compose`) for easy local development and deployment:
-    *   `postgres_db`: PostgreSQL database.
-    *   `redis_cache`: Redis for caching.
-    *   `api`: Node.js Express backend.
-    *   `frontend`: React frontend.
-    *   `nginx`: Nginx reverse proxy for unified access and load balancing.
-
-**Testing & Quality**
-*   Unit Tests (Jest): For isolated business logic and utility functions (e.g., `userService`).
-*   Integration Tests (Jest, Supertest): For model interactions with the database (e.g., `productModel`), and API endpoint testing.
-*   API Tests (Supertest): End-to-end tests for critical API routes, including authentication and authorization checks.
-*   Comprehensive coverage goal (aiming for 80%+).
-
-**Additional Features**
-*   **Logging & Monitoring**: Centralized logging with Winston and Morgan, configurable log levels.
-*   **Error Handling**: Global error handling middleware for consistent API error responses.
-*   **Caching Layer**: Redis integration with a custom Express middleware for API response caching.
-*   **Rate Limiting**: `express-rate-limit` middleware to protect against brute-force attacks and abuse.
-*   **Security**: `helmet` for HTTP header security, bcrypt for password hashing, JWT for authentication.
+## Technologies Used
+*   **Backend:** Node.js, Express.js
+*   **Database:** PostgreSQL
+*   **ORM/Query Builder:** Objection.js, Knex.js
+*   **Authentication:** JSON Web Tokens (JWT), Bcrypt.js
+*   **Caching/Rate Limiting:** Redis (via ioredis)
+*   **Logging:** Winston
+*   **Validation:** Joi
+*   **HTTP Client:** Axios
+*   **Testing:** Jest, Supertest, K6
+*   **Containerization:** Docker, Docker Compose
+*   **Linting/Formatting:** ESLint, Prettier
 
 ## Project Structure
-
 ```
-ecommerce-system/
-├── api/                   # Core Application (Backend)
-│   ├── src/
-│   │   ├── config/        # Environment, database, constants, logger
-│   │   ├── controllers/   # Handle requests, call services
-│   │   ├── middleware/    # Auth, error handling, rate limiting, logging, caching
-│   │   ├── models/        # Database models (Sequelize) & associations
-│   │   ├── routes/        # API endpoints
-│   │   ├── services/      # Business logic, data processing
-│   │   ├── utils/         # Helper functions, validators, error classes, JWT
-│   │   ├── app.js         # Express app setup
-│   │   └── server.js      # Server entry point
-│   ├── tests/             # Backend tests (unit, integration, API)
-│   ├── .env.example       # Example environment variables
-│   ├── package.json       # Backend dependencies and scripts
-│   └── README.md
-├── frontend/              # Core Application (Frontend - React)
-│   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Route-specific pages
-│   │   ├── services/      # API interaction logic
-│   │   ├── contexts/      # State management (if using Context API)
-│   │   └── App.js         # Main React app component
-│   ├── public/
-│   ├── .env.example
-│   ├── package.json       # Frontend dependencies and scripts
-│   └── README.md
-├── database/              # Database Layer
-│   ├── migrations/        # Sequelize migration scripts
-│   ├── seeders/           # Sequelize seed data scripts
-│   └── config.js          # DB connection config for Sequelize CLI
-├── docker/                # Docker Setup
-│   ├── api/Dockerfile
-│   ├── frontend/Dockerfile
-│   ├── nginx/Dockerfile
-│   └── nginx/nginx.conf
-├── .github/               # CI/CD Configuration (GitHub Actions - conceptual)
-│   └── workflows/
-│       └── main.yml
-├── docs/                  # Project Documentation
-│   ├── API.md
-│   ├── ARCHITECTURE.md
-│   ├── DEPLOYMENT.md
-│   └── USAGE.md
-└── README.md              # Overall project README (this file)
+payment-system/
+├─── .github/                            # CI/CD workflows
+├─── config/                             # Environment-specific configurations
+├─── database/                           # Database schema, migrations, seeds
+├─── docs/                               # Documentation (Architecture, API, Deployment)
+├─── src/                                # Core application source code
+│    ├─── api/                          # External API integrations
+│    ├─── controllers/                  # Request handling logic
+│    ├─── middleware/                   # Express middleware (auth, error, rate-limit, cache)
+│    ├─── models/                       # Database models (Objection.js)
+│    ├─── routes/                       # API routes
+│    ├─── services/                     # Business logic and data manipulation
+│    ├─── utils/                        # Helper functions (logger, db, jwt, redis)
+│    └─── tests/                        # Unit, Integration tests
+├─── frontend/ (Conceptual)             # Placeholder for a React frontend
+├─── .env.example                       # Environment variables example
+├─── Dockerfile                          # Backend Dockerfile
+├─── docker-compose.yml                  # Docker Compose setup
+├─── package.json                        # Backend dependencies
+├─── README.md                           # Project README
+└─── jest.config.js                      # Jest configuration
 ```
 
-## Setup and Local Development
+## Setup and Installation
 
-**Prerequisites:**
-
-*   Docker and Docker Compose
-*   Node.js (v18+) and npm
+### Prerequisites
+*   Node.js (v18+) & npm
+*   PostgreSQL (or Docker)
+*   Redis (or Docker)
 *   Git
+*   Docker & Docker Compose (recommended)
 
-**1. Clone the repository:**
-
-```bash
-git clone https://github.com/your-username/ecommerce-system.git
-cd ecommerce-system
-```
-
-**2. Configure Environment Variables:**
-
-Create `.env` files in the `api/` and `frontend/` directories by copying their respective `.env.example` files and filling in values.
-
-`api/.env`:
-```
-# Application
-NODE_ENV=development
-PORT=5000
-API_VERSION=/api/v1
-
-# Database
-DB_HOST=postgres_db
-DB_PORT=5432
-DB_USER=ecommerce_user
-DB_PASSWORD=ecommerce_password
-DB_NAME=ecommerce_db
-
-# JWT Secret (IMPORTANT: Use a strong, random string in production)
-JWT_SECRET=supersecretjwtkeythatshouldbeverylongandrandom
-JWT_ACCESS_EXPIRATION_MINUTES=30
-JWT_REFRESH_EXPIRATION_DAYS=7
-
-# Redis Cache
-REDIS_HOST=redis_cache
-REDIS_PORT=6379
-
-# Logging
-LOG_LEVEL=info # debug, info, warn, error
-```
-
-`frontend/.env`:
-```
-# React App
-REACT_APP_API_URL=/api/v1 # Nginx will proxy to backend for this path
-```
-
-**3. Build and Run with Docker Compose:**
-
-Navigate to the root of the project and run:
-
-```bash
-docker-compose up --build
-```
-This command will:
-*   Build the Docker images for API, Frontend, and Nginx.
-*   Start the `postgres_db`, `redis_cache`, `api`, `frontend`, and `nginx` services.
-*   Run database migrations and seeders automatically in the `api` service (check `api/package.json` scripts).
-
-**4. Access the Application:**
-
-*   **Frontend:** Open your browser and navigate to `http://localhost`. Nginx will serve the React app and proxy API calls.
-*   **Backend API (Direct - for testing/dev):** `http://localhost:5000/api/v1` (though Nginx proxies this to `/api/v1`).
-*   **Admin User**: `admin@example.com` / `Admin@123`
-*   **Test User**: `user@example.com` / `User@123`
-
-## Running Tests (Backend)
-
-1.  Ensure Docker containers are running (`docker-compose up -d`).
-2.  Install dependencies in the `api` directory: `cd api && npm install`.
-3.  Run tests:
+### Local Setup (without Docker)
+1.  **Clone the repository:**
     ```bash
-    npm test
+    git clone https://github.com/your-username/payment-system.git
+    cd payment-system
     ```
-    This will run unit, integration, and API tests. The database will be reset (`force: true` sync for integration tests usually) before running.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Set up environment variables:**
+    *   Create a `.env` file in the root directory based on `.env.example`.
+    *   Fill in your PostgreSQL and Redis connection details.
+    *   Ensure `JWT_SECRET` is strong and `PAYMENT_GATEWAY_API_KEY`/`SECRET` are set (even for the mock).
+    ```bash
+    cp .env.example .env
+    # Edit .env with your specific values
+    ```
+4.  **Database Setup:**
+    *   Ensure your PostgreSQL server is running.
+    *   Create a database (e.g., `payment_system_db`) and a user with access to it.
+    *   Run migrations to create tables:
+        ```bash
+        npm run migrate:latest
+        ```
+    *   (Optional) Seed initial data:
+        ```bash
+        npm run seed:run
+        ```
+5.  **Redis Setup:**
+    *   Ensure your Redis server is running.
+
+### Docker Setup (Recommended for Development)
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/payment-system.git
+    cd payment-system
+    ```
+2.  **Set up environment variables:**
+    *   Create a `.env` file in the root directory based on `.env.example`.
+    *   The `docker-compose.yml` uses default values, but you can override them here.
+    *   Ensure `PAYMENT_GATEWAY_API_KEY`/`SECRET` are set for the mock gateway integration.
+    ```bash
+    cp .env.example .env
+    # Edit .env if you need to customize default environment variables
+    ```
+3.  **Build and run services with Docker Compose:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    This will:
+    *   Build the backend Docker image.
+    *   Start PostgreSQL, Redis, and the backend service.
+    *   Run database migrations during the backend container build.
+    *   Mount your local code for live-reloading during development (`npm run dev` in container).
+
+    **Note:** The `db` service includes an `init-uuid.sh` script to ensure the `uuid-ossp` extension is enabled for PostgreSQL.
+
+## Running the Application
+*   **With Docker Compose (recommended for development):**
+    The `backend` service is configured to run `npm run dev` which uses `nodemon` for live reloading.
+    The API will be available at `http://localhost:5000/api`.
+*   **Locally (without Docker):**
+    ```bash
+    npm run dev  # For development with live-reloading
+    npm start    # For production build
+    ```
+    The API will be available at `http://localhost:5000/api`.
 
 ## Database Management
+*   **Create a new migration:**
+    ```bash
+    npm run migrate:make <migration_name>
+    ```
+*   **Run pending migrations:**
+    ```bash
+    npm run migrate:latest
+    ```
+*   **Rollback last migration:**
+    ```bash
+    npm run migrate:rollback
+    ```
+*   **Create a new seed file:**
+    ```bash
+    npm run seed:make <seed_name>
+    ```
+*   **Run all seed files:**
+    ```bash
+    npm run seed:run
+    ```
 
-From the `api/` directory:
+## API Endpoints
+Refer to `docs/API_DOCS.md` for detailed API documentation.
 
-*   **Run Migrations:** `npm run migrate`
-*   **Undo Last Migration:** `npm run migrate:undo`
-*   **Run All Seeders:** `npm run seed`
-*   **Undo All Seeders:** `npm run seed:undo`
-*   **Reset Database (Drop, Create, Migrate, Seed):** `npm run db:reset` (USE WITH CAUTION - DELETES ALL DATA)
+**Examples:**
+*   `POST /api/auth/register` - User registration
+*   `POST /api/auth/login` - User login
+*   `GET /api/auth/profile` - Get authenticated user's profile
+*   `GET /api/accounts` - Get all accounts for the authenticated user
+*   `POST /api/accounts` - Create a new account
+*   `GET /api/accounts/:id` - Get a specific account by ID
+*   `POST /api/transactions/initiate` - Initiate a new transaction (debit/credit)
+*   `POST /api/transactions/:id/refund` - Refund an existing transaction
+*   `GET /api/transactions/account/:accountId` - Get transactions for a specific account
+*   `POST /api/transactions/webhook` - Endpoint for payment gateway webhooks
 
-## Important Notes on Production Readiness
+## Testing
+The project includes a comprehensive testing suite.
 
-While this project provides a comprehensive structure, a truly production-ready system would involve:
-*   **Robust Frontend Implementation**: Full UI/UX, more complex state management, extensive client-side validation, accessibility.
-*   **Advanced Authentication**: Multi-factor authentication (MFA), OAuth2/OpenID Connect integration, password reset flows, email verification.
-*   **Payment Gateway Integration**: Actual integration with Stripe, PayPal, etc., webhooks for payment status updates.
-*   **Shipping & Logistics Integration**: APIs for shipping carriers, calculating shipping costs.
-*   **Search & Analytics**: Dedicated search engine (Elasticsearch), analytics platforms (Google Analytics, Mixpanel).
-*   **Image/File Upload**: Cloud storage integration (S3, Cloudinary) for product images.
-*   **Performance Optimization**: Further database tuning, CDN for static assets, serverless functions for specific tasks.
-*   **Security Audits**: Regular security scans, penetration testing.
-*   **Scalability**: Microservices architecture for larger systems, load balancing, auto-scaling.
-*   **Monitoring & Alerting**: Advanced observability tools, custom dashboards, alert configurations.
-*   **Deployment**: Automated, blue-green or canary deployments, rollback strategies.
+### Unit Tests
+*   Located in `src/tests/unit/`.
+*   Focus on individual functions, services, and models in isolation.
+*   **Run unit tests:**
+    ```bash
+    npm run test:unit
+    ```
 
----
-```
+### Integration Tests
+*   Located in `src/tests/integration/`.
+*   Test interactions between different components (e.g., controller, service, database).
+*   **Run integration tests:**
+    ```bash
+    npm run test:integration
+    ```
+
+### API Tests
+*   Part of the integration tests, using `Supertest` to make actual HTTP requests to the Express app.
+*   Verify API endpoint behavior, request/response formats, and status codes.
+
+### Performance Tests (k6)
+*   Located in `scripts/k6_load_test.js`.
+*   Uses `k6` to simulate user load and measure API performance.
+*   **Prerequisites:** Install `k6` (`brew install k6` or `sudo apt-get install k6`).
+*   **Run performance tests:**
+    ```bash
+    k6 run scripts/k6_load_test.js
+    ```
+    *Note*: You may need to replace the dummy JWT token in `k6_load_test.js` with a valid token from a test user for your running application.
+
+### Test Coverage
+*   Aims for 80%+ code coverage.
+*   **Generate coverage report:**
+    ```bash
+    npm run test:coverage
+    ```
+    This will generate a `coverage/` directory with detailed reports.
+
+## Code Quality
+*   **ESLint:** For static code analysis and identifying problematic patterns.
+*   **Prettier:** For consistent code formatting.
+*   **Run linting:**
+    ```bash
+    npm run lint
+    ```
+*   **Auto-format code:**
+    ```bash
+    npm run prettify
+    ```
+
+## Authentication & Authorization
+*   Uses JSON Web Tokens (JWT) for authentication.
+*   `auth` middleware (`src/middleware/auth.js`) verifies tokens and attaches user data to `req.user`.
+*   Supports role-based authorization (e.g., `auth(['admin'])`).
+*   Password hashing with `bcryptjs`.
+
+## Error Handling
+*   Centralized error handling middleware (`src/middleware/errorHandler.js`) catches all API errors.
+*   Logs errors using Winston.
+*   Handles `unhandledRejection` and `uncaughtException` for robust process management.
+
+## Logging & Monitoring
+*   **Winston:** Configured for structured logging (`src/utils/logger.js`).
+    *   Logs to console in development.
+    *   Logs to files (`error.log`, `combined.log`, `exceptions.log`, `rejections.log`) for production.
+*   Can be integrated with external monitoring tools like Prometheus/Grafana or ELK stack.
+
+## Caching
+*   Implemented with Redis using `src/middleware/caching.js`.
+*   Routes can specify a cache duration (e.g., `router.get('/', cacheMiddleware(60), ...)`).
+*   Automatic cache invalidation for operations that modify data (e.g., after `initiateTransaction`).
+
+## Rate Limiting
+*   Implemented with `express-rate-limit` and Redis store (`src/middleware/rateLimiter.js`).
+*   Global rate limiting applied to all API routes.
+*   Specific rate limiting for authentication routes to prevent brute-force attacks.
+
+## CI/CD
+*   Conceptual GitHub Actions workflow (`.github/workflows/ci.yml`) is provided.
+*   Automates:
+    *   Code checkout
+    *   Dependency installation
+    *   Database migrations
+    *   Running all tests (unit, integration, API)
+    *   Code linting
+    *   Docker image building
+    *   (Optional) Docker image pushing to a registry
+    *   (Optional) Deployment to a cloud provider (e.g., AWS ECS, Kubernetes).
+
+## Architecture
+See `docs/ARCHITECTURE.md` for a detailed overview of the system's architecture, design decisions, and data flows.
+
+## Deployment
+Refer to `docs/DEPLOYMENT.md` for detailed instructions on deploying the application to a production environment (e.g., AWS, GCP, Azure, Heroku). This includes:
+*   Environment configuration.
+*   Database and Redis provisioning.
+*   Container orchestration (ECS, Kubernetes).
+*   SSL/TLS setup.
+*   Load balancing.
+
+## Frontend (Conceptual)
+A placeholder `frontend/` directory is included. A full-scale React/Next.js application would typically:
+*   Consume the backend API.
+*   Provide user dashboards, transaction history, payment forms.
+*   Implement secure client-side payment method tokenization using payment gateway SDKs (e.g., Stripe.js).
+
+## Contribution
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## License
+This project is licensed under the MIT License.

@@ -1,160 +1,116 @@
-```markdown
-# E-commerce System Architecture
+# Payment Processing System Architecture
 
-This document describes the overall architecture of the E-commerce Solution System, detailing its components, their interactions, and the underlying technologies.
+This document outlines the high-level architecture and key design principles of the Payment Processing System.
 
 ## 1. High-Level Overview
 
-The system follows a microservice-oriented (or rather, a well-modularized monolithic backend with a separate frontend) architecture, utilizing a **three-tier pattern**:
+The system follows a **monolithic backend with a clear modular structure**, designed to be progressively decoupled into microservices if needed for extreme scale. It interacts with external payment gateways for actual fund processing.
 
-1.  **Presentation Layer (Frontend)**: A client-side application (React) consumed by users.
-2.  **Application Layer (Backend API)**: A Node.js (Express) API that handles business logic, data processing, and serves as the primary interface for the frontend and other services.
-3.  **Data Layer**: PostgreSQL database for persistent storage and Redis for caching.
-
-These components are orchestrated using Docker and Docker Compose for easy development, deployment, and scalability. Nginx acts as a reverse proxy, handling incoming requests and routing them to the appropriate backend or serving static frontend assets.
-
-```
-+----------------+
-|    Browser     |
-+-------+--------+
-        | HTTP(S)
-        v
-+----------------+
-|      Nginx     | <--- Reverse Proxy, Load Balancing, Static File Serving
-+-------+--------+
-        | Request Routing
-        +-----------------------------------+
-        |                                   |
-        v                                   v
-+----------------+                  +----------------+
-|  Frontend App  |                  |    Backend API |
-|   (React)      |                  |   (Node.js /   |
-+-------+--------+                  |    Express)    |
-        | API Calls                 +-------+--------+
-        | (HTTP/JSON)                       | ORM (Sequelize)
-        |                                   v
-        |                           +----------------+
-        |                           |  Database Layer|
-        |                           |  (PostgreSQL)  |
-        |                           +-------+--------+
-        |                                   ^
-        |                                   | Caching (Redis)
-        +-----------------------------------+
+```mermaid
+graph TD
+    A[User Frontend/Mobile App] -->|HTTPS| B(Load Balancer / API Gateway)
+    B --> C(Backend API - Node.js/Express)
+    C --> D(PostgreSQL Database)
+    C --> E(Redis Cache / Rate Limiting)
+    C --> F[External Payment Gateways]
+    F --> C (Webhooks / Callback)
+    C --> G[Logging & Monitoring]
 ```
 
-## 2. Component Breakdown
+## 2. Architectural Layers
 
-### 2.1. Frontend Application (React)
+The backend is structured into distinct layers to promote separation of concerns, testability, and maintainability.
 
-*   **Purpose**: User interface for browsing products, managing cart, placing orders, and user authentication.
-*   **Technology**: React.js, React Router, Axios for API communication.
-*   **Key Responsibilities**:
-    *   Rendering dynamic content.
-    *   Handling user interactions.
-    *   Client-side routing.
-    *   Managing local state and potentially global state (e.g., user authentication status, cart items).
-    *   Interacting with the Backend API via HTTP requests.
-    *   Implementing JWT token management (storing, attaching to requests, refreshing).
+*   **API Gateway / Load Balancer:**
+    *   Entry point for all external requests.
+    *   Handles SSL termination, routing, basic request validation, and potentially advanced rate limiting/DDOS protection.
+    *   Examples: Nginx, AWS ALB, Cloudflare.
 
-### 2.2. Backend API (Node.js / Express)
+*   **Backend API (Node.js/Express):**
+    *   The core application logic written in Node.js with Express.js.
+    *   **Controllers:** Handle incoming HTTP requests, validate input, and delegate to services. They are thin and primarily focus on request/response.
+    *   **Services:** Contain the core business logic. They orchestrate interactions between models, external APIs, and other services. They are pure functions (or classes with methods) that encapsulate operations.
+    *   **Models:** Represent database entities using Objection.js/Knex. They define schema, relationships, and sometimes domain-specific methods (e.g., `validatePassword` on `User`).
+    *   **Middleware:** Functions that run before/after controller logic (e.g., authentication, authorization, error handling, rate limiting, caching).
+    *   **Utilities:** Helper functions (e.g., logger, database connection, JWT handling, Redis client).
+    *   **API Clients:** Abstraction layers for integrating with external services like payment gateways.
 
-*   **Purpose**: Core business logic, data persistence, and serving RESTful API endpoints.
-*   **Technology**: Node.js, Express.js, Sequelize ORM.
-*   **Structure**:
-    *   **`src/config`**: Centralized configuration for database, JWT, constants, and logging. Environment variables (`.env`) are used for sensitive information.
-    *   **`src/models`**: Sequelize models define the database schema and relationships (e.g., `User`, `Product`, `Order`).
-    *   **`src/services`**: Contains the core business logic. Services interact directly with models to perform CRUD operations and complex data processing (e.g., `userService`, `productService`, `orderService`). This layer ensures separation of concerns, keeping controllers lean.
-    *   **`src/controllers`**: Handle incoming HTTP requests, validate input (using Joi), call appropriate services, and send back HTTP responses.
-    *   **`src/routes`**: Defines API endpoints and maps them to controller functions.
-    *   **`src/middleware`**: Global or route-specific middleware for concerns like authentication, authorization, error handling, logging, caching, and rate limiting.
-    *   **`src/utils`**: Utility functions (e.g., JWT token generation, password hashing, API error classes, Joi validators, `catchAsync` wrapper).
-    *   **`app.js`**: Initializes the Express application, applies global middleware (security, parsing, logging), and mounts API routes.
-    *   **`server.js`**: Entry point, connects to database, initializes Redis, and starts the Express server.
+*   **Database (PostgreSQL):**
+    *   Relational database chosen for its reliability, ACID compliance, data integrity, and support for complex queries/transactions.
+    *   **Schema:** Defined using Knex.js migrations, including `users`, `accounts`, `transactions`, `payment_methods` tables.
+    *   **Transactions:** Extensive use of database transactions (both explicit and Objection.js implicit transactions) to ensure atomicity and consistency of financial operations.
+    *   **Indexing:** Strategically applied to frequently queried columns to optimize read performance.
+    *   **Pessimistic Locking:** Employed during critical balance updates (`forUpdate()`) to prevent race conditions in concurrent transactions.
 
-*   **Key Responsibilities**:
-    *   **Authentication & Authorization**: JWT-based authentication, role-based access control (RBAC).
-    *   **Data Validation**: Input validation for all incoming requests using Joi.
-    *   **Business Logic**: Handling complex operations like order creation (stock deduction, price calculation, creating order items atomically via transactions).
-    *   **Database Interaction**: Abstracted via Sequelize ORM for PostgreSQL.
-    *   **Error Handling**: Centralized error handling for consistent API responses.
-    *   **Logging**: Comprehensive request and error logging using Winston and Morgan.
-    *   **Caching**: Integration with Redis to cache frequently accessed data (e.g., product listings).
-    *   **Rate Limiting**: Protecting endpoints from abuse.
+*   **Caching & Rate Limiting (Redis):**
+    *   **Redis:** In-memory data store used for:
+        *   **Caching API responses:** Reduces load on the database for frequently accessed read-heavy endpoints.
+        *   **Rate limiting:** Tracks request counts per IP to prevent abuse and brute-force attacks.
+        *   **Session management:** (Not explicitly implemented in this blueprint but a common use case).
+        *   **Idempotency keys:** (Could be used to ensure transactions are processed only once even if requested multiple times).
 
-### 2.3. Data Layer
+*   **External Payment Gateways:**
+    *   Integrates with third-party payment providers (e.g., Stripe, Paystack, Flutterwave) to process actual debit/credit card charges and bank transfers.
+    *   Communication involves API calls and receiving webhooks for asynchronous status updates.
+    *   An abstraction layer (`PaymentGatewayService`) is used to decouple the core application logic from specific gateway implementations.
 
-*   **PostgreSQL Database**:
-    *   **Purpose**: Relational database for persistent storage of all application data.
-    *   **Technology**: PostgreSQL.
-    *   **Schema**:
-        *   `users`: Stores user information, including roles and authentication details.
-        *   `categories`: Stores product categories.
-        *   `products`: Stores product details, linked to categories.
-        *   `carts`: Stores items currently in users' shopping carts.
-        *   `orders`: Stores order information (shipping, billing, total, status), linked to users.
-        *   `order_items`: Stores individual product items within an order (snapshot of product details at time of order).
-    *   **ORM**: Sequelize is used to interact with the database, providing object-relational mapping and managing migrations/seeders.
-    *   **Query Optimization**: Indexed columns on foreign keys, frequently searched fields (e.g., `email`, `product_name`, `order_number`, `status`) to ensure efficient data retrieval.
+*   **Logging & Monitoring:**
+    *   **Winston:** Structured logging framework for capturing application events, errors, and warnings.
+    *   **Monitoring:** Integration with tools like Prometheus/Grafana (for metrics) or an ELK stack (for log aggregation/analysis) would be crucial in production.
 
-*   **Redis Cache**:
-    *   **Purpose**: In-memory data store used as a caching layer to reduce database load and improve API response times for frequently requested, less volatile data.
-    *   **Technology**: Redis.
-    *   **Usage**: Caching GET requests for product listings, individual product details, and categories.
+## 3. Data Flow (Example: Initiating a Debit Transaction)
 
-### 2.4. Infrastructure (Docker & Nginx)
+1.  **User Request:** Frontend sends a `POST /api/transactions/initiate` request with `accountId`, `amount`, `currency`, `type='debit'`, and `paymentMethodId` (e.g., a token generated client-side by a payment gateway SDK).
+2.  **API Gateway:** Receives the request, performs basic checks, and forwards to the Backend API.
+3.  **Authentication Middleware:** `auth()` middleware verifies the JWT in the `Authorization` header, authenticates the user, and attaches `req.user`.
+4.  **Rate Limiting Middleware:** `globalRateLimiter` checks if the user's IP has exceeded the allowed request rate.
+5.  **Transaction Controller:** `transactionController.initiateTransaction` receives the request.
+    *   Validates input using Joi.
+    *   Calls `TransactionService.initiateTransaction`.
+6.  **Transaction Service:**
+    *   Starts a database transaction (`knex.transaction`).
+    *   Fetches the `Account` and `User` from the database, applying a **pessimistic lock (`forUpdate()`)** on the `Account` row to prevent race conditions during balance modification.
+    *   Performs business logic checks (sufficient funds, account status, currency match).
+    *   If `paymentMethodId` is provided (external debit):
+        *   Calls `PaymentGatewayService.initiatePayment` to communicate with the external payment gateway (e.g., Stripe, Paystack).
+        *   If the gateway responds with success, proceeds. If failure, rolls back.
+    *   Updates the `Account` balance in the database.
+    *   Creates a `Transaction` record in the database with `status: 'completed'` (or `pending` if async).
+    *   Commits the database transaction.
+    *   Invalidates relevant Redis cache entries (`clearCache`).
+7.  **Controller Response:** Returns a `201 Created` response with the new `Transaction` object.
+8.  **Logging:** `logger` records the transaction details and any errors throughout the process.
 
-*   **Docker & Docker Compose**:
-    *   **Purpose**: Containerization of all services for consistent development environments and streamlined deployment.
-    *   **`docker-compose.yml`**: Defines and links all services (PostgreSQL, Redis, API, Frontend, Nginx), their ports, volumes, and dependencies.
-    *   **`Dockerfiles`**: Specify how to build images for the API and Frontend applications.
+## 4. Key Design Principles
 
-*   **Nginx Reverse Proxy**:
-    *   **Purpose**: Sits in front of the application, routing external requests to the correct internal service.
-    *   **Key Responsibilities**:
-        *   **Request Routing**: Directs `/api/v1` requests to the Node.js API container and root (`/`) requests to the React frontend container.
-        *   **Static File Serving**: In a production setup, Nginx would directly serve the built static assets of the React frontend, improving performance.
-        *   **Load Balancing**: Can be configured to distribute traffic across multiple API instances (not explicitly configured for multiple instances in this `docker-compose.yml` but easily extensible).
-        *   **SSL Termination**: Can handle HTTPS encryption, offloading this from the backend.
-        *   **Compression (Gzip)**: Compresses responses to reduce network payload sizes.
-        *   **Logging**: Provides access logs for all incoming HTTP requests.
+*   **Separation of Concerns:** Clear distinction between controllers, services, and models.
+*   **Modularity:** Code is organized into logical modules, making it easier to understand, maintain, and test.
+*   **Testability:** Services and utilities are designed to be easily unit-tested. Integration tests cover interactions between layers.
+*   **Scalability:**
+    *   Stateless backend (facilitates horizontal scaling).
+    *   Database connection pooling.
+    *   Caching with Redis.
+    *   Asynchronous processing (e.g., webhooks) for external integrations.
+    *   Docker/Containerization for easy deployment and scaling.
+*   **Security:**
+    *   JWT-based authentication and role-based authorization.
+    *   Password hashing (bcrypt).
+    *   Input validation (Joi).
+    *   Protection against common web vulnerabilities (Helmet middleware).
+    *   Rate limiting.
+    *   Database transaction isolation.
+*   **Observability:** Robust logging, error handling, and potential for metrics monitoring.
+*   **Idempotency:** Designing API endpoints (especially for `initiatePayment`) to be idempotent is crucial to prevent duplicate processing on retries. (Not fully detailed in blueprint but vital in production).
+*   **Fault Tolerance:** Centralized error handling, graceful shutdown, and retry mechanisms for external API calls (e.g., with circuit breakers) if extended.
 
-## 3. Data Flow
+## 5. Future Considerations / Evolution to Microservices
 
-1.  **User Request**: A user interacts with the React Frontend in their browser.
-2.  **Frontend Request**: The Frontend application sends HTTP requests to Nginx (e.g., `GET /api/v1/products`).
-3.  **Nginx Routing**: Nginx receives the request.
-    *   If it's for `/api/v1/*`, Nginx proxies the request to the `api` service (Node.js backend).
-    *   If it's for `/` or other static assets, Nginx either proxies to the `frontend` service (development) or serves static files directly (production).
-4.  **Backend Processing**: The Node.js API receives the request.
-    *   **Middleware**: Request passes through `loggingMiddleware`, `rateLimitMiddleware`, `authMiddleware`, and `cacheMiddleware`.
-    *   **Cache Check**: `cacheMiddleware` checks Redis. If a cached response exists, it's returned immediately.
-    *   **Controller**: If no cache hit, the request reaches the appropriate controller.
-    *   **Validation**: Joi validation ensures input integrity.
-    *   **Service**: The controller calls the relevant service layer function, which encapsulates business logic.
-    *   **Database Interaction**: The service uses Sequelize ORM to query or modify data in PostgreSQL.
-    *   **Stock Management**: For orders, the `orderService` performs a critical transaction to deduct product stock quantities and update order status atomically.
-5.  **Backend Response**: The API sends a JSON response back to Nginx.
-6.  **Nginx/Frontend Response**: Nginx forwards the response to the Frontend, which then updates the UI.
-7.  **Error Handling**: If an error occurs at any stage, `errorHandler` middleware catches it, logs it, and sends a consistent error response.
+While starting as a modular monolith, the design allows for future evolution:
 
-## 4. Scalability Considerations
+*   **User Service:** Decouple authentication and user management into a dedicated service.
+*   **Account Service:** Separate account creation, retrieval, and balance management.
+*   **Transaction Service:** Handle all transaction-related logic, possibly with event-driven communication (Kafka/RabbitMQ) for inter-service communication.
+*   **Payment Gateway Service:** A standalone service that encapsulates all integrations with various payment providers.
+*   **Webhook Service:** A dedicated, robust service for receiving and processing webhooks, potentially using a message queue for reliable delivery.
 
-*   **Stateless API**: The Node.js API is designed to be stateless, making it easy to scale horizontally by running multiple instances behind a load balancer (like Nginx).
-*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding, though more complex).
-*   **Caching**: Redis significantly offloads read requests from the database, improving performance and scalability.
-*   **Modular Codebase**: Separation of concerns (controllers, services, models, middleware) makes it easier to manage, test, and scale individual parts of the application.
-*   **Containerization**: Docker enables easy deployment and management of services across different environments.
-
-## 5. Security Measures
-
-*   **JWT Authentication**: Securely verifies user identity for API access.
-*   **Role-Based Access Control (RBAC)**: Ensures users only access resources and perform actions authorized by their role.
-*   **Password Hashing**: `bcrypt` is used to store hashed passwords, preventing plain-text storage.
-*   **Input Validation**: Joi schemas protect against common injection attacks and ensure data integrity.
-*   **HTTPS (Conceptual)**: Nginx is configured to support SSL termination, essential for encrypted communication in production.
-*   **Helmet.js**: Sets various HTTP headers to improve application security against common web vulnerabilities.
-*   **Rate Limiting**: Protects against brute-force attacks on authentication endpoints and general API abuse.
-*   **Environment Variables**: Sensitive configuration data is stored outside the codebase.
-
-This architecture provides a solid foundation for a scalable, secure, and maintainable e-commerce application.
-```
+This initial architecture provides a solid, production-ready foundation that can be scaled and evolved as business needs grow.

@@ -1,111 +1,100 @@
-```yaml
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres_db:
+  db:
     image: postgres:15-alpine
-    container_name: ecommerce_postgres
+    restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER:-payments_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+      POSTGRES_DB: ${DB_NAME:-payment_system_db}
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - ecommerce-network
+      - db_data:/var/lib/postgresql/data
+      # Initialize DB with uuid-ossp extension on first start
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Cache
-  redis_cache:
+  redis:
     image: redis:7-alpine
-    container_name: ecommerce_redis
+    restart: always
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
-    networks:
-      - ecommerce-network
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 5
 
-  # Node.js Backend API
-  api:
+  backend:
     build:
-      context: ./docker/api # Path to the Dockerfile for API
+      context: .
       dockerfile: Dockerfile
-    container_name: ecommerce_api
-    env_file:
-      - ./api/.env # Load environment variables for the API
+    restart: always
     ports:
       - "5000:5000"
-    volumes:
-      - ./api:/app # Mount the local API directory into the container
-      - /app/node_modules # Exclude node_modules from host mount to prevent issues
-    depends_on:
-      postgres_db:
-        condition: service_healthy
-      redis_cache:
-        condition: service_healthy
-    networks:
-      - ecommerce-network
-    command: sh -c "npm install && npm run migrate && npm run seed && npm run dev" # Run migrations, seed, then start in dev mode
-    # For production, change command to: "npm install --production && npm run migrate && npm start"
-
-  # React Frontend (Development setup, replace with built assets for production)
-  frontend:
-    build:
-      context: ./docker/frontend # Path to the Dockerfile for Frontend
-      dockerfile: Dockerfile
-    container_name: ecommerce_frontend
-    env_file:
-      - ./frontend/.env # If your frontend uses .env
     environment:
-      - REACT_APP_API_URL=${API_VERSION} # Or the full URL if Nginx is not used to proxy
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    networks:
-      - ecommerce-network
+      NODE_ENV: development
+      PORT: 5000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-payments_user}
+      DB_PASSWORD: ${DB_PASSWORD:-secure_password}
+      DB_NAME: ${DB_NAME:-payment_system_db}
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PAYMENT_GATEWAY_API_KEY: ${PAYMENT_GATEWAY_API_KEY}
+      PAYMENT_GATEWAY_SECRET: ${PAYMENT_GATEWAY_SECRET}
+      PAYMENT_GATEWAY_BASE_URL: ${PAYMENT_GATEWAY_BASE_URL:-http://mock-gateway:5001/mock-gateway} # For external mock gateway
+      MOCK_PAYMENT_SUCCESS_RATE: ${MOCK_PAYMENT_SUCCESS_RATE:-0.9}
+      MOCK_PAYMENT_PROCESSING_TIME_MS: ${MOCK_PAYMENT_PROCESSING_TIME_MS:-1000}
     depends_on:
-      - api
-    command: npm start
-
-  # Nginx Reverse Proxy (for production or unified access)
-  nginx:
-    build:
-      context: ./docker/nginx
-      dockerfile: Dockerfile
-    container_name: ecommerce_nginx
-    ports:
-      - "80:80"
-      - "443:443" # For HTTPS (requires SSL setup)
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # For production, mount frontend build files here:
-      # - ./frontend/build:/var/www/frontend # Assuming React build output is in 'build'
-    depends_on:
-      - api
-      - frontend # In production, Nginx would serve built frontend assets directly
-    networks:
-      - ecommerce-network
+      - .:/usr/src/app # Mount source code for live-reloading in dev
+      - /usr/src/app/node_modules # Avoid overwriting node_modules with host's
+    command: npm run dev # Use nodemon for development
 
-networks:
-  ecommerce-network:
-    driver: bridge
+  # Optional: Frontend service
+  # frontend:
+  #   build: ./frontend # Assuming a frontend Dockerfile in ./frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: development
+  #     REACT_APP_API_URL: http://localhost:5000/api # Adjust based on your setup
+  #   depends_on:
+  #     - backend
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+
+  # Optional: Mock Payment Gateway Server (if running as a separate service for local dev)
+  # mock-gateway:
+  #   build:
+  #     context: ./mock-gateway # Assuming a mock gateway project in a separate folder
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "5001:5001"
+  #   environment:
+  #     PORT: 5001
+  #   restart: on-failure
 
 volumes:
-  pgdata:
-  redisdata:
+  db_data:
+  redis_data:
 ```
+**`docker-entrypoint-initdb.d/init-uuid.sh`** (To enable UUID extension in PostgreSQL)
+```bash

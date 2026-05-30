@@ -1,32 +1,28 @@
-```dockerfile
-# Stage 1: Build the Spring Boot application
-FROM eclipse-temurin:17-jdk-alpine as builder
+# Use a Node.js 18 LTS image
+FROM node:18-alpine
 
-# Set working directory
-WORKDIR /app
+# Set the working directory in the container
+WORKDIR /usr/src/app
 
-# Copy Maven pom.xml and download dependencies
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# Copy package.json and package-lock.json (or yarn.lock)
+# to install dependencies first. This step is cached if dependencies don't change.
+COPY package*.json ./
 
-# Copy the rest of the application source code
-COPY src ./src
+# Install app dependencies
+RUN npm install
 
-# Build the application
-RUN mvn clean install -DskipTests
+# Copy the rest of the application code
+COPY . .
 
-# Stage 2: Create the final Docker image
-FROM eclipse-temurin:17-jre-alpine
+# Expose the port your app runs on
+EXPOSE 5000
 
-# Set working directory
-WORKDIR /app
+# Run database migrations and seeds (optional, can also be done via CI/CD or separate migration service)
+# It's generally better to run migrations as a separate step in CI/CD or startup script
+# RATHER than directly in the Dockerfile if you want to apply migrations to an *existing* DB.
+# For simplicity in initial setup, showing it here.
+RUN npm run migrate:latest
+# RUN npm run seed:run # Only run seeds in dev/test, not production
 
-# Copy the built JAR file from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
-
-# Expose the port the Spring Boot application runs on
-EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
+# Command to run the application
+CMD [ "npm", "start" ]
