@@ -1,340 +1,286 @@
-```markdown
-# ALX Enterprise Content Management System (CMS)
+# Enterprise Security System (Project Management System)
 
-A comprehensive, production-ready CMS built with Python (Flask), SQLAlchemy, Marshmallow, PostgreSQL, Redis, Docker, and more. This project aims to demonstrate a full-stack, enterprise-grade application with robust features, testing, and deployment considerations, adhering to ALX Software Engineering principles.
+This project demonstrates a comprehensive, production-ready security implementation system built with TypeScript, Node.js, Express, and PostgreSQL. It focuses on robust authentication, authorization, data validation, logging, error handling, caching, and rate limiting within a Project Management System (PMS) context.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Setup Guide](#setup-guide)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Development with Docker](#local-development-with-docker)
-    *   [Manual Setup (Virtual Environment)](#manual-setup-virtual-environment)
-4.  [Running the Application](#running-the-application)
-5.  [Database Management](#database-management)
-    *   [Migrations (Alembic)](#migrations-alembic)
-    *   [Seeding Data](#seeding-data)
-6.  [Testing](#testing)
+1.  [Project Overview](#project-overview)
+2.  [Features](#features)
+3.  [Technologies Used](#technologies-used)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup Instructions](#setup-instructions)
+    *   [Backend Setup](#backend-setup)
+    *   [Frontend Setup (Minimal)](#frontend-setup-minimal)
+    *   [Docker Setup](#docker-setup)
+6.  [Running the Application](#running-the-application)
 7.  [API Documentation](#api-documentation)
-8.  [CI/CD](#cicd)
-9.  [Deployment](#deployment)
-10. [Future Enhancements](#future-enhancements)
-11. [License](#license)
+8.  [Testing](#testing)
+9.  [CI/CD](#ci-cd)
+10. [Architecture](#architecture)
+11. [Deployment Guide](#deployment-guide)
+12. [License](#license)
 
-## 1. Features
+---
 
-**Core Application (Python - Flask)**
-*   **RESTful API**: Full CRUD operations for Users, Posts, Categories, and Media.
-*   **Modular Design**: Structured codebase with clear separation of concerns (models, schemas, services, routes).
-*   **Business Logic**: Encapsulated within a service layer for clean, testable code.
-*   **Frontend**: Simple Jinja2 templates for basic UI demonstration. Easily extendable by a separate SPA.
+## 1. Project Overview
 
-**Database Layer (PostgreSQL)**
-*   **SQLAlchemy ORM**: Pythonic interaction with the database.
-*   **Alembic Migrations**: For managing database schema changes.
-*   **Seed Data**: Script to populate the database with initial development/testing data.
+This system is designed as a multi-user Project Management System (PMS) with distinct roles and permissions. It aims to showcase enterprise-grade security practices and system design.
 
-**Configuration & Setup**
-*   `requirements.txt`: All Python dependencies.
-*   `.env` files: Environment-specific configuration.
-*   `Dockerfile` & `docker-compose.yml`: Containerization for application, PostgreSQL, and Redis.
+**Key Entities:**
+*   **Users:** Authenticated individuals with specific roles.
+*   **Projects:** High-level containers for tasks, owned by a Project Manager.
+*   **Tasks:** Individual work items within a project, assigned to users.
 
-**Authentication & Authorization**
-*   **JWT-based Authentication**: Stateless authentication using Flask-JWT-Extended.
-*   **Role-Based Authorization**: `Admin`, `Editor`, `User` roles with decorators for protected routes.
+**Roles:**
+*   `ADMIN`: Full control over all users, projects, and tasks.
+*   `PROJECT_MANAGER`: Can create, view, update, and delete projects they own; manage tasks within their projects. Can view other projects.
+*   `MEMBER`: Can view projects and tasks they are assigned to; update the status of their assigned tasks.
 
-**Additional Features**
-*   **Logging**: Structured logging with Python's `logging` module.
-*   **Error Handling**: Centralized API error handling middleware for consistent error responses.
-*   **Caching**: Redis integrated with Flask-Caching for performance optimization.
-*   **Rate Limiting**: Flask-Limiter to protect API endpoints from abuse.
+## 2. Features
 
-**Quality & Documentation**
-*   **Testing**: Unit, Integration, and API tests using `pytest` (aiming for high coverage).
-*   **Documentation**: Comprehensive README, API documentation, Architecture overview, and Deployment guide.
-*   **CI/CD**: GitHub Actions workflow for automated testing and linting.
+*   **Authentication:** JWT-based user registration and login.
+*   **Authorization:** Role-Based Access Control (RBAC) middleware.
+*   **Data Validation:** Strict input validation using `zod` schemas.
+*   **Secure Passwords:** `bcrypt` hashing and salting.
+*   **Centralized Error Handling:** Custom error types and global middleware.
+*   **Structured Logging:** `winston` for application events and errors.
+*   **Rate Limiting:** Protect against brute-force attacks and API abuse.
+*   **Caching Layer:** `node-cache` for performance optimization on read-heavy operations.
+*   **CRUD Operations:** Full Create, Read, Update, Delete for Users, Projects, and Tasks.
+*   **Database Migrations:** Schema management with Prisma.
+*   **Seed Data:** Initial data for roles and an admin user.
+*   **Comprehensive Testing:** Unit, integration, and API tests using Jest and Supertest.
+*   **Dockerization:** Containerized application for easy deployment.
+*   **CI/CD Pipeline:** Basic GitHub Actions workflow for automated testing and building.
+*   **API Documentation:** OpenAPI (Swagger) specification.
+*   **Architecture & Deployment Docs:** Detailed guides.
 
-## 2. Architecture
+## 3. Technologies Used
 
-The CMS follows a layered architecture, common in web applications:
+**Backend:**
+*   **TypeScript:** Type-safe JavaScript.
+*   **Node.js:** JavaScript runtime.
+*   **Express.js:** Web application framework.
+*   **Prisma:** ORM for database interaction.
+*   **PostgreSQL:** Relational database.
+*   **jsonwebtoken:** For JWT creation and verification.
+*   **bcrypt:** For password hashing.
+*   **dotenv:** For environment variable management.
+*   **zod:** For schema validation.
+*   **winston:** For logging.
+*   **express-rate-limit:** For rate limiting.
+*   **node-cache:** For in-memory caching.
+*   **http-status-codes:** For standardized HTTP status codes.
 
-*   **Presentation Layer (Frontend)**: Minimal Jinja2 templates; in production, this would typically be a separate SPA (React, Vue, Angular) consuming the API.
-*   **API Layer (Backend - Flask)**:
-    *   **Routes**: Defines API endpoints, handles request parsing, and delegates to the service layer.
-    *   **Schemas**: Uses Marshmallow for input validation and output serialization/deserialization.
-    *   **Utilities**: Common functionalities like JWT handling, custom decorators, error classes, and logging.
-*   **Business Logic Layer (Services)**: Contains the core business rules and orchestrates data access.
-*   **Data Access Layer (Models & ORM)**:
-    *   **Models**: SQLAlchemy ORM models representing database entities (User, Post, Category, Media).
-    *   **Database**: PostgreSQL for persistent storage.
-    *   **Cache**: Redis for temporary data storage (caching, rate limiting).
+**Testing:**
+*   **Jest:** Test runner.
+*   **Supertest:** For HTTP assertions in integration tests.
 
-**Component Diagram:**
+**Containerization:**
+*   **Docker:** For containerizing the application.
+*   **Docker Compose:** For orchestrating multi-container applications (backend, database).
 
-```
-+----------------+       +-------------------+
-|    Browser/    |       |  External Clients |
-|   Frontend     |       |   (e.g., Postman) |
-+-------+--------+       +---------+---------+
-        |                          |
-        |  HTTP/HTTPS Requests     |
-        v                          v
-+------------------------------------------------+
-|       **FLASK APPLICATION (Backend)**          |
-|------------------------------------------------|
-|  (Reverse Proxy/Load Balancer)                 |
-|                                                |
-| +--------------------------------------------+ |
-| | **API Layer (Routes, Schemas, Utils)**     | |
-| |                                            | |
-| | - Authentication/Authorization (JWT, Roles)| |
-| | - Rate Limiting (Flask-Limiter)            | |
-| | - Request/Response Validation (Marshmallow)| |
-| | - Global Error Handling                    | |
-| +---------------------+----------------------+ |
-|                       |                        |
-|                       v                        |
-| +--------------------------------------------+ |
-| |    **Business Logic Layer (Services)**     | |
-| | - Content Management (Posts, Categories)   | |
-| | - User Management                          | |
-| | - Media Management                         | |
-| +---------------------+----------------------+ |
-|                       |                        |
-|                       v                        |
-| +--------------------------------------------+ |
-| |      **Data Access Layer (Models)**        | |
-| | - SQLAlchemy ORM                           | |
-| | - Data Modeling (User, Post, Category, etc.)| |
-| | - Caching (Flask-Caching -> Redis)         | |
-| +---------------------+----------------------+ |
-|                       |                        |
-+-----------------------+------------------------+
-                        |
-            +-----------+-----------+
-            |                       |
-            v                       v
-    +-------------+           +-------------+
-    | PostgreSQL  |           |    Redis    |
-    | (Database)  |           | (Cache/Queue)|
-    +-------------+           +-------------+
-```
+**CI/CD:**
+*   **GitHub Actions:** For automated workflows.
 
-## 3. Setup Guide
+**Frontend (Minimal Placeholder):**
+*   **React:** UI library.
+*   **TypeScript:** Type-safe JavaScript.
 
-### Prerequisites
+## 4. Prerequisites
 
-*   **Python 3.10+**
-*   **Docker & Docker Compose** (Recommended for easy setup)
-*   `make` (Optional, for convenience scripts)
+Before you begin, ensure you have the following installed:
 
-### Local Development with Docker (Recommended)
+*   Node.js (LTS version, e.g., v18.x or v20.x)
+*   npm or yarn
+*   Docker & Docker Compose (optional, but recommended for easy setup)
+*   Git
+
+## 5. Setup Instructions
+
+You can run the application either directly on your machine or using Docker. Docker is recommended for a consistent environment.
+
+### Backend Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/alx-enterprise-cms.git
-    cd alx-enterprise-cms
+    git clone https://github.com/your-username/project-security-system.git
+    cd project-security-system/backend
     ```
 
-2.  **Create `.env` file:**
-    Copy the example environment file and fill in your desired values.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    # or yarn install
+    ```
+
+3.  **Create `.env` file:**
+    Copy `.env.example` to `.env` and fill in the values.
     ```bash
     cp .env.example .env
     ```
-    **Note**: Ensure `SECRET_KEY`, `JWT_SECRET_KEY`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` are set to strong, unique values.
-
-3.  **Build and run Docker containers:**
-    This command will build the Flask app image, start the PostgreSQL and Redis containers, run Alembic migrations, seed initial data, and then start the Flask app using Gunicorn.
-    ```bash
-    docker-compose up --build
+    **`.env` example content:**
     ```
-    (Add `-d` to run in detached mode: `docker-compose up --build -d`)
+    # Application Configuration
+    NODE_ENV=development
+    PORT=5000
+    LOG_LEVEL=info # debug, info, warn, error
 
-    *The `docker-compose.yml` is configured to run `alembic upgrade head` and `python scripts/seed_db.py` on app startup. For subsequent runs, if you want to skip seeding, you can edit the `command` in `docker-compose.yml` or run `docker-compose up` without `--build` if the image hasn't changed.*
+    # Database Configuration (PostgreSQL)
+    DATABASE_URL="postgresql://user:password@localhost:5432/pms_db?schema=public"
+    TEST_DATABASE_URL="postgresql://user:password@localhost:5433/pms_test_db?schema=public"
 
-4.  **Verify installation:**
-    Open your browser or Postman and navigate to `http://localhost:5000`. You should see the welcome page.
-    Check the Docker logs (`docker-compose logs -f`) to ensure all services started without errors.
+    # JWT Configuration
+    JWT_SECRET=YOUR_VERY_STRONG_JWT_SECRET_KEY_HERE # min 32 characters, generate randomly
+    JWT_EXPIRES_IN=1h
 
-### Manual Setup (Virtual Environment)
+    # Hashing Configuration
+    SALT_ROUNDS=10 # Number of salt rounds for bcrypt
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/alx-enterprise-cms.git
-    cd alx-enterprise-cms
-    ```
+    # Rate Limiting
+    RATE_LIMIT_WINDOW_MS=60000 # 1 minute
+    RATE_LIMIT_MAX_REQUESTS=100 # Max 100 requests per window
 
-2.  **Create and activate a virtual environment:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
+    # Caching
+    CACHE_TTL_SECONDS=300 # 5 minutes
     ```
 
-3.  **Install dependencies:**
+    **Important:** For `JWT_SECRET`, generate a strong, random string. You can use tools like `openssl rand -base64 32` for this.
+
+4.  **Database Setup (if not using Docker):**
+    Ensure you have a PostgreSQL server running. Create a database named `pms_db`.
+    *   **Generate Prisma client & run migrations:**
+        ```bash
+        npx prisma migrate dev --name init # This creates tables based on schema.prisma
+        ```
+    *   **Seed the database:**
+        ```bash
+        npx prisma db seed
+        ```
+        This will create initial roles and an `admin` user.
+        *   **Admin Credentials:** `admin@example.com` / `password123`
+
+### Frontend Setup (Minimal)
+
+1.  Navigate to the frontend directory:
     ```bash
-    pip install -r requirements.txt
+    cd ../frontend
     ```
 
-4.  **Install PostgreSQL and Redis:**
-    You'll need to install and run PostgreSQL and Redis directly on your machine or use Docker for just these services.
-    *   For PostgreSQL, ensure it's running and you've created a database (e.g., `cms_db`) and a user with access.
-    *   For Redis, ensure it's running on its default port (6379).
-
-5.  **Create `.env` file:**
+2.  Install dependencies:
     ```bash
-    cp .env.example .env
-    ```
-    Update `DATABASE_URL` to point to your local PostgreSQL instance (e.g., `postgresql://user:password@localhost:5432/cms_db`).
-
-6.  **Run Alembic migrations:**
-    ```bash
-    flask db upgrade head
+    npm install
+    # or yarn install
     ```
 
-7.  **Seed initial data:**
+3.  Start the frontend (it will connect to `http://localhost:5000` by default):
     ```bash
-    python scripts/seed_db.py
+    npm start
+    # or yarn start
     ```
 
-8.  **Run the Flask application:**
+### Docker Setup
+
+This is the recommended way to run the entire application (backend + PostgreSQL database).
+
+1.  **Ensure Docker and Docker Compose are installed.**
+
+2.  **Build and start the services:**
+    Navigate to the root directory of the project (`project-security-system/`).
     ```bash
-    flask run
+    docker-compose up --build -d
     ```
-    The application will be available at `http://127.0.0.1:5000`.
+    *   This will:
+        *   Build the backend Docker image.
+        *   Start a PostgreSQL container.
+        *   Start the backend container, which will automatically run Prisma migrations and seeding.
 
-## 4. Running the Application
-
-*   **With Docker Compose:** `docker-compose up`
-*   **Locally (Virtual Env):** `flask run`
-
-The application will run on `http://localhost:5000`.
-
-## 5. Database Management
-
-### Migrations (Alembic)
-
-Alembic is used to manage database schema changes.
-
-*   **Initialize Alembic (First time setup for an empty project - already done if using provided setup):**
+3.  **Verify services:**
     ```bash
-    alembic init -t flask alembic
+    docker-compose ps
     ```
-    (Note: `alembic/env.py` and `alembic.ini` are already configured.)
+    You should see `backend` and `db` services running.
 
-*   **Generate a new migration script:**
-    After making changes to `app/models/*.py`, run:
+4.  **Stop services:**
     ```bash
-    flask db migrate -m "Description of changes"
-    # or using alembic directly:
-    # alembic revision --autogenerate -m "Description of changes"
-    ```
-    Review the generated script in `alembic/versions/`.
-
-*   **Apply migrations to the database:**
-    ```bash
-    flask db upgrade head
-    # or using alembic directly:
-    # alembic upgrade head
+    docker-compose down
     ```
 
-*   **Revert to a previous migration:**
+## 6. Running the Application
+
+### Without Docker
+
+1.  **Start the backend:**
+    Navigate to `backend/`.
     ```bash
-    flask db downgrade -1 # Revert last migration
-    # or using alembic directly:
-    # alembic downgrade -1
+    npm run dev # For development with hot-reloading
+    # or npm start # For production build
     ```
+    The backend API will be available at `http://localhost:5000`.
 
-### Seeding Data
-
-The `scripts/seed_db.py` script populates your database with sample users (admin, editor, user), categories, posts, and media items. This is useful for development and testing.
-
-*   **To seed data:**
+2.  **Start the frontend:**
+    Navigate to `frontend/`.
     ```bash
-    python scripts/seed_db.py
+    npm start
     ```
-    If running with Docker Compose, this is automatically executed on `docker-compose up --build`.
+    The frontend will typically run on `http://localhost:3000`.
 
-**Default Seeded Credentials:**
-*   **Admin**: `admin@example.com` / `adminpassword`
-*   **Editor**: `editor@example.com` / `editorpassword`
-*   **User**: `user_test` / `password` (if using conftest for tests)
-    *(Note: For `scripts/seed_db.py`, a `user_test` user is not explicitly created, but many random users will be. The admin and editor users always exist.)*
+### With Docker
 
-## 6. Testing
+Once `docker-compose up -d` is run:
 
-The project includes unit and integration tests using `pytest`.
-
-*   **Run all tests:**
-    ```bash
-    pytest
-    ```
-
-*   **Run tests with coverage report:**
-    ```bash
-    pytest --cov=app --cov-report=term-missing
-    ```
-    This will show a summary of code coverage in your terminal. For a detailed HTML report:
-    ```bash
-    pytest --cov=app --cov-report=html
-    # Then open htmlcov/index.html in your browser
-    ```
-    *(Note: Ensure `pytest-cov` is installed from `requirements.txt`)*
-
-*   **Performance Testing (Locust - Placeholder)**
-    A `locustfile.py` is provided in `tests/performance/` as an example.
-    To run Locust:
-    1.  Ensure your app is running (e.g., `docker-compose up`).
-    2.  Install Locust: `pip install locust`
-    3.  Run Locust from the project root: `locust -f tests/performance/locustfile.py`
-    4.  Open `http://localhost:8089` in your browser to access the Locust web UI.
+*   **Backend API:** `http://localhost:5000`
+*   **PostgreSQL:** `localhost:5432` (accessible from host machine, mapped in `docker-compose.yml`)
 
 ## 7. API Documentation
 
-Detailed API documentation describing all endpoints, methods, request/response bodies, authentication requirements, and error codes can be found in `DOCUMENTATION.md`.
+API documentation is generated using OpenAPI (Swagger) specification.
+You can find the definition in `docs/api.yaml`.
 
-**[Link to DOCUMENTATION.md](DOCUMENTATION.md)**
+*   If running the backend, you can typically access an auto-generated Swagger UI at `/api-docs` (not implemented here, but standard practice). For this project, you'd use a tool like [Swagger Editor](https://editor.swagger.io/) to view `api.yaml`.
 
-## 8. CI/CD
+## 8. Testing
 
-A GitHub Actions workflow (`.github/workflows/ci.yml`) is configured to:
-*   Automatically run tests (unit and integration) on `push` and `pull_request` to `main` and `develop` branches.
-*   Spin up PostgreSQL and Redis services for testing.
-*   Apply Alembic migrations.
-*   Generate and upload code coverage reports to Codecov.
+Tests are written using `Jest` and `Supertest`.
 
-This ensures code quality and helps catch regressions early in the development cycle.
+1.  **Unit Tests:** For individual functions/utilities.
+    ```bash
+    cd backend
+    npm run test:unit
+    ```
 
-## 9. Deployment
+2.  **Integration/API Tests:** For API endpoints and service interactions.
+    ```bash
+    cd backend
+    npm run test:integration
+    ```
+    **Note:** Integration tests run against a *separate test database*. Ensure your `TEST_DATABASE_URL` in `.env` is correctly configured and points to a dedicated test DB (e.g., `localhost:5433/pms_test_db`). The test setup script will handle migrations for the test DB.
 
-For production deployment, consider the following:
+3.  **All Tests:**
+    ```bash
+    cd backend
+    npm test
+    ```
 
-*   **Environment Variables**: Ensure all sensitive configurations (`SECRET_KEY`, `JWT_SECRET_KEY`, database credentials) are managed securely (e.g., Kubernetes secrets, AWS Secrets Manager, Vault).
-*   **Database**: Use a managed PostgreSQL service (e.g., AWS RDS, Google Cloud SQL, Azure Database for PostgreSQL).
-*   **Caching/Queue**: Use a managed Redis service (e.g., AWS ElastiCache, Google Cloud Memorystore, Azure Cache for Redis).
-*   **Web Server**: The `Dockerfile` uses `Gunicorn` as a WSGI HTTP Server. It should be placed behind a robust reverse proxy like Nginx or Caddy.
-*   **Container Orchestration**: Use Kubernetes, Docker Swarm, or a similar platform for scaling, load balancing, and high availability.
-*   **Logging & Monitoring**: Integrate with centralized logging (e.g., ELK stack, Grafana Loki) and monitoring (e.g., Prometheus, Datadog) solutions.
-*   **HTTPS**: Always deploy with HTTPS enabled.
-*   **Static Files**: If you have a separate frontend, static files should be served efficiently (e.g., via a CDN or Nginx). For the basic Jinja2 templates here, Flask handles it but it's not optimal for scale.
+## 9. CI/CD
 
-## 10. Future Enhancements
+A basic CI/CD pipeline is configured using GitHub Actions.
+See `.github/workflows/ci.yml` for the configuration.
+This workflow typically runs on `push` to `main` and `pull_requests`, performing:
+*   Dependency installation
+*   Linting
+*   Building
+*   Testing
 
-*   **Frontend SPA**: Replace Jinja2 templates with a full-fledged React, Vue, or Angular single-page application.
-*   **File Storage**: Integrate with cloud storage services like AWS S3 or Google Cloud Storage for media assets instead of local `filepath` strings.
-*   **Search Functionality**: Implement full-text search using Elasticsearch or PostgreSQL's built-in capabilities.
-*   **Admin Panel**: Build a dedicated Flask-Admin interface or a separate SPA admin panel.
-*   **Comments/Reviews**: Add functionality for users to comment on posts.
-*   **Tags/Keywords**: Implement tagging for posts.
-*   **Analytics Integration**: Connect with Google Analytics or other tracking tools.
-*   **Image Optimization**: Automatic resizing and optimization of uploaded images.
-*   **Background Tasks**: Use Celery with Redis as a broker for long-running tasks (e.g., image processing, email notifications).
-*   **API Versioning**: Implement API versioning (e.g., `/api/v1/posts`).
-*   **More Robust Logging**: Detailed audit logs, structured JSON logging.
-*   **Health Checks**: More sophisticated health checks for containers.
-*   **Internationalization (i18n)**: Support for multiple languages.
+## 10. Architecture
 
-## 11. License
+Refer to `docs/architecture.md` for a detailed architectural overview of the system.
+
+## 11. Deployment Guide
+
+Refer to `docs/deployment.md` for instructions on deploying this system to a production environment.
+
+## 12. License
 
 This project is open-source and available under the [MIT License](LICENSE).
 ```

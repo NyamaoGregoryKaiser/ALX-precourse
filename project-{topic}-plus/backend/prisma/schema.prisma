@@ -1,0 +1,77 @@
+// Learn more about Prisma schema: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum for User Roles
+enum Role {
+  ADMIN
+  PROJECT_MANAGER
+  MEMBER
+}
+
+// User Model
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role      @default(MEMBER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  projects  Project[] // Projects managed by this user (if Project Manager)
+  tasks     Task[]    // Tasks assigned to this user
+
+  @@map("users") // Maps the model name 'User' to a table named 'users' in the database
+}
+
+// Project Model
+model Project {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  status      String    @default("Planning") // e.g., Planning, In Progress, Completed, On Hold
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationship: Project Manager (User with PROJECT_MANAGER role)
+  managerId   String
+  manager     User      @relation(fields: [managerId], references: [id])
+
+  tasks       Task[]
+
+  @@map("projects")
+}
+
+// Task Model
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      String    @default("To Do") // e.g., To Do, In Progress, Done, Blocked
+  priority    String    @default("Medium") // e.g., Low, Medium, High
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationship: Project
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Relationship: Assigned User
+  assignedToId String? // Nullable if task can be unassigned
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@map("tasks")
+}
+```

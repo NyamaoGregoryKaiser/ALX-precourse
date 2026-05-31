@@ -1,143 +1,112 @@
-```typescript
-import { PrismaClient, UserStatus } from '@prisma/client';
-import { hashPassword } from '../src/utils/hash';
+import { PrismaClient, Role } from '@prisma/client';
+import { hashPassword } from '../src/utils/password'; // Adjust path as necessary
+import { config } from 'dotenv';
+import path from 'path';
+
+// Load environment variables for seeding
+config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Start seeding...');
+  console.log('Seeding database...');
 
-  // Create users
-  const user1Password = await hashPassword('password123');
-  const user2Password = await hashPassword('password123');
-  const user3Password = await hashPassword('password123');
-
-  const user1 = await prisma.user.upsert({
-    where: { email: 'alice@example.com' },
+  // Create an Admin user
+  const adminPassword = process.env.NODE_ENV === 'test' ? 'testpassword' : 'password123'; // Use simple password for tests
+  const hashedPassword = await hashPassword(adminPassword);
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@example.com' },
     update: {},
     create: {
-      username: 'Alice',
-      email: 'alice@example.com',
-      passwordHash: user1Password,
-      status: UserStatus.ONLINE,
+      email: 'admin@example.com',
+      firstName: 'Super',
+      lastName: 'Admin',
+      password: hashedPassword,
+      role: Role.ADMIN,
     },
   });
+  console.log(`Created/updated admin user: ${adminUser.email}`);
 
-  const user2 = await prisma.user.upsert({
-    where: { email: 'bob@example.com' },
+  // Create a Project Manager user
+  const pmPassword = process.env.NODE_ENV === 'test' ? 'testpassword' : 'password123';
+  const hashedPmPassword = await hashPassword(pmPassword);
+  const projectManagerUser = await prisma.user.upsert({
+    where: { email: 'pm@example.com' },
     update: {},
     create: {
-      username: 'Bob',
-      email: 'bob@example.com',
-      passwordHash: user2Password,
-      status: UserStatus.OFFLINE,
+      email: 'pm@example.com',
+      firstName: 'Project',
+      lastName: 'Manager',
+      password: hashedPmPassword,
+      role: Role.PROJECT_MANAGER,
     },
   });
+  console.log(`Created/updated project manager user: ${projectManagerUser.email}`);
 
-  const user3 = await prisma.user.upsert({
-    where: { email: 'charlie@example.com' },
+  // Create a Member user
+  const memberPassword = process.env.NODE_ENV === 'test' ? 'testpassword' : 'password123';
+  const hashedMemberPassword = await hashPassword(memberPassword);
+  const memberUser = await prisma.user.upsert({
+    where: { email: 'member@example.com' },
     update: {},
     create: {
-      username: 'Charlie',
-      email: 'charlie@example.com',
-      passwordHash: user3Password,
-      status: UserStatus.ONLINE,
+      email: 'member@example.com',
+      firstName: 'Team',
+      lastName: 'Member',
+      password: hashedMemberPassword,
+      role: Role.MEMBER,
     },
   });
+  console.log(`Created/updated member user: ${memberUser.email}`);
 
-  console.log(`Created users: ${user1.username}, ${user2.username}, ${user3.username}`);
-
-  // Create a direct message conversation between Alice and Bob
-  const dmConversation = await prisma.conversation.upsert({
-    where: { id: 'dm-alice-bob' }, // Use a predictable ID for upsert
+  // Create a project managed by the Project Manager
+  const project = await prisma.project.upsert({
+    where: { name: 'Initial Project' },
     update: {},
     create: {
-      id: 'dm-alice-bob',
-      isGroup: false,
-      participants: {
-        create: [{ userId: user1.id }, { userId: user2.id }],
-      },
+      name: 'Initial Project',
+      description: 'A sample project to get started.',
+      managerId: projectManagerUser.id,
+      status: 'In Progress',
     },
   });
-  console.log(`Created DM conversation: ${dmConversation.id}`);
+  console.log(`Created/updated project: ${project.name}`);
 
-  // Create a group conversation with all users
-  const groupConversation = await prisma.conversation.upsert({
-    where: { id: 'group-all-users' },
+  // Create tasks for the project
+  await prisma.task.upsert({
+    where: { title: 'Setup database' },
     update: {},
     create: {
-      id: 'group-all-users',
-      name: 'All Users Chat',
-      isGroup: true,
-      participants: {
-        create: [{ userId: user1.id }, { userId: user2.id }, { userId: user3.id }],
-      },
-    },
-  });
-  console.log(`Created Group conversation: ${groupConversation.id}`);
-
-  // Add messages to DM conversation
-  const dmMessage1 = await prisma.message.create({
-    data: {
-      conversationId: dmConversation.id,
-      senderId: user1.id,
-      content: 'Hey Bob, how are you doing?',
-    },
-  });
-  const dmMessage2 = await prisma.message.create({
-    data: {
-      conversationId: dmConversation.id,
-      senderId: user2.id,
-      content: 'Hi Alice! I am good, thanks. How about you?',
+      title: 'Setup database',
+      description: 'Configure PostgreSQL and run migrations.',
+      projectId: project.id,
+      assignedToId: memberUser.id,
+      status: 'In Progress',
+      priority: 'High',
     },
   });
 
-  // Update last message for DM conversation
-  await prisma.conversation.update({
-    where: { id: dmConversation.id },
-    data: { lastMessageId: dmMessage2.id },
-  });
-  console.log(`Added messages to DM conversation.`);
-
-  // Add messages to group conversation
-  const groupMessage1 = await prisma.message.create({
-    data: {
-      conversationId: groupConversation.id,
-      senderId: user1.id,
-      content: 'Hello everyone! Welcome to the group chat.',
-    },
-  });
-  const groupMessage2 = await prisma.message.create({
-    data: {
-      conversationId: groupConversation.id,
-      senderId: user3.id,
-      content: 'Hi Alice! Glad to be here.',
-    },
-  });
-  const groupMessage3 = await prisma.message.create({
-    data: {
-      conversationId: groupConversation.id,
-      senderId: user2.id,
-      content: 'Greetings from Bob!',
+  await prisma.task.upsert({
+    where: { title: 'Implement authentication' },
+    update: {},
+    create: {
+      title: 'Implement authentication',
+      description: 'Set up JWT, login, and registration endpoints.',
+      projectId: project.id,
+      assignedToId: projectManagerUser.id,
+      status: 'To Do',
+      priority: 'High',
     },
   });
 
-  // Update last message for Group conversation
-  await prisma.conversation.update({
-    where: { id: groupConversation.id },
-    data: { lastMessageId: groupMessage3.id },
-  });
-  console.log(`Added messages to Group conversation.`);
-
-  console.log('Seeding finished.');
+  console.log('Seeding complete.');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('Seeding failed:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-```

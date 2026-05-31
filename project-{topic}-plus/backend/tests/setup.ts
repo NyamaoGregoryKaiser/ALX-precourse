@@ -1,38 +1,57 @@
-import { initializeDataSource, AppDataSource } from '../src/db/data-source';
-import { seedDatabase } from '../src/db/seeders';
-import { config } from '../src/config';
-import { LoggerService } from '../src/utils/logger';
-import { RedisService } from '../src/services/cache'; // Assuming you have a RedisService
+// This file is executed once before all tests.
+import { PrismaClient } from '@prisma/client';
+import { execSync } from 'child_process';
+import { env } from '../src/config/env';
+import { logger } from '../src/utils/logger';
 
-// Use a separate test database
-process.env.DB_NAME = process.env.DB_NAME_TEST || 'scrapeflow_test_db';
-
-const logger = LoggerService.getLogger();
-
-beforeAll(async () => {
-  logger.info("Setting up test environment...");
-  await initializeDataSource(logger);
-  // Ensure migrations run for the test database
-  await AppDataSource.runMigrations();
-  await AppDataSource.synchronize(true); // Re-sync to ensure schema matches entities (careful with this in real prod)
-
-  // Clear Redis cache before tests
-  await RedisService.getClient().flushall();
-
-  // Seed the test database with necessary data
-  // await seedDatabase(); // Uncomment if you need seed data for all tests
-  logger.info("Test environment setup complete.");
+// Use a separate Prisma Client for tests pointing to TEST_DATABASE_URL
+const prismaTest = new PrismaClient({
+  datasources: {
+    db: {
+      url: env.TEST_DATABASE_URL,
+    },
+  },
 });
 
-// For integration tests, you might want to clear DB between each test or group.
-// beforeEach(async () => {
-//     // Optionally truncate tables here
-//     const entities = AppDataSource.entityMetadatas;
-//     for (const entity of entities) {
-//         const repository = AppDataSource.getRepository(entity.name);
-//         await repository.query(`TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`);
-//     }
-//     await seedDatabase(); // Re-seed for each test
-// });
+beforeAll(async () => {
+  // Apply migrations to the test database
+  logger.info('Running migrations on test database...');
+  try {
+    // Ensure the test database exists and apply migrations
+    // For `prisma migrate dev` to work in tests, typically need to reset the DB
+    execSync(`DATABASE_URL=${env.TEST_DATABASE_URL} npx prisma migrate deploy`);
+    execSync(`DATABASE_URL=${env.TEST_DATABASE_URL} npx prisma db seed`); // Seed the test database
+    logger.info('Test database migrations and seeding complete.');
+  } catch (error) {
+    logger.error('Failed to migrate/seed test database:', (error as Error).message);
+    throw error;
+  }
+});
+
+afterAll(async () => {
+  // Clean up the test database after all tests are done
+  logger.info('Cleaning up test database...');
+  try {
+    // Delete all data from tables, but keep the schema for faster subsequent test runs
+    const tablenames = await prismaTest.$queryRaw<
+      Array<{ tablename: string }>
+    >`SELECT tablename FROM pg_tables WHERE schemaname='public'`;
+
+    const tables = tablenames
+      .map(({ tablename }) => tablename)
+      .filter((name) => name !== '_prisma_migrations') // Don't delete Prisma migration table
+      .map((name) => `"public"."${name}"`)
+      .join(', ');
+
+    if (tables) {
+      await prismaTest.$executeRawUnsafe(`TRUNCATE ${tables} RESTART IDENTITY CASCADE;`);
+      logger.info('Test database truncated.');
+    }
+
+    await prismaTest.$disconnect();
+  } catch (error) {
+    logger.error('Failed to clean up test database:', (error as Error).message);
+    throw error;
+  }
+});
 ```
-```typescript

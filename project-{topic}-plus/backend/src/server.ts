@@ -1,52 +1,68 @@
-```typescript
-import { createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
 import app from './app';
-import { logger } from './config/winston';
-import { setupSocketIO } from './sockets';
-import { config } from './config';
-import prisma from './prisma'; // Import prisma client
+import { env } from './config/env';
+import { connectDb, disconnectDb } from './config/prisma';
+import { logger } from './utils/logger';
 
-const port = config.port;
-const httpServer = createServer(app);
-
-// Initialize Socket.IO server
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: config.corsOrigin, // Allow frontend origin
-    methods: ['GET', 'POST'],
-    credentials: true,
-  },
-  // Optionally use Redis adapter for scaling with multiple Socket.IO servers
-  // adapter: createAdapter(redisClient, redisPublisher),
-});
-
-setupSocketIO(io);
+const PORT = env.PORT;
 
 // Start the server
-httpServer.listen(port, () => {
-  logger.info(`Server running on port ${port}`);
-  logger.info(`CORS origin: ${config.corsOrigin}`);
-  logger.info(`Environment: ${process.env.NODE_ENV}`);
+const startServer = async () => {
+  try {
+    // Connect to the database
+    await connectDb();
 
-  // Test DB connection
-  prisma.$connect()
-    .then(() => logger.info('Database connected successfully.'))
-    .catch((err) => logger.error('Database connection failed:', err));
-});
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  httpServer.close(() => {
-    logger.info('HTTP server closed.');
-    io.close(() => {
-      logger.info('Socket.IO server closed.');
-      prisma.$disconnect()
-        .then(() => logger.info('Prisma client disconnected.'))
-        .catch((err) => logger.error('Prisma client disconnection failed:', err));
-      process.exit(0);
+    // Start listening for requests
+    const server = app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT} in ${env.NODE_ENV} mode.`);
     });
-  });
-});
+
+    // Handle unhandled promise rejections (e.g., DB connection errors not caught by connectDb)
+    process.on('unhandledRejection', (err: Error) => {
+      logger.error('UNHANDLED REJECTION! Shutting down...', err);
+      // Close server and then exit process
+      server.close(() => {
+        disconnectDb().finally(() => {
+          process.exit(1);
+        });
+      });
+    });
+
+    // Handle uncaught exceptions (synchronous errors)
+    process.on('uncaughtException', (err: Error) => {
+      logger.error('UNCAUGHT EXCEPTION! Shutting down...', err);
+      // Exit process immediately, no need to close server if it's a sync error
+      disconnectDb().finally(() => {
+        process.exit(1);
+      });
+    });
+
+    // Handle graceful shutdown on SIGTERM (e.g., from Docker)
+    process.on('SIGTERM', () => {
+      logger.info('SIGTERM received. Shutting down gracefully...');
+      server.close(() => {
+        disconnectDb().finally(() => {
+          logger.info('Process terminated.');
+          process.exit(0);
+        });
+      });
+    });
+
+    // Handle graceful shutdown on SIGINT (Ctrl+C)
+    process.on('SIGINT', () => {
+      logger.info('SIGINT received. Shutting down gracefully...');
+      server.close(() => {
+        disconnectDb().finally(() => {
+          logger.info('Process terminated.');
+          process.exit(0);
+        });
+      });
+    });
+
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 ```

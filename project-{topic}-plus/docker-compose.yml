@@ -1,66 +1,49 @@
-```yaml
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    environment:
-      # Load environment variables from .env file directly (for development)
-      # In production, these would be managed by your orchestrator or CI/CD
-      FLASK_ENV: development
-      SECRET_KEY: ${SECRET_KEY}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
-      LOG_LEVEL: INFO
-      JWT_ACCESS_TOKEN_EXPIRES_SECONDS: ${JWT_ACCESS_TOKEN_EXPIRES_SECONDS}
-      JWT_REFRESH_TOKEN_EXPIRES_DAYS: ${JWT_REFRESH_TOKEN_EXPIRES_DAYS}
-    volumes:
-      - .:/app # Mount current directory to /app in container for live code changes (dev)
-    depends_on:
-      - db
-      - redis
-    # Command to run alembic migrations and then start the app
-    # In a real production setup, migrations might be run as a separate step/container
-    command: >
-      sh -c "alembic upgrade head && python scripts/seed_db.py && gunicorn --bind 0.0.0.0:5000 --workers 4 app.main:app"
-    # Added health check for robust deployment - depends_on doesn't wait for "ready" state
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   db:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: pms_db
     ports:
-      - "5432:5432" # Expose for local debugging, remove in prod if not needed
+      - "5432:5432" # Map host port 5432 to container port 5432
     volumes:
-      - cms_data:/var/lib/postgresql/data
+      - pms_db_data:/var/lib/postgresql/data # Persist database data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U user -d pms_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
+  backend:
+    build:
+      context: ./backend # Path to your backend Dockerfile
+      dockerfile: Dockerfile
     restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://user:password@db:5432/pms_db?schema=public # Connect to the 'db' service
+      JWT_SECRET: your_super_secret_jwt_key_here # Replace with a strong, random key
+      SALT_ROUNDS: 10
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      RATE_LIMIT_GUEST_MAX_REQUESTS: 20
+      CACHE_TTL_SECONDS: 300
+      LOG_LEVEL: info
     ports:
-      - "6379:6379" # Expose for local debugging, remove in prod if not needed
-    volumes:
-      - redis_data:/data
+      - "5000:5000" # Map host port 5000 to container port 5000
+    depends_on:
+      db:
+        condition: service_healthy # Ensure DB is healthy before starting backend
+    # If using `.env` file instead of passing all env vars explicitly:
+    # env_file:
+    #   - ./backend/.env # Make sure this path is correct if Dockerfile doesn't copy .env
+    # The current Dockerfile copies .env.example and expects variables to be passed explicitly or mounted.
 
 volumes:
-  cms_data:
-  redis_data:
+  pms_db_data:
 ```

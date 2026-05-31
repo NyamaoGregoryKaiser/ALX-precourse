@@ -1,41 +1,42 @@
-```typescript
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
+import { z } from 'zod';
 
-// Validate essential environment variables
-const requiredEnvVars = [
-  'PORT',
-  'DATABASE_URL',
-  'JWT_SECRET',
-  'JWT_EXPIRATION_TIME',
-  'REFRESH_TOKEN_SECRET',
-  'REFRESH_TOKEN_EXPIRATION_TIME',
-  'REDIS_HOST',
-  'REDIS_PORT',
-  'RATE_LIMIT_WINDOW_MS',
-  'RATE_LIMIT_MAX_REQUESTS',
-  'LOG_LEVEL',
-];
+// Load environment variables from .env file based on NODE_ENV
+// In development, it loads from .env in the current directory.
+// For testing, it should ideally load from a separate .env.test or be mocked.
+// For Docker, variables are typically passed directly.
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-for (const varName of requiredEnvVars) {
-  if (!process.env[varName]) {
-    console.error(`Error: Environment variable ${varName} is not set.`);
-    process.exit(1);
-  }
+// Define schema for environment variables using Zod
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().default(5000),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+
+  DATABASE_URL: z.string().url('DATABASE_URL must be a valid URL'),
+  TEST_DATABASE_URL: z.string().url('TEST_DATABASE_URL must be a valid URL'),
+
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters long'),
+  JWT_EXPIRES_IN: z.string().default('1h'),
+
+  SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(10), // bcrypt salt rounds
+
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000), // 1 minute
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(100), // 100 requests
+  RATE_LIMIT_GUEST_MAX_REQUESTS: z.coerce.number().int().min(1).default(20), // 20 requests
+
+  CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(300), // 5 minutes
+});
+
+// Validate environment variables
+const parsedEnv = envSchema.safeParse(process.env);
+
+if (!parsedEnv.success) {
+  console.error('❌ Invalid environment variables:', parsedEnv.error.format());
+  throw new Error('Invalid environment configuration');
 }
 
-export const env = {
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT || '5000', 10),
-  DATABASE_URL: process.env.DATABASE_URL!,
-  JWT_SECRET: process.env.JWT_SECRET!,
-  JWT_EXPIRATION_TIME: process.env.JWT_EXPIRATION_TIME!, // e.g., '1h', '15m'
-  REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET!,
-  REFRESH_TOKEN_EXPIRATION_TIME: process.env.REFRESH_TOKEN_EXPIRATION_TIME!, // e.g., '7d', '30d'
-  REDIS_HOST: process.env.REDIS_HOST!,
-  REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
-  RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10), // 1 minute
-  RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
-  LOG_LEVEL: process.env.LOG_LEVEL || 'info', // debug, http, info, warn, error
-};
+// Export the validated environment variables
+export const env = parsedEnv.data;
 ```
