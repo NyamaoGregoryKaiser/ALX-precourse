@@ -1,109 +1,160 @@
-```python
 import pytest
 from app import create_app
 from app.extensions import db
-from app.models.user import User, UserRole
-from app.models.category import Category
-from app.models.post import Post, PostStatus, post_media
-from app.models.media import Media, MediaType
-from app.utils.jwt_handlers import create_auth_tokens, REVOKED_TOKENS
+from app.models import User, DataSource, Visualization, Dashboard, DashboardVisualization
 import os
+from dotenv import load_dotenv
+
+# Load .env variables for tests
+load_dotenv('.env.example') # Load .env.example if .env is not present
 
 @pytest.fixture(scope='session')
 def app():
-    """Fixture for a Flask app instance, configured for testing."""
+    """Create and configure a new app instance for each test session."""
+    # Ensure FLASK_ENV is set to 'testing' for consistent test configuration
     os.environ['FLASK_ENV'] = 'testing'
-    _app = create_app()
+    
+    _app = create_app('testing')
 
     with _app.app_context():
-        # Create all tables for the in-memory SQLite database
+        # Ensure database is clean before tests
+        db.drop_all()
         db.create_all()
-        
-        # Seed initial data for tests
-        # Create media types
-        image_type = MediaType(name='image', description='Image files')
-        video_type = MediaType(name='video', description='Video files')
-        document_type = MediaType(name='document', description='Document files')
-        db.session.add_all([image_type, video_type, document_type])
-        db.session.commit()
 
-        # Create test users
-        admin_user = User(username='admin_test', email='admin_test@example.com', password='password', role=UserRole.ADMIN)
-        editor_user = User(username='editor_test', email='editor_test@example.com', password='password', role=UserRole.EDITOR)
-        regular_user = User(username='user_test', email='user_test@example.com', password='password', role=UserRole.USER)
-        
-        db.session.add_all([admin_user, editor_user, regular_user])
-        db.session.commit()
-
-        # Create test categories
-        category1 = Category(name='Technology', slug='technology', description='Tech related posts')
-        category2 = Category(name='Lifestyle', slug='lifestyle', description='Lifestyle related posts')
-        db.session.add_all([category1, category2])
-        db.session.commit()
-
-        # Create test media
-        media1 = Media(filename='test_image1.jpg', filepath='/uploads/test_image1.jpg', uploader_id=admin_user.id, media_type_id=image_type.id)
-        media2 = Media(filename='test_video1.mp4', filepath='/uploads/test_video1.mp4', uploader_id=editor_user.id, media_type_id=video_type.id)
-        db.session.add_all([media1, media2])
-        db.session.commit()
-
-        # Create test posts
-        post1 = Post(title='Admin Post', slug='admin-post', content='Content by admin', author_id=admin_user.id, category_id=category1.id, status=PostStatus.PUBLISHED)
-        post2 = Post(title='Editor Draft', slug='editor-draft', content='Content by editor', author_id=editor_user.id, category_id=category1.id, status=PostStatus.DRAFT)
-        post3 = Post(title='Published Post', slug='published-post', content='Another published post', author_id=regular_user.id, category_id=category2.id, status=PostStatus.PUBLISHED)
-        db.session.add_all([post1, post2, post3])
-        db.session.commit()
-
-        # Associate media with post1
-        post1.media_assets.append(media1)
-        db.session.commit()
-
+        # Create a test client
         yield _app
 
-        # Teardown: Clean up database after all tests in the session
+        # Clean up database after tests
         db.session.remove()
         db.drop_all()
-        # Clear revoked tokens for clean state
-        REVOKED_TOKENS.clear()
+        
+    os.environ.pop('FLASK_ENV', None)
+
 
 @pytest.fixture(scope='function')
 def client(app):
-    """Fixture for a test client."""
+    """A test client for the app."""
     return app.test_client()
 
 @pytest.fixture(scope='function')
 def runner(app):
-    """Fixture for a Flask CLI test runner."""
+    """A test runner for the app's Click commands."""
     return app.test_cli_runner()
 
 @pytest.fixture(scope='function')
 def session(app):
-    """Fixture for a database session, rolled back after each test."""
+    """Provides a clean database session for each test function."""
     with app.app_context():
         connection = db.engine.connect()
         transaction = connection.begin()
-        db.session.bind = connection
+        
+        # Bind the session to the connection
+        options = dict(bind=connection, binds={})
+        _session = db.create_scoped_session(options=options)
+        
+        # Replace the default session with our transactional session
+        db.session = _session
+
+        # Begin a savepoint (nested transaction)
+        # This allows each test to rollback its changes without affecting other tests
+        # within the same function scope.
+        db.session.begin_nested() 
+
         yield db.session
+
+        # Rollback the transaction after each test function
+        db.session.remove()
         transaction.rollback()
         connection.close()
 
 @pytest.fixture(scope='function')
-def auth_tokens(app):
-    """Fixture for creating and retrieving auth tokens for test users."""
-    with app.app_context():
-        admin_user = User.query.filter_by(username='admin_test').first()
-        editor_user = User.query.filter_by(username='editor_test').first()
-        regular_user = User.query.filter_by(username='user_test').first()
+def test_user(session):
+    """Creates a test user for authentication."""
+    user = User(username='testuser', email='test@example.com')
+    user.set_password('testpassword')
+    session.add(user)
+    session.commit()
+    return user
 
-        admin_access_token, admin_refresh_token = create_auth_tokens(admin_user.id, admin_user.role.value)
-        editor_access_token, editor_refresh_token = create_auth_tokens(editor_user.id, editor_user.role.value)
-        user_access_token, user_refresh_token = create_auth_tokens(regular_user.id, regular_user.role.value)
+@pytest.fixture(scope='function')
+def admin_user(session):
+    """Creates an admin test user."""
+    admin = User(username='adminuser', email='admin@example.com')
+    admin.set_password('adminpassword')
+    session.add(admin)
+    session.commit()
+    # In a real app, you'd mark this user as admin (e.g., via a 'roles' table or 'is_admin' column)
+    # For now, we'll assume JWT claims handle admin status.
+    return admin
 
-        return {
-            'admin': {'access': admin_access_token, 'refresh': admin_refresh_token, 'id': admin_user.id},
-            'editor': {'access': editor_access_token, 'refresh': editor_refresh_token, 'id': editor_user.id},
-            'user': {'access': user_access_token, 'refresh': user_refresh_token, 'id': regular_user.id},
-            'non_existent': {'access': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTY3ODU3NjgzNywianRpIjoiYjk3YjYyMDktYzkwNC00ZGEwLTg5YTktNzk4Y2RhMTY5ZTBiIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6OTk5OTksIm5iZiI6MTY3ODU3NjgzNywiZXhwIjoxNjc4NTc3NDM3LCJyb2xlIjoidXNlciJ9.invalidtoken', 'id': 99999}
-        }
+@pytest.fixture(scope='function')
+def auth_headers(client, test_user):
+    """Returns authorization headers for the test user."""
+    response = client.post('/auth/login', json={
+        'email': test_user.email,
+        'password': 'testpassword'
+    })
+    token = response.json['access_token']
+    return {'Authorization': f'Bearer {token}'}
 
-```
+@pytest.fixture(scope='function')
+def admin_auth_headers(client, admin_user):
+    """Returns authorization headers for the admin user."""
+    # Special claims for admin user
+    response = client.post('/auth/login', json={
+        'email': admin_user.email,
+        'password': 'adminpassword'
+    })
+    token = response.json['access_token']
+    return {'Authorization': f'Bearer {token}'}
+
+@pytest.fixture(scope='function')
+def create_data_source(session, test_user):
+    """Fixture to create a data source."""
+    def _create_data_source(user=test_user, name='Test Source', type='CSV', file_path='/path/to/test.csv'):
+        ds = DataSource(
+            name=name,
+            description='A test data source',
+            type=type,
+            file_path=file_path,
+            schema_json={"columns": ["col1", "col2"]},
+            user_id=user.id
+        )
+        session.add(ds)
+        session.commit()
+        return ds
+    return _create_data_source
+
+@pytest.fixture(scope='function')
+def create_visualization(session, test_user, create_data_source):
+    """Fixture to create a visualization."""
+    data_source = create_data_source(user=test_user)
+    def _create_visualization(user=test_user, ds=data_source, name='Test Viz', type='bar'):
+        viz = Visualization(
+            name=name,
+            description='A test visualization',
+            type=type,
+            config_json={"chart_type": type, "x_axis": "col1", "y_axis": "col2"},
+            query_json={"limit": 10},
+            data_source_id=ds.id,
+            user_id=user.id
+        )
+        session.add(viz)
+        session.commit()
+        return viz
+    return _create_visualization
+
+@pytest.fixture(scope='function')
+def create_dashboard(session, test_user):
+    """Fixture to create a dashboard."""
+    def _create_dashboard(user=test_user, name='Test Dashboard'):
+        dash = Dashboard(
+            name=name,
+            description='A test dashboard',
+            layout_json={},
+            user_id=user.id
+        )
+        session.add(dash)
+        session.commit()
+        return dash
+    return _create_dashboard

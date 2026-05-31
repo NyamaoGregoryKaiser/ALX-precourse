@@ -1,121 +1,167 @@
-```python
 import pytest
-from flask import url_for
-from performance_monitor.models import User
-from performance_monitor.extensions import db
-from performance_monitor.auth import REVOKED_TOKENS
+from app.models import User
+from app.extensions import db
+import json
 
-def test_register_user_success(client, db_session, app):
-    with app.app_context():
-        db_session.query(User).delete() # Clean slate
-        db_session.commit()
+def test_register_new_user_success(client):
+    """Test user registration successfully creates a user and returns tokens."""
+    data = {
+        'username': 'newuser',
+        'email': 'newuser@example.com',
+        'password': 'strongpassword'
+    }
+    response = client.post('/auth/register', json=data)
+    assert response.status_code == 201
+    assert 'access_token' in response.json
+    assert 'refresh_token' in response.json
+    assert response.json['user']['username'] == 'newuser'
+    
+    # Verify user is in DB
+    user = User.query.filter_by(email='newuser@example.com').first()
+    assert user is not None
+    assert user.username == 'newuser'
 
-        response = client.post(
-            '/api/auth/register',
-            json={'username': 'register_user', 'email': 'register@example.com', 'password': 'password123'}
-        )
-        assert response.status_code == 201
-        assert 'message' in response.json
-        assert 'access_token' in response.json # Auto-login after register
-        assert 'refresh_token' in response.json
+def test_register_existing_email_fails(client, test_user):
+    """Test user registration with an existing email fails."""
+    data = {
+        'username': 'anotheruser',
+        'email': test_user.email, # Use existing email
+        'password': 'password123'
+    }
+    response = client.post('/auth/register', json=data)
+    assert response.status_code == 409
+    assert 'already exists' in response.json['message']
 
-        user = User.query.filter_by(username='register_user').first()
-        assert user is not None
-        assert user.check_password('password123')
+def test_register_existing_username_fails(client, test_user):
+    """Test user registration with an existing username fails."""
+    data = {
+        'username': test_user.username, # Use existing username
+        'email': 'anotheremail@example.com',
+        'password': 'password123'
+    }
+    response = client.post('/auth/register', json=data)
+    assert response.status_code == 409
+    assert 'already exists' in response.json['message']
 
-def test_register_user_duplicate_username(client, db_session, app):
-    with app.app_context():
-        db_session.query(User).delete()
-        db_session.commit()
-        user = User(username='existing', email='existing@example.com')
-        user.set_password('password')
-        db_session.add(user)
-        db_session.commit()
+def test_register_invalid_data_fails(client):
+    """Test user registration with invalid data (e.g., too short password)."""
+    data = {
+        'username': 'shortpass',
+        'email': 'shortpass@example.com',
+        'password': '123' # Too short
+    }
+    response = client.post('/auth/register', json=data)
+    assert response.status_code == 400
+    assert 'errors' in response.json
+    assert 'password' in response.json['errors']
 
-        response = client.post(
-            '/api/auth/register',
-            json={'username': 'existing', 'email': 'new@example.com', 'password': 'password123'}
-        )
-        assert response.status_code == 400
-        assert 'Username already exists' in response.json['message']
+def test_login_success(client, test_user):
+    """Test user login successfully returns tokens."""
+    data = {
+        'email': test_user.email,
+        'password': 'testpassword'
+    }
+    response = client.post('/auth/login', json=data)
+    assert response.status_code == 200
+    assert 'access_token' in response.json
+    assert 'refresh_token' in response.json
+    assert response.json['user']['id'] == test_user.id
 
-def test_login_user_success(client, db_session, app):
-    with app.app_context():
-        db_session.query(User).delete()
-        db_session.commit()
-        user = User(username='login_user', email='login@example.com')
-        user.set_password('login_password')
-        db_session.add(user)
-        db_session.commit()
+def test_login_invalid_credentials_fails(client, test_user):
+    """Test user login with invalid password fails."""
+    data = {
+        'email': test_user.email,
+        'password': 'wrongpassword'
+    }
+    response = client.post('/auth/login', json=data)
+    assert response.status_code == 401
+    assert 'Invalid credentials' in response.json['message']
 
-        response = client.post(
-            '/api/auth/login',
-            json={'username': 'login_user', 'password': 'login_password'}
-        )
-        assert response.status_code == 200
-        assert 'access_token' in response.json
-        assert 'refresh_token' in response.json
+def test_login_non_existent_user_fails(client):
+    """Test user login with a non-existent email fails."""
+    data = {
+        'email': 'nonexistent@example.com',
+        'password': 'anypassword'
+    }
+    response = client.post('/auth/login', json=data)
+    assert response.status_code == 401
+    assert 'Invalid credentials' in response.json['message']
 
-def test_login_user_invalid_credentials(client, db_session, app):
-    with app.app_context():
-        db_session.query(User).delete()
-        db_session.commit()
-        user = User(username='fail_user', email='fail@example.com')
-        user.set_password('correct_password')
-        db_session.add(user)
-        db_session.commit()
+def test_login_invalid_data_fails(client):
+    """Test user login with invalid data (e.g., missing email)."""
+    data = {
+        'password': 'password'
+    }
+    response = client.post('/auth/login', json=data)
+    assert response.status_code == 400
+    assert 'errors' in response.json
+    assert 'email' in response.json['errors']
 
-        response = client.post(
-            '/api/auth/login',
-            json={'username': 'fail_user', 'password': 'wrong_password'}
-        )
-        assert response.status_code == 401
-        assert 'Invalid username or password' in response.json['message']
+def test_refresh_token_success(client, test_user):
+    """Test token refresh successfully returns a new access token."""
+    login_data = {
+        'email': test_user.email,
+        'password': 'testpassword'
+    }
+    login_response = client.post('/auth/login', json=login_data)
+    refresh_token = login_response.json['refresh_token']
 
-def test_logout_user(client, app, auth_tokens):
-    with app.app_context():
-        admin_headers = auth_tokens['admin_headers']
-        response = client.post('/api/auth/logout', headers=admin_headers)
-        assert response.status_code == 200
-        assert 'Successfully logged out' in response.json['message']
-        # Verify token is in blacklist (in-memory for this example)
-        from flask_jwt_extended import get_raw_jwt
-        with app.test_request_context(headers=admin_headers):
-            jti = get_raw_jwt()['jti']
-            assert jti in REVOKED_TOKENS
+    refresh_headers = {'Authorization': f'Bearer {refresh_token}'}
+    refresh_response = client.post('/auth/refresh', headers=refresh_headers)
+    assert refresh_response.status_code == 200
+    assert 'access_token' in refresh_response.json
 
-def test_protected_endpoint_access(client, app, auth_tokens):
-    with app.app_context():
-        regular_headers = auth_tokens['regular_headers']
-        response = client.get('/api/auth/protected', headers=regular_headers)
-        assert response.status_code == 200
-        assert 'Hello' in response.json['message']
+def test_refresh_token_with_access_token_fails(client, auth_headers):
+    """Test token refresh fails if an access token is used instead of a refresh token."""
+    response = client.post('/auth/refresh', headers=auth_headers)
+    assert response.status_code == 401
+    assert "fresh token required" not in response.json['message'].lower() # Should be about using a refresh token
+    assert "refresh token missing or invalid" in response.json['message'].lower()
+    
+def test_get_me_protected_route_success(client, auth_headers, test_user):
+    """Test accessing /users/me with a valid token."""
+    response = client.get('/users/me', headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json['id'] == test_user.id
+    assert response.json['email'] == test_user.email
 
-def test_protected_endpoint_no_token(client, app):
-    with app.app_context():
-        response = client.get('/api/auth/protected')
-        assert response.status_code == 401
-        assert 'Missing or invalid token' in response.json['message']
+def test_get_me_protected_route_unauthorized(client):
+    """Test accessing /users/me without a token."""
+    response = client.get('/users/me')
+    assert response.status_code == 401
+    assert 'Unauthorized' in response.json['message']
 
-def test_refresh_token_success(client, app, auth_tokens):
-    with app.app_context():
-        regular_user = auth_tokens['regular_user']
-        # Generate a refresh token for the user
-        from flask_jwt_extended import create_refresh_token
-        with app.test_request_context():
-            refresh_token = create_refresh_token(identity=regular_user.id)
-            refresh_headers = {'Authorization': f'Bearer {refresh_token}'}
+def test_update_me_success(client, auth_headers, test_user):
+    """Test updating user's own profile."""
+    update_data = {
+        'username': 'updateduser',
+        'email': 'updated@example.com'
+    }
+    response = client.put('/users/me', headers=auth_headers, json=update_data)
+    assert response.status_code == 200
+    assert response.json['username'] == 'updateduser'
+    assert response.json['email'] == 'updated@example.com'
+    
+    updated_user = User.query.get(test_user.id)
+    assert updated_user.username == 'updateduser'
+    assert updated_user.email == 'updated@example.com'
 
-        response = client.post('/api/auth/refresh', headers=refresh_headers)
-        assert response.status_code == 200
-        assert 'access_token' in response.json
-        assert response.json['access_token'] != auth_tokens['regular_headers']['Authorization'].split(' ')[1] # Should be a new access token
+def test_update_me_duplicate_email_fails(client, auth_headers, test_user, session):
+    """Test updating with a duplicate email fails."""
+    other_user = User(username='otheruser', email='other@example.com')
+    other_user.set_password('password')
+    session.add(other_user)
+    session.commit()
 
-def test_refresh_token_with_access_token_instead_of_refresh(client, app, auth_tokens):
-    with app.app_context():
-        access_token_headers = auth_tokens['regular_headers']
-        response = client.post('/api/auth/refresh', headers=access_token_headers)
-        assert response.status_code == 401
-        assert 'Refresh token required' in response.json['message']
+    update_data = {
+        'email': 'other@example.com'
+    }
+    response = client.put('/users/me', headers=auth_headers, json=update_data)
+    assert response.status_code == 400
+    assert 'Email already taken.' in response.json['message']
 
-```
+def test_delete_me_success(client, auth_headers, test_user):
+    """Test deleting user's own account."""
+    response = client.delete('/users/me', headers=auth_headers)
+    assert response.status_code == 204
+    assert User.query.get(test_user.id) is None

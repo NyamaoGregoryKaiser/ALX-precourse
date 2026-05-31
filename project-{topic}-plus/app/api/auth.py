@@ -1,232 +1,137 @@
-```python
-from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, current_user, get_jwt
-from marshmallow import ValidationError
-from datetime import timedelta
+from flask import request
+from flask_restx import Namespace, Resource, fields
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, current_user as jwt_current_user, get_jwt
+from app.models import User
+from app.schemas import user_register_schema, user_login_schema, user_schema
+from app.extensions import db, jwt, limiter
+from app.errors import BadRequestError, UnauthorizedError, ConflictError, NotFoundError
+import logging
 
-from app import jwt, db
-from app.models import User, UserRole
-from app.schemas import UserRegisterSchema, UserSchema
-from app.services.user_service import UserService
-from app.utils.decorators import admin_required
+log = logging.getLogger(__name__)
 
-auth_bp = Blueprint('auth', __name__)
+auth_ns = Namespace('auth', description='Authentication related operations')
 
-user_register_schema = UserRegisterSchema()
-user_schema = UserSchema()
+# Define request/response models for Flask-RESTX documentation
+user_register_model = auth_ns.model('UserRegister', {
+    'username': fields.String(required=True, description='User\'s chosen username'),
+    'email': fields.String(required=True, description='User\'s email address', attribute='email'),
+    'password': fields.String(required=True, description='User\'s password', min_length=6)
+})
 
-# This callback is used to load a user object from the database whenever
-# a protected endpoint is accessed.
-@jwt.user_lookup_loader
-def user_lookup_callback(_jwt_header, jwt_data):
-    identity = jwt_data["sub"]
-    return User.query.filter_by(id=identity).one_or_none()
+user_login_model = auth_ns.model('UserLogin', {
+    'email': fields.String(required=True, description='User\'s email address'),
+    'password': fields.String(required=True, description='User\'s password')
+})
 
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    """
-    Registers a new user.
-    ---
-    post:
-      summary: Register a new user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                username: { type: string, description: User's chosen username }
-                email: { type: string, format: email, description: User's email address }
-                password: { type: string, format: password, description: User's password (min 6 chars) }
-      responses:
-        201:
-          description: User registered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  user:
-                    $ref: '#/components/schemas/User'
-        400:
-          description: Invalid input or user already exists
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-        500:
-          description: Internal server error
-    """
-    try:
-        data = user_register_schema.load(request.get_json())
-    except ValidationError as err:
-        return jsonify({"message": err.messages}), 400
+auth_success_model = auth_ns.model('AuthSuccess', {
+    'message': fields.String(description='Success message'),
+    'access_token': fields.String(description='JWT Access Token'),
+    'refresh_token': fields.String(description='JWT Refresh Token'),
+    'user': fields.Nested(user_schema.as_dict())
+})
 
-    try:
-        user_data = UserService.create_user(
-            username=data['username'],
-            email=data['email'],
-            password=data['password'],
-            role=data.get('role', UserRole.CUSTOMER)
-        )
-        return jsonify({"message": "User registered successfully", "user": user_data}), 201
-    except ValueError as e:
-        return jsonify({"message": str(e)}), 400
-    except Exception as e:
-        current_app.logger.error(f"Error during registration: {e}")
-        return jsonify({"message": "Internal server error"}), 500
+token_refresh_model = auth_ns.model('TokenRefresh', {
+    'access_token': fields.String(description='New JWT Access Token'),
+})
 
-@auth_bp.route('/login', methods=['POST'])
-def login():
-    """
-    Logs in a user and returns JWT access and refresh tokens.
-    ---
-    post:
-      summary: Login a user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string, format: email, description: User's email address }
-                password: { type: string, format: password, description: User's password }
-      responses:
-        200:
-          description: User logged in successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  access_token: { type: string }
-                  refresh_token: { type: string }
-                  user:
-                    $ref: '#/components/schemas/User'
-        401:
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-        500:
-          description: Internal server error
-    """
-    email = request.json.get('email', None)
-    password = request.json.get('password', None)
+@auth_ns.route('/register')
+class UserRegister(Resource):
+    @limiter.limit("5 per minute", error_message="Too many registration attempts. Please try again later.")
+    @auth_ns.expect(user_register_model, validate=True)
+    @auth_ns.marshal_with(auth_success_model, code=201)
+    @auth_ns.response(400, 'Validation Error')
+    @auth_ns.response(409, 'Conflict (User already exists)')
+    @auth_ns.response(500, 'Internal Server Error')
+    def post(self):
+        """Register a new user and return JWT tokens."""
+        data = request.json
+        # Validate input using Marshmallow schema
+        try:
+            user_data = user_register_schema.load(data)
+        except Exception as e:
+            log.warning(f"Registration validation error: {e.messages}", exc_info=True)
+            raise BadRequestError(description="Invalid input data.", errors=e.messages)
 
-    if not email or not password:
-        return jsonify({"message": "Email and password are required"}), 400
+        # Check if user already exists
+        if User.query.filter_by(email=user_data.email).first():
+            raise ConflictError("A user with that email address already exists.")
+        if User.query.filter_by(username=user_data.username).first():
+            raise ConflictError("A user with that username already exists.")
 
-    user_data = UserService.verify_user(email, password)
+        user = User(username=user_data.username, email=user_data.email)
+        user.set_password(data['password']) # Use raw password from request data
+        db.session.add(user)
+        db.session.commit()
 
-    if user_data:
-        access_token = create_access_token(identity=user_data['id'], fresh=True)
-        refresh_token = create_refresh_token(identity=user_data['id'])
-        return jsonify(
-            message="Logged in successfully",
-            access_token=access_token,
-            refresh_token=refresh_token,
-            user=user_data
-        ), 200
-    else:
-        return jsonify({"message": "Invalid credentials"}), 401
+        # Create JWT tokens
+        additional_claims = {"is_admin": False} # Default to non-admin
+        access_token = create_access_token(identity=user.id, additional_claims=additional_claims)
+        refresh_token = create_refresh_token(identity=user.id, additional_claims=additional_claims)
 
-@auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
-def refresh():
-    """
-    Refreshes an expired access token using a refresh token.
-    ---
-    post:
-      summary: Refresh access token
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: New access token generated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  access_token: { type: string }
-        401:
-          description: Invalid or expired refresh token
-    """
-    identity = get_jwt_identity()
-    new_access_token = create_access_token(identity=identity, fresh=False)
-    return jsonify(access_token=new_access_token), 200
+        log.info(f"User {user.username} (ID: {user.id}) registered successfully.")
+        return {
+            "message": "User registered successfully",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": user_schema.dump(user)
+        }, 201
 
-@auth_bp.route('/protected', methods=['GET'])
-@jwt_required()
-def protected():
-    """
-    Example protected endpoint.
-    ---
-    get:
-      summary: Access protected resource
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: Access granted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  logged_in_as: { type: string }
-                  user_role: { type: string }
-        401:
-          description: Unauthorized
-    """
-    # Access the user object via current_user
-    return jsonify(
-        message=f"Hello {current_user.username}, you are authorized!",
-        logged_in_as=str(current_user.id),
-        user_role=current_user.role.value
-    ), 200
+@auth_ns.route('/login')
+class UserLogin(Resource):
+    @limiter.limit("10 per minute", error_message="Too many login attempts. Please try again later.")
+    @auth_ns.expect(user_login_model, validate=True)
+    @auth_ns.marshal_with(auth_success_model)
+    @auth_ns.response(400, 'Validation Error')
+    @auth_ns.response(401, 'Invalid Credentials')
+    @auth_ns.response(500, 'Internal Server Error')
+    def post(self):
+        """Log in a user and return JWT tokens."""
+        data = request.json
+        try:
+            user_data = user_login_schema.load(data)
+        except Exception as e:
+            log.warning(f"Login validation error: {e.messages}", exc_info=True)
+            raise BadRequestError(description="Invalid input data.", errors=e.messages)
 
-@auth_bp.route('/admin-only', methods=['GET'])
-@jwt_required()
-@admin_required
-def admin_only():
-    """
-    Example admin-only protected endpoint.
-    ---
-    get:
-      summary: Access admin-only resource
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: Admin access granted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  logged_in_as: { type: string }
-                  user_role: { type: string }
-        401:
-          description: Unauthorized
-        403:
-          description: Forbidden (Not an admin)
-    """
-    return jsonify(
-        message=f"Hello Admin {current_user.username}, you have admin access!",
-        logged_in_as=str(current_user.id),
-        user_role=current_user.role.value
-    ), 200
-```
+        user = User.query.filter_by(email=user_data.email).first()
+
+        if user and user.check_password(data['password']):
+            # Create JWT tokens
+            additional_claims = {"is_admin": False} # In a real app, this would come from a user role table
+            access_token = create_access_token(identity=user.id, additional_claims=additional_claims)
+            refresh_token = create_refresh_token(identity=user.id, additional_claims=additional_claims)
+
+            log.info(f"User {user.username} (ID: {user.id}) logged in successfully.")
+            return {
+                "message": "Logged in successfully",
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "user": user_schema.dump(user)
+            }, 200
+        else:
+            log.warning(f"Failed login attempt for email: {user_data.email}")
+            raise UnauthorizedError("Invalid credentials.")
+
+@auth_ns.route('/refresh')
+class TokenRefresh(Resource):
+    @jwt_required(refresh=True)
+    @auth_ns.marshal_with(token_refresh_model)
+    @auth_ns.response(401, 'Unauthorized (Refresh token missing or invalid)')
+    @auth_ns.response(500, 'Internal Server Error')
+    def post(self):
+        """Refresh an expired access token using a refresh token."""
+        current_user_id = get_jwt_identity()
+        claims = get_jwt()
+        new_access_token = create_access_token(identity=current_user_id, additional_claims=claims, fresh=False)
+        log.info(f"Access token refreshed for user ID: {current_user_id}.")
+        return {"access_token": new_access_token}, 200
+
+# Placeholder for logout functionality (token revocation not fully implemented)
+# In a real app, you would blacklist tokens
+# @auth_ns.route('/logout')
+# class UserLogout(Resource):
+#     @jwt_required()
+#     def post(self):
+#         jti = get_jwt()['jti']
+#         # Blacklist the token here (e.g., store JTI in Redis with expiration)
+#         return {"message": "Successfully logged out"}, 200

@@ -1,114 +1,127 @@
-```python
-from flask import Flask, jsonify, render_template, request, g
-from app.config import get_config_class
-from app.extensions import db, ma, jwt, cache, limiter
-from app.utils.logger import setup_logging
-from app.utils.errors import APIError, BadRequestError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServerError
-from app.utils.jwt_handlers import configure_jwt_callbacks
-from http import HTTPStatus
 import logging
+from logging.handlers import RotatingFileHandler
+import os
+from flask import Flask, jsonify
+from flask_restx.errors import RestXError
+from config import get_config_class
+from app.extensions import db, migrate, jwt, api, cache, limiter
+from app.errors import register_error_handlers, APIError, InternalServerError
 
-def create_app():
-    """
-    Factory function to create and configure the Flask application.
-    """
+# Import blueprints/namespaces
+from app.api.auth import auth_ns
+from app.api.users import users_ns
+from app.api.data_sources import data_sources_ns
+from app.api.visualizations import visualizations_ns
+from app.api.dashboards import dashboards_ns
+
+def create_app(config_class_name=None):
     app = Flask(__name__)
+    config_class = get_config_class(config_class_name)
+    app.config.from_object(config_class)
 
-    # Load configuration
-    app.config.from_object(get_config_class())
+    _configure_logging(app)
+    app.logger.info(f"Application starting with {config_class.__name__} configuration.")
 
-    # Initialize extensions
+    # Initialize Flask extensions
     db.init_app(app)
-    ma.init_app(app)
+    migrate.init_app(app, db)
     jwt.init_app(app)
     cache.init_app(app)
     limiter.init_app(app)
 
-    # Configure logging
-    setup_logging(app)
+    # Register API blueprints
+    api.init_app(app)
+    api.add_namespace(auth_ns)
+    api.add_namespace(users_ns)
+    api.add_namespace(data_sources_ns)
+    api.add_namespace(visualizations_ns)
+    api.add_namespace(dashboards_ns)
 
-    # Configure JWT callbacks (error handlers, user_loader, token_in_blocklist_loader)
-    configure_jwt_callbacks(app)
-
-    # Register Blueprints for API routes
-    from app.routes import auth_bp, user_bp, category_bp, post_bp, media_bp
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(user_bp, url_prefix='/api/users')
-    app.register_blueprint(category_bp, url_prefix='/api/categories')
-    app.register_blueprint(post_bp, url_prefix='/api/posts')
-    app.register_blueprint(media_bp, url_prefix='/api/media')
-
-    # Register global error handlers
+    # Register error handlers
     register_error_handlers(app)
 
-    # Basic frontend route for demonstration
-    @app.route('/')
-    def index():
-        app.logger.info("Serving index page.")
-        return render_template('index.html', app_name="ALX CMS")
+    # Custom JWT error handlers
+    @jwt.unauthorized_loader
+    def unauthorized_response(callback):
+        return jsonify({"message": "Unauthorized. Bearer token missing or invalid.", "status_code": 401}), 401
 
-    @app.before_request
-    def log_request_info():
-        """Logs incoming request details."""
-        app.logger.debug(f"Incoming Request: {request.method} {request.url}")
-        app.logger.debug(f"Headers: {request.headers}")
-        if request.is_json:
-            app.logger.debug(f"JSON Data: {request.get_json(silent=True)}")
-        elif request.form:
-            app.logger.debug(f"Form Data: {request.form}")
+    @jwt.invalid_token_loader
+    def invalid_token_response(callback):
+        return jsonify({"message": "Invalid token. Signature verification failed or malformed token.", "status_code": 401}), 401
 
-    @app.after_request
-    def log_response_info(response):
-        """Logs outgoing response details."""
-        app.logger.debug(f"Outgoing Response: {response.status_code} {request.path}")
-        app.logger.debug(f"Response Headers: {response.headers}")
-        return response
+    @jwt.revoked_token_loader
+    def revoked_token_response(callback):
+        return jsonify({"message": "Token has been revoked.", "status_code": 401}), 401
 
-    app.logger.info(f"Application created and configured for {app.config['FLASK_ENV']} environment.")
+    @jwt.needs_fresh_token_loader
+    def needs_fresh_token_response(callback):
+        return jsonify({"message": "Fresh token required for this action.", "status_code": 401}), 401
+
+    @jwt.token_verification_error_loader
+    def token_verification_error_response(callback):
+        return jsonify({"message": "Token verification failed.", "status_code": 401}), 401
+
+    # Flask-RESTX custom error handler for validation errors
+    @api.errorhandler(RestXError)
+    def handle_restx_error(error):
+        # This catches errors raised by Flask-RESTX itself (e.g. ValidationError)
+        app.logger.error(f"Flask-RESTX Error: {error}", exc_info=True)
+        if hasattr(error, 'errors') and error.errors: # Validation errors from parsing
+            return jsonify({
+                'message': 'Input validation failed.',
+                'status_code': 400,
+                'errors': error.errors
+            }), 400
+        else:
+            return jsonify({
+                'message': error.message if hasattr(error, 'message') else 'An API error occurred.',
+                'status_code': error.code if hasattr(error, 'code') else 500
+            }), error.code if hasattr(error, 'code') else 500
+
+    @app.route('/health')
+    @limiter.exempt # Exempt health check from rate limiting
+    def health_check():
+        """Simple health check endpoint."""
+        try:
+            # Try a simple DB query
+            db.session.execute(db.select(1)).scalar()
+            # Try accessing cache
+            cache.set('health_check', True, timeout=1)
+            cache.get('health_check')
+            return jsonify({"status": "healthy", "database": "ok", "cache": "ok"}), 200
+        except Exception as e:
+            app.logger.error(f"Health check failed: {e}", exc_info=True)
+            return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
     return app
 
-def register_error_handlers(app):
-    """
-    Registers custom error handlers for the application.
-    """
-    @app.errorhandler(APIError)
-    def handle_api_error(error):
-        app.logger.error(f"API Error caught: {error.message} (Status: {error.status_code})", exc_info=True)
-        return jsonify({'message': error.message}), error.status_code
+def _configure_logging(app):
+    """Configures application logging."""
+    if not app.debug and not app.testing:
+        # Create log directory if it doesn't exist
+        log_dir = os.path.dirname(app.config['LOG_FILE'])
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir)
 
-    @app.errorhandler(HTTPStatus.BAD_REQUEST) # 400
-    def handle_bad_request(e):
-        app.logger.error(f"Bad Request: {e}", exc_info=True)
-        return jsonify(message="The browser (or proxy) sent a request that this server could not understand."), HTTPStatus.BAD_REQUEST
+        # File handler
+        file_handler = RotatingFileHandler(
+            app.config['LOG_FILE'],
+            maxBytes=app.config['LOG_MAX_BYTES'],
+            backupCount=app.config['LOG_BACKUP_COUNT']
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(app.config['LOG_LEVEL'])
+        app.logger.addHandler(file_handler)
 
-    @app.errorhandler(HTTPStatus.UNAUTHORIZED) # 401
-    def handle_unauthorized(e):
-        app.logger.warning(f"Unauthorized access attempt: {e}", exc_info=True)
-        return jsonify(message="Unauthorized. Please authenticate."), HTTPStatus.UNAUTHORIZED
+    # Console handler (always active, but level can be controlled)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    console_handler.setLevel(app.config['LOG_LEVEL']) # Use app config level
+    app.logger.addHandler(console_handler)
 
-    @app.errorhandler(HTTPStatus.FORBIDDEN) # 403
-    def handle_forbidden(e):
-        app.logger.warning(f"Forbidden access attempt: {e}", exc_info=True)
-        return jsonify(message="Forbidden. You do not have permission to access this resource."), HTTPStatus.FORBIDDEN
-
-    @app.errorhandler(HTTPStatus.NOT_FOUND) # 404
-    def handle_not_found(e):
-        app.logger.warning(f"Resource not found: {request.path}", exc_info=True)
-        return jsonify(message="The requested URL was not found on the server."), HTTPStatus.NOT_FOUND
-
-    @app.errorhandler(HTTPStatus.METHOD_NOT_ALLOWED) # 405
-    def handle_method_not_allowed(e):
-        app.logger.warning(f"Method Not Allowed: {request.method} on {request.path}", exc_info=True)
-        return jsonify(message="The method is not allowed for the requested URL."), HTTPStatus.METHOD_NOT_ALLOWED
-
-    @app.errorhandler(HTTPStatus.TOO_MANY_REQUESTS) # 429 - Limiter specific
-    def handle_rate_limit_exceeded(e):
-        app.logger.warning(f"Rate limit exceeded for {request.remote_addr}: {e}", exc_info=True)
-        return jsonify(message="Rate limit exceeded. Too many requests."), HTTPStatus.TOO_MANY_REQUESTS
-
-    @app.errorhandler(Exception) # Catch all other exceptions
-    def handle_general_exception(e):
-        app.logger.critical(f"An unhandled exception occurred: {e}", exc_info=True)
-        return jsonify(message="An unexpected error occurred on the server."), HTTPStatus.INTERNAL_SERVER_ERROR
-
-```
+    app.logger.setLevel(app.config['LOG_LEVEL'])
+    app.logger.propagate = False # Prevent messages from being duplicated by root logger

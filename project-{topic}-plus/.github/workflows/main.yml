@@ -1,189 +1,111 @@
-```yaml
-name: CMS CI/CD Pipeline
+name: CI/CD Pipeline for DataViz App
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - develop
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - develop
 
 jobs:
-  backend-lint-test:
-    name: Backend Lint & Test
+  build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-    env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: testuser
-      DB_PASSWORD: testpassword
-      DB_NAME: cms_test_db
-      JWT_SECRET: supersecretjwtkeyforci
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: ${{ env.DB_NAME }}
-          POSTGRES_USER: ${{ env.DB_USER }}
-          POSTGRES_PASSWORD: ${{ env.DB_PASSWORD }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Install Backend Dependencies
-        run: npm ci
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install poetry # If using poetry for dependency management
 
-      - name: Wait for Postgres and Redis to be ready
-        run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          until pg_isready -h localhost -p 5432 -U ${{ env.DB_USER }}; do
-            echo "Waiting for postgres..."
-            sleep 2
-          done
-          until redis-cli -h localhost -p 6379 ping; do
-            echo "Waiting for redis..."
-            sleep 2
-          done
-          echo "Postgres and Redis are ready!"
+    - name: Set up Docker Compose for services (DB, Redis)
+      run: |
+        docker-compose -f docker-compose.yml up -d db redis
+        # Wait for services to be healthy
+        docker-compose -f docker-compose.yml ps
+        sleep 10 # Give services some time to start, adjust based on healthchecks
+        docker-compose -f docker-compose.yml exec db pg_isready -U user -d dataviz_test || exit 1
+        docker-compose -f docker-compose.yml exec redis redis-cli ping || exit 1
 
-      - name: Run Backend Migrations
-        run: npx sequelize-cli db:migrate --url postgres://${{ env.DB_USER }}:${{ env.DB_PASSWORD }}@${{ env.DB_HOST }}:${{ env.DB_PORT }}/${{ env.DB_NAME }}
+    - name: Run Database Migrations and Seed Test Data
+      # Use the test database URL for migrations/seeding during tests
+      env:
+        FLASK_APP: manage.py
+        FLASK_ENV: testing
+        TEST_DATABASE_URL: postgresql://user:password@localhost:5432/dataviz_test # For local pytest or within container
+        DATABASE_URL: postgresql://user:password@db:5432/dataviz_test # For app connecting to docker-compose db
+        JWT_SECRET_KEY: test-jwt-secret # Dummy secret for testing
+        SECRET_KEY: test-secret # Dummy secret for testing
+      run: |
+        # Run from the host to ensure `flask` CLI uses the app context to connect to the docker-compose DB
+        flask db upgrade
+        flask seed
 
-      - name: Run Backend Lint
-        run: npm run lint
+    - name: Run tests with coverage
+      env:
+        FLASK_APP: manage.py
+        FLASK_ENV: testing
+        TEST_DATABASE_URL: postgresql://user:password@db:5432/dataviz_test # Ensure app connects to docker-compose db
+        REDIS_HOST: redis # Ensure app connects to docker-compose redis
+        REDIS_PORT: 6379
+        JWT_SECRET_KEY: test-jwt-secret # Dummy secret for testing
+        SECRET_KEY: test-secret # Dummy secret for testing
+      run: |
+        pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
 
-      - name: Run Backend Tests
-        run: npm test -- --coverage --testPathPattern=backend/tests/unit --testPathPattern=backend/tests/integration
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # Set CODECOV_TOKEN in GitHub secrets
+        # directory: ./coverage/reports # If coverage output goes to a specific directory
+        fail_ci_if_error: true # Recommended to fail CI if coverage report fails to upload
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./backend/coverage/lcov.info
-          flags: backend-tests
-          name: backend-coverage
-          fail_ci_if_error: true # Keep PRs open if coverage threshold is not met
+    - name: Stop Docker Compose services
+      if: always()
+      run: docker-compose -f docker-compose.yml down --volumes
 
-  frontend-lint-test:
-    name: Frontend Lint & Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
+  # Deploy job (optional, configure for your specific deployment target, e.g., Docker Hub, AWS ECR, Kubernetes)
+  # deploy:
+  #   needs: build-and-test
+  #   if: github.ref == 'refs/heads/main' && success()
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  #     - name: Log in to Docker Hub (or other registry)
+  #       uses: docker/login-action@v2
+  #       with:
+  #         username: ${{ secrets.DOCKER_USERNAME }}
+  #         password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+  #     - name: Build and push Docker image
+  #       uses: docker/build-and-push-action@v4
+  #       with:
+  #         context: .
+  #         push: true
+  #         tags: your-dockerhub-username/dataviz-app:latest
+  #         file: ./Dockerfile
 
-      - name: Install Frontend Dependencies
-        run: npm ci
-
-      - name: Run Frontend Lint
-        run: npm run lint
-
-      - name: Run Frontend Tests
-        run: npm test -- --watchAll=false # Run all tests once, non-interactively
-        env:
-          CI: true # This makes Jest run in non-interactive mode
-
-      # - name: Upload coverage reports to Codecov (optional for frontend)
-      #   uses: codecov/codecov-action@v3
-      #   with:
-      #     files: ./frontend/coverage/lcov.info
-      #     flags: frontend-tests
-      #     name: frontend-coverage
-      #     fail_ci_if_error: false
-
-  # This is a deployment stage, typically triggered only on push to main
-  # or after successful merge, and needs cloud provider credentials.
-  # For demonstration, we will just show a build & push Docker image step.
-  build-and-push-docker:
-    name: Build & Push Docker Images
-    runs-on: ubuntu-latest
-    needs: [backend-lint-test, frontend-lint-test]
-    if: github.ref == 'refs/heads/main' # Only run on pushes to main
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build and push Backend image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DDOCKER_USERNAME }}/cms-backend:${{ github.sha }}
-            ${{ secrets.DOCKER_USERNAME }}/cms-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Frontend image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/cms-frontend:${{ github.sha }}
-            ${{ secrets.DOCKER_USERNAME }}/cms-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            REACT_APP_API_URL=${{ secrets.PROD_API_URL }} # Pass production API URL
-
-      # Additional step for actual deployment to a cloud provider
-      # e.g., using AWS ECR, Kubernetes, or serverless functions
-      # - name: Deploy to Production
-      #   run: |
-      #     # Your deployment scripts here
-      #     echo "Deploying ${{ secrets.DOCKER_USERNAME }}/cms-backend:latest and cms-frontend:latest to production..."
-      #     # Example: kubectl apply -f kubernetes/deployment.yaml
-      #   env:
-      #     KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }} # If deploying to Kubernetes
-```
+  #     - name: Deploy to Server (e.g., SSH and run update script)
+  #       uses: appleboy/ssh-action@master
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USERNAME }}
+  #         key: ${{ secrets.SSH_KEY }}
+  #         script: |
+  #           cd /path/to/your/app/on/server
+  #           docker-compose pull
+  #           docker-compose up -d --build
+  #           docker system prune -f

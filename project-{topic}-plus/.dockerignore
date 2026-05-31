@@ -1,20 +1,9 @@
-```
-*/__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-env
-.venv
 .git
-.pytest_cache
-*.egg-info
-.mypy_cache
-.vscode
-.idea
-dist
-build
-.tox
-htmlcov/
+.venv
+__pycache__
+*.pyc
+*.log
 .DS_Store
-```
+.vscode/
+data_uploads/ # If you manage uploads outside of the container
+# Add any other files/directories not needed in the Docker image

@@ -1,52 +1,55 @@
-```python
 import os
-from dotenv import load_dotenv
+from app import create_app
+from app.extensions import db
+from flask.cli import FlaskGroup
+from app.models import User, DataSource, Visualization, Dashboard, DashboardVisualization # Import models for 'flask shell' context
+from config import get_config_class
 
-# Load environment variables from .env file
-load_dotenv()
+# Use the FLASK_ENV environment variable to determine which config to load
+# Default to 'development' if not set
+config_name = os.environ.get('FLASK_ENV', 'development')
+app = create_app(config_name)
 
-from flask import Flask
-from flask.cli import with_appcontext
-import click
+cli = FlaskGroup(app)
 
-from app import create_app, db, jwt, migrate, cache, limiter
-from app.models import User, Product, Category, Order, OrderItem, Cart, CartItem
-from scripts.seed_db import seed_all_data
-
-# Create the Flask app instance
-app = create_app(os.getenv('FLASK_ENV', 'development'))
-
-# Custom command to seed the database
-@app.cli.command("seed-db")
-@with_appcontext
-def seed_db_command():
+@cli.command('seed')
+def seed_db():
     """Seeds the database with initial data."""
-    click.echo("Seeding database...")
-    seed_all_data(app)
-    click.echo("Database seeded successfully.")
+    from seed import seed_data
+    with app.app_context():
+        seed_data(db)
+        app.logger.info("Database seeded successfully.")
 
-# Custom command to create admin user
-@app.cli.command("create-admin")
-@click.argument("email")
-@click.argument("password")
-@with_appcontext
-def create_admin_command(email, password):
+@cli.command('create-admin')
+def create_admin():
     """Creates an admin user."""
-    click.echo(f"Creating admin user: {email}...")
-    from app.services.user_service import UserService
-    try:
-        user = UserService.create_user(
-            username=email.split('@')[0],
-            email=email,
-            password=password,
-            role="admin"
-        )
-        click.echo(f"Admin user '{user.username}' created successfully.")
-    except ValueError as e:
-        click.echo(f"Error creating admin user: {e}")
+    with app.app_context():
+        username = input("Enter admin username: ")
+        email = input("Enter admin email: ")
+        password = input("Enter admin password: ")
+
+        if User.query.filter_by(email=email).first() or User.query.filter_by(username=username).first():
+            print("User with that email or username already exists.")
+            return
+
+        admin_user = User(username=username, email=email)
+        admin_user.set_password(password)
+        db.session.add(admin_user)
+        db.session.commit()
+        # In a real app, you'd mark this user as admin (e.g., via a 'roles' table or 'is_admin' column)
+        print(f"Admin user '{username}' created with ID: {admin_user.id}")
+
+
+@app.shell_context_processor
+def make_shell_context():
+    return {
+        "db": db,
+        "User": User,
+        "DataSource": DataSource,
+        "Visualization": Visualization,
+        "Dashboard": Dashboard,
+        "DashboardVisualization": DashboardVisualization
+    }
 
 if __name__ == '__main__':
-    # This block is primarily for development using `python manage.py runserver`
-    # In production, Gunicorn will call `app` directly from `manage:app`
-    app.run(debug=True)
-```
+    cli()

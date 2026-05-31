@@ -1,177 +1,81 @@
-```python
-from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, current_user
-from marshmallow import ValidationError
-from app.services.user_service import UserService
-from app.schemas import UserSchema, UserRegisterSchema
-from app.utils.decorators import admin_or_owner_required, admin_required
-import uuid
+from flask import request
+from flask_restx import Namespace, Resource, fields
+from app.extensions import db
+from app.models import User
+from app.schemas import user_schema
+from app.utils.auth_decorators import jwt_required_with_identity #, admin_required
+from app.errors import NotFoundError, ForbiddenError, BadRequestError
+import logging
 
-users_bp = Blueprint('users', __name__)
-user_schema = UserSchema()
-user_update_schema = UserRegisterSchema(partial=True) # Allow partial updates for user profile
+log = logging.getLogger(__name__)
 
-@users_bp.route('/<uuid:user_id>', methods=['GET'])
-@jwt_required()
-@admin_or_owner_required('user_id')
-def get_user_profile(user_id):
-    """
-    Get user profile by ID. Only accessible by the user themselves or an admin.
-    ---
-    get:
-      summary: Get user profile
-      parameters:
-        - in: path
-          name: user_id
-          schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the user to retrieve
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: User profile
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        401:
-          description: Unauthorized
-        403:
-          description: Forbidden
-        404:
-          description: User not found
-    """
-    user_data = UserService.get_user_by_id(user_id)
-    if not user_data:
-        return jsonify({"message": "User not found"}), 404
-    return jsonify(user_data), 200
+users_ns = Namespace('users', description='User specific operations')
 
-@users_bp.route('/<uuid:user_id>', methods=['PUT'])
-@jwt_required()
-@admin_or_owner_required('user_id')
-def update_user_profile(user_id):
-    """
-    Update user profile by ID. Only accessible by the user themselves or an admin.
-    ---
-    put:
-      summary: Update user profile
-      parameters:
-        - in: path
-          name: user_id
-          schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the user to update
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                username: { type: string, description: New username }
-                email: { type: string, format: email, description: New email }
-                password: { type: string, format: password, description: New password }
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: User profile updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        400:
-          description: Invalid input or data conflict
-        401:
-          description: Unauthorized
-        403:
-          description: Forbidden
-        404:
-          description: User not found
-    """
-    try:
-        data = user_update_schema.load(request.get_json(), partial=True)
-    except ValidationError as err:
-        return jsonify({"message": err.messages}), 400
+user_model = users_ns.model('User', user_schema.as_dict())
 
-    try:
-        updated_user = UserService.update_user_profile(user_id, data)
-        if not updated_user:
-            return jsonify({"message": "User not found"}), 404
-        return jsonify(updated_user), 200
-    except ValueError as e:
-        return jsonify({"message": str(e)}), 400
-    except Exception as e:
-        current_app.logger.error(f"Error updating user {user_id}: {e}")
-        return jsonify({"message": "Internal server error"}), 500
+@users_ns.route('/me')
+class MeResource(Resource):
+    @jwt_required_with_identity()
+    @users_ns.marshal_with(user_model)
+    @users_ns.response(401, 'Unauthorized')
+    @users_ns.response(404, 'User Not Found (should not happen with valid token)')
+    @users_ns.response(500, 'Internal Server Error')
+    def get(self, current_user):
+        """Retrieve the profile of the authenticated user."""
+        log.info(f"Fetching profile for user ID: {current_user.id}")
+        return current_user, 200
 
-@users_bp.route('/<uuid:user_id>', methods=['DELETE'])
-@jwt_required()
-@admin_or_owner_required('user_id')
-def delete_user(user_id):
-    """
-    Delete a user by ID. Only accessible by the user themselves or an admin.
-    ---
-    delete:
-      summary: Delete user
-      parameters:
-        - in: path
-          name: user_id
-          schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the user to delete
-      security:
-        - BearerAuth: []
-      responses:
-        204:
-          description: User deleted successfully
-        401:
-          description: Unauthorized
-        403:
-          description: Forbidden
-        404:
-          description: User not found
-    """
-    try:
-        if UserService.delete_user(user_id):
-            return '', 204
-        return jsonify({"message": "User not found"}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error deleting user {user_id}: {e}")
-        return jsonify({"message": "Internal server error"}), 500
+    @jwt_required_with_identity()
+    @users_ns.expect(user_model, validate=True, skip_none=True) # Allow partial updates
+    @users_ns.marshal_with(user_model)
+    @users_ns.response(400, 'Validation Error')
+    @users_ns.response(401, 'Unauthorized')
+    @users_ns.response(404, 'User Not Found')
+    @users_ns.response(409, 'Conflict (username/email already exists)')
+    @users_ns.response(500, 'Internal Server Error')
+    def put(self, current_user):
+        """Update the profile of the authenticated user."""
+        data = request.json
+        try:
+            # Load with partial=True to allow missing required fields for updates
+            updated_data = user_schema.load(data, partial=True)
+        except Exception as e:
+            log.warning(f"User update validation error: {e.messages}", exc_info=True)
+            raise BadRequestError(description="Invalid input data.", errors=e.messages)
 
-@users_bp.route('/', methods=['GET'])
-@jwt_required()
-@admin_required
-def get_all_users():
-    """
-    Get all users (Admin only).
-    ---
-    get:
-      summary: Get all users
-      security:
-        - BearerAuth: []
-      responses:
-        200:
-          description: List of users
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
-        401:
-          description: Unauthorized
-        403:
-          description: Forbidden
-    """
-    users = UserService.users_schema.dump(User.query.all())
-    return jsonify(users), 200
-```
+        # Check for unique username/email if they are being updated
+        if 'username' in updated_data and updated_data['username'] != current_user.username:
+            if User.query.filter(User.username == updated_data['username'], User.id != current_user.id).first():
+                raise BadRequestError("Username already taken.")
+            current_user.username = updated_data['username']
+
+        if 'email' in updated_data and updated_data['email'] != current_user.email:
+            if User.query.filter(User.email == updated_data['email'], User.id != current_user.id).first():
+                raise BadRequestError("Email already taken.")
+            current_user.email = updated_data['email']
+
+        db.session.commit()
+        log.info(f"User ID: {current_user.id} profile updated.")
+        return current_user, 200
+
+    @jwt_required_with_identity()
+    @users_ns.response(204, 'User deleted successfully')
+    @users_ns.response(401, 'Unauthorized')
+    @users_ns.response(500, 'Internal Server Error')
+    def delete(self, current_user):
+        """Delete the authenticated user's account."""
+        # For a real application, consider soft deletes or a more complex process.
+        # Ensure cascading deletes are correctly configured in models.py
+        db.session.delete(current_user)
+        db.session.commit()
+        log.info(f"User ID: {current_user.id} account deleted.")
+        return '', 204
+
+# Example of an admin-only endpoint
+# @users_ns.route('/')
+# class UserList(Resource):
+#     @admin_required()
+#     @users_ns.marshal_list_with(user_model)
+#     def get(self):
+#         """(Admin Only) Retrieve a list of all users."""
+#         return User.query.all(), 200

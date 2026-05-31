@@ -1,286 +1,197 @@
-# Enterprise Security System (Project Management System)
+# Enterprise Data Visualization Tools System
 
-This project demonstrates a comprehensive, production-ready security implementation system built with TypeScript, Node.js, Express, and PostgreSQL. It focuses on robust authentication, authorization, data validation, logging, error handling, caching, and rate limiting within a Project Management System (PMS) context.
+This is a comprehensive, production-ready data visualization tools system, built with a Python (Flask) backend. It provides a robust API for managing users, data sources, visualizations, and dashboards.
 
-## Table of Contents
+## Features
 
-1.  [Project Overview](#project-overview)
-2.  [Features](#features)
-3.  [Technologies Used](#technologies-used)
-4.  [Prerequisites](#prerequisites)
-5.  [Setup Instructions](#setup-instructions)
-    *   [Backend Setup](#backend-setup)
-    *   [Frontend Setup (Minimal)](#frontend-setup-minimal)
-    *   [Docker Setup](#docker-setup)
-6.  [Running the Application](#running-the-application)
-7.  [API Documentation](#api-documentation)
-8.  [Testing](#testing)
-9.  [CI/CD](#ci-cd)
-10. [Architecture](#architecture)
-11. [Deployment Guide](#deployment-guide)
-12. [License](#license)
+**Core Application (Backend - Python Flask)**
+*   **User Management**: Registration, Login, Profile Management (CRUD for authenticated user).
+*   **Authentication/Authorization**: JWT-based authentication for secure API access. Decorators for role-based and resource-ownership authorization.
+*   **Data Source Management**: CRUD operations for various data source types (CSV, Excel, PostgreSQL, MySQL, API). Supports file uploads with schema detection.
+*   **Visualization Management**: CRUD operations for defining visualizations (bar, line, pie, table, scatter charts) with flexible configuration and data transformation queries.
+*   **Dashboard Management**: CRUD operations for creating and organizing dashboards, including adding, updating, and removing visualizations from a dashboard.
+*   **Data Processing**: Backend logic using `pandas` for loading, cleaning, transforming, and aggregating data based on user-defined queries.
+*   **API Endpoints**: Full RESTful API with Flask-RESTX for structure and automatic Swagger documentation.
 
----
+**Database Layer**
+*   **PostgreSQL**: Robust relational database.
+*   **SQLAlchemy ORM**: Pythonic interface to interact with the database.
+*   **Flask-Migrate (Alembic)**: Database schema migration management.
+*   **Seed Data**: Script to populate the database with initial fake data for development and testing.
 
-## 1. Project Overview
+**Configuration & Setup**
+*   **Dependency Management**: `requirements.txt` for Python packages.
+*   **Environment Configuration**: `.env` file for managing sensitive and environment-specific settings.
+*   **Dockerization**: `Dockerfile` and `docker-compose.yml` for easy setup and deployment of the application, database, and Redis cache.
+*   **CI/CD**: GitHub Actions workflow (`.github/workflows/main.yml`) configured for automated testing and deployment (conceptual deployment part).
 
-This system is designed as a multi-user Project Management System (PMS) with distinct roles and permissions. It aims to showcase enterprise-grade security practices and system design.
+**Testing & Quality**
+*   **Pytest**: Comprehensive test suite including:
+    *   **Unit Tests**: Verifying individual components (models, utility functions).
+    *   **Integration Tests**: Testing interactions between modules (e.g., services interacting with models).
+    *   **API Tests**: End-to-end testing of API endpoints (authentication, CRUD operations, edge cases).
+*   **Coverage**: Aiming for 80%+ code coverage.
 
-**Key Entities:**
-*   **Users:** Authenticated individuals with specific roles.
-*   **Projects:** High-level containers for tasks, owned by a Project Manager.
-*   **Tasks:** Individual work items within a project, assigned to users.
+**Additional Features**
+*   **Logging & Monitoring**: Structured logging with `RotatingFileHandler` and console output.
+*   **Error Handling**: Global exception handling middleware for consistent API error responses.
+*   **Caching Layer**: `Flask-Caching` with Redis backend to improve performance for data-intensive visualization data fetches.
+*   **Rate Limiting**: `Flask-Limiter` with Redis backend to protect API endpoints from abuse.
 
-**Roles:**
-*   `ADMIN`: Full control over all users, projects, and tasks.
-*   `PROJECT_MANAGER`: Can create, view, update, and delete projects they own; manage tasks within their projects. Can view other projects.
-*   `MEMBER`: Can view projects and tasks they are assigned to; update the status of their assigned tasks.
+## Technologies Used
 
-## 2. Features
+*   **Backend**: Python 3.10+
+    *   **Web Framework**: Flask
+    *   **API Framework**: Flask-RESTX
+    *   **ORM**: Flask-SQLAlchemy
+    *   **Migrations**: Flask-Migrate (Alembic)
+    *   **Authentication**: Flask-JWT-Extended
+    *   **Serialization**: Marshmallow
+    *   **Data Processing**: Pandas
+    *   **Caching**: Flask-Caching (Redis)
+    *   **Rate Limiting**: Flask-Limiter (Redis)
+    *   **Password Hashing**: Werkzeug Security (used by Flask)
+*   **Database**: PostgreSQL
+*   **Caching/Rate Limiting Store**: Redis
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Testing**: Pytest, Pytest-Cov, Pytest-Mock
+*   **Development Utilities**: python-dotenv, Faker
 
-*   **Authentication:** JWT-based user registration and login.
-*   **Authorization:** Role-Based Access Control (RBAC) middleware.
-*   **Data Validation:** Strict input validation using `zod` schemas.
-*   **Secure Passwords:** `bcrypt` hashing and salting.
-*   **Centralized Error Handling:** Custom error types and global middleware.
-*   **Structured Logging:** `winston` for application events and errors.
-*   **Rate Limiting:** Protect against brute-force attacks and API abuse.
-*   **Caching Layer:** `node-cache` for performance optimization on read-heavy operations.
-*   **CRUD Operations:** Full Create, Read, Update, Delete for Users, Projects, and Tasks.
-*   **Database Migrations:** Schema management with Prisma.
-*   **Seed Data:** Initial data for roles and an admin user.
-*   **Comprehensive Testing:** Unit, integration, and API tests using Jest and Supertest.
-*   **Dockerization:** Containerized application for easy deployment.
-*   **CI/CD Pipeline:** Basic GitHub Actions workflow for automated testing and building.
-*   **API Documentation:** OpenAPI (Swagger) specification.
-*   **Architecture & Deployment Docs:** Detailed guides.
+## Getting Started
 
-## 3. Technologies Used
-
-**Backend:**
-*   **TypeScript:** Type-safe JavaScript.
-*   **Node.js:** JavaScript runtime.
-*   **Express.js:** Web application framework.
-*   **Prisma:** ORM for database interaction.
-*   **PostgreSQL:** Relational database.
-*   **jsonwebtoken:** For JWT creation and verification.
-*   **bcrypt:** For password hashing.
-*   **dotenv:** For environment variable management.
-*   **zod:** For schema validation.
-*   **winston:** For logging.
-*   **express-rate-limit:** For rate limiting.
-*   **node-cache:** For in-memory caching.
-*   **http-status-codes:** For standardized HTTP status codes.
-
-**Testing:**
-*   **Jest:** Test runner.
-*   **Supertest:** For HTTP assertions in integration tests.
-
-**Containerization:**
-*   **Docker:** For containerizing the application.
-*   **Docker Compose:** For orchestrating multi-container applications (backend, database).
-
-**CI/CD:**
-*   **GitHub Actions:** For automated workflows.
-
-**Frontend (Minimal Placeholder):**
-*   **React:** UI library.
-*   **TypeScript:** Type-safe JavaScript.
-
-## 4. Prerequisites
+### Prerequisites
 
 Before you begin, ensure you have the following installed:
+*   Docker and Docker Compose
+*   Python 3.10+
+*   `pip` (Python package installer)
 
-*   Node.js (LTS version, e.g., v18.x or v20.x)
-*   npm or yarn
-*   Docker & Docker Compose (optional, but recommended for easy setup)
-*   Git
-
-## 5. Setup Instructions
-
-You can run the application either directly on your machine or using Docker. Docker is recommended for a consistent environment.
-
-### Backend Setup
+### Setup Instructions
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/project-security-system.git
-    cd project-security-system/backend
+    git clone https://github.com/your-username/dataviz-system.git
+    cd dataviz-system
+    ```
+
+2.  **Create and configure environment variables:**
+    Copy the example environment file and fill in your secrets.
+    ```bash
+    cp .env.example .env
+    # Open .env and replace placeholder values with strong, unique secrets.
+    # Especially for SECRET_KEY and JWT_SECRET_KEY.
+    ```
+
+3.  **Build and run with Docker Compose (Recommended for development):**
+    This will set up the backend, PostgreSQL database, and Redis cache.
+    ```bash
+    docker-compose up --build -d
+    ```
+    This command will:
+    *   Build the `backend` Docker image.
+    *   Start the `db` (PostgreSQL) and `redis` containers.
+    *   Run database migrations (`flask db upgrade`).
+    *   Seed the database with initial data (`flask seed`).
+    *   Start the `backend` Flask application using Gunicorn.
+
+    The application will be accessible at `http://localhost:5000`.
+    The Swagger UI for API documentation will be at `http://localhost:5000/swagger-ui`.
+
+4.  **Verify services:**
+    ```bash
+    docker-compose ps
+    ```
+    You should see `db`, `redis`, and `backend` services running.
+
+    You can also check the health endpoint:
+    ```bash
+    curl http://localhost:5000/health
+    ```
+    Expected output: `{"cache": "ok", "database": "ok", "status": "healthy"}`
+
+5.  **Access the API Documentation:**
+    Open your browser and navigate to `http://localhost:5000/swagger-ui`. Here you can explore all available API endpoints, their expected inputs, and example responses.
+
+### Manual Setup (Without Docker - for advanced debugging/local dev)
+
+1.  **Create a Python virtual environment:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate # On Windows: .venv\Scripts\activate
     ```
 
 2.  **Install dependencies:**
     ```bash
-    npm install
-    # or yarn install
+    pip install -r requirements.txt
     ```
 
-3.  **Create `.env` file:**
-    Copy `.env.example` to `.env` and fill in the values.
+3.  **Set Flask environment variables:**
     ```bash
-    cp .env.example .env
+    export FLASK_APP=manage.py
+    export FLASK_ENV=development # For Linux/macOS
+    # On Windows: set FLASK_APP=manage.py; set FLASK_ENV=development
     ```
-    **`.env` example content:**
-    ```
-    # Application Configuration
-    NODE_ENV=development
-    PORT=5000
-    LOG_LEVEL=info # debug, info, warn, error
+    Ensure your `.env` file is configured correctly for local PostgreSQL and Redis if not using Docker. E.g., `DATABASE_URL="postgresql://user:password@localhost:5432/dataviz_dev"`.
 
-    # Database Configuration (PostgreSQL)
-    DATABASE_URL="postgresql://user:password@localhost:5432/pms_db?schema=public"
-    TEST_DATABASE_URL="postgresql://user:password@localhost:5433/pms_test_db?schema=public"
+4.  **Start PostgreSQL and Redis manually:**
+    You'll need a local PostgreSQL server running on port 5432 and a Redis server running on port 6379, configured with the credentials from your `.env` file.
 
-    # JWT Configuration
-    JWT_SECRET=YOUR_VERY_STRONG_JWT_SECRET_KEY_HERE # min 32 characters, generate randomly
-    JWT_EXPIRES_IN=1h
-
-    # Hashing Configuration
-    SALT_ROUNDS=10 # Number of salt rounds for bcrypt
-
-    # Rate Limiting
-    RATE_LIMIT_WINDOW_MS=60000 # 1 minute
-    RATE_LIMIT_MAX_REQUESTS=100 # Max 100 requests per window
-
-    # Caching
-    CACHE_TTL_SECONDS=300 # 5 minutes
-    ```
-
-    **Important:** For `JWT_SECRET`, generate a strong, random string. You can use tools like `openssl rand -base64 32` for this.
-
-4.  **Database Setup (if not using Docker):**
-    Ensure you have a PostgreSQL server running. Create a database named `pms_db`.
-    *   **Generate Prisma client & run migrations:**
-        ```bash
-        npx prisma migrate dev --name init # This creates tables based on schema.prisma
-        ```
-    *   **Seed the database:**
-        ```bash
-        npx prisma db seed
-        ```
-        This will create initial roles and an `admin` user.
-        *   **Admin Credentials:** `admin@example.com` / `password123`
-
-### Frontend Setup (Minimal)
-
-1.  Navigate to the frontend directory:
+5.  **Initialize and migrate the database:**
     ```bash
-    cd ../frontend
+    flask db upgrade
+    flask seed # Optional: to populate with test data
     ```
 
-2.  Install dependencies:
+6.  **Run the Flask application:**
     ```bash
-    npm install
-    # or yarn install
+    gunicorn --bind 0.0.0.0:5000 --workers 4 manage:app
+    # Or for development with Flask's reloader:
+    # flask run
     ```
 
-3.  Start the frontend (it will connect to `http://localhost:5000` by default):
-    ```bash
-    npm start
-    # or yarn start
-    ```
+## Development
 
-### Docker Setup
+### Running Tests
 
-This is the recommended way to run the entire application (backend + PostgreSQL database).
+To run the test suite, ensure your Docker Compose services (db, redis) are running, or you have local PostgreSQL/Redis configured for testing.
 
-1.  **Ensure Docker and Docker Compose are installed.**
+```bash
+docker-compose up -d db redis # If not already running
+export FLASK_APP=manage.py
+export FLASK_ENV=testing
+export TEST_DATABASE_URL="postgresql://user:password@localhost:5432/dataviz_test" # Or point to your docker-compose db service
+export REDIS_HOST=redis # For docker-compose redis, use `localhost` if local
+export REDIS_PORT=6379
+export JWT_SECRET_KEY="test-jwt-secret"
+export SECRET_KEY="test-secret"
 
-2.  **Build and start the services:**
-    Navigate to the root directory of the project (`project-security-system/`).
-    ```bash
-    docker-compose up --build -d
-    ```
-    *   This will:
-        *   Build the backend Docker image.
-        *   Start a PostgreSQL container.
-        *   Start the backend container, which will automatically run Prisma migrations and seeding.
+# Apply test migrations and seed test data
+flask db upgrade
+flask seed
 
-3.  **Verify services:**
-    ```bash
-    docker-compose ps
-    ```
-    You should see `backend` and `db` services running.
-
-4.  **Stop services:**
-    ```bash
-    docker-compose down
-    ```
-
-## 6. Running the Application
-
-### Without Docker
-
-1.  **Start the backend:**
-    Navigate to `backend/`.
-    ```bash
-    npm run dev # For development with hot-reloading
-    # or npm start # For production build
-    ```
-    The backend API will be available at `http://localhost:5000`.
-
-2.  **Start the frontend:**
-    Navigate to `frontend/`.
-    ```bash
-    npm start
-    ```
-    The frontend will typically run on `http://localhost:3000`.
-
-### With Docker
-
-Once `docker-compose up -d` is run:
-
-*   **Backend API:** `http://localhost:5000`
-*   **PostgreSQL:** `localhost:5432` (accessible from host machine, mapped in `docker-compose.yml`)
-
-## 7. API Documentation
-
-API documentation is generated using OpenAPI (Swagger) specification.
-You can find the definition in `docs/api.yaml`.
-
-*   If running the backend, you can typically access an auto-generated Swagger UI at `/api-docs` (not implemented here, but standard practice). For this project, you'd use a tool like [Swagger Editor](https://editor.swagger.io/) to view `api.yaml`.
-
-## 8. Testing
-
-Tests are written using `Jest` and `Supertest`.
-
-1.  **Unit Tests:** For individual functions/utilities.
-    ```bash
-    cd backend
-    npm run test:unit
-    ```
-
-2.  **Integration/API Tests:** For API endpoints and service interactions.
-    ```bash
-    cd backend
-    npm run test:integration
-    ```
-    **Note:** Integration tests run against a *separate test database*. Ensure your `TEST_DATABASE_URL` in `.env` is correctly configured and points to a dedicated test DB (e.g., `localhost:5433/pms_test_db`). The test setup script will handle migrations for the test DB.
-
-3.  **All Tests:**
-    ```bash
-    cd backend
-    npm test
-    ```
-
-## 9. CI/CD
-
-A basic CI/CD pipeline is configured using GitHub Actions.
-See `.github/workflows/ci.yml` for the configuration.
-This workflow typically runs on `push` to `main` and `pull_requests`, performing:
-*   Dependency installation
-*   Linting
-*   Building
-*   Testing
-
-## 10. Architecture
-
-Refer to `docs/architecture.md` for a detailed architectural overview of the system.
-
-## 11. Deployment Guide
-
-Refer to `docs/deployment.md` for instructions on deploying this system to a production environment.
-
-## 12. License
-
-This project is open-source and available under the [MIT License](LICENSE).
+pytest --cov=app --cov-report=term-missing tests/
 ```
+The `pytest` command will run all tests, including unit, integration, and API tests, and report on code coverage.
+
+### Code Quality
+
+Follow PEP8 guidelines. Static analysis tools like `flake8` and `black` can be integrated:
+```bash
+pip install flake8 black
+black .
+flake8 .
+```
+
+### Extending the System
+
+*   **New Data Source Types**: Add new types to `app/models.py` and implement parsing/connection logic in `app/services/data_processing.py`.
+*   **New Chart Types**: Extend `VisualizationConfigSchema` in `app/schemas.py` and modify `app/services/data_processing.py` to format data for the new chart type.
+*   **Frontend**: This project focuses on the backend API. A separate frontend application (e.g., using React, Vue.js, Svelte) would consume these APIs to provide a rich user interface.
+
+## Contribution
+
+Feel free to fork the repository, open issues, and submit pull requests.
+
+---
+**Note**: This `README.md` is a detailed template. Some sections (like performance tests, frontend details) are conceptual and provide guidance rather than full implementations within this single response.
