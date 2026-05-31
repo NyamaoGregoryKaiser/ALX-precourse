@@ -1,68 +1,67 @@
-export interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: 'user' | 'admin';
-  createdAt: string;
-  updatedAt: string;
+```typescript
+export enum UserRole {
+  ADMIN = 'admin',
+  EDITOR = 'editor',
+  AUTHOR = 'author',
+  READER = 'reader',
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  ownerId: string;
-  owner: User; // Backend usually returns owner object
-  createdAt: string;
-  updatedAt: string;
-}
-
-export enum TaskStatus {
-  OPEN = 'open',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
+export enum PostStatus {
+  DRAFT = 'draft',
+  PENDING_REVIEW = 'pending_review',
+  PUBLISHED = 'published',
   ARCHIVED = 'archived',
 }
 
-export enum TaskPriority {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: UserRole;
 }
 
-export interface Task {
+export interface Category {
   id: string;
-  title: string;
+  name: string;
   description?: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  dueDate?: string; // ISO date string
-  projectId: string;
-  project: Project; // Backend usually returns project object
-  assignedToId?: string;
-  assignedTo?: User; // Backend usually returns assignedTo user object
   createdAt: string;
   updatedAt: string;
 }
 
-export interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  login: (token: string, userData: User) => void;
-  logout: () => void;
-  isAuthenticated: boolean;
-  loading: boolean;
+export interface Post {
+  id: string;
+  title: string;
+  content: string;
+  thumbnailUrl?: string;
+  status: PostStatus;
+  author: User; // Backend typically sends a stripped-down user object
+  category?: Category;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
 }
 
-export interface APIResponse<T> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
-  statusCode?: number;
+export interface AuthResponse {
+  access_token: string;
+  user: User;
 }
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface RegisterPayload extends LoginPayload {
+  username: string;
+}
+
+export interface CreatePostPayload {
+  title: string;
+  content: string;
+  thumbnailUrl?: string;
+  status?: PostStatus;
+  categoryId?: string;
+}
+
+export interface UpdatePostPayload extends Partial<CreatePostPayload> {}
 ```
-
-#### `frontend/src/services/api.ts` (API client)
-```typescript

@@ -1,0 +1,33 @@
+```dockerfile
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package.json and install dependencies
+COPY frontend/package*.json ./
+RUN npm install --silent
+
+# Copy the rest of the frontend source code
+COPY frontend/. .
+
+# Build the React application
+# REACT_APP_API_BASE_URL will be set via environment variable in docker-compose
+RUN npm run build
+
+# Stage 2: Serve the React application with Nginx
+FROM nginx:alpine
+
+# Copy the Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the built React app from the builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Expose port 80 for Nginx
+EXPOSE 80
+
+# Command to start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+```

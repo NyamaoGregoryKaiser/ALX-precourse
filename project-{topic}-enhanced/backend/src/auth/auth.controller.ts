@@ -1,76 +1,25 @@
 ```typescript
-import { Request, Response, NextFunction } from 'express';
-import { StatusCodes } from 'http-status-codes';
-import { authService } from './auth.service';
-import { AuthenticatedRequest } from '../types';
-import { registerSchema, loginSchema } from '../utils/validators';
-import { ZodError } from 'zod';
+import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { CreateUserDto } from '../users/dto/create-user.dto';
 
-class AuthController {
-  async register(req: Request, res: Response, next: NextFunction) {
-    try {
-      const validatedData = registerSchema.parse(req.body);
-      const { username, email, password } = validatedData;
-      const { user, token } = await authService.register(username, email, password);
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
 
-      res.status(StatusCodes.CREATED).json({
-        status: 'success',
-        message: 'User registered successfully',
-        data: {
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-          },
-          token,
-        },
-      });
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return next(error);
-      }
-      next(error);
-    }
+  @Post('login')
+  @ApiOkResponse({ description: 'User successfully logged in and JWT token provided.' })
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
   }
 
-  async login(req: Request, res: Response, next: NextFunction) {
-    try {
-      const validatedData = loginSchema.parse(req.body);
-      const { email, password } = validatedData;
-      const { user, token } = await authService.login(email, password);
-
-      res.status(StatusCodes.OK).json({
-        status: 'success',
-        message: 'Logged in successfully',
-        data: {
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-          },
-          token,
-        },
-      });
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return next(error);
-      }
-      next(error);
-    }
-  }
-
-  async logout(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-      if (!req.user) {
-        return res.status(StatusCodes.UNAUTHORIZED).json({ status: 'fail', message: 'Not authenticated' });
-      }
-      await authService.logout(req.user.id);
-      res.status(StatusCodes.OK).json({ status: 'success', message: 'Logged out successfully' });
-    } catch (error) {
-      next(error);
-    }
+  @Post('register')
+  @ApiCreatedResponse({ description: 'User successfully registered and JWT token provided.' })
+  async register(@Body() createUserDto: CreateUserDto) {
+    return this.authService.register(createUserDto);
   }
 }
-
-export const authController = new AuthController();
 ```

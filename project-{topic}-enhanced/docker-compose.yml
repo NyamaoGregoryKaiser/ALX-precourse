@@ -1,104 +1,90 @@
+```yaml
 version: '3.8'
 
 services:
   # PostgreSQL Database
   db:
-    image: postgres:14-alpine
-    container_name: task-management-db
+    image: postgres:15-alpine
+    container_name: cms-db
+    restart: always
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_DB: ${DB_NAME:-cms_db}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - cms_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5432:5432" # Expose for local development/tools
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-cms_db}"]
+      interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - app-network
 
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: task-management-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redisdata:/data
+    container_name: cms-redis
+    restart: always
     ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - app-network
+      - "6379:6379" # Expose for local development/tools
 
-  # Node.js Backend Application
+  # Backend Application
   backend:
     build:
-      context: ./server # Build from the 'server' directory
+      context: .
       dockerfile: Dockerfile
-    container_name: task-management-backend
-    ports:
-      - "5000:5000"
+      args:
+        # Build arguments if needed
+    container_name: cms-backend
+    restart: always
     environment:
-      NODE_ENV: ${NODE_ENV}
-      PORT: ${PORT}
-      DB_HOST: db # Service name in docker-compose is the hostname
+      NODE_ENV: production
+      APP_PORT: 3000
+      APP_NAME: "ALX CMS Backend"
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:80} # Frontend URL or Nginx URL
+      DB_HOST: db
       DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_ACCESS_EXPIRATION_MINUTES: ${JWT_ACCESS_EXPIRATION_MINUTES}
-      JWT_REFRESH_EXPIRATION_DAYS: ${JWT_REFRESH_EXPIRATION_DAYS}
-      REDIS_HOST: redis # Service name in docker-compose is the hostname
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-cms_db}
+      DB_SYNCHRONIZE: false # IMPORTANT: Never true in production
+      DB_LOGGING: false
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-please-change-me-to-a-long-random-string}
+      JWT_EXPIRATION_TIME: 1h
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 100
+      REDIS_URL: redis://redis:6379
+      CACHE_TTL: 300000
+    ports:
+      - "3000:3000" # Expose for direct access/debugging
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-    networks:
-      - app-network
-    volumes:
-      - ./server:/app # Mount the server folder for development hot-reloading (remove for production builds)
-      - /app/node_modules # Keep node_modules inside container, important for nodemon/dev-env
-    command: ["npm", "run", "dev"] # Use nodemon for development
+        condition: service_started
 
-  # React Frontend Application
+  # Frontend Application (served by Nginx)
   frontend:
     build:
-      context: ./client # Build from the 'client' directory
-      dockerfile: Dockerfile.client
-    container_name: task-management-frontend
-    ports:
-      - "3000:3000"
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: cms-frontend
+    restart: always
     environment:
-      NODE_ENV: development
-      REACT_APP_API_URL: http://localhost:5000/v1 # This might be configured via proxy in React app
+      # Pass frontend environment variables at runtime for Nginx to inject (or build time for React)
+      # For React, these are typically baked into the build. We need to pass them during the build stage.
+      # If using an Nginx setup, we can inject them into a JS file or config template for runtime.
+      # For simplicity here, assume REACT_APP_API_BASE_URL is hardcoded or set during build.
+      # Or, if Nginx handles proxying, frontend just talks to /api.
+      REACT_APP_API_BASE_URL: http://localhost:3000 # Direct backend URL if not using Nginx proxy for API
+    ports:
+      - "80:80" # Standard HTTP port
     depends_on:
-      - backend
-    networks:
-      - app-network
-    volumes:
-      - ./client:/app # Mount client folder for development hot-reloading
-      - /app/node_modules # Keep node_modules inside container
-    command: ["npm", "start"]
-
-networks:
-  app-network:
-    driver: bridge
+      backend:
+        condition: service_started
 
 volumes:
-  pgdata:
-  redisdata:
+  cms_data: # Persistent volume for PostgreSQL data
+
+```

@@ -1,264 +1,372 @@
-# Enterprise Task Management System
+```markdown
+# ALX Content Management System (CMS)
 
-This project is a full-scale, production-ready Task Management system built with Node.js (Express), React.js, PostgreSQL, and Redis. It focuses heavily on security best practices, comprehensive testing, and enterprise-grade features.
+A comprehensive, production-ready full-stack Content Management System built with TypeScript.
 
 ## Table of Contents
 
-1.  [Features](#features)
-2.  [Technology Stack](#technology-stack)
-3.  [Project Structure](#project-structure)
-4.  [Setup Instructions](#setup-instructions)
+1.  [Project Overview](#project-overview)
+2.  [Features](#features)
+3.  [Technology Stack](#technology-stack)
+4.  [Project Structure](#project-structure)
+5.  [Setup Instructions](#setup-instructions)
     *   [Prerequisites](#prerequisites)
-    *   [Environment Variables](#environment-variables)
-    *   [Running with Docker Compose (Recommended)](#running-with-docker-compose-recommended)
-    *   [Running Backend Locally](#running-backend-locally)
-    *   [Running Frontend Locally](#running-frontend-locally)
-5.  [Database Management](#database-management)
-6.  [Testing](#testing)
-7.  [API Documentation](#api-documentation)
-8.  [Architecture](#architecture)
-9.  [Deployment](#deployment)
-10. [Security Considerations](#security-considerations)
-11. [Contributing](#contributing)
-12. [License](#license)
+    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
+    *   [Manual Setup (Backend)](#manual-setup-backend)
+    *   [Manual Setup (Frontend)](#manual-setup-frontend)
+6.  [Database Management](#database-management)
+    *   [Migrations](#migrations)
+    *   [Seeding](#seeding)
+7.  [Running Tests](#running-tests)
+8.  [API Documentation](#api-documentation)
+9.  [Architecture](#architecture)
+10. [CI/CD](#cicd)
+11. [Additional Features](#additional-features)
+12. [Contributing](#contributing)
+13. [License](#license)
 
-## 1. Features
+## 1. Project Overview
 
-*   **User Management**: Register, Login, Logout, Profile management.
-*   **Authentication**: JWT-based (Access & Refresh Tokens), secure password hashing.
-*   **Authorization**: Role-Based Access Control (RBAC) with `Admin`, `ProjectOwner`, `Member` roles.
-*   **Project Management**: Create, view, update, delete projects.
-*   **Task Management**: Create, view, update, delete tasks within projects. Assign tasks to users.
-*   **Comment System**: Add comments to tasks.
-*   **Robust Error Handling**: Centralized error middleware.
-*   **Logging & Monitoring**: Structured logging with Winston.
-*   **Input Validation**: Joi schemas for all API inputs.
-*   **Rate Limiting**: Protection against brute-force attacks and DDoS.
-*   **HTTP Security Headers**: Implemented with Helmet.js.
-*   **CORS Configuration**: Secure Cross-Origin Resource Sharing.
-*   **Caching**: Redis for refresh token invalidation (blacklisting).
-*   **Comprehensive Testing**: Unit, Integration, and API tests.
-*   **Dockerization**: Containerized applications for consistent environments.
-*   **CI/CD Ready**: Example GitLab CI/CD pipeline.
+This project implements a full-scale Content Management System designed to be robust, scalable, and maintainable. It supports multiple user roles (Admin, Editor, Author, Reader) with appropriate authentication and authorization. The system allows managing users, categories, and articles (posts) with rich CRUD operations.
 
-## 2. Technology Stack
+## 2. Features
 
-**Backend (Node.js)**:
-*   **Framework**: Express.js
-*   **Database ORM**: Sequelize
-*   **Authentication**: JSON Web Tokens (JWT)
-*   **Password Hashing**: bcrypt.js
-*   **Input Validation**: Joi
-*   **Logging**: Winston
-*   **Caching**: Redis
-*   **Security**: Helmet.js, express-rate-limit, xss-clean
-*   **Testing**: Jest, Supertest
+*   **User Management:** Create, Read, Update, Delete users with different roles.
+*   **Authentication & Authorization:** JWT-based authentication, role-based access control.
+*   **Category Management:** Organize posts into categories.
+*   **Post Management:** Create, Read, Update, Delete articles/posts. Support for drafts, pending review, and published states.
+*   **RESTful API:** Clean and well-defined API endpoints.
+*   **Error Handling:** Global exception handling middleware for consistent error responses.
+*   **Logging & Monitoring:** Centralized logging with Winston, request logging middleware.
+*   **Caching:** Redis-backed caching for frequently accessed data (e.g., public posts, categories).
+*   **Rate Limiting:** Protects API endpoints from abuse.
+*   **Database Management:** PostgreSQL with TypeORM for robust data persistence, migrations, and seeding.
+*   **Containerization:** Docker and Docker Compose for easy setup and deployment.
+*   **CI/CD:** Basic GitHub Actions workflow for automated testing and deployment.
+*   **API Documentation:** Swagger UI for interactive API exploration.
+*   **Frontend UI:** Responsive React application for content consumption and administration.
 
-**Database**:
-*   PostgreSQL
+## 3. Technology Stack
 
-**Cache/Message Broker**:
-*   Redis
+**Backend:**
+*   **Framework:** NestJS (Node.js, TypeScript)
+*   **Database:** PostgreSQL
+*   **ORM:** TypeORM
+*   **Authentication:** Passport.js (JWT Strategy)
+*   **Validation:** Class-validator
+*   **Caching:** Redis (`cache-manager`, `cache-manager-redis-yet`)
+*   **Logging:** Winston, Nest-Winston
+*   **API Docs:** Swagger (OpenAPI)
+*   **Rate Limiting:** `@nestjs/throttler`
+*   **Security:** Helmet, CORS
 
-**Frontend (React.js)**:
-*   **Framework**: React (Create React App)
-*   **Routing**: React Router DOM
-*   **HTTP Client**: Axios
-*   **Styling**: Tailwind CSS (implicitly used in provided examples)
+**Frontend:**
+*   **Framework:** React (TypeScript)
+*   **Routing:** React Router DOM
+*   **State Management:** React Context API (for Auth)
+*   **Styling:** Tailwind CSS
+*   **API Client:** Axios
 
-**Deployment & Infrastructure**:
-*   Docker, Docker Compose
-*   GitLab CI/CD (example configuration)
+**Infrastructure & DevOps:**
+*   **Containerization:** Docker, Docker Compose
+*   **CI/CD:** GitHub Actions
+*   **Reverse Proxy/Web Server:** Nginx (for frontend in production setup)
 
-## 3. Project Structure
+## 4. Project Structure
 
 ```
-task-management-system/
-├── client/                     # React Frontend Application
-│   ├── src/                    # React source code
-│   └── package.json            # Frontend dependencies
-├── server/                     # Node.js Backend Application
-│   ├── src/                    # Backend source code
-│   │   ├── config/             # Environment, DB, security settings
-│   │   ├── middleware/         # Custom Express middleware
-│   │   ├── models/             # Sequelize models
-│   │   ├── migrations/         # Sequelize migration scripts
-│   │   ├── seeders/            # Sequelize seed data scripts
-│   │   ├── services/           # Business logic
-│   │   ├── controllers/        # Request handlers
-│   │   ├── routes/             # API route definitions
-│   │   ├── utils/              # Helper utilities
-│   │   ├── app.js              # Express app setup
-│   │   └── server.js           # Server entry point
-│   ├── tests/                  # Backend tests (unit, integration, API)
-│   ├── Dockerfile              # Dockerfile for backend
-│   └── package.json            # Backend dependencies
-├── docker-compose.yml          # Docker Compose for services (backend, DB, Redis, frontend)
-├── .env.example                # Example environment variables
-├── README.md                   # Project setup and usage instructions
-├── .gitlab-ci.yml              # Example CI/CD pipeline configuration
-└── docs/                       # Project documentation
-    ├── api.md                  # API documentation
-    ├── architecture.md         # Architecture documentation
-    └── deployment.md           # Deployment guide
+/cms-project
+├── /backend                         # NestJS Backend Application
+│   ├── src                          # Source code
+│   │   ├── main.ts                  # Entry point
+│   │   ├── app.module.ts            # Root module
+│   │   ├── auth/                    # Auth module (login, register, JWT)
+│   │   ├── users/                   # User management
+│   │   ├── categories/              # Category management
+│   │   ├── posts/                   # Post/Article management
+│   │   ├── config/                  # Environment config
+│   │   ├── database/                # TypeORM config, migrations, seeds
+│   │   └── shared/                  # Global filters, interceptors, middleware
+│   ├── test/                        # E2E & Unit tests
+│   ├── .env.example                 # Example environment variables
+│   ├── ormconfig.ts                 # TypeORM CLI configuration
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── Dockerfile                   # Backend Dockerfile
+├── /frontend                        # React + TypeScript Frontend Application
+│   ├── public/
+│   ├── src
+│   │   ├── App.tsx                  # Main App component
+│   │   ├── index.tsx                # Entry point
+│   │   ├── components/              # Reusable UI components
+│   │   ├── pages/                   # Application pages (Home, Login, Dashboard, etc.)
+│   │   ├── services/                # API interaction layer
+│   │   ├── context/                 # React Contexts (e.g., AuthContext)
+│   │   └── types/                   # TypeScript interfaces/types
+│   ├── .env.example                 # Example environment variables
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── Dockerfile                   # Frontend Dockerfile
+├── .dockerignore
+├── docker-compose.yml               # Docker orchestration file
+├── nginx.conf                       # Nginx configuration for frontend
+├── .github/workflows/               # CI/CD (GitHub Actions)
+│   └── main.yml
+├── README.md                        # This file
+├── API.md                           # Detailed API documentation
+└── ARCHITECTURE.md                  # High-level system architecture
 ```
 
-## 4. Setup Instructions
+## 5. Setup Instructions
 
 ### Prerequisites
 
-*   Docker & Docker Compose (Recommended for easy setup)
-*   Node.js (v18 or higher) and npm (if running locally without Docker)
-*   PostgreSQL client (optional, for direct DB access)
-*   Git
+*   **Node.js (v18 or higher)** and **npm**
+*   **Docker** and **Docker Compose** (recommended for local development)
+*   **Git**
 
-### Environment Variables
-
-Create a `.env` file in the root of the `task-management-system/` directory based on `.env.example`.
-
-**`.env` example:**
-
-```dotenv
-NODE_ENV=development
-PORT=5000
-
-# Database Configuration
-DB_HOST=db # Use 'localhost' if running backend locally, 'db' for Docker Compose
-DB_PORT=5432
-DB_USER=user
-DB_PASSWORD=password
-DB_NAME=task_management_db
-
-# JWT Secret and Expiration Times
-JWT_SECRET=super_secret_jwt_key_please_change_this_in_production
-JWT_ACCESS_EXPIRATION_MINUTES=30
-JWT_REFRESH_EXPIRATION_DAYS=7
-
-# Redis Configuration
-REDIS_HOST=redis # Use 'localhost' if running backend locally, 'redis' for Docker Compose
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-# CORS
-CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX_REQUESTS=100
-```
-
-### Running with Docker Compose (Recommended)
+### Local Development with Docker Compose (Recommended)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/task-management-system.git
-    cd task-management-system
+    git clone https://github.com/your-username/cms-project.git
+    cd cms-project
     ```
-2.  **Create `.env` file:** Copy `.env.example` to `.env` in the root directory and fill in the values.
-3.  **Build and run containers:**
+
+2.  **Create `.env` files:**
+    Copy the example environment files for both backend and frontend.
+
+    ```bash
+    cp backend/.env.example backend/.env
+    cp frontend/.env.example frontend/.env
+    ```
+    Review and adjust variables in both `.env` files, especially `DB_PASSWORD`, `JWT_SECRET`, and `CORS_ORIGIN`.
+
+3.  **Build and run services with Docker Compose:**
     ```bash
     docker-compose up --build -d
     ```
-    This will:
-    *   Build Docker images for the backend (`server/`) and frontend (`client/`).
-    *   Start PostgreSQL, Redis, backend, and frontend containers.
-    *   The backend will be accessible on `http://localhost:5000`.
-    *   The frontend will be accessible on `http://localhost:3000`.
-4.  **Run Database Migrations and Seeders:**
-    Once the `db` service is healthy, you need to run migrations and seed initial data.
-    ```bash
-    docker-compose exec backend npm run migrate
-    docker-compose exec backend npm run seed
-    ```
-    (Note: The `db:reset` command in `package.json` can be used for development, but `migrate` and `seed` are safer for CI/CD or production.)
+    This command will:
+    *   Build Docker images for backend and frontend.
+    *   Start PostgreSQL database (`db`).
+    *   Start Redis cache (`redis`).
+    *   Start the backend application (`backend`).
+    *   Start Nginx to serve the frontend (`frontend`).
 
-    **Default Admin User (seeded):**
-    *   **Email**: `admin@example.com`
-    *   **Password**: `Admin@123`
-    (Change this immediately in a production environment!)
-
-5.  **Stop containers:**
+4.  **Wait for services to start:**
+    It might take a minute for the database and backend to be ready. You can check logs:
     ```bash
-    docker-compose down
+    docker-compose logs -f
     ```
 
-### Running Backend Locally (without Docker Compose for Backend)
+5.  **Run database migrations:**
+    Once the `backend` service is up and connected to `db`:
+    ```bash
+    docker-compose exec backend npm run migrate:run
+    ```
+
+6.  **Seed initial data:**
+    ```bash
+    docker-compose exec backend npm run seed:run
+    ```
+    This will create an `admin@example.com` (password: `password123`) user, an `editor@example.com` (password: `password123`) user, and a few `author` users along with categories and posts.
+
+7.  **Access the applications:**
+    *   **Frontend:** `http://localhost:80` (or just `http://localhost`)
+    *   **Backend API:** `http://localhost:3000` (for direct access, proxied through `/api/v1` by Nginx)
+    *   **Swagger API Docs:** `http://localhost:3000/api-docs` (direct)
+
+### Manual Setup (Backend)
 
 1.  **Navigate to the backend directory:**
     ```bash
-    cd task-management-system/server
+    cd backend
     ```
+
 2.  **Install dependencies:**
     ```bash
     npm install
     ```
-3.  **Ensure PostgreSQL and Redis are running:**
-    You can use Docker Compose to just run the `db` and `redis` services:
-    ```bash
-    docker-compose up db redis -d
-    ```
-    *Make sure to update `DB_HOST` to `localhost` and `REDIS_HOST` to `localhost` in your `server/.env` file if not using the full docker-compose.*
-4.  **Run migrations and seeders:**
-    ```bash
-    npm run migrate
-    npm run seed
-    ```
-5.  **Start the backend server:**
-    ```bash
-    npm run dev  # For development with nodemon
-    # or
-    npm start    # For production mode
-    ```
-    The backend will run on `http://localhost:5000`.
 
-### Running Frontend Locally (without Docker Compose for Frontend)
+3.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    ```
+    Adjust `DB_HOST` to your local PostgreSQL instance (e.g., `localhost`), and ensure `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` are set correctly.
+
+4.  **Start PostgreSQL and Redis:**
+    Ensure you have a local PostgreSQL database and Redis instance running and configured as per your `.env` file.
+
+5.  **Run migrations and seeds:**
+    ```bash
+    npm run migrate:run
+    npm run seed:run
+    ```
+
+6.  **Start the backend application:**
+    ```bash
+    npm run start:dev
+    ```
+    The backend will run on `http://localhost:3000`.
+
+### Manual Setup (Frontend)
 
 1.  **Navigate to the frontend directory:**
     ```bash
-    cd task-management-system/client
+    cd frontend
     ```
+
 2.  **Install dependencies:**
     ```bash
     npm install
     ```
-3.  **Start the React development server:**
+
+3.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    ```
+    Ensure `REACT_APP_API_BASE_URL` points to your backend API. If running backend with `npm run start:dev`, it would be `http://localhost:3000`. If using Docker Compose with Nginx, it might be `/api/v1` (if Nginx proxies it) or `http://localhost:3000` (if Nginx isn't proxying it).
+
+4.  **Start the frontend application:**
     ```bash
     npm start
     ```
-    The frontend will run on `http://localhost:3000`. It is configured to proxy API requests to `http://localhost:5000`.
+    The frontend will typically run on `http://localhost:3001`.
 
-## 5. Database Management
+## 6. Database Management
 
-The backend uses `sequelize-cli` for database migrations and seeding.
+### Migrations
 
-*   **Run migrations:** `npm run migrate` (from `server/` directory)
-*   **Undo last migration:** `npm run migrate:undo`
-*   **Seed data:** `npm run seed`
-*   **Reset database (development only):** `npm run db:reset` (Drops all tables, recreates them via migrations, then seeds data). **Use with extreme caution in non-development environments.**
+Migrations manage database schema changes.
 
-## 6. Testing
+*   **Generate a new migration:**
+    ```bash
+    docker-compose exec backend npm run migrate:make --name=YourMigrationName
+    # OR (for manual setup):
+    npm run typeorm migration:create ./src/database/migrations/YourMigrationName
+    ```
+    Then, edit the generated TypeScript file in `backend/src/database/migrations/`.
 
-Tests are written using Jest and Supertest.
+*   **Run pending migrations:**
+    ```bash
+    docker-compose exec backend npm run migrate:run
+    # OR:
+    npm run migrate:run
+    ```
 
-1.  **Ensure test database setup:** The `server/tests/setup.js` file handles dropping and recreating a dedicated test database (`task_management_db_test`) before tests run, and connects to Redis.
-2.  **Run all tests (from `server/` directory):**
+*   **Revert the last migration:**
+    ```bash
+    docker-compose exec backend npm run migrate:revert
+    # OR:
+    npm run migrate:revert
+    ```
+
+### Seeding
+
+Seed data populates the database with initial records (e.g., admin user, default categories).
+
+*   **Run seeders:**
+    ```bash
+    docker-compose exec backend npm run seed:run
+    # OR:
+    npm run seed:run
+    ```
+
+## 7. Running Tests
+
+### Backend Tests
+
+From the `backend` directory:
+
+*   **Unit tests:**
     ```bash
     npm test
     ```
-    This command will run unit, integration, and API tests, and generate a coverage report. Aiming for 80%+ coverage.
+*   **Unit tests with coverage:**
+    ```bash
+    npm run test:cov
+    ```
+*   **End-to-End (E2E) tests:**
+    ```bash
+    npm run test:e2e
+    ```
+    (Ensure the database is running and potentially clean before running E2E tests).
 
-**Test Types:**
-*   **Unit Tests**: Located in `server/tests/unit/`, these test individual functions/modules (e.g., `user.service.js` functions) in isolation.
-*   **Integration Tests**: Located in `server/tests/integration/`, these test the interaction between different layers (e.g., controllers interacting with services and models).
-*   **API Tests**: Located in `server/tests/integration/` (often combined with integration tests), these use `Supertest` to make actual HTTP requests to the Express app and assert on responses.
-*   **Performance Tests**: A conceptual K6 script (`k6/login_performance.js`) is provided for demonstrating performance testing. These are typically run in a separate environment against a deployed application, not as part of the standard `npm test`.
+### Frontend Tests
 
-## 7. API Documentation
+From the `frontend` directory:
 
-Comprehensive API documentation is crucial for enterprise applications. This project is structured to be compatible with OpenAPI/Swagger.
+*   **Unit tests (React Testing Library):**
+    ```bash
+    npm test
+    ```
+    (Currently, no specific test files are provided, but this is the command for future tests.)
 
-A conceptual API documentation example can be found in `docs/api.md`. In a real-world scenario, you would integrate a tool like `swagger-jsdoc` and `swagger-ui-express` to generate interactive documentation directly from your route definitions and Joi schemas.
+## 8. API Documentation
 
-**Example Endpoint Documented:**
+The backend API documentation is generated using Swagger (OpenAPI) and is accessible when the backend server is running.
 
-```markdown
+*   **Swagger UI:** `http://localhost:3000/api-docs` (if backend is running directly or exposed via Docker)
+
+For a more structured overview, refer to the `API.md` file.
+
+## 9. Architecture
+
+Refer to the `ARCHITECTURE.md` file for a high-level overview of the system design, key components, and their interactions.
+
+## 10. CI/CD
+
+The project includes a basic GitHub Actions workflow (`.github/workflows/main.yml`) that performs the following steps on `main` and `develop` branches, and on pull requests:
+
+*   **Backend CI:**
+    *   Checks out code.
+    *   Sets up Node.js.
+    *   Installs dependencies.
+    *   Runs linting.
+    *   Runs unit tests with coverage.
+    *   (Optional: uploads coverage to Codecov)
+*   **Frontend CI:**
+    *   Checks out code.
+    *   Sets up Node.js.
+    *   Installs dependencies.
+    *   Runs linting.
+    *   Runs unit tests.
+    *   Builds the React application.
+*   **Deployment (on `main` branch pushes):**
+    *   Logs in to Docker Hub.
+    *   Builds and pushes Docker images for both backend and frontend.
+    *   Deploys to a remote server via SSH (requires `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` secrets, and `DOCKER_USERNAME`, `DOCKER_PASSWORD` for Docker Hub). This typically involves pulling new images and restarting Docker Compose services.
+
+**To enable the deployment step:**
+1.  Set up Docker Hub account.
+2.  Add repository secrets in GitHub:
+    *   `DOCKER_USERNAME`
+    *   `DOCKER_PASSWORD`
+    *   `SSH_HOST` (e.g., your server's IP address)
+    *   `SSH_USERNAME`
+    *   `SSH_KEY` (private SSH key for connecting to your server)
+
+## 11. Additional Features
+
+*   **Authentication/Authorization:** Implemented using JWT and Passport.js with role-based access control.
+*   **Logging and Monitoring:** Winston for structured logging, integrated with NestJS. Request logging middleware captures basic request info.
+*   **Error Handling Middleware:** Global exception filter ensures consistent JSON error responses and proper logging for all unhandled exceptions.
+*   **Caching Layer:** Redis integrated with NestJS `CacheModule` and `CacheInterceptor` for improved performance on read-heavy endpoints.
+*   **Rate Limiting:** `ThrottlerModule` implemented to prevent brute-force attacks and abuse of API endpoints.
+
+## 12. Contributing
+
+Contributions are welcome! Please follow these steps:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Write tests for your changes.
+5.  Ensure all tests pass and linting checks are green.
+6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Create a Pull Request.
+
+## 13. License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+```

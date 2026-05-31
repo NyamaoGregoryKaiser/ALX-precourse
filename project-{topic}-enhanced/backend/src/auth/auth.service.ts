@@ -1,88 +1,62 @@
 ```typescript
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { PrismaClient, User } from '@prisma/client';
-import { StatusCodes } from 'http-status-codes';
-import { ApiError } from '../middleware/errorHandler';
-import config from '../config';
-import { JwtPayload } from '../types';
-import redisClient from '../utils/redis';
-import logger from '../utils/logger';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../users/users.service';
+import { LoginDto } from './dto/login.dto';
+import { User } from '../users/entities/user.entity';
 
-const prisma = new PrismaClient();
+@Injectable()
+export class AuthService {
+  constructor(
+    private usersService: UsersService,
+    private jwtService: JwtService,
+  ) {}
 
-class AuthService {
-  async register(username: string, email: string, password: string): Promise<{ user: User; token: string }> {
-    const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email }, { username }] },
-    });
+  async validateUser(email: string, pass: string): Promise<any> {
+    const user = await this.usersService.findByEmail(email);
+    if (user && await user.validatePassword(pass)) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password, ...result } = user; // Exclude password from the returned object
+      return result;
+    }
+    return null;
+  }
 
-    if (existingUser) {
-      throw new ApiError(StatusCodes.BAD_REQUEST, 'User with this email or username already exists');
+  async login(loginDto: LoginDto) {
+    const user = await this.usersService.findByEmail(loginDto.email);
+    if (!user || !(await user.validatePassword(loginDto.password))) {
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashedPassword,
+    const payload = { username: user.username, sub: user.id, role: user.role };
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
       },
-    });
-
-    const token = this.generateToken(newUser.id, newUser.email);
-
-    // Cache user session token (optional, for more advanced session management)
-    await redisClient.set(`user:${newUser.id}:token`, token, 'EX', 60 * 60 * 24); // 24 hours
-
-    logger.info(`User registered: ${newUser.email}`);
-    return { user: newUser, token };
+    };
   }
 
-  async login(email: string, password: string): Promise<{ user: User; token: string }> {
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials');
+  // A method for registration, perhaps with a default role
+  async register(createUserDto: any) { // Use CreateUserDto from UsersModule
+    // Ensure the default role is not admin unless explicitly handled
+    if (createUserDto.role && createUserDto.role !== 'author' && createUserDto.role !== 'reader') {
+      throw new UnauthorizedException('Cannot register with this role.');
     }
-
-    const token = this.generateToken(user.id, user.email);
-
-    // Cache user session token
-    await redisClient.set(`user:${user.id}:token`, token, 'EX', 60 * 60 * 24); // 24 hours
-
-    logger.info(`User logged in: ${user.email}`);
-    return { user, token };
-  }
-
-  private generateToken(userId: string, email: string): string {
-    const payload: JwtPayload = { id: userId, email };
-    return jwt.sign(payload, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
-  }
-
-  async logout(userId: string): Promise<void> {
-    await redisClient.del(`user:${userId}:token`);
-    logger.info(`User logged out: ${userId}`);
-  }
-
-  async validateToken(token: string): Promise<JwtPayload> {
-    try {
-      const decoded = jwt.verify(token, config.jwtSecret) as JwtPayload;
-      // Optionally check if token is blacklisted or invalidated in Redis
-      const cachedToken = await redisClient.get(`user:${decoded.id}:token`);
-      if (!cachedToken || cachedToken !== token) {
-        throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid or expired session');
-      }
-      return decoded;
-    } catch (error) {
-      logger.warn(`Token validation failed: ${error.message}`);
-      throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid or expired token');
-    }
+    const user = await this.usersService.create({ ...createUserDto, role: createUserDto.role || 'author' });
+    const payload = { username: user.username, sub: user.id, role: user.role };
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    };
   }
 }
-
-export const authService = new AuthService();
 ```

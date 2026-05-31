@@ -1,67 +1,81 @@
 ```typescript
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
-import api from '../api/api';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User, AuthResponse, LoginPayload, RegisterPayload, UserRole } from '../types';
+import * as AuthService from '../services/auth.service';
 
 interface AuthContextType {
-  isAuthenticated: boolean;
-  role: string | null;
-  loading: boolean;
-  login: (token: string, userRole: string) => void;
+  user: User | null;
+  token: string | null;
+  login: (credentials: LoginPayload) => Promise<void>;
+  register: (userData: RegisterPayload) => Promise<void>;
   logout: () => void;
+  isAuthenticated: boolean;
+  hasRole: (roles: UserRole[]) => boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * Provides authentication state and functions (login, logout) to the application.
- * Stores token and role in localStorage.
- * @param children React nodes to be rendered within the provider.
- */
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true); // To handle initial auth check
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing token and role in localStorage on mount
-    const token = localStorage.getItem('token');
-    const storedRole = localStorage.getItem('role');
-
-    if (token && storedRole) {
-      // You might want to add token validation here (e.g., check expiration)
-      setIsAuthenticated(true);
-      setRole(storedRole);
+    const storedToken = AuthService.getToken();
+    const storedUser = AuthService.getCurrentUser();
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(storedUser);
     }
     setLoading(false);
   }, []);
 
-  const login = (token: string, userRole: string) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('role', userRole);
-    setIsAuthenticated(true);
-    setRole(userRole);
+  const login = async (credentials: LoginPayload) => {
+    setLoading(true);
+    try {
+      const authData = await AuthService.loginUser(credentials);
+      AuthService.saveAuthData(authData.access_token, authData.user);
+      setToken(authData.access_token);
+      setUser(authData.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const register = async (userData: RegisterPayload) => {
+    setLoading(true);
+    try {
+      const authData = await AuthService.registerUser(userData);
+      AuthService.saveAuthData(authData.access_token, authData.user);
+      setToken(authData.access_token);
+      setUser(authData.user);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    setIsAuthenticated(false);
-    setRole(null);
+    AuthService.logoutUser();
+    setToken(null);
+    setUser(null);
+  };
+
+  const isAuthenticated = !!token && !!user;
+
+  const hasRole = (roles: UserRole[]): boolean => {
+    if (!user) return false;
+    return roles.includes(user.role);
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, role, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isAuthenticated, hasRole, loading }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-/**
- * Custom hook to easily consume the AuthContext.
- * Throws an error if used outside of an AuthProvider.
- * @returns AuthContextType
- */
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

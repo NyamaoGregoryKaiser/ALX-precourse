@@ -1,157 +1,158 @@
-# Database Optimization System (DBO) - Architecture Document
+```markdown
+# ALX CMS Architecture Documentation
 
-## 1. Introduction
+This document outlines the high-level architecture of the Content Management System.
 
-This document describes the architecture of the Database Optimization System (DBO), a C++ application designed to analyze and recommend optimizations for PostgreSQL databases. The system focuses on maintainability, scalability, and performance, leveraging modern C++ features and robust third-party libraries.
+## 1. System Overview
 
-## 2. High-Level Architecture
+The ALX CMS is a full-stack web application designed for managing and publishing content. It follows a decoupled, service-oriented architecture, separating the backend API from the frontend user interface. The system is built for scalability, security, and maintainability.
 
-The DBO system follows a layered, monolithic architecture, where components are logically separated but deployed as a single application unit. This design choice simplifies deployment for moderate complexity while allowing for clear separation of concerns.
+**Key Principles:**
+*   **Microservices-ish (Modular Monolith):** The backend is a NestJS application structured into logical modules (Users, Posts, Categories) which behave like self-contained services, promoting separation of concerns.
+*   **Decoupled Frontend/Backend:** The frontend (React) communicates with the backend (NestJS API) via RESTful API calls.
+*   **Stateless Backend:** Enables horizontal scaling of backend instances.
+*   **Security First:** Authentication, Authorization, Rate Limiting, and secure configuration.
+*   **Observability:** Comprehensive logging and error handling.
+*   **Containerization:** Facilitates consistent development, testing, and deployment environments.
+
+## 2. High-Level Diagram
 
 ```
-+------------------+
-|                  |
-|  Client (Browser/ |
-|     CLI / Other   |
-|     Applications) |
-|                  |
-+--------+---------+
-         | HTTP(S)
-         |
-+--------v---------+
-|  **Presentation Layer**   |
-|  (Boost.Beast HTTP Server)|
-|  - Request Routing        |
-|  - Auth/Rate Limit/Error  |
-|  - Static File Serving    |
-+--------+---------+
-         |
-+--------v---------+
-|  **Application/Service Layer**  |
-|  - QueryAnalyzerService   |
-|  - SchemaAnalyzerService  |
-|  - AuthService            |
-|  - CacheService           |
-|  - Business Logic Orchestration |
-+--------+---------+
-         | Dependencies / Data Models
-+--------v---------+
-|  **Domain/Model Layer**   |
-|  - User, QueryLog         |
-|  - IndexRecommendation    |
-|  - SchemaIssue            |
-|  - Data Structures        |
-+--------+---------+
-         |
-+--------v---------+
-|  **Data Access Layer**    |
-|  (Repositories)           |
-|  - UserRepository         |
-|  - QueryLogRepository     |
-|  - IndexRecommendationRepo|
-|  - SchemaIssueRepository  |
-|  - DbConnection (libpqxx Connection Pool) |
-+--------+---------+
-         | PostgreSQL Protocol
-+--------v---------+
-|                  |
-| **PostgreSQL Database** |
-|  - Data Storage         |
-|  - Query Execution      |
-|  - Transaction Management |
-|                  |
-+------------------+
-
-**Cross-Cutting Concerns**:
-- Logging (spdlog)
-- Configuration (dotenv)
-- Exception Handling
++------------------+     +------------------+     +-------------------+
+|      Client      |     |     Frontend     |     |      Backend      |
+| (Web Browser)    |     |    (React.js)    |     |   (NestJS API)    |
++------------------+     +------------------+     +-------------------+
+        | HTTP/S                ^ AJAX/HTTP/S        | RESTful API
+        |                       |                    |
+        |                       |                    v
+        |                  +----------------+   +-------------------+
+        |                  |     Nginx      |   |    PostgreSQL     |
+        |                  | (Reverse Proxy)|<->|     (Database)    |
+        |                  +----------------+   +-------------------+
+        |                                        | SQL, TypeORM
+        |                                        |
+        |                                        v
+        |                                   +----------+
+        |                                   |   Redis  |
+        |                                   | (Caching)|
+        |                                   +----------+
+        |
+        +-------------------------------------------------------------+
+                                     | Logging
+                                     v
+                                +-------------------+
+                                | Centralized Log   |
+                                |  (e.g., ELK Stack)|
+                                +-------------------+
 ```
 
-## 3. Layer Breakdown
+## 3. Component Breakdown
 
-### 3.1. Presentation Layer (`src/server/`)
+### 3.1. Frontend (React.js)
 
-*   **`HttpServer`**: The core HTTP server responsible for accepting incoming connections and managing `HttpSession` instances. Utilizes `Boost.Asio` for asynchronous I/O and `Boost.Beast` for HTTP protocol parsing and serialization.
-*   **`HttpSession`**: Handles a single client connection, performing async reads/writes of HTTP messages.
-*   **`RequestHandler`**: Acts as the central router and dispatcher. It maps incoming HTTP requests (method, path) to specific C++ handler functions. It also orchestrates the application of middleware.
-*   **Middleware**:
-    *   **`AuthMiddleware`**: Intercepts requests to protected routes, validates JWT tokens, and populates user context.
-    *   **`RateLimiter`**: Prevents abuse by limiting the number of requests from a given client IP within a timeframe.
-    *   **`ErrorHandler`**: Catches exceptions and crafts standardized error responses.
-*   **`StaticFileHandler`**: Serves static assets (HTML, CSS, JS) from the `web/` directory.
-*   **`ViewRenderer`**: A very basic mechanism for rendering simple HTML templates (e.g., replacing placeholders). In a more complex frontend, this would be a separate SPA.
+*   **Technology:** React, TypeScript, React Router DOM, Tailwind CSS, Axios.
+*   **Purpose:** Provides the user interface for consuming and managing content.
+*   **Key Responsibilities:**
+    *   **User Interface:** Renders dynamic pages and components.
+    *   **Routing:** Manages client-side navigation.
+    *   **State Management:** Local component state, global state for authentication using React Context.
+    *   **API Interaction:** Communicates with the Backend API using Axios.
+    *   **Form Handling:** Captures user input for creating/updating content.
+    *   **User Experience:** Responsive design and interactive elements.
+*   **Structure:**
+    *   `src/pages`: Top-level application views (HomePage, LoginPage, DashboardPage, etc.)
+    *   `src/components`: Reusable UI elements (Navbar, PostCard, ProtectedRoute).
+    *   `src/services`: Abstraction layer for API calls.
+    *   `src/context`: Global state management (e.g., `AuthContext`).
+    *   `src/types`: TypeScript interfaces for data structures.
 
-### 3.2. Application/Service Layer (`src/services/`)
+### 3.2. Backend (NestJS API)
 
-This layer encapsulates the primary business logic and orchestrates data flow between the presentation and data access layers. Services are responsible for domain-specific tasks.
+*   **Technology:** NestJS, TypeScript, TypeORM, PostgreSQL, Passport.js (JWT), Redis, Winston.
+*   **Purpose:** Serves as the brain of the application, handling all business logic, data persistence, and API exposure.
+*   **Key Responsibilities:**
+    *   **API Endpoints:** Exposes RESTful API for Users, Categories, Posts.
+    *   **Authentication & Authorization:** Verifies user identity and roles, controls access to resources.
+    *   **Business Logic:** Implements CRUD operations, data validation, and content workflow.
+    *   **Data Persistence:** Interacts with PostgreSQL database via TypeORM.
+    *   **Caching:** Stores frequently accessed data in Redis to reduce database load.
+    *   **Error Handling:** Catches and standardizes error responses.
+    *   **Logging:** Records application events and errors.
+    *   **Security:** Rate limiting, Helmet middleware for HTTP headers.
+*   **Structure (Modular):**
+    *   **`AuthModule`:** Handles user authentication (login, registration) and JWT management.
+    *   **`UsersModule`:** Manages user entities, roles, and CRUD operations.
+    *   **`CategoriesModule`:** Manages content categories and their associated operations.
+    *   **`PostsModule`:** Manages articles/posts, including content, status, and author/category relationships.
+    *   **`ConfigModule`:** Loads and validates environment variables.
+    *   **`Database`:** TypeORM configuration, migrations, and seeding scripts.
+    *   **`Shared`:** Global concerns like exception filters, interceptors (caching), and middleware (logging).
 
-*   **`AuthService`**: Handles user registration, login, password hashing (using Crypto++ SHA256), and JWT token generation/validation.
-*   **`QueryAnalyzerService`**: The core intelligence for database optimization. It fetches `QueryLog` data, parses SQL queries (simplified regex-based parsing), identifies frequently used columns in slow queries, and suggests `IndexRecommendation`s. It would ideally integrate with PostgreSQL's `EXPLAIN ANALYZE` or system views for richer analysis.
-*   **`SchemaAnalyzerService`**: (Conceptualized) Would analyze the target database's schema (tables, columns, constraints) to identify issues like missing foreign keys, non-normalized structures, or suboptimal data types.
-*   **`CacheService`**: Provides an in-memory key-value store for caching frequently accessed data (e.g., lists of recommendations) to reduce database load and improve response times.
-*   **`Config`**: Loads application configuration from `.env` files.
-*   **`Logger`**: Centralized logging utility using `spdlog`.
+### 3.3. Database (PostgreSQL)
 
-### 3.3. Domain/Model Layer (`src/models/`)
+*   **Technology:** PostgreSQL.
+*   **Purpose:** Stores all persistent application data.
+*   **Key Responsibilities:**
+    *   **Data Storage:** Reliable storage for users, posts, categories, etc.
+    *   **Data Integrity:** Enforces relationships and constraints (e.g., foreign keys).
+    *   **Transactional Operations:** Ensures atomicity of complex data operations.
+*   **Schema:** Defined by TypeORM entities (User, Category, Post) with UUID primary keys.
 
-This layer defines the core data structures (Plain Old C++ Objects - POCS) that represent entities in the system. These are largely independent of specific database or framework technologies.
+### 3.4. Caching (Redis)
 
-*   **`User`**: Represents a user of the DBO system, including authentication details and roles.
-*   **`QueryLog`**: Stores details about executed SQL queries from the target database.
-*   **`IndexRecommendation`**: Represents a suggestion for a new database index.
-*   **`SchemaIssue`**: Represents a detected problem within the target database's schema.
+*   **Technology:** Redis.
+*   **Purpose:** In-memory data store used for caching API responses to reduce database load and improve response times for read-heavy operations.
+*   **Integration:** NestJS `CacheModule` with `cache-manager-redis-yet` adapter. `CacheInterceptor` automatically caches GET requests.
 
-### 3.4. Data Access Layer (`src/db/`)
+### 3.5. Reverse Proxy (Nginx - Optional but Recommended for Production)
 
-Responsible for abstracting database interactions and providing persistent storage for domain objects.
+*   **Technology:** Nginx.
+*   **Purpose:** Sits in front of the frontend application and can also proxy API requests to the backend.
+*   **Key Responsibilities:**
+    *   **Static File Serving:** Serves the built React application.
+    *   **API Gateway:** Routes API requests from the frontend (e.g., `/api/v1/*`) to the backend service.
+    *   **Load Balancing:** Can distribute traffic across multiple backend instances (for high availability/scalability).
+    *   **SSL Termination:** Handles HTTPS encryption/decryption (not shown in basic diagram but crucial for production).
+    *   **Security:** Provides an additional layer of defense.
 
-*   **`DbConnection`**: Manages a connection pool of `libpqxx::connection` objects to the PostgreSQL database. This ensures efficient resource utilization and robustness.
-*   **`MigrationManager`**: A custom migration system that reads SQL scripts from `database/migrations/` and applies them to the database, ensuring schema evolution is managed version by version.
-*   **Repositories (`UserRepository`, `QueryLogRepository`, `IndexRecommendationRepository`, `SchemaIssueRepository`)**: Each repository provides CRUD (Create, Read, Update, Delete) operations for a specific domain model. They map C++ objects to SQL queries and vice-versa, abstracting `libpqxx` details from the service layer.
+## 4. Data Flow (Example: Create Post)
 
-### 3.5. Infrastructure / Utilities (`src/utils/`, `src/common/`)
+1.  **Frontend (React):** User navigates to `/posts/new`, fills out a form, and clicks "Create Post".
+2.  **Frontend (Auth Context/Service):** Retrieves the user's JWT from local storage.
+3.  **Frontend (Post Service):** Makes an `HTTP POST` request to `/api/v1/posts` with the post data and the JWT in the `Authorization` header.
+4.  **Nginx (if used):** Receives the request, identifies it as an API call, and forwards it to the `backend:3000` service.
+5.  **Backend (NestJS - `LoggerMiddleware`):** Logs the incoming request.
+6.  **Backend (NestJS - `JwtAuthGuard`):** Extracts JWT from the header, validates it, and authenticates the user. If valid, attaches user payload to `req.user`.
+7.  **Backend (NestJS - `RolesGuard`):** Checks if `req.user`'s role (e.g., `AUTHOR`, `EDITOR`, `ADMIN`) is allowed to create posts. If not, throws `ForbiddenException`.
+8.  **Backend (NestJS - `ValidationPipe`):** Validates the request body against `CreatePostDto`. If invalid, throws `BadRequestException`.
+9.  **Backend (NestJS - `PostsController`):** Receives the validated `CreatePostDto` and `req.user.userId`.
+10. **Backend (NestJS - `PostsService`):**
+    *   Fetches the `User` and `Category` entities from `UserRepository` and `CategoryRepository` based on IDs.
+    *   Creates a new `Post` entity.
+    *   Saves the `Post` entity to the PostgreSQL database via TypeORM.
+11. **Backend (NestJS):** Returns the created `Post` object in the HTTP response.
+12. **Nginx (if used):** Forwards the response back to the client.
+13. **Frontend (Post Service):** Receives the response.
+14. **Frontend (React):** Navigates the user to the new post's detail page (`/posts/:id`) or the dashboard, and displays a success message.
 
-Shared components and utilities:
+## 5. Scalability Considerations
 
-*   **`JsonUtils`**: Helper functions for serializing C++ objects to `nlohmann/json` and deserializing JSON to C++ objects.
-*   **`Logger`**: Global `spdlog` instance management.
-*   **`Config`**: Environment variable loading.
-*   **`Constants`**: Global constants and magic strings.
-*   **`Exceptions`**: Custom exception classes for domain-specific error handling.
+*   **Stateless Backend:** The NestJS backend is designed to be stateless, meaning any instance can handle any request. This allows for easy horizontal scaling by running multiple backend containers behind a load balancer.
+*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally using replication (read replicas).
+*   **Caching with Redis:** Reduces load on the database, allowing the system to handle more read requests without degrading performance.
+*   **Docker & Docker Compose:** Provides a consistent and isolated environment, simplifying deployment and scaling.
+*   **CI/CD:** Automates the build, test, and deployment process, enabling faster iterations and consistent deployments.
 
-## 4. Database Schema (PostgreSQL)
+## 6. Security Considerations
 
-The DBO system uses a PostgreSQL database. Key tables include:
+*   **Authentication (JWT):** Secure token-based authentication.
+*   **Authorization (RBAC):** Role-Based Access Control ensures users only access resources and actions they are permitted to.
+*   **Password Hashing:** Passwords are never stored in plain text, using `bcrypt`.
+*   **Input Validation:** `class-validator` prevents common injection attacks and ensures data integrity.
+*   **Rate Limiting:** Protects against brute-force attacks and DoS.
+*   **Helmet:** Sets various HTTP headers for enhanced security.
+*   **CORS:** Configured to allow only trusted origins.
+*   **Environment Variables:** Sensitive information is kept out of source code and managed via environment variables.
 
-*   `users`: Stores user credentials and roles for accessing the DBO system.
-*   `query_logs`: Stores parsed log data from target databases (or manually ingested slow queries).
-*   `index_recommendations`: Stores suggested indexes, their status, and impact.
-*   `schema_issues`: Records identified problems within the target database's schema.
-*   `db_migrations`: Internal table to track applied schema migrations of the DBO's own database.
-
-## 5. Deployment and Operations
-
-*   **Docker**: The entire application (C++ backend + PostgreSQL) is containerized using `Dockerfile` and `docker-compose.yml` for simplified setup, deployment, and isolation.
-*   **CI/CD (GitHub Actions)**: A `ci-cd.yml` workflow automates:
-    *   Building the Docker images.
-    *   Running unit and integration tests against a temporary PostgreSQL instance.
-    *   Running API tests.
-    *   (Optional) Pushing images to a registry and deploying to a target environment (e.g., Kubernetes, EC2).
-*   **Logging & Monitoring**: `spdlog` is integrated for structured logging. In a production environment, these logs would be forwarded to a centralized logging system (e.g., ELK stack, Grafana Loki).
-*   **Error Handling**: Centralized error middleware ensures consistent API error responses.
-
-## 6. Future Enhancements
-
-*   **Advanced SQL Parsing**: Integrate a robust SQL parser library (e.g., `libpg_query`) for deeper query analysis.
-*   **PostgreSQL Catalog Integration**: Directly query `pg_stat_statements`, `pg_indexes`, `pg_class`, `pg_attribute` for real-time performance metrics and schema introspection.
-*   **Real-time Query Capture**: Implement a mechanism to capture slow queries directly from a target PostgreSQL instance (e.g., via `pg_stat_statements` polling, or a custom logging extension).
-*   **Machine Learning**: Apply ML models for more intelligent index suggestions or anomaly detection.
-*   **Multi-Database Support**: Extend to support other database systems (MySQL, SQL Server, etc.).
-*   **Web UI**: Develop a richer, interactive single-page application (SPA) using frameworks like React/Vue/Angular, consuming the C++ API.
-*   **Scalability**: For very high loads, consider breaking down the monolithic application into microservices (e.g., a dedicated Query Analysis service, an API Gateway).
-*   **Asynchronous Processing**: Use message queues (RabbitMQ, Kafka) for long-running analysis tasks.
-*   **Security**: Implement mTLS, stricter input validation, and security scanning.
-
-This architecture provides a solid foundation for a performant and maintainable database optimization system.
+This architecture provides a solid foundation for building and evolving a production-grade CMS.
 ```
