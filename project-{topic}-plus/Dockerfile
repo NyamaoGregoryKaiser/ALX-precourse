@@ -1,38 +1,44 @@
-# Use a lightweight Python base image
-FROM python:3.10-slim-buster
-
-# Set environment variables
-ENV PYTHONUNBUFFERED 1
-ENV FLASK_APP manage.py
-ENV FLASK_ENV production # Default to production, can be overridden by docker-compose
-
-# Create and set the working directory
+```dockerfile
+# Stage 1: Build the application
+FROM eclipse-temurin:17-jdk-jammy AS build
 WORKDIR /app
 
-# Install system dependencies (e.g., for psycopg2)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    gcc \
-    # Clean up APT when done
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Copy Maven wrapper files and pom.xml
+COPY .mvn/ .mvn
+COPY mvnw pom.xml ./
 
-# Copy requirements file and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Download dependencies (skip tests for faster build cache)
+# This step will be cached if pom.xml doesn't change
+RUN ./mvnw dependency:go-offline -B
 
-# Copy the rest of the application code
-COPY . .
+# Copy the rest of the source code
+COPY src ./src
 
-# Expose the port the app runs on
-EXPOSE 5000
+# Build the application
+RUN ./mvnw package -DskipTests
 
-# Run the application with Gunicorn
-# Using 4 workers, binding to all interfaces on port 5000
-# --log-level info: Set Gunicorn logging level
-# --access-logfile -: Log access to stdout
-# --error-logfile -: Log errors to stderr
-# --timeout 120: Increase timeout for potentially long data processing requests
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", \
-     "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "manage:app"]
+# Stage 2: Create the final Docker image
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+
+# Set timezone (optional, but good for consistent logging)
+ENV TZ=Africa/Cairo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Copy the built JAR from the build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Expose the port the Spring Boot application runs on
+EXPOSE 8080
+
+# Define environment variables for database connection (default to local if not provided)
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=product_db
+ENV DB_USER=admin
+ENV DB_PASSWORD=adminpass
+ENV JWT_SECRET=supersecretkeythatisatleast256bitlongforproductionuse1234567890
+
+# Entrypoint to run the Spring Boot application
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```

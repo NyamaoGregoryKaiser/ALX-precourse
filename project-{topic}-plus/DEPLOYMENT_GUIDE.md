@@ -1,206 +1,211 @@
-# Deployment Guide: Enterprise-Grade C++ API System
+```markdown
+# Product Management System - Deployment Guide
 
-This guide outlines the steps to deploy the C++ Task Management API system to a production environment using Docker and Docker Compose. It covers prerequisites, build process, and running the application.
+This document outlines the deployment strategy for the Product Management System. It covers both manual deployment steps (useful for understanding) and the automated CI/CD approach for production environments.
 
-## Table of Contents
-1.  [Deployment Strategy](#1-deployment-strategy)
-2.  [Prerequisites](#2-prerequisites)
-3.  [Building the Docker Image](#3-building-the-docker-image)
-4.  [Setting Up Environment Variables](#4-setting-up-environment-variables)
-5.  [Running with Docker Compose](#5-running-with-docker-compose)
-    *   [Initial Deployment](#initial-deployment)
-    *   [Updating the Deployment](#updating-the-deployment)
-6.  [Health Checks](#6-health-checks)
-7.  [Logging and Monitoring](#7-logging-and-monitoring)
-8.  [Database Persistence and Backup](#8-database-persistence-and-backup)
-9.  [Security Considerations](#9-security-considerations)
-10. [Further Considerations](#10-further-considerations)
+## 1. Deployment Strategy Overview
 
-## 1. Deployment Strategy
+The primary deployment strategy for this application is **container-based**, utilizing Docker images. This ensures consistency across development, testing, and production environments.
 
-The primary deployment strategy for this application is containerization using Docker. This ensures:
-*   **Consistency**: The application runs in the same environment from development to production.
-*   **Isolation**: The application and its dependencies are isolated from the host system.
-*   **Portability**: Easy to move between different cloud providers or on-premise infrastructure.
+The deployment process generally involves:
+1.  **Building** the application and its Docker image.
+2.  **Pushing** the Docker image to a container registry (e.g., Docker Hub).
+3.  **Pulling** the image onto a target server.
+4.  **Running** the container, typically alongside a database and potentially monitoring tools.
 
-We will use `docker-compose.yml` for orchestrating the application, which includes the API server container, persistent volumes for data and logs. For production, a more robust orchestration system like Kubernetes would be recommended.
+For production, **orchestration tools** like Docker Compose (for single-server deployments) or Kubernetes (for clustered, scalable deployments) are recommended.
 
-## 2. Prerequisites
+## 2. Prerequisites for Production Deployment
 
-### On your Deployment Server:
-*   **Operating System**: Linux (e.g., Ubuntu, CentOS) is recommended.
-*   **Docker Engine**: Version 19.03 or higher.
-    *   [Install Docker Engine](https://docs.docker.com/engine/install/)
-*   **Docker Compose**: Version 1.25 or higher.
-    *   [Install Docker Compose](https://docs.docker.com/compose/install/)
-*   **Git**: For cloning the repository.
+Before deploying to a production server, ensure the following are in place:
 
-## 3. Building the Docker Image
+*   **Production Server(s):**
+    *   A Linux VM (e.g., AWS EC2, Azure VM, DigitalOcean Droplet) with Docker Engine and Docker Compose installed.
+    *   Alternatively, a Kubernetes cluster (e.g., AWS EKS, Azure AKS, Google GKE).
+*   **PostgreSQL Database:**
+    *   A managed database service (e.g., AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL) for high availability and easy management.
+    *   Alternatively, a self-managed PostgreSQL instance running in Docker on your server or another server.
+*   **DNS Configuration:** A domain name pointing to your server's IP address (if external access is required).
+*   **SSL/TLS Certificate:** For HTTPS, preferably managed by a reverse proxy (Nginx, Caddy) or a cloud load balancer.
+*   **Network Security:** Firewall rules (Security Groups, Network Security Groups) configured to allow necessary inbound/outbound traffic (e.g., 80/443 for HTTP/S, 8080 for app, 5432 for DB - internal only).
+*   **Environment Variables/Secrets Management:** A secure way to manage sensitive data like database credentials, JWT secret, etc. (e.g., `docker-compose.yml` environment variables, Kubernetes Secrets, cloud-specific secret managers).
 
-The `Dockerfile` defines how to build the application image. For production, you typically build the image once and push it to a Docker registry.
+## 3. Manual Deployment (Example to a Single Linux VM with Docker Compose)
 
-1.  **Clone the repository**:
+This section details manual steps for deploying the application and its ecosystem to a single server using Docker Compose. This is a good way to understand the underlying process.
+
+1.  **Provision a Linux VM:**
+    *   Choose a cloud provider (AWS, Azure, GCP, DigitalOcean, etc.).
+    *   Create a VM (e.g., Ubuntu 22.04 LTS).
+    *   Ensure it has sufficient CPU, RAM, and disk space (e.g., 2vCPU, 4GB RAM, 50GB SSD).
+
+2.  **Install Docker and Docker Compose on the VM:**
     ```bash
-    git clone https://github.com/your-username/cpp-api-system.git
-    cd cpp-api-system
-    ```
+    # Update package index
+    sudo apt update
 
-2.  **Build the Docker image**:
-    This command builds the image using the `Dockerfile` in the current directory. It names the image `cpp-api-system` with the tag `latest`.
+    # Install Docker
+    sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update
+    sudo apt install -y docker-ce docker-ce-cli containerd.io
+
+    # Add current user to the docker group (log out and back in for changes to take effect)
+    sudo usermod -aG docker $USER
+
+    # Install Docker Compose
+    sudo apt install -y docker-compose
+    ```
+    *   Log out and log back in (or restart SSH session) to apply docker group changes.
+
+3.  **Configure Environment Variables (Important for Security):**
+    Instead of hardcoding sensitive values in `docker-compose.yml`, use a `.env` file or environment variables directly.
+    Create a `.env` file in the deployment directory on your server:
     ```bash
-    docker build -t cpp-api-system:latest .
+    # .env
+    DB_NAME=product_db_prod
+    DB_USER=produser
+    DB_PASSWORD=YOUR_STRONG_DB_PASSWORD
+    JWT_SECRET=YOUR_VERY_LONG_AND_SECURE_JWT_SECRET
+    GRAFANA_USER=admin
+    GRAFANA_PASSWORD=YOUR_GRAFANA_PASSWORD
     ```
-    *   **CI/CD Integration**: In a CI/CD pipeline, this step would typically be automated. After a successful build and test, the image would be tagged with a version (e.g., `v1.0.0`, `commit-sha`) and pushed to a container registry (e.g., Docker Hub, AWS ECR, Google Container Registry).
+    *Replace placeholders with strong, unique passwords.*
 
-## 4. Setting Up Environment Variables
+4.  **Clone the Repository (or copy deployment files):**
+    ```bash
+    git clone https://github.com/your-username/product-management-system.git
+    cd product-management-system
+    ```
+    *   Alternatively, you can just copy the `docker-compose.yml`, `Dockerfile`, `monitoring/` directory, and the `.env` file to your server.
 
-Sensitive configuration values (e.g., JWT secret, database path, admin credentials) must be provided to the Docker container via environment variables.
+5.  **Build and Push Docker Image (if not using CI/CD):**
+    If you're deploying manually and haven't used the CI/CD pipeline, you'll need to build the image and push it to Docker Hub first.
+    *   On your local machine:
+        ```bash
+        ./mvnw clean package -DskipTests
+        docker build -t your-dockerhub-username/product-management-system:latest .
+        docker login # Enter your Docker Hub credentials
+        docker push your-dockerhub-username/product-management-system:latest
+        ```
 
-The `docker-compose.yml` file already contains an `environment` section. **You MUST replace placeholder values with strong, unique, and secret values for production.**
+6.  **Deploy using Docker Compose:**
+    *   On your server, in the `product-management-system` directory:
+        ```bash
+        # Pull the latest images (including your application image from Docker Hub)
+        docker-compose pull
 
-**Example `.env` file for production (recommended, keep this file secure!):**
-```
-# Create this file in the same directory as docker-compose.yml
-# and make sure it's NOT committed to version control.
-# Environment variables for Production
-APP_PORT=9080
-DATABASE_PATH=/app/data/database.db
-JWT_SECRET=YOUR_PRODUCTION_JWT_SECRET_HERE_REPLACE_ME_WITH_A_LONG_RANDOM_STRING
-JWT_EXPIRATION_SECONDS=7200 # 2 hours
-RATE_LIMIT_WINDOW_SECONDS=60
-RATE_LIMIT_MAX_REQUESTS=100
-DEFAULT_ADMIN_USERNAME=prod_admin
-DEFAULT_ADMIN_PASSWORD=YOUR_STRONG_ADMIN_PASSWORD_HERE # Hashed internally
-LOG_LEVEL=INFO # Recommended for production, or ERROR
-```
-Then, reference this file in `docker-compose.yml`:
+        # Start all services
+        docker-compose up -d --build
+        ```
+        *   `--build` ensures that any changes to your local Dockerfile are rebuilt. If you're pulling a pre-built image from Docker Hub, you can omit `--build`.
+        *   `-d` runs services in detached mode.
+
+7.  **Verify Deployment:**
+    *   Check container status: `docker-compose ps`
+    *   View application logs: `docker-compose logs app`
+    *   Access endpoints:
+        *   **Application:** `http://YOUR_SERVER_IP:8080`
+        *   **Swagger UI:** `http://YOUR_SERVER_IP:8080/swagger-ui.html`
+        *   **Prometheus:** `http://YOUR_SERVER_IP:9090`
+        *   **Grafana:** `http://YOUR_SERVER_IP:3000` (Login with `GRAFANA_USER`/`GRAFANA_PASSWORD` from `.env`)
+        *   **Adminer:** `http://YOUR_SERVER_IP:8081`
+
+8.  **Configure Reverse Proxy (Recommended for Production):**
+    For proper production setup, use Nginx or Caddy as a reverse proxy to handle HTTPS, domain routing, and potentially load balancing.
+
+    *   Example Nginx configuration (`/etc/nginx/sites-available/product-management.conf`):
+        ```nginx
+        server {
+            listen 80;
+            server_name your-domain.com www.your-domain.com;
+            return 301 https://$host$request_uri;
+        }
+
+        server {
+            listen 443 ssl;
+            server_name your-domain.com www.your-domain.com;
+
+            ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+            ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+            location / {
+                proxy_pass http://localhost:8080; # Or http://app:8080 if Nginx is also in Docker Compose network
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location /swagger-ui.html {
+                proxy_pass http://localhost:8080;
+            }
+            location /v3/api-docs {
+                proxy_pass http://localhost:8080;
+            }
+            location /actuator {
+                proxy_pass http://localhost:8080;
+            }
+        }
+        ```
+    *   Enable the config: `sudo ln -s /etc/nginx/sites-available/product-management.conf /etc/nginx/sites-enabled/`
+    *   Test Nginx config: `sudo nginx -t`
+    *   Reload Nginx: `sudo systemctl reload nginx`
+    *   Obtain SSL certificate (e.g., using Certbot with Let's Encrypt).
+
+## 4. Automated Deployment with CI/CD (GitHub Actions)
+
+The `deploy` job in `.github/workflows/ci-cd.yml` demonstrates a conceptual automated deployment.
+
+In a real CI/CD setup, the `deploy` job would typically perform the following steps:
+
+1.  **SSH to Target Server:** Use an SSH action (e.g., `appleboy/ssh-action@master`) to connect to your production server.
+2.  **Pull Latest Image:** Execute `docker pull your-dockerhub-username/product-management-system:latest` on the server.
+3.  **Update/Restart Service:**
+    *   **Docker Compose:** Navigate to the deployment directory on the server and run `docker-compose up -d --force-recreate app` to pull the new image and restart only the application container.
+    *   **Kubernetes:** If deploying to Kubernetes, the step would involve applying updated Kubernetes manifests (e.g., `kubectl apply -f deployment.yaml`) which reference the new Docker image, triggering a rolling update.
+4.  **Health Checks:** After deployment, perform automated health checks (e.g., cURL the `/actuator/health` endpoint, or a dedicated API endpoint).
+5.  **Rollback Strategy:** Implement a rollback mechanism (e.g., `docker-compose down` and `up` with a previous image tag, or Kubernetes rolling back to a previous revision) in case of deployment failures.
+
+**Example `deploy` step in `ci-cd.yml` (conceptual for a VM deployment):**
+
 ```yaml
-environment:
-  # ... other variables ...
-  - JWT_SECRET=${JWT_SECRET}
-  - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
-  # ... etc.
+  deploy:
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://your-domain.com
+    steps:
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/product-management-system-on-server
+            # Ensure .env variables are loaded or passed
+            echo "Pulling latest Docker image..."
+            docker pull ${{ secrets.DOCKER_USERNAME }}/product-management-system:latest
+            echo "Restarting application service..."
+            docker-compose -f docker-compose.yml up -d --no-deps --force-recreate app # Restart only the app service
+            echo "Running database migrations (if any new ones are detected by Flyway)..."
+            # Flyway will run on app startup
+            echo "Deployment complete."
 ```
-Or, more simply, use `env_file`:
-```yaml
-services:
-  app:
-    # ...
-    env_file:
-      - .env
-    # ...
-```
-**Never commit `secrets` or `.env` files with production credentials to your Git repository.**
+*   **SSH Secrets:** You would need to add `SSH_HOST`, `SSH_USERNAME`, and `SSH_PRIVATE_KEY` to your GitHub repository secrets for this to work.
 
-## 5. Running with Docker Compose
+## 5. Post-Deployment Checks
 
-### Initial Deployment
+After any deployment, always perform these checks:
 
-1.  **Ensure Docker Daemon is running**:
-    ```bash
-    sudo systemctl start docker
-    ```
+*   **Application Logs:** Monitor `docker-compose logs app` (or equivalent in Kubernetes) for any errors or unexpected behavior.
+*   **Health Endpoints:** Check `http://YOUR_SERVER_IP:8080/actuator/health`.
+*   **Functionality Tests:** Perform smoke tests on key API endpoints to ensure core functionalities are working.
+*   **Monitoring Dashboards:** Verify that Prometheus and Grafana are collecting metrics and displaying a healthy status.
 
-2.  **Navigate to your project directory**:
-    ```bash
-    cd /path/to/your/cpp-api-system
-    ```
-
-3.  **Pull the image (if using a registry) or ensure it's built locally**:
-    If you built it locally: `docker build -t cpp-api-system:latest .`
-    If from a registry: `docker pull your-registry/cpp-api-system:latest` (update `docker-compose.yml` `image` field)
-
-4.  **Start the services**:
-    ```bash
-    docker-compose up -d
-    ```
-    *   The `-d` flag runs the containers in detached mode (in the background).
-    *   The `docker-entrypoint.sh` script will automatically run database migrations and seeders before starting the API server.
-
-5.  **Verify container status**:
-    ```bash
-    docker-compose ps
-    ```
-    You should see your `cpp-api-system-app` container running.
-
-6.  **Check application logs**:
-    ```bash
-    docker-compose logs -f app
-    ```
-    Look for messages indicating successful database initialization, migrations, seeding, and server startup (e.g., "HTTP Rest Server starting...", "Database opened successfully: /app/data/database.db").
-
-7.  **Access the API**:
-    The API server will be accessible on `http://localhost:9080` (or the IP address of your deployment server on port 9080).
-
-### Updating the Deployment
-
-When you have new code changes and a new Docker image:
-
-1.  **Stop the running services**:
-    ```bash
-    docker-compose down
-    ```
-    This will stop and remove containers, networks, and volumes (unless explicitly defined as external). However, our `app-data` and `app-logs` volumes are persisted, so your data will remain.
-
-2.  **Build the new Docker image (if not from a registry)**:
-    ```bash
-    docker build -t cpp-api-system:latest .
-    ```
-    If pulling from a registry: `docker pull your-registry/cpp-api-system:latest`
-
-3.  **Start the services with the new image**:
-    ```bash
-    docker-compose up -d
-    ```
-    Docker Compose will detect the new image and re-create the `app` container. The entrypoint script will run migrations again (they are idempotent) to ensure any new schema changes are applied.
-
-## 6. Health Checks
-
-For production environments, implementing health checks is crucial for automated monitoring and orchestration (e.g., Kubernetes).
-
-*   **HTTP Health Check**: You could implement a simple `GET /health` endpoint in your application that returns `200 OK` if the server is running and can connect to its database.
-*   **Docker Compose Healthcheck**: Add a `healthcheck` section to your `app` service in `docker-compose.yml`:
-    ```yaml
-    services:
-      app:
-        # ...
-        healthcheck:
-          test: ["CMD", "curl", "-f", "http://localhost:9080/health"] # Requires curl inside container or simpler test
-          interval: 30s
-          timeout: 10s
-          retries: 3
-          start_period: 20s # Give the app time to start up before checking
-    ```
-    (Note: A `/health` endpoint is not implemented in the provided code, but would be a good addition.)
-
-## 7. Logging and Monitoring
-
-*   **Application Logs**: The application logs to `/app/logs/app.log` inside the container. This directory is mounted as a Docker volume (`app-logs:/app/logs`), so logs are persisted on the host.
-*   **Docker Logs**: You can view container logs using `docker-compose logs app`.
-*   **Production Monitoring**: For production, integrate with a centralized log management system (e.g., ELK Stack, Splunk, Datadog) by configuring Docker's logging drivers or by shipping logs from the host volume.
-*   **Metrics**: Consider integrating a metrics library (e.g., Prometheus client library) into your C++ application to expose operational metrics, then use Prometheus to scrape and Grafana to visualize them.
-
-## 8. Database Persistence and Backup
-
-*   **Persistent Volumes**: The `app-data` volume in `docker-compose.yml` ensures that your `database.db` file (and any other data in `/app/data`) persists even if the container is removed or updated.
-*   **Backups**: Implement a regular backup strategy for your `app-data` volume on the host system. This could involve:
-    *   Scheduled cron jobs to copy the `database.db` file to a secure location (e.g., object storage like S3).
-    *   Using Docker volume backup tools.
-    *   For mission-critical data, consider switching to a managed database service (e.g., AWS RDS, Azure SQL Database, Google Cloud SQL) with built-in backup and replication.
-
-## 9. Security Considerations
-
-*   **Environment Variables**: As mentioned, keep `JWT_SECRET` and other sensitive variables secure. Do not expose them publicly.
-*   **Non-root User**: The `Dockerfile` creates a non-root `appuser` and runs the application as this user, reducing the blast radius in case of a container compromise.
-*   **Firewall**: Configure your server's firewall (e.g., `ufw` on Linux, AWS Security Groups) to only allow inbound traffic on port `9080` (or your chosen API port) from trusted sources or public internet if intended.
-*   **HTTPS**: **ALWAYS** deploy with HTTPS in a production environment. This typically involves placing a reverse proxy (e.g., Nginx, Apache, Caddy) in front of your Docker container. The reverse proxy handles SSL termination and forwards traffic to your API over HTTP.
-*   **Rate Limiting**: The built-in rate limiter helps mitigate certain types of attacks.
-*   **Image Scanning**: Regularly scan your Docker images for vulnerabilities using tools like Trivy or Clair.
-
-## 10. Further Considerations
-
-*   **Reverse Proxy**: Use Nginx or Caddy for SSL termination, load balancing (if multiple instances), caching, and request routing.
-*   **Container Orchestration**: For larger deployments, consider Kubernetes for advanced scaling, self-healing, and management capabilities.
-*   **Configuration Management**: For more complex configurations, tools like Ansible, Chef, or Puppet can manage your deployment servers.
-*   **Continuous Deployment**: Extend the CI/CD pipeline (`.github/workflows/ci.yml`) to automatically deploy new versions to your environment after successful tests.
+This guide provides a robust framework for deploying the Product Management System. Adapt the steps and tools based on your specific infrastructure and organizational requirements.
 ```
