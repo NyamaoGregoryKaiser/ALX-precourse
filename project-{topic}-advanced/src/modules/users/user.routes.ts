@@ -1,18 +1,27 @@
 ```typescript
 import { Router } from 'express';
-import { authenticate, authorize } from '../../middlewares/auth.middleware';
-import { getCurrentUser, getUserById, updateUser, deleteUser } from './user.controller';
-import { UserRole } from '@prisma/client';
+import * as userController from './user.controller';
+import { authenticateToken } from '../../middleware/auth.middleware';
+import { validate } from '../../middleware/validation.middleware';
+import { z } from 'zod';
+
+const updateUserSchema = z.object({
+  body: z.object({
+    name: z.string().min(1, 'Name cannot be empty').optional(),
+    email: z.string().email('Invalid email address').optional(),
+    password: z.string().min(8, 'Password must be at least 8 characters long').optional(),
+  }).partial(), // Allow partial updates
+});
 
 const router = Router();
 
-// Routes for authenticated users
-router.use(authenticate); // All routes below require authentication
+router.use(authenticateToken); // All routes below require authentication
 
-router.get('/me', getCurrentUser);
-router.get('/:id', authorize([UserRole.ADMIN, UserRole.USER]), getUserById); // Users can view any user if authorized
-router.put('/:id', authorize([UserRole.ADMIN, UserRole.USER]), updateUser); // Users can update themselves, admin any user
-router.delete('/:id', authorize([UserRole.ADMIN, UserRole.USER]), deleteUser); // Users can delete themselves, admin any user
+router.get('/me', userController.getUserProfile);
+router.patch('/me', validate(updateUserSchema), userController.updateUserProfile);
+router.delete('/me', userController.deleteUserAccount);
 
 export default router;
 ```
+
+**Module: Categories**

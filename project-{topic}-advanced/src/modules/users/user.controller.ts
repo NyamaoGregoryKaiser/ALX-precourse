@@ -1,68 +1,54 @@
 ```typescript
-import { Request, Response } from 'express';
-import { UserService } from './user.service';
-import { asyncHandler } from '../../utils/asyncHandler';
-import { ApiError } from '../../utils/apiError';
-import { updateUserSchema } from './user.validation';
-import { UserRole } from '@prisma/client';
+import { Request, Response, NextFunction } from 'express';
+import * as userService from './user.service';
+import { HttpCode } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
-const userService = new UserService();
+export const getUserProfile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id; // Authenticated user ID
+    const user = await userService.getUserById(userId);
 
-export const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    throw new ApiError(401, 'User not authenticated');
+    res.status(HttpCode.OK).json({
+      status: 'success',
+      data: { user },
+    });
+  } catch (error: any) {
+    logger.error(`Error getting user profile: ${error.message}`);
+    next(error);
   }
-  const user = await userService.getUserById(req.user.id);
-  res.status(200).json(user);
-});
+};
 
-export const getUserById = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const user = await userService.getUserById(id);
-  res.status(200).json(user);
-});
+export const updateUserProfile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    const updateData = req.body;
+    const updatedUser = await userService.updateUser(userId, updateData);
 
-export const updateUser = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    throw new ApiError(401, 'User not authenticated');
+    res.status(HttpCode.OK).json({
+      status: 'success',
+      message: 'User profile updated successfully',
+      data: { user: updatedUser },
+    });
+  } catch (error: any) {
+    logger.error(`Error updating user profile: ${error.message}`);
+    next(error);
   }
+};
 
-  const { id } = req.params;
-  const { error, value } = updateUserSchema.validate(req.body);
+export const deleteUserAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.id;
+    await userService.deleteUser(userId);
 
-  if (error) {
-    throw new ApiError(400, error.details[0].message);
+    res.status(HttpCode.NO_CONTENT).json({
+      status: 'success',
+      message: 'User account deleted successfully',
+      data: null,
+    });
+  } catch (error: any) {
+    logger.error(`Error deleting user account: ${error.message}`);
+    next(error);
   }
-
-  // A user can only update their own profile, unless they are an admin
-  if (req.user.id !== id && req.user.role !== UserRole.ADMIN) {
-    throw new ApiError(403, 'Unauthorized to update this user');
-  }
-
-  const updatedUser = await userService.updateUser(id, value);
-  logger.info(`User ${id} updated by ${req.user.id}`);
-  res.status(200).json(updatedUser);
-});
-
-export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    throw new ApiError(401, 'User not authenticated');
-  }
-
-  const { id } = req.params;
-
-  // A user can only delete their own profile, unless they are an admin
-  if (req.user.id !== id && req.user.role !== UserRole.ADMIN) {
-    throw new ApiError(403, 'Unauthorized to delete this user');
-  }
-
-  if (req.user.role === UserRole.ADMIN && req.user.id === id) {
-    throw new ApiError(400, 'Admin cannot delete their own account via this endpoint. Please use a super-admin interface or specific process.');
-  }
-
-  await userService.deleteUser(id);
-  logger.warn(`User ${id} deleted by ${req.user.id}`);
-  res.status(204).send(); // No content
-});
+};
 ```

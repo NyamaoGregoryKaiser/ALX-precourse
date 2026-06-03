@@ -1,65 +1,55 @@
+```yaml
 version: '3.8'
 
 services:
   app:
-    build: .
-    container_name: auth-app
-    restart: always
-    env_file:
-      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      # These variables should match your .env file or be explicitly set
+      # In production, use secrets management for sensitive values
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://user:password@db:5432/taskdb?schema=public
+      JWT_SECRET: YOUR_SUPER_SECRET_JWT_KEY_HERE_CHANGE_ME
+      JWT_EXPIRATION_TIME: 1h
+      REFRESH_TOKEN_SECRET: YOUR_SUPER_SECRET_REFRESH_KEY_HERE_CHANGE_ME
+      REFRESH_TOKEN_EXPIRATION_TIME: 7d
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
     depends_on:
       - db
       - redis
-    ports:
-      - "5000:5000"
-    command: gunicorn --bind 0.0.0.0:5000 --worker-class gevent --workers 4 --threads 2 wsgi:app # Use gevent for async
-    networks:
-      - auth_network
+    volumes:
+      - .:/app
+      - /app/node_modules # Prevents host's node_modules from overwriting container's
+      - /app/dist # Prevents host's dist from overwriting container's
+    command: npm run dev # Use nodemon for development auto-restarts
 
   db:
-    image: postgres:13-alpine
-    container_name: auth-db
+    image: postgres:16-alpine
     restart: always
-    env_file:
-      - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: taskdb
     volumes:
-      - auth_db_data:/var/lib/postgresql/data
-    networks:
-      - auth_network
-
-  db_test: # Separate database for testing
-    image: postgres:13-alpine
-    container_name: auth-db-test
-    env_file:
-      - .env
-    environment:
-      POSTGRES_USER: ${TEST_POSTGRES_USER:-test_user}
-      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-test_password}
-      POSTGRES_DB: ${TEST_POSTGRES_DB:-test_auth_db}
-    volumes:
-      - auth_db_test_data:/var/lib/postgresql/data
-    networks:
-      - auth_network
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose for local access/tools like DBeaver
 
   redis:
-    image: redis:6-alpine
-    container_name: auth-redis
+    image: redis:7-alpine
     restart: always
-    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
     volumes:
-      - auth_redis_data:/data
-    networks:
-      - auth_network
+      - redis_data:/data
 
 volumes:
-  auth_db_data:
-  auth_db_test_data:
-  auth_redis_data:
-
-networks:
-  auth_network:
-    driver: bridge
+  db_data:
+  redis_data:
+```

@@ -1,40 +1,51 @@
 ```typescript
-import 'dotenv/config'; // Load environment variables first
 import app from './app';
-import { PORT } from './config';
+import { env } from './config/env';
 import { logger } from './utils/logger';
-import { prisma } from './utils/prisma';
+import { prisma } from './database/prisma-client';
+import { redisClient } from './utils/redis-client';
+
+const PORT = env.PORT;
 
 const startServer = async () => {
   try {
-    // Connect to database
+    // Connect to PostgreSQL
     await prisma.$connect();
     logger.info('Connected to PostgreSQL database');
 
-    // Start Express server
+    // Connect to Redis
+    await redisClient.connect();
+    logger.info('Connected to Redis cache');
+
     app.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      logger.info(`Access API at http://localhost:${PORT}/api/v1`);
-      logger.info(`Access Frontend at http://localhost:3000`); // Assuming frontend runs on 3000
+      logger.info(`Server running on port ${PORT} in ${env.NODE_ENV} mode`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('Failed to connect to database or start server:', error);
     process.exit(1);
   }
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    logger.info('SIGTERM signal received: Closing HTTP server');
+    await prisma.$disconnect();
+    await redisClient.quit();
+    process.exit(0);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Application specific logging, throwing an error, or other logic here
+    process.exit(1); // Exit with a failure code
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught Exception:', error.message, error.stack);
+    // Application specific logging, throwing an error, or other logic here
+    process.exit(1); // Exit with a failure code
+  });
 };
 
 startServer();
 
-// Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM signal received: Closing HTTP server');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  logger.info('SIGINT signal received: Closing HTTP server');
-  await prisma.$disconnect();
-  process.exit(0);
-});
 ```

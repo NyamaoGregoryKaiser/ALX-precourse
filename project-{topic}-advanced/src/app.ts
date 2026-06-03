@@ -1,45 +1,61 @@
 ```typescript
-import express from 'express';
-import helmet from 'helmet';
+import 'dotenv/config'; // Ensure dotenv is loaded first
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import morgan from 'morgan';
-import { rateLimiter } from './middlewares/rateLimit.middleware';
-import { errorHandler } from './middlewares/error.middleware';
-import { notFoundHandler } from './middlewares/notFound.middleware';
-import apiRoutes from './routes';
-import { ENV } from './config';
+import { env } from './config/env';
+import { AppError, HttpCode } from './utils/app-error';
+import { globalErrorHandler } from './middleware/error-handler.middleware';
 import { logger } from './utils/logger';
+import apiRoutes from './modules'; // All API routes
+import { requestLogger } from './middleware/request-logger.middleware';
+import { apiRateLimiter } from './middleware/rate-limit.middleware';
 
-const app = express();
+const app: Application = express();
 
-// Security Middlewares
+// Security Middleware
 app.use(helmet());
+
+// CORS Middleware
 app.use(cors({
-  origin: ENV.NODE_ENV === 'production' ? 'https://yourproductiondomain.com' : '*', // Adjust for production
-  credentials: true,
+  origin: env.NODE_ENV === 'production' ? env.CLIENT_ORIGIN : '*', // Configure as needed
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Request Logging
-app.use(morgan('combined', { stream: { write: (message) => logger.http(message.trim()) } }));
+// Request Body Parser
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Body Parsers
-app.use(express.json()); // Parses incoming requests with JSON payloads
-app.use(express.urlencoded({ extended: true })); // Parses incoming requests with URL-encoded payloads
+// Request Logging (using Morgan for HTTP requests, Winston for app logs)
+app.use(morgan('dev', {
+  stream: {
+    write: (message: string) => logger.http(message.trim()),
+  },
+}));
+app.use(requestLogger); // Custom request logger for more detail if needed
 
-// Rate Limiting (apply to all requests or specific routes)
-app.use(rateLimiter);
+// Rate Limiting
+app.use(apiRateLimiter);
+
+// Health Check Endpoint
+app.get('/health', (req: Request, res: Response) => {
+  res.status(HttpCode.OK).json({ status: 'UP', timestamp: new Date() });
+});
 
 // API Routes
 app.use('/api/v1', apiRoutes);
 
-// Health Check
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+// Catch-all for undefined routes
+app.all('*', (req: Request, res: Response, next: NextFunction) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, HttpCode.NOT_FOUND));
 });
 
-// Error Handling Middlewares
-app.use(notFoundHandler); // Handle 404 Not Found
-app.use(errorHandler);    // Centralized error handling
+// Global Error Handler Middleware
+app.use(globalErrorHandler);
 
 export default app;
 ```
+
+#### Configuration & Utilities

@@ -1,0 +1,73 @@
+```prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(uuid())
+  name              String
+  email             String    @unique
+  password          String
+  role              String    @default("user") // "user", "admin"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  passwordChangedAt DateTime? // To track when password was last changed for JWT invalidation
+
+  tasks      Task[]
+  categories Category[]
+
+  @@map("users")
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String // Each category belongs to a user
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([name, userId]) // A user cannot have two categories with the same name
+  @@map("categories")
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      TaskStatus @default(PENDING)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  userId      String
+  categoryId  String?
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId]) // Index for faster task retrieval by user
+  @@index([categoryId]) // Index for faster task retrieval by category
+  @@index([dueDate]) // Index for tasks ordered by due date
+  @@index([status]) // Index for tasks filtered by status
+  @@map("tasks")
+}
+```
+
+**Prisma Client Setup**

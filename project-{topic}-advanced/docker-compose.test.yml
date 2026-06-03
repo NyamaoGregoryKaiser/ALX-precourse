@@ -1,0 +1,30 @@
+```yaml
+version: '3.8'
+
+services:
+  test_db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: taskdb_test
+    ports:
+      - "5433:5432" # Map to a different port to avoid conflict with dev DB
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+
+  test_redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6380:6379" # Map to a different port
+    volumes:
+      - test_redis_data:/data
+
+volumes:
+  test_db_data:
+  test_redis_data:
+```
+
+**CI/CD Pipeline (GitHub Actions)**

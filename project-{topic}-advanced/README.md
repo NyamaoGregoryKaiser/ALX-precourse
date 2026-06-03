@@ -1,471 +1,350 @@
-# Enterprise-Grade Authentication System
+```markdown
+# Mobile Task Manager Backend
 
-This project implements a comprehensive, production-ready authentication and authorization system using Flask, SQLAlchemy, PostgreSQL, and Redis. It's designed to be modular, scalable, and secure, serving as a robust foundation for any web application requiring user management.
+This is a comprehensive, production-ready backend system for a mobile task management application. It's built with Node.js, Express, TypeScript, and Prisma (for PostgreSQL), incorporating enterprise-grade features and best practices for scalability, security, and maintainability.
+
+---
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Architecture](#architecture)
-3.  [Getting Started](#getting-started)
+2.  [Project Structure](#project-structure)
+3.  [Technologies Used](#technologies-used)
+4.  [Getting Started](#getting-started)
     *   [Prerequisites](#prerequisites)
     *   [Local Development Setup](#local-development-setup)
-    *   [Running the Application](#running-the-application)
-    *   [Database Migrations](#database-migrations)
-    *   [Seed Data & Admin User](#seed-data--admin-user)
-4.  [API Documentation](#api-documentation)
-    *   [Authentication Endpoints](#authentication-endpoints)
-    *   [User Endpoints](#user-endpoints)
-    *   [Admin Endpoints](#admin-endpoints)
-    *   [Error Responses](#error-responses)
-5.  [Testing](#testing)
-6.  [Deployment](#deployment)
-7.  [Logging & Monitoring](#logging--monitoring)
-8.  [Security Considerations](#security-considerations)
-9.  [Future Enhancements](#future-enhancements)
-10. [License](#license)
+    *   [Running with Docker Compose](#running-with-docker-compose)
+    *   [Running Migrations & Seeding](#running-migrations--seeding)
+    *   [Running Tests](#running-tests)
+5.  [API Endpoints](#api-endpoints)
+6.  [Architecture](#architecture)
+7.  [Deployment](#deployment)
+8.  [CI/CD](#cicd)
+9.  [Testing Strategy](#testing-strategy)
+10. [Additional Features](#additional-features)
+11. [Contributing](#contributing)
+12. [License](#license)
 
 ---
 
 ## 1. Features
 
-*   **User Management**:
-    *   User Registration (username, email, password).
-    *   User Login (JWT-based access and refresh tokens).
-    *   User Profile Management (view, update).
-    *   Password Hashing (Bcrypt).
-    *   Password Reset (token-based via email).
-    *   Email Verification for new accounts.
-*   **Authentication & Authorization**:
-    *   JSON Web Tokens (JWT) for stateless authentication.
-    *   Refresh Tokens for extending user sessions securely.
-    *   Token Blacklisting (using Redis) for immediate logout and revocation.
-    *   Role-Based Access Control (RBAC): `user` and `admin` roles with protected endpoints.
-*   **Database**:
-    *   PostgreSQL for robust data storage.
-    *   SQLAlchemy ORM for Pythonic database interactions.
-    *   Alembic (via Flask-Migrate) for database schema migrations.
-*   **Caching**:
-    *   Redis integration for high-performance token blacklisting and potential general caching.
-*   **Rate Limiting**:
-    *   Protects API endpoints from abuse (e.g., brute-force attacks on login, excessive registration attempts).
-*   **Error Handling**:
-    *   Centralized error handling middleware with consistent JSON error responses.
-*   **Logging**:
-    *   Structured application logging to console and file.
-*   **Containerization**:
-    *   Docker and Docker Compose for easy setup, development, and deployment.
-*   **Testing**:
-    *   Unit, Integration, and API tests using Pytest.
-    *   Aims for high test coverage (80%+).
-*   **Documentation**:
-    *   Comprehensive README, API docs, Architecture docs, Deployment guide.
+*   **User Management:**
+    *   User Registration & Login (JWT-based authentication)
+    *   User Profile Management (view, update, delete own account)
+*   **Task Management:**
+    *   Create, Read (single, all, filtered), Update, Delete tasks
+    *   Tasks can have a title, description, due date, status, and category.
+    *   Filtering, sorting, and pagination for tasks.
+*   **Category Management:**
+    *   Create, Read (single, all), Update, Delete categories.
+    *   Categories are user-specific.
+*   **Authentication & Authorization:** JWT-based access tokens with refresh token concept (cookie-based). Role-based authorization (basic "user" role).
+*   **Database:** PostgreSQL with Prisma ORM for type-safe database interactions and migrations.
+*   **Caching:** Redis integration for frequently accessed data (e.g., user profiles, categories).
+*   **Logging:** Structured logging with Winston.
+*   **Error Handling:** Centralized, robust error handling with custom error classes.
+*   **Validation:** Request payload validation using Zod.
+*   **Security:** Helmet for common security headers, `express-rate-limit` for API rate limiting.
+*   **Containerization:** Docker support for easy setup and deployment.
+*   **Testing:** Comprehensive unit, integration, and end-to-end tests with Jest (aiming for 80%+ coverage).
+*   **CI/CD:** GitHub Actions workflow for automated testing and building.
+*   **Documentation:** Extensive README, API docs, Architecture docs, Deployment guide.
 
----
+## 2. Project Structure
 
-## 2. Architecture
+```
+.
+├── src/                      # Source code
+│   ├── config/               # Environment variables, constants
+│   ├── database/             # Prisma client setup
+│   ├── middleware/           # Auth, error handling, logging, rate limiting, validation
+│   ├── modules/              # Feature modules (auth, categories, tasks, users)
+│   │   ├── auth/             # Authentication logic (register, login)
+│   │   ├── categories/       # Task categories management
+│   │   ├── tasks/            # Task management
+│   │   └── users/            # User management
+│   ├── utils/                # Helper functions (e.g., jwt, bcrypt, redis, custom errors, logger)
+│   ├── app.ts                # Express app setup, middleware, global error handler
+│   └── server.ts             # Server startup, database connection
+├── tests/                    # Test files (unit, integration, e2e)
+│   ├── unit/                 # Unit tests for services, utils
+│   ├── integration/          # Integration tests for repositories
+│   └── e2e/                  # End-to-End tests for API endpoints
+├── prisma/                   # Prisma schema, migrations, seed script
+├── .env.example              # Example environment variables
+├── Dockerfile                # Docker image for the backend
+├── docker-compose.yml        # Docker setup for backend, PostgreSQL, Redis
+├── docker-compose.test.yml   # Separate Docker setup for testing database
+├── jest.config.ts            # Jest test configuration
+├── tsconfig.json             # TypeScript configuration
+├── package.json              # Project dependencies and scripts
+├── README.md                 # This file
+├── .github/                  # GitHub Actions CI/CD workflows
+├── docs/                     # Additional documentation (API, Architecture, Deployment)
+└── load-test.js              # Conceptual K6 performance test script
+```
 
-The system follows a typical N-tier architecture:
+## 3. Technologies Used
 
-*   **Presentation Layer (Minimal Frontend)**: A basic HTML/JS page (`templates/index.html`) demonstrating how to interact with the API (register, login, view profile). In a full application, this would be a separate frontend client (React, Angular, Vue, etc.).
-*   **Application Layer (Flask Backend)**:
-    *   **`app/__init__.py`**: Application factory for creating and configuring the Flask app.
-    *   **`app/config.py`**: Manages configuration settings for different environments (development, testing, production).
-    *   **`app/extensions.py`**: Initializes Flask extensions (DB, JWT, Mail, Cache, Limiter) and houses JWT token blacklisting logic.
-    *   **`app/models.py`**: Defines SQLAlchemy ORM models (`User`, `TokenBlacklist`).
-    *   **`app/routes/`**: Blueprints for API endpoints, grouped by functionality (`auth.py`, `user.py`, `admin.py`).
-    *   **`app/services/`**: Contains business logic, separating it from route handlers (`auth_service.py`, `user_service.py`, `email_service.py`).
-    *   **`app/utils/`**: Helper functions, custom decorators (`@jwt_required`, `@roles_required`), JWT token handling, and general utilities.
-    *   **`app/errors.py`**: Custom error handlers for a consistent API error response format.
-    *   **`app/cli.py`**: Custom Flask CLI commands for database management (seed, create-admin).
-*   **Database Layer**:
-    *   **PostgreSQL**: Primary data store for user accounts and other persistent data.
-    *   **Redis**: Used for high-speed token blacklisting and potentially for caching.
-    *   **SQLAlchemy**: ORM for Python-PostgreSQL interaction.
-    *   **Flask-Migrate (Alembic)**: For managing database schema changes.
+*   **Backend:** Node.js, Express.js
+*   **Language:** TypeScript
+*   **Database:** PostgreSQL
+*   **ORM:** Prisma
+*   **Authentication:** JWT (JSON Web Tokens), Bcrypt.js
+*   **Caching:** Redis
+*   **Logging:** Winston
+*   **Validation:** Zod
+*   **Testing:** Jest, Supertest
+*   **Containerization:** Docker
+*   **CI/CD:** GitHub Actions
+*   **Other:** ESLint, Prettier, Dotenv, Helmet, CORS, Morgan, Express-rate-limit
 
-**Data Flow (Login Example):**
-1.  Client sends `POST /api/v1/auth/login` with credentials.
-2.  Flask route (`app/routes/auth.py`) receives the request.
-3.  Request is validated (e.g., password length, email format).
-4.  `AuthService` (`app/services/auth_service.py`) handles business logic:
-    *   Queries `User` model (`app/models.py`) via `db` (`app/extensions.py`) to find user.
-    *   Verifies password using `bcrypt` (`app/extensions.py`).
-    *   Checks account verification status.
-    *   If successful, generates JWT access and refresh tokens using `jwt` (`app/extensions.py`).
-5.  Tokens are returned to the client.
-6.  Client stores tokens (e.g., in `localStorage` or `httpOnly` cookies).
-7.  For subsequent requests to protected endpoints, client includes the access token in `Authorization: Bearer <token>` header.
-8.  `@jwt_required` decorator (`app/utils/decorators.py`) validates the token. If valid, `current_user` is set.
-9.  `@roles_required` decorator checks `current_user`'s role against required roles.
-10. If validation/authorization passes, the request proceeds to the endpoint logic.
-
----
-
-## 3. Getting Started
+## 4. Getting Started
 
 ### Prerequisites
 
-*   Docker and Docker Compose (recommended for easy setup)
-*   Python 3.10+ (if running without Docker)
+Before you begin, ensure you have the following installed:
 
-### Local Development Setup (with Docker Compose)
+*   **Node.js** (v18.x or higher) & **npm** (v8.x or higher)
+*   **Docker** & **Docker Compose** (recommended for easy environment setup)
+*   **PostgreSQL** (if not using Docker)
+*   **Redis** (if not using Docker)
+
+### Local Development Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/auth-system.git
-    cd auth-system
+    git clone https://github.com/your-username/task-manager-backend.git
+    cd task-manager-backend
     ```
 
-2.  **Create `.env` file:**
-    Copy the example environment variables file and fill in your details.
+2.  **Install dependencies:**
     ```bash
-    cp .env.example .env
-    # Open .env in your editor and replace placeholders (e.g., Mailtrap credentials, secret keys)
+    npm install
     ```
 
-3.  **Build and run Docker containers:**
-    This will build the Flask app image, and start PostgreSQL and Redis containers.
+3.  **Configure environment variables:**
+    *   Copy the `.env.example` file to `.env`:
+        ```bash
+        cp .env.example .env
+        ```
+    *   Open `.env` and fill in the values.
+        *   `DATABASE_URL`: Ensure this points to your PostgreSQL database.
+            *   For local (non-Docker) PostgreSQL: `postgresql://user:password@localhost:5432/taskdb?schema=public`
+            *   For Docker Compose: `postgresql://user:password@db:5432/taskdb?schema=public`
+        *   `JWT_SECRET` and `REFRESH_TOKEN_SECRET`: Generate strong, random strings for these.
+        *   `REDIS_URL`: `redis://localhost:6379` (or `redis://redis:6379` for Docker)
+
+### Running with Docker Compose (Recommended)
+
+This sets up PostgreSQL, Redis, and the Node.js application in isolated containers.
+
+1.  **Build and run the services:**
     ```bash
     docker-compose up --build -d
     ```
-    *   `db`: PostgreSQL database for development.
-    *   `db_test`: Separate PostgreSQL database for running tests.
-    *   `redis`: Redis server for caching and JWT blacklisting.
-    *   `app`: The Flask application.
+    This command will:
+    *   Build the Docker image for the backend.
+    *   Start PostgreSQL and Redis containers.
+    *   Start the backend application container.
+    *   The `-d` flag runs them in detached mode.
 
-4.  **Install `wait-for-it.sh` (for CI/CD and potentially local scripts):**
-    If you plan to use the `wait-for-it.sh` script, download it to your project root and make it executable:
+2.  **Run migrations and seed data (inside the app container):**
     ```bash
-    wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh
-    chmod +x wait-for-it.sh
+    docker-compose exec app npm run prisma:migrate-dev
+    docker-compose exec app npm run prisma:seed
     ```
-    _Note: For local development with `docker-compose up`, services are usually started in the correct order, but `wait-for-it` is crucial for CI/CD._
+    (Note: `npm run dev` in `docker-compose.yml` automatically rebuilds on code changes if `volumes` are configured, but migrations/seeding needs to be run explicitly).
+
+3.  **Access the application:**
+    The API will be running on `http://localhost:5000`.
+
+4.  **Stop services:**
+    ```bash
+    docker-compose down
+    ```
+
+### Running Migrations & Seeding (outside Docker, if applicable)
+
+After setting up your `.env` and ensuring your PostgreSQL database is running:
+
+1.  **Generate Prisma Client and apply migrations:**
+    ```bash
+    npx prisma migrate dev --name init
+    # If you get errors about database not existing, create it manually first:
+    # `createdb taskdb` for default local postgres
+    ```
+    This command creates the database schema based on `prisma/schema.prisma`.
+
+2.  **Seed the database with initial data:**
+    ```bash
+    npm run prisma:seed
+    ```
 
 ### Running the Application
 
-Once Docker Compose is up, the Flask application will be accessible at `http://localhost:5000`.
+1.  **Build the TypeScript code:**
+    ```bash
+    npm run build
+    ```
 
-You can also run it locally (outside Docker) after installing `requirements.txt`:
-```bash
-pip install -r requirements.txt
-python wsgi.py # Or flask run (if FLASK_APP is set)
+2.  **Start the server:**
+    ```bash
+    npm start
+    ```
+    The API will be running on `http://localhost:5000`.
+
+3.  **For development with hot-reloading:**
+    ```bash
+    npm run dev
+    ```
+
+### Running Tests
+
+Ensure you have a test database configured in `.env` (or `docker-compose.test.yml` for CI/CD).
+The `tests/setup.ts` script handles database resets and seeding for tests.
+
+1.  **Run all tests (unit, integration, e2e) with coverage:**
+    ```bash
+    npm test
+    ```
+
+2.  **Run specific test types:**
+    *   **Unit tests:** `jest tests/unit`
+    *   **Integration tests:** `jest tests/integration`
+    *   **End-to-end (API) tests:** `npm run test:e2e`
+
+3.  **Watch mode:**
+    ```bash
+    npm run test:watch
+    ```
+
+## 5. API Endpoints
+
+The API base URL is `/api/v1`.
+
+### Authentication (`/api/v1/auth`)
+
+*   `POST /register`: Register a new user.
+    *   **Body:** `{ name, email, password }`
+    *   **Response:** `201 CREATED` with user data and access token.
+*   `POST /login`: Log in an existing user.
+    *   **Body:** `{ email, password }`
+    *   **Response:** `200 OK` with user data and access token (refresh token in HttpOnly cookie).
+*   `POST /logout`: Log out the current user.
+    *   **Response:** `200 OK` (clears refresh token cookie).
+
+### User Profile (`/api/v1/users`)
+
+*   `GET /me`: Get current authenticated user's profile.
+    *   **Auth:** Required (Bearer Token)
+    *   **Response:** `200 OK` with user data.
+*   `PATCH /me`: Update current authenticated user's profile.
+    *   **Auth:** Required
+    *   **Body:** `{ name?, email?, password? }` (partial update)
+    *   **Response:** `200 OK` with updated user data.
+*   `DELETE /me`: Delete current authenticated user's account.
+    *   **Auth:** Required
+    *   **Response:** `204 NO CONTENT`.
+
+### Categories (`/api/v1/categories`)
+
+*   `POST /`: Create a new category for the authenticated user.
+    *   **Auth:** Required
+    *   **Body:** `{ name }`
+    *   **Response:** `201 CREATED` with new category data.
+*   `GET /`: Get all categories for the authenticated user.
+    *   **Auth:** Required
+    *   **Response:** `200 OK` with a list of categories.
+*   `GET /:id`: Get a specific category by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Response:** `200 OK` with category data.
+*   `PATCH /:id`: Update a specific category by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Body:** `{ name }`
+    *   **Response:** `200 OK` with updated category data.
+*   `DELETE /:id`: Delete a specific category by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Response:** `204 NO CONTENT`.
+
+### Tasks (`/api/v1/tasks`)
+
+*   `POST /`: Create a new task for the authenticated user.
+    *   **Auth:** Required
+    *   **Body:** `{ title, description?, dueDate?, categoryId?, status? }`
+    *   **Response:** `201 CREATED` with new task data.
+*   `GET /`: Get all tasks for the authenticated user.
+    *   **Auth:** Required
+    *   **Query Params:** `status`, `categoryId`, `search`, `sortBy`, `sortOrder`, `page`, `limit`
+    *   **Response:** `200 OK` with a list of tasks.
+*   `GET /:id`: Get a specific task by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Response:** `200 OK` with task data.
+*   `PATCH /:id`: Update a specific task by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Body:** `{ title?, description?, dueDate?, categoryId?, status? }` (partial update)
+    *   **Response:** `200 OK` with updated task data.
+*   `DELETE /:id`: Delete a specific task by ID for the authenticated user.
+    *   **Auth:** Required
+    *   **Response:** `204 NO CONTENT`.
+
+For detailed API documentation, including request/response examples and error codes, refer to the [API Documentation](#api-documentation) section.
+
+## 6. Architecture
+
+Refer to the [Architecture Documentation](#architecture-documentation) for a detailed overview.
+
+## 7. Deployment
+
+Refer to the [Deployment Guide](#deployment-guide) for instructions on deploying to various cloud providers.
+
+## 8. CI/CD
+
+The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that automatically:
+
+1.  **Lints** the TypeScript code.
+2.  **Builds** the TypeScript project.
+3.  **Runs all tests** (unit, integration, E2E) against a dedicated test database (PostgreSQL and Redis services spun up by GitHub Actions).
+4.  Reports **code coverage**.
+
+Upon successful completion on the `main` branch, it can be extended to include deployment steps to your chosen cloud provider.
+
+## 9. Testing Strategy
+
+*   **Unit Tests:** Focus on individual functions or methods (e.g., utility functions, service methods mocking repository calls). Mocks are heavily used to isolate the unit under test.
+*   **Integration Tests:** Verify the interaction between different components (e.g., service interacting with a real repository, or repository interacting with the actual database). A dedicated test database (`docker-compose.test.yml`) is used to ensure isolation and a clean state for each test run.
+*   **End-to-End (E2E) / API Tests:** Use `supertest` to make HTTP requests to the running Express application, testing full request-response cycles, including middleware, routing, controllers, services, and database interactions. These tests validate the API contract.
+*   **Performance Tests:** Conceptual load testing with `k6` to identify performance bottlenecks and ensure the API can handle anticipated traffic.
+
+**Coverage:** The goal is to achieve 80%+ code coverage for critical business logic.
+
+## 10. Additional Features
+
+*   **Authentication/Authorization:** Implemented with JWT for stateless authentication. Refresh tokens are used for prolonged sessions. Middleware for role-based access control is provided.
+*   **Logging and Monitoring:** Structured logging with Winston. HTTP request logging via Morgan, and custom detailed request logging for all incoming requests, including user ID and response time.
+*   **Error Handling Middleware:** A global error handling middleware catches all `AppError` instances and other unexpected errors, providing consistent and informative error responses without leaking sensitive details in production.
+*   **Caching Layer:** Redis integration for caching frequently accessed data (e.g., category lists, user profiles, specific tasks) to reduce database load and improve response times. Cache invalidation strategies are implemented on create/update/delete operations.
+*   **Rate Limiting:** `express-rate-limit` middleware is used to protect against brute-force attacks and resource exhaustion by limiting the number of requests from a single IP address within a specified time window. Separate rate limits for general API and authentication endpoints.
+
+## 11. Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature`).
+3.  Make your changes.
+4.  Write tests for your changes.
+5.  Ensure all tests pass (`npm test`).
+6.  Ensure code style is consistent (`npm run lint:fix`).
+7.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+8.  Push to the branch (`git push origin feature/your-feature`).
+9.  Open a Pull Request.
+
+## 12. License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
 ```
-_Note: If running locally, ensure your `DATABASE_URL`, `REDIS_HOST`, etc. in `.env` point to your Docker containers (e.g., `localhost` instead of `db`/`redis`)._
 
-### Database Migrations
-
-After the `db` service is running:
-
-1.  **Initialize migration repository (first time only):**
-    ```bash
-    docker exec auth-app flask db init
-    ```
-2.  **Create initial migration script (first time or after model changes):**
-    ```bash
-    docker exec auth-app flask db migrate -m "Initial migration."
-    ```
-3.  **Apply migrations to the database:**
-    ```bash
-    docker exec auth-app flask db upgrade
-    ```
-
-### Seed Data & Admin User
-
-After migrations, you can populate the database:
-
-1.  **Seed dummy users:**
-    ```bash
-    docker exec auth-app flask db-commands seed --count 20
-    ```
-2.  **Create an admin user:**
-    ```bash
-    docker exec auth-app flask db-commands create-admin
-    ```
-    Follow the prompts for username, email, and password. This user will have the `admin` role and be automatically verified.
-
----
-
-## 4. API Documentation
-
-All API endpoints return JSON responses. Errors are returned with appropriate HTTP status codes and a JSON body containing `{"message": "Error description", "errors": {"field": "Validation error"}}`.
-
-**Base URL**: `/api/v1`
-
-### Authentication Endpoints
-
-*   **`POST /auth/register`**
-    *   Registers a new user. Sends a verification email.
-    *   **Request Body**:
-        ```json
-        {
-          "username": "john_doe",
-          "email": "john.doe@example.com",
-          "password": "StrongPassword123!"
-        }
-        ```
-    *   **Responses**:
-        *   `201 Created`: `{"message": "User registered successfully. Please check your email to verify your account."}`
-        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}` (e.g., duplicate username/email, invalid password format).
-
-*   **`GET /auth/verify-email/<token>`**
-    *   Verifies a user's email address using a token sent to their email.
-    *   **Parameters**: `token` (path parameter) - The verification token.
-    *   **Responses**:
-        *   `200 OK`: Renders a success HTML page or returns `{"message": "Email verified successfully."}`
-        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
-        *   `404 Not Found`: `{"message": "Verification token not found or user already verified."}`
-
-*   **`POST /auth/login`**
-    *   Authenticates a user and returns JWT access and refresh tokens.
-    *   **Request Body**:
-        ```json
-        {
-          "username": "john_doe",
-          "password": "StrongPassword123!"
-        }
-        ```
-    *   **Responses**:
-        *   `200 OK`: `{"access_token": "...", "refresh_token": "..."}`
-        *   `401 Unauthorized`: `{"message": "Invalid username or password"}`
-        *   `403 Forbidden`: `{"message": "Account not verified. Please verify your email."}`
-
-*   **`POST /auth/refresh`**
-    *   Generates a new access token using a valid refresh token.
-    *   **Authorization Header**: `Bearer <refresh_token>`
-    *   **Responses**:
-        *   `200 OK`: `{"access_token": "..."}`
-        *   `401 Unauthorized`: `{"message": "Invalid or expired refresh token"}`
-
-*   **`POST /auth/logout`**
-    *   Invalidates the current access token (and optionally refresh token) by blacklisting it.
-    *   **Authorization Header**: `Bearer <access_token>`
-    *   **Responses**:
-        *   `200 OK`: `{"message": "Successfully logged out."}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-
-*   **`POST /auth/forgot-password`**
-    *   Sends a password reset link to the user's email.
-    *   **Request Body**:
-        ```json
-        {
-          "email": "john.doe@example.com"
-        }
-        ```
-    *   **Responses**:
-        *   `200 OK`: `{"message": "Password reset link sent to your email."}`
-        *   `404 Not Found`: `{"message": "User with that email not found."}`
-
-*   **`GET /auth/reset-password/<token>`**
-    *   Renders an HTML form for setting a new password.
-    *   **Parameters**: `token` (path parameter) - The password reset token.
-    *   **Responses**:
-        *   `200 OK`: Renders `reset_password.html`
-        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
-
-*   **`POST /auth/reset-password/<token>`**
-    *   Sets a new password using a valid reset token.
-    *   **Parameters**: `token` (path parameter)
-    *   **Request Body**:
-        ```json
-        {
-          "new_password": "NewStrongPassword123!"
-        }
-        ```
-    *   **Responses**:
-        *   `200 OK`: `{"message": "Password reset successfully."}`
-        *   `400 Bad Request`: `{"message": "Invalid or expired token."}`
-
-### User Endpoints (Protected by `@jwt_required`)
-
-*   **`GET /user/profile`**
-    *   Retrieves the authenticated user's profile information.
-    *   **Authorization Header**: `Bearer <access_token>`
-    *   **Responses**:
-        *   `200 OK`: `{"id": "...", "username": "...", "email": "...", "is_verified": true, ...}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-
-*   **`PUT /user/profile`**
-    *   Updates the authenticated user's profile information.
-    *   **Authorization Header**: `Bearer <access_token>`
-    *   **Request Body**:
-        ```json
-        {
-          "username": "new_john_doe",
-          "email": "new.john.doe@example.com"
-        }
-        ```
-        (Fields are optional, only provide what needs to be updated)
-    *   **Responses**:
-        *   `200 OK`: `{"message": "User profile updated successfully."}`
-        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-
-### Admin Endpoints (Protected by `@jwt_required` and `@roles_required('admin')`)
-
-*   **`GET /admin/users`**
-    *   Retrieves a list of all registered users.
-    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
-    *   **Responses**:
-        *   `200 OK`: `[{"id": "...", "username": "...", "email": "...", "role": "user", ...}, ...]`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
-
-*   **`GET /admin/users/<user_id>`**
-    *   Retrieves a specific user's profile by ID.
-    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
-    *   **Parameters**: `user_id` (path parameter) - The UUID of the user.
-    *   **Responses**:
-        *   `200 OK`: `{"id": "...", "username": "...", "email": "...", "role": "user", ...}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
-        *   `404 Not Found`: `{"message": "User not found."}`
-
-*   **`PUT /admin/users/<user_id>`**
-    *   Updates a specific user's information (e.g., role, active status).
-    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
-    *   **Parameters**: `user_id` (path parameter)
-    *   **Request Body**:
-        ```json
-        {
-          "role": "admin",
-          "is_active": false,
-          "is_verified": true
-        }
-        ```
-        (Fields are optional, only provide what needs to be updated. `username` and `email` can also be updated.)
-    *   **Responses**:
-        *   `200 OK`: `{"message": "User updated successfully."}`
-        *   `400 Bad Request`: `{"message": "Validation error", "errors": {"field": ["Error message"]}}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
-        *   `404 Not Found`: `{"message": "User not found."}`
-
-*   **`DELETE /admin/users/<user_id>`**
-    *   Deletes a specific user by ID.
-    *   **Authorization Header**: `Bearer <access_token>` (Admin role required)
-    *   **Parameters**: `user_id` (path parameter)
-    *   **Responses**:
-        *   `200 OK`: `{"message": "User deleted successfully."}`
-        *   `401 Unauthorized`: `{"message": "Missing or invalid token"}`
-        *   `403 Forbidden`: `{"message": "Admin privileges required"}`
-        *   `404 Not Found`: `{"message": "User not found."}`
-
-### Error Responses
-
-All error responses follow a consistent JSON format:
-
-```json
-{
-  "message": "A descriptive error message",
-  "errors": {
-    "field_name_1": ["Error detail 1", "Error detail 2"],
-    "field_name_2": ["Error detail 3"]
-  }
-}
-```
-*   `message`: A general description of the error.
-*   `errors`: (Optional) An object containing field-specific validation errors.
-
-Common HTTP Status Codes:
-*   `400 Bad Request`: Client-side validation failed, malformed request.
-*   `401 Unauthorized`: Authentication required or failed (invalid/missing token).
-*   `403 Forbidden`: Authenticated but lacks necessary permissions (e.g., wrong role, unverified account).
-*   `404 Not Found`: Resource not found.
-*   `405 Method Not Allowed`: HTTP method not supported for the endpoint.
-*   `429 Too Many Requests`: Rate limit exceeded.
-*   `500 Internal Server Error`: Server-side error.
-
----
-
-## 5. Testing
-
-The project uses `pytest` for testing.
-
-To run tests:
-1.  Ensure your `db_test` and `redis` Docker services are running (`docker-compose up -d db_test redis`).
-2.  Set `FLASK_ENV=testing` (it's automatically set in `conftest.py` for `pytest`).
-3.  Run pytest from the project root:
-    ```bash
-    docker exec auth-app pytest --cov=app --cov-report=term-missing tests/
-    ```
-    (Or, if running Python locally and pointing to Docker DBs):
-    ```bash
-    pytest --cov=app --cov-report=term-missing tests/
-    ```
-
-*   **Unit Tests**: Focus on individual components (models, utility functions) in isolation. (`tests/unit/`)
-*   **Integration Tests**: Verify the interaction between multiple components (e.g., full auth flow: register -> login -> protected access -> logout). (`tests/integration/`)
-*   **API Tests**: Test specific API endpoints with various valid and invalid inputs, checking status codes and response bodies. (`tests/api/`)
-
-**Test Coverage**: The goal is 80%+ test coverage to ensure critical parts of the application are well-tested.
-
----
-
-## 6. Deployment
-
-A detailed deployment guide is available in `docs/DEPLOYMENT.md`.
-
-In summary, for production, you would:
-1.  **Build the Docker image**: `docker build -t your-repo/auth-system:latest .`
-2.  **Push to a registry**: `docker push your-repo/auth-system:latest`
-3.  **Provision a server**: (e.g., AWS EC2, Google Cloud Run, DigitalOcean Droplet).
-4.  **Configure environment variables**: Set all production-sensitive variables in the `.env` file or directly in your deployment environment (e.g., Kubernetes secrets, EC2 user data).
-5.  **Deploy with Docker Compose/Kubernetes**:
-    *   For a simple setup, copy `docker-compose.yml` (modified for production, e.g., removing `db_test`) and your `.env` to the server.
-    *   Run `docker-compose pull` and `docker-compose up -d`.
-6.  **Run migrations**: `docker exec auth-app flask db upgrade`.
-7.  **Set up reverse proxy**: Use Nginx or Caddy to proxy requests to the Flask app (Gunicorn) and handle SSL termination.
-8.  **Monitoring**: Integrate with monitoring tools (Prometheus, Grafana, ELK stack).
-
----
-
-## 7. Logging & Monitoring
-
-*   **Logging**: The application uses Python's standard `logging` module.
-    *   In development, logs are printed to the console.
-    *   In production, logs are formatted as JSON and written to `app.log` (rotating file handler) and stderr, making them suitable for centralized log management systems (e.g., ELK stack, Splunk, Datadog).
-    *   Errors are caught by central error handlers and logged.
-*   **Monitoring**:
-    *   While not fully implemented (due to scope), a production setup would include:
-        *   **Application Performance Monitoring (APM)**: Tools like New Relic, Datadog APM, or Prometheus/Grafana for monitoring request latency, error rates, resource utilization.
-        *   **Health Checks**: Endpoints for checking application health (`/healthz`, `/readyz`).
-        *   **Alerting**: Configure alerts for critical errors, high latency, or service unavailability.
-
----
-
-## 8. Security Considerations
-
-*   **Password Hashing**: Bcrypt is used with a strong work factor.
-*   **JWT Security**:
-    *   Secret keys are stored securely via environment variables.
-    *   Tokens have short expiry times.
-    *   Refresh tokens are used to issue new access tokens.
-    *   Token blacklisting prevents reuse of revoked tokens.
-    *   Tokens are sent via `Authorization` header, not URL parameters.
-*   **Rate Limiting**: Protects against brute-force attacks and DDoS attempts on login, registration, and password reset.
-*   **Input Validation**: All API inputs are rigorously validated using `webargs` and `marshmallow`.
-*   **CORS**: `Flask-CORS` would be configured in a real-world scenario if a separate frontend is hosted on a different domain. For this project, it's omitted for simplicity or can be added in `app/__init__.py`.
-*   **Environment Variables**: All sensitive configuration (secret keys, database credentials) are loaded from environment variables and not hardcoded.
-*   **HTTPS**: Critical for production; requests should always be served over HTTPS. This is typically handled by a reverse proxy (e.g., Nginx).
-*   **Principle of Least Privilege**: User roles are enforced, limiting access to resources based on permissions.
-*   **SQL Injection**: SQLAlchemy ORM inherently protects against most SQL injection attacks.
-
----
-
-## 9. Future Enhancements
-
-*   **Two-Factor Authentication (2FA)**: Integrate with TOTP (Time-based One-Time Password) or SMS-based 2FA.
-*   **Social Logins**: Allow users to register/login using Google, Facebook, GitHub, etc.
-*   **User Roles & Permissions Management**: A more granular RBAC system allowing dynamic permission assignments.
-*   **Audit Logging**: Track significant user actions (e.g., password changes, role updates).
-*   **Microservices Architecture**: Break down the authentication system into smaller, independently deployable services.
-*   **GraphQL API**: Provide a GraphQL interface for more flexible data fetching.
-*   **Container Orchestration**: Deploy with Kubernetes for advanced scaling, self-healing, and management.
-*   **Asynchronous Tasks**: Use Celery/RabbitMQ for background tasks like sending emails or processing large data.
-*   **Frontend**: A complete frontend application (React/Angular/Vue) interacting with the API.
-
----
-
-## 10. License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details. (A `LICENSE` file would be present in a real project).
+**API Documentation (OpenAPI/Swagger Style - Markdown)**

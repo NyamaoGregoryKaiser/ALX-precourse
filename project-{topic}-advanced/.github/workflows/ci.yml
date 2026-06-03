@@ -1,5 +1,5 @@
 ```yaml
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -12,130 +12,138 @@ on:
       - develop
 
 jobs:
-  backend-build-test-lint:
+  build_and_test:
+    name: Build and Test
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'yarn' # Cache node modules for faster builds
-          cache-dependency-path: backend/yarn.lock
-
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          yarn install --frozen-lockfile
-
-      - name: Run backend tests
-        run: |
-          cd backend
-          # Use a dedicated test database, or mock TypeORM entirely for unit tests
-          # For integration tests, a temporary database container could be started
-          yarn test --ci --json --outputFile=test-results.json --coverage
+    services:
+      # PostgreSQL database for integration tests
+      test_db:
+        image: postgres:16-alpine
         env:
-          # Provide dummy env vars for tests that might need them
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: testuser
-          DB_PASSWORD: testpassword
-          DB_NAME: testdb
-          JWT_SECRET: ci_test_secret_for_jwt_validation
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          NODE_ENV: test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: taskdb_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Redis for caching tests
+      test_redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
 
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: backend-test-results
-          path: backend/test-results.json
-
-      - name: Upload Coverage Reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: backend-coverage-report
-          path: backend/coverage/lcov-report
-
-      - name: Run backend lint
-        run: |
-          cd backend
-          yarn lint
-
-  frontend-build-test-lint:
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'yarn' # Cache node modules for faster builds
-          cache-dependency-path: frontend/yarn.lock
+          node-version: 20
 
-      - name: Install frontend dependencies
-        run: |
-          cd frontend
-          yarn install --frozen-lockfile
-
-      - name: Run frontend tests
-        run: |
-          cd frontend
-          yarn test --ci --json --outputFile=test-results.json --coverage
-
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v3
-        if: always()
+      - name: Cache Node.js modules
+        id: cache-npm
+        uses: actions/cache@v4
         with:
-          name: frontend-test-results
-          path: frontend/test-results.json
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Upload Coverage Reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: frontend-coverage-report
-          path: frontend/coverage/lcov-report
+      - name: Install dependencies
+        if: steps.cache-npm.outputs.cache-hit != 'true'
+        run: npm install
 
-      - name: Run frontend lint
+      - name: Setup .env for tests
         run: |
-          cd frontend
-          yarn lint
+          echo "NODE_ENV=test" >> .env
+          echo "PORT=5001" >> .env # Use a different port if needed for test environment
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL_TEST }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}" >> .env
+          echo "JWT_EXPIRATION_TIME=1h" >> .env
+          echo "REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET_TEST }}" >> .env
+          echo "REFRESH_TOKEN_EXPIRATION_TIME=7d" >> .env
+          echo "REDIS_URL=redis://localhost:6380" >> .env # Point to test_redis service
+          echo "LOG_LEVEL=warn" >> .env
 
-  # Optional: Docker build stage (can be integrated into a CD pipeline)
-  # docker-build:
+      - name: Wait for PostgreSQL and Redis to be ready
+        run: |
+          npm install -g wait-on
+          wait-on tcp:5433 -t 30000 # Wait for PostgreSQL on port 5433
+          wait-on tcp:6380 -t 30000 # Wait for Redis on port 6380
+        env:
+          DATABASE_URL_TEST: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public
+
+      - name: Generate Prisma client & Run migrations
+        run: |
+          npx prisma generate --schema=./prisma/schema.prisma
+          npx prisma migrate deploy --schema=./prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public # Use test DB URL here
+
+      - name: Seed test database
+        run: npx ts-node prisma/seed.ts
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public # Use test DB URL here
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run tests with coverage
+        run: npm test
+
+      - name: Build TypeScript
+        run: npm run build
+
+      # You can add steps for pushing Docker images to a registry (e.g., Docker Hub, AWS ECR)
+      # or deploying to a cloud provider (e.g., AWS ECS, Heroku, Vercel) here.
+
+  # Example Deployment Job (simplified - often involves more complex steps)
+  # deploy:
+  #   name: Deploy to Production
+  #   needs: build_and_test
+  #   if: github.ref == 'refs/heads/main' # Deploy only from main branch
   #   runs-on: ubuntu-latest
-  #   needs: [backend-build-test-lint, frontend-build-test-lint] # Only build if tests pass
-  #   if: github.ref == 'refs/heads/main' # Only build on pushes to main
+  #   environment: production # Use GitHub Environments for production
   #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v3
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v2
-  #     - name: Login to Docker Hub (if publishing)
-  #       uses: docker/login-action@v2
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
   #       with:
-  #         username: ${{ secrets.DOCKER_USERNAME }}
-  #         password: ${{ secrets.DOCKER_TOKEN }}
-  #     - name: Build and push backend image
-  #       uses: docker/build-push-action@v4
-  #       with:
-  #         context: .
-  #         file: Dockerfile.backend
-  #         push: true # Set to true to push to registry
-  #         tags: your_docker_username/task-mgmt-backend:latest
-  #     - name: Build and push frontend image
-  #       uses: docker/build-push-action@v4
-  #       with:
-  #         context: .
-  #         file: Dockerfile.frontend
-  #         push: true # Set to true to push to registry
-  #         tags: your_docker_username/task-mgmt-frontend:latest
+  #         node-version: 20
+  #     - name: Install dependencies
+  #       run: npm install --only=production
+  #     - name: Build
+  #       run: npm run build
+  #     - name: Deploy to Cloud Provider (e.g., Heroku, AWS ECS, Google Cloud Run)
+  #       run: |
+  #         echo "Simulating deployment to production..."
+  #         # Add actual deployment commands here, e.g.,
+  #         # heroku container:push web -a my-app
+  #         # heroku container:release web -a my-app
+  #         # aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment
+  #       env:
+  #         # Pass necessary secrets
+  #         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+  #         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+  #         JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
 ```
+**GitHub Secrets for CI/CD:**
+You'll need to configure the following secrets in your GitHub repository:
+*   `DATABASE_URL_TEST`: `postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public` (This will be overridden by the service URL, but good practice to have it defined)
+*   `JWT_SECRET_TEST`: A strong, random string for testing JWTs.
+*   `REFRESH_TOKEN_SECRET_TEST`: A strong, random string for testing refresh tokens.
+*   (Optional, for deployment) `PROD_DATABASE_URL`, `PROD_JWT_SECRET`, `HEROKU_API_KEY`, etc.
+
+---
+
+### 4. Testing & Quality
+
+**Jest Configuration**

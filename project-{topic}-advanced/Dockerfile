@@ -1,34 +1,49 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
+```dockerfile
+# Stage 1: Build the application
+FROM node:20-alpine AS build
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies needed for psycopg2
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    libpq-dev \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Copy the requirements file into the working directory
-COPY requirements.txt .
+# Install dependencies
+RUN npm install
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application code into the working directory
+# Copy source code
 COPY . .
 
-# Expose port 5000 for the Flask application
+# Generate Prisma client and build TypeScript code
+RUN npx prisma generate
+RUN npm run build
+
+# Stage 2: Run the application
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY package*.json ./
+RUN npm install --only=production
+
+# Copy built application from the build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/.env.example ./
+
+# Expose port (ensure this matches your app's listen port)
 EXPOSE 5000
 
-# Set environment variables
-ENV FLASK_APP=wsgi.py
-ENV FLASK_ENV=production # Default to production for Docker
+# Set environment variables (for production, these should be managed by orchestration)
+# ENV NODE_ENV=production
+# ENV DATABASE_URL="..."
+# ENV JWT_SECRET="..."
+# ENV REFRESH_TOKEN_SECRET="..."
+# ENV REDIS_URL="..."
+# ENV PORT=5000
 
-# Run the application using Gunicorn
-# Adjust workers and threads based on your server's CPU cores and expected load.
-# The `wsgi.py` file is the entry point for Gunicorn.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "wsgi:app"]
+# Command to run the application
+CMD ["node", "dist/server.js"]
+```

@@ -1,96 +1,73 @@
 ```typescript
-import { prisma } from '../../utils/prisma';
-import { ApiError } from '../../utils/apiError';
+import * as userRepository from './user.repository';
+import { AppError, HttpCode } from '../../utils/app-error';
+import { logger } from '../../utils/logger';
+import { hashPassword } from '../../utils/password-hasher';
+import { cacheDel, cacheGet, cacheSet } from '../../utils/redis-client';
+import { CACHE_KEYS } from '../../config/constants';
 
-export class UserService {
-  /**
-   * Retrieves a user by their ID.
-   * @param userId The ID of the user.
-   * @returns The user object.
-   */
-  async getUserById(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    if (!user) {
-      throw new ApiError(404, 'User not found');
-    }
-    return user;
-  }
-
-  /**
-   * Retrieves a user by their email.
-   * @param email The email of the user.
-   * @returns The user object.
-   */
-  async getUserByEmail(email: string) {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    if (!user) {
-      throw new ApiError(404, 'User not found');
-    }
-    return user;
-  }
-
-  /**
-   * Updates user information.
-   * @param userId The ID of the user to update.
-   * @param updateData The data to update.
-   * @returns The updated user object.
-   */
-  async updateUser(userId: string, updateData: { firstName?: string; lastName?: string; email?: string }) {
-    // Check if the new email already exists for another user
-    if (updateData.email) {
-      const existingUser = await prisma.user.findUnique({ where: { email: updateData.email } });
-      if (existingUser && existingUser.id !== userId) {
-        throw new ApiError(409, 'Email already in use by another user');
-      }
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    return updatedUser;
-  }
-
-  /**
-   * Deletes a user by their ID.
-   * @param userId The ID of the user to delete.
-   */
-  async deleteUser(userId: string) {
-    // In a real system, consider soft deletes or archiving for auditing purposes
-    // Also, handle cascading deletes for related data (accounts, transactions)
-    await prisma.user.delete({ where: { id: userId } });
-    return { message: 'User deleted successfully' };
-  }
+interface UserUpdateData {
+  name?: string;
+  email?: string;
+  password?: string;
 }
+
+export const getUserById = async (userId: string) => {
+  try {
+    const cacheKey = CACHE_KEYS.USER_BY_ID(userId);
+    const cachedUser = await cacheGet(cacheKey);
+    if (cachedUser) {
+      return cachedUser;
+    }
+
+    const user = await userRepository.findUserById(userId);
+
+    if (!user) {
+      throw new AppError('User not found', HttpCode.NOT_FOUND);
+    }
+
+    await cacheSet(cacheKey, user, 300); // Cache for 5 minutes
+    return user;
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    logger.error(`Error in getUserById service for user ${userId}:`, error);
+    throw new AppError('Could not retrieve user', HttpCode.INTERNAL_SERVER_ERROR);
+  }
+};
+
+export const updateUser = async (userId: string, updateData: UserUpdateData) => {
+  try {
+    if (updateData.password) {
+      updateData.password = await hashPassword(updateData.password);
+    }
+
+    const updatedUser = await userRepository.updateUser(userId, updateData);
+
+    if (!updatedUser) {
+      throw new AppError('User not found or could not be updated', HttpCode.NOT_FOUND);
+    }
+    await cacheDel(CACHE_KEYS.USER_BY_ID(userId)); // Invalidate cache
+    return updatedUser;
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    logger.error(`Error in updateUser service for user ${userId}:`, error);
+    throw new AppError('Could not update user', HttpCode.INTERNAL_SERVER_ERROR);
+  }
+};
+
+export const deleteUser = async (userId: string) => {
+  try {
+    const deletedUser = await userRepository.deleteUser(userId);
+
+    if (!deletedUser) {
+      throw new AppError('User not found or could not be deleted', HttpCode.NOT_FOUND);
+    }
+    await cacheDel(CACHE_KEYS.USER_BY_ID(userId)); // Invalidate cache
+    return deletedUser;
+  } catch (error: any) {
+    if (error instanceof AppError) throw error;
+    logger.error(`Error in deleteUser service for user ${userId}:`, error);
+    throw new AppError('Could not delete user', HttpCode.INTERNAL_SERVER_ERROR);
+  }
+};
 ```
