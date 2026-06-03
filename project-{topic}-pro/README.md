@@ -1,314 +1,271 @@
-# Payment Processing System
+```markdown
+# VizFlow: Enterprise Data Visualization System
 
-A comprehensive, production-ready payment processing system built with Node.js, Express, PostgreSQL, and Redis. This project demonstrates best practices for architecture, security, scalability, and quality assurance in an enterprise-grade application.
+VizFlow is a comprehensive, production-ready data visualization platform designed to empower users to connect to various data sources, create datasets, build interactive visualizations, and assemble them into dynamic dashboards.
 
 ## Table of Contents
+
 1.  [Features](#features)
-2.  [Technologies Used](#technologies-used)
-3.  [Project Structure](#project-structure)
-4.  [Setup and Installation](#setup-and-installation)
-    *   [Prerequisites](#prerequisites)
-    *   [Local Setup](#local-setup)
-    *   [Docker Setup](#docker-setup)
-5.  [Running the Application](#running-the-application)
-6.  [Database Management](#database-management)
-7.  [API Endpoints](#api-endpoints)
+2.  [Architecture](#architecture)
+3.  [Technologies Used](#technologies-used)
+4.  [Prerequisites](#prerequisites)
+5.  [Setup Instructions](#setup-instructions)
+    *   [Backend (Java/Spring Boot)](#backend-javaspring-boot)
+    *   [Frontend (React)](#frontend-react)
+    *   [Docker Compose (Recommended)](#docker-compose-recommended)
+6.  [Running the Application](#running-the-application)
+7.  [API Documentation](#api-documentation)
 8.  [Testing](#testing)
-    *   [Unit Tests](#unit-tests)
-    *   [Integration Tests](#integration-tests)
-    *   [API Tests](#api-tests)
-    *   [Performance Tests (k6)](#performance-tests-k6)
-9.  [Code Quality](#code-quality)
-10. [Authentication & Authorization](#authentication--authorization)
-11. [Error Handling](#error-handling)
-12. [Logging & Monitoring](#logging--monitoring)
-13. [Caching](#caching)
-14. [Rate Limiting](#rate-limiting)
-15. [CI/CD](#cicd)
-16. [Architecture](#architecture)
-17. [Deployment](#deployment)
-18. [Frontend (Conceptual)](#frontend-conceptual)
-19. [Contribution](#contribution)
-20. [License](#license)
+9.  [CI/CD](#cicd)
+10. [Deployment Guide](#deployment-guide)
+11. [Configuration](#configuration)
+12. [Contributing](#contributing)
+13. [License](#license)
 
-## Features
-*   **User Management:** Registration, Login, Profile Management.
-*   **Account Management:** Create, view, update user accounts (e.g., NGN, USD wallets).
-*   **Transaction Processing:**
-    *   Initiate debit/credit transactions.
-    *   Integration with external payment gateways (mocked).
-    *   Refund processing.
-    *   Webhook handling for asynchronous payment status updates.
-*   **Security:** JWT authentication, password hashing, input validation, Helmet.
-*   **Scalability:** Microservice-oriented design (conceptual), Redis for caching/rate limiting, PostgreSQL for robust data.
-*   **Observability:** Comprehensive logging with Winston, error handling.
-*   **Development Tools:** Docker, Knex.js for migrations, Objection.js for ORM.
-*   **Quality Assurance:** Extensive unit, integration, and API tests, performance testing framework.
+---
 
-## Technologies Used
-*   **Backend:** Node.js, Express.js
-*   **Database:** PostgreSQL
-*   **ORM/Query Builder:** Objection.js, Knex.js
-*   **Authentication:** JSON Web Tokens (JWT), Bcrypt.js
-*   **Caching/Rate Limiting:** Redis (via ioredis)
-*   **Logging:** Winston
-*   **Validation:** Joi
-*   **HTTP Client:** Axios
-*   **Testing:** Jest, Supertest, K6
-*   **Containerization:** Docker, Docker Compose
-*   **Linting/Formatting:** ESLint, Prettier
+## 1. Features
 
-## Project Structure
-```
-payment-system/
-├─── .github/                            # CI/CD workflows
-├─── config/                             # Environment-specific configurations
-├─── database/                           # Database schema, migrations, seeds
-├─── docs/                               # Documentation (Architecture, API, Deployment)
-├─── src/                                # Core application source code
-│    ├─── api/                          # External API integrations
-│    ├─── controllers/                  # Request handling logic
-│    ├─── middleware/                   # Express middleware (auth, error, rate-limit, cache)
-│    ├─── models/                       # Database models (Objection.js)
-│    ├─── routes/                       # API routes
-│    ├─── services/                     # Business logic and data manipulation
-│    ├─── utils/                        # Helper functions (logger, db, jwt, redis)
-│    └─── tests/                        # Unit, Integration tests
-├─── frontend/ (Conceptual)             # Placeholder for a React frontend
-├─── .env.example                       # Environment variables example
-├─── Dockerfile                          # Backend Dockerfile
-├─── docker-compose.yml                  # Docker Compose setup
-├─── package.json                        # Backend dependencies
-├─── README.md                           # Project README
-└─── jest.config.js                      # Jest configuration
-```
+*   **Secure User Management:** JWT-based authentication and Role-Based Access Control (RBAC).
+*   **Data Source Management:** Define connections to various data sources (e.g., PostgreSQL, internal data).
+*   **Dataset Management:** Create datasets from data sources, including defining schema and transformation logic (filtering, aggregation, renaming).
+*   **Interactive Visualizations:** Develop and configure various chart types (bar, line, pie, scatter, etc.).
+*   **Dynamic Dashboards:** Group multiple visualizations into interactive dashboards.
+*   **Robust Error Handling:** Centralized exception handling with informative error responses.
+*   **Logging & Monitoring:** Structured logging with Logback, easily integrable with monitoring tools.
+*   **Caching:** Local caching (Caffeine) for frequently accessed data to improve performance.
+*   **Rate Limiting:** IP-based rate limiting to protect against abuse.
+*   **API Documentation:** Self-documenting API using Springdoc-OpenAPI (Swagger UI).
 
-## Setup and Installation
+## 2. Architecture
 
-### Prerequisites
-*   Node.js (v18+) & npm
-*   PostgreSQL (or Docker)
-*   Redis (or Docker)
-*   Git
-*   Docker & Docker Compose (recommended)
+The system follows a microservice-lite architecture with a clear separation of concerns:
 
-### Local Setup (without Docker)
+*   **Frontend:** A React application providing the user interface.
+*   **Backend:** A Spring Boot application handling business logic, data processing, security, and API exposure.
+*   **Database:** PostgreSQL for persistent storage of user data, data source configurations, datasets, visualizations, and dashboards.
+
+**Key Modules/Components:**
+
+*   **`vizflow-backend`**:
+    *   **Controllers**: REST API endpoints for user interaction.
+    *   **Services**: Core business logic, data processing (e.g., `DatasetService` for fetching and transforming data), and security operations.
+    *   **Repositories**: JPA interfaces for database interaction.
+    *   **Models**: JPA Entities representing database tables.
+    *   **DTOs**: Data Transfer Objects for clean API contracts.
+    *   **Security**: Spring Security with JWT authentication and custom filters.
+    *   **Configuration**: Global settings, caching, Swagger.
+    *   **Error Handling**: Global exception handler.
+    *   **Rate Limiting**: Custom filter for API protection.
+*   **`vizflow-frontend`**: (Basic structure provided)
+    *   **Components**: Reusable UI elements (e.g., Chart components, forms).
+    *   **Pages**: Top-level views (e.g., Dashboard, Dataset list, Login).
+    *   **Services**: Client-side logic for interacting with the backend API.
+
+## 3. Technologies Used
+
+**Backend:**
+*   **Java 17**
+*   **Spring Boot 3.2.5**
+*   **Spring Data JPA**
+*   **Spring Security** (JWT Authentication)
+*   **PostgreSQL**
+*   **Flyway** (Database Migrations)
+*   **Lombok**
+*   **Google Guava RateLimiter** (for simple rate limiting)
+*   **Caffeine** (Local Caching)
+*   **Springdoc-OpenAPI** (Swagger UI)
+*   **Maven** (Build Tool)
+
+**Frontend:** (Basic setup)
+*   **React 18**
+*   **React Router DOM**
+*   **Axios** (HTTP Client)
+*   **ECharts** / **Chart.js** / **D3.js** (Recommended for visualizations, ECharts for example)
+*   **npm / yarn** (Package Manager)
+
+**Infrastructure:**
+*   **Docker**
+*   **Docker Compose**
+*   **GitHub Actions** (CI/CD)
+
+## 4. Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+*   **Java Development Kit (JDK) 17 or higher**
+*   **Maven 3.6+**
+*   **Node.js 18+ and npm/yarn** (for frontend development, if running separately)
+*   **Docker Desktop** (or Docker Engine and Docker Compose)
+
+## 5. Setup Instructions
+
+The easiest way to get VizFlow up and running is using Docker Compose.
+
+### Docker Compose (Recommended)
+
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/payment-system.git
-    cd payment-system
+    git clone https://github.com/your-username/vizflow.git
+    cd vizflow
+    ```
+    *(Replace `your-username` with your actual GitHub username or the repository URL)*
+
+2.  **Configure Environment Variables (Optional but Recommended):**
+    Create a `.env` file in the root `vizflow/` directory (where `docker-compose.yml` is located) with the following content. If not provided, defaults from `docker-compose.yml` will be used.
+
+    ```dotenv
+    # Database Configuration
+    DB_NAME=vizflow
+    DB_USER=vizflow_user
+    DB_PASSWORD=vizflow_password
+
+    # JWT Configuration (Crucial for production - use strong, random values)
+    JWT_SECRET=a_very_long_and_secure_random_string_for_your_jwt_secret_vizflow
+    JWT_EXPIRATION_MS=86400000 # 24 hours
+
+    # Rate Limiting
+    RATE_LIMIT_ENABLED=true
+    RATE_LIMIT_RPS=10 # Requests per second
+
+    # Frontend API URL (usually points to the backend service)
+    REACT_APP_API_BASE_URL=http://localhost:8080/api
+    ```
+
+3.  **Build and Start with Docker Compose:**
+    Navigate to the root `vizflow/` directory and run:
+    ```bash
+    docker compose up --build -d
+    ```
+    *   `--build`: Builds the Docker images for backend and frontend.
+    *   `-d`: Runs the services in detached mode (in the background).
+
+    This will:
+    *   Pull the PostgreSQL image.
+    *   Build the `vizflow-backend` image.
+    *   Build the `vizflow-frontend` image (placeholder).
+    *   Create a PostgreSQL container and apply Flyway migrations, including seed data.
+    *   Start the Spring Boot backend on `http://localhost:8080`.
+    *   Start the React frontend (Nginx serving static files) on `http://localhost:3000`.
+
+### Backend (Java/Spring Boot) - Manual Setup
+
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd vizflow/vizflow-backend
+    ```
+2.  **Configure `application.yml`:**
+    Modify `src/main/resources/application.yml` with your PostgreSQL database connection details. Ensure the `jwt.secret` and `jwt.expiration` properties are set.
+    ```yaml
+    spring:
+      datasource:
+        url: jdbc:postgresql://localhost:5432/vizflow # Or your remote DB
+        username: vizflow_user
+        password: vizflow_password
+    jwt:
+      secret: YOUR_SECURE_AND_LONG_SECRET_KEY_HERE_MIN_32_CHARS_FOR_HS256
+      expiration: 86400000 # 24 hours in milliseconds
+    ```
+3.  **Run Flyway Migrations (if not using Docker Compose):**
+    Ensure PostgreSQL is running locally and accessible. You can run migrations manually:
+    ```bash
+    mvn flyway:migrate
+    ```
+4.  **Build the project:**
+    ```bash
+    mvn clean install -DskipTests
+    ```
+5.  **Run the application:**
+    ```bash
+    java -jar target/vizflow-backend-0.0.1-SNAPSHOT.jar
+    ```
+    The backend will start on `http://localhost:8080`.
+
+### Frontend (React) - Manual Setup (Placeholder)
+
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd vizflow/vizflow-frontend
     ```
 2.  **Install dependencies:**
     ```bash
-    npm install
+    npm install # or yarn install
     ```
-3.  **Set up environment variables:**
-    *   Create a `.env` file in the root directory based on `.env.example`.
-    *   Fill in your PostgreSQL and Redis connection details.
-    *   Ensure `JWT_SECRET` is strong and `PAYMENT_GATEWAY_API_KEY`/`SECRET` are set (even for the mock).
+3.  **Configure API endpoint:**
+    Create a `.env` file in the `vizflow-frontend` directory:
+    ```dotenv
+    REACT_APP_API_BASE_URL=http://localhost:8080/api
+    ```
+4.  **Start the development server:**
     ```bash
-    cp .env.example .env
-    # Edit .env with your specific values
+    npm start # or yarn start
     ```
-4.  **Database Setup:**
-    *   Ensure your PostgreSQL server is running.
-    *   Create a database (e.g., `payment_system_db`) and a user with access to it.
-    *   Run migrations to create tables:
-        ```bash
-        npm run migrate:latest
-        ```
-    *   (Optional) Seed initial data:
-        ```bash
-        npm run seed:run
-        ```
-5.  **Redis Setup:**
-    *   Ensure your Redis server is running.
+    The frontend will be available at `http://localhost:3000`.
 
-### Docker Setup (Recommended for Development)
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/payment-system.git
-    cd payment-system
-    ```
-2.  **Set up environment variables:**
-    *   Create a `.env` file in the root directory based on `.env.example`.
-    *   The `docker-compose.yml` uses default values, but you can override them here.
-    *   Ensure `PAYMENT_GATEWAY_API_KEY`/`SECRET` are set for the mock gateway integration.
-    ```bash
-    cp .env.example .env
-    # Edit .env if you need to customize default environment variables
-    ```
-3.  **Build and run services with Docker Compose:**
-    ```bash
-    docker-compose up --build -d
-    ```
-    This will:
-    *   Build the backend Docker image.
-    *   Start PostgreSQL, Redis, and the backend service.
-    *   Run database migrations during the backend container build.
-    *   Mount your local code for live-reloading during development (`npm run dev` in container).
+## 6. Running the Application
 
-    **Note:** The `db` service includes an `init-uuid.sh` script to ensure the `uuid-ossp` extension is enabled for PostgreSQL.
+*   **Backend:** After starting via Docker Compose or manually, it will be available at `http://localhost:8080`.
+*   **Frontend:** After starting via Docker Compose or manually, it will be available at `http://localhost:3000`.
 
-## Running the Application
-*   **With Docker Compose (recommended for development):**
-    The `backend` service is configured to run `npm run dev` which uses `nodemon` for live reloading.
-    The API will be available at `http://localhost:5000/api`.
-*   **Locally (without Docker):**
-    ```bash
-    npm run dev  # For development with live-reloading
-    npm start    # For production build
-    ```
-    The API will be available at `http://localhost:5000/api`.
+**Default Credentials (from seed data):**
+*   **Admin User:** `username: admin`, `password: admin123`
+*   **Regular User:** `username: user`, `password: user123`
 
-## Database Management
-*   **Create a new migration:**
-    ```bash
-    npm run migrate:make <migration_name>
-    ```
-*   **Run pending migrations:**
-    ```bash
-    npm run migrate:latest
-    ```
-*   **Rollback last migration:**
-    ```bash
-    npm run migrate:rollback
-    ```
-*   **Create a new seed file:**
-    ```bash
-    npm run seed:make <seed_name>
-    ```
-*   **Run all seed files:**
-    ```bash
-    npm run seed:run
-    ```
+## 7. API Documentation
 
-## API Endpoints
-Refer to `docs/API_DOCS.md` for detailed API documentation.
+The backend exposes API documentation via Swagger UI. Once the backend is running, navigate to:
 
-**Examples:**
-*   `POST /api/auth/register` - User registration
-*   `POST /api/auth/login` - User login
-*   `GET /api/auth/profile` - Get authenticated user's profile
-*   `GET /api/accounts` - Get all accounts for the authenticated user
-*   `POST /api/accounts` - Create a new account
-*   `GET /api/accounts/:id` - Get a specific account by ID
-*   `POST /api/transactions/initiate` - Initiate a new transaction (debit/credit)
-*   `POST /api/transactions/:id/refund` - Refund an existing transaction
-*   `GET /api/transactions/account/:accountId` - Get transactions for a specific account
-*   `POST /api/transactions/webhook` - Endpoint for payment gateway webhooks
+`http://localhost:8080/swagger-ui/index.html`
 
-## Testing
-The project includes a comprehensive testing suite.
+Here you can explore all available endpoints, their request/response formats, and even test them directly (after authenticating via the `/api/auth/login` endpoint and adding the JWT token to the `Bearer` authorization header).
 
-### Unit Tests
-*   Located in `src/tests/unit/`.
-*   Focus on individual functions, services, and models in isolation.
-*   **Run unit tests:**
-    ```bash
-    npm run test:unit
-    ```
+## 8. Testing
 
-### Integration Tests
-*   Located in `src/tests/integration/`.
-*   Test interactions between different components (e.g., controller, service, database).
-*   **Run integration tests:**
-    ```bash
-    npm run test:integration
-    ```
+The backend project includes comprehensive tests:
 
-### API Tests
-*   Part of the integration tests, using `Supertest` to make actual HTTP requests to the Express app.
-*   Verify API endpoint behavior, request/response formats, and status codes.
+*   **Unit Tests:** Located in `src/test/java/.../service/` for business logic, aiming for 80%+ line coverage.
+*   **Repository Integration Tests:** Located in `src/test/java/.../repository/` using `@DataJpaTest` and Testcontainers for real database interaction.
+*   **API Integration Tests:** Located in `src/test/java/.../controller/` using `@SpringBootTest` and `MockMvc` to simulate HTTP requests.
 
-### Performance Tests (k6)
-*   Located in `scripts/k6_load_test.js`.
-*   Uses `k6` to simulate user load and measure API performance.
-*   **Prerequisites:** Install `k6` (`brew install k6` or `sudo apt-get install k6`).
-*   **Run performance tests:**
-    ```bash
-    k6 run scripts/k6_load_test.js
-    ```
-    *Note*: You may need to replace the dummy JWT token in `k6_load_test.js` with a valid token from a test user for your running application.
+To run all tests:
+```bash
+cd vizflow/vizflow-backend
+mvn clean test
+```
+The `pom.xml` is configured with `jacoco-maven-plugin` to generate test coverage reports in `target/site/jacoco/index.html` after running `mvn clean install` or `mvn clean test`.
 
-### Test Coverage
-*   Aims for 80%+ code coverage.
-*   **Generate coverage report:**
-    ```bash
-    npm run test:coverage
-    ```
-    This will generate a `coverage/` directory with detailed reports.
+**Performance Tests:**
+Conceptual examples for JMeter and Gatling are provided in the `postman_collections/` or `deployment.md` sections, demonstrating how to set up performance tests. Actual scripts are not included as executable files.
 
-## Code Quality
-*   **ESLint:** For static code analysis and identifying problematic patterns.
-*   **Prettier:** For consistent code formatting.
-*   **Run linting:**
-    ```bash
-    npm run lint
-    ```
-*   **Auto-format code:**
-    ```bash
-    npm run prettify
-    ```
+## 9. CI/CD
 
-## Authentication & Authorization
-*   Uses JSON Web Tokens (JWT) for authentication.
-*   `auth` middleware (`src/middleware/auth.js`) verifies tokens and attaches user data to `req.user`.
-*   Supports role-based authorization (e.g., `auth(['admin'])`).
-*   Password hashing with `bcryptjs`.
+A basic GitHub Actions workflow is provided in `.github/workflows/ci-cd.yml`. This workflow automates:
 
-## Error Handling
-*   Centralized error handling middleware (`src/middleware/errorHandler.js`) catches all API errors.
-*   Logs errors using Winston.
-*   Handles `unhandledRejection` and `uncaughtException` for robust process management.
+*   **Build:** Compiling the Java backend and building Docker images.
+*   **Test:** Running all backend unit and integration tests.
+*   **Linting/Static Analysis:** (Can be extended with SonarQube, Checkstyle, SpotBugs).
+*   **Docker Image Push:** Pushing built images to a container registry (e.g., Docker Hub, GitHub Container Registry) on successful merges to `main`.
+*   **Deployment:** (Placeholder for actual deployment to cloud providers like AWS, Azure, GCP).
 
-## Logging & Monitoring
-*   **Winston:** Configured for structured logging (`src/utils/logger.js`).
-    *   Logs to console in development.
-    *   Logs to files (`error.log`, `combined.log`, `exceptions.log`, `rejections.log`) for production.
-*   Can be integrated with external monitoring tools like Prometheus/Grafana or ELK stack.
+## 10. Deployment Guide
 
-## Caching
-*   Implemented with Redis using `src/middleware/caching.js`.
-*   Routes can specify a cache duration (e.g., `router.get('/', cacheMiddleware(60), ...)`).
-*   Automatic cache invalidation for operations that modify data (e.g., after `initiateTransaction`).
+See [deployment.md](./deployment.md) for detailed deployment instructions, including cloud-specific considerations.
 
-## Rate Limiting
-*   Implemented with `express-rate-limit` and Redis store (`src/middleware/rateLimiter.js`).
-*   Global rate limiting applied to all API routes.
-*   Specific rate limiting for authentication routes to prevent brute-force attacks.
+## 11. Configuration
 
-## CI/CD
-*   Conceptual GitHub Actions workflow (`.github/workflows/ci.yml`) is provided.
-*   Automates:
-    *   Code checkout
-    *   Dependency installation
-    *   Database migrations
-    *   Running all tests (unit, integration, API)
-    *   Code linting
-    *   Docker image building
-    *   (Optional) Docker image pushing to a registry
-    *   (Optional) Deployment to a cloud provider (e.g., AWS ECS, Kubernetes).
+All configurable properties are managed via `application.yml` (backend) and `.env` files (frontend, docker-compose). Sensitive information like `JWT_SECRET` and database credentials should be managed via environment variables in production.
 
-## Architecture
-See `docs/ARCHITECTURE.md` for a detailed overview of the system's architecture, design decisions, and data flows.
+## 12. Contributing
 
-## Deployment
-Refer to `docs/DEPLOYMENT.md` for detailed instructions on deploying the application to a production environment (e.g., AWS, GCP, Azure, Heroku). This includes:
-*   Environment configuration.
-*   Database and Redis provisioning.
-*   Container orchestration (ECS, Kubernetes).
-*   SSL/TLS setup.
-*   Load balancing.
+Contributions are welcome! Please follow these steps:
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature`).
+3.  Make your changes and ensure tests pass.
+4.  Commit your changes (`git commit -am 'Add new feature'`).
+5.  Push to the branch (`git push origin feature/your-feature`).
+6.  Create a new Pull Request.
 
-## Frontend (Conceptual)
-A placeholder `frontend/` directory is included. A full-scale React/Next.js application would typically:
-*   Consume the backend API.
-*   Provide user dashboards, transaction history, payment forms.
-*   Implement secure client-side payment method tokenization using payment gateway SDKs (e.g., Stripe.js).
+## 13. License
 
-## Contribution
-Contributions are welcome! Please open an issue or submit a pull request.
-
-## License
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
+```

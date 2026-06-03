@@ -1,100 +1,68 @@
+```yaml
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    restart: always
+    container_name: vizflow_db
     environment:
-      POSTGRES_USER: ${DB_USER:-payments_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
-      POSTGRES_DB: ${DB_NAME:-payment_system_db}
+      POSTGRES_DB: ${DB_NAME:-vizflow}
+      POSTGRES_USER: ${DB_USER:-vizflow_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-vizflow_password}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
-      # Initialize DB with uuid-ossp extension on first start
-      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - vizflow_pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - vizflow_network
 
   backend:
     build:
-      context: .
+      context: ./vizflow-backend
       dockerfile: Dockerfile
-    restart: always
+    container_name: vizflow_backend
     ports:
-      - "5000:5000"
+      - "8080:8080"
     environment:
-      NODE_ENV: development
-      PORT: 5000
-      DB_HOST: db
+      DB_HOST: db # Service name in docker-compose is the hostname
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-payments_user}
-      DB_PASSWORD: ${DB_PASSWORD:-secure_password}
-      DB_NAME: ${DB_NAME:-payment_system_db}
-      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      PAYMENT_GATEWAY_API_KEY: ${PAYMENT_GATEWAY_API_KEY}
-      PAYMENT_GATEWAY_SECRET: ${PAYMENT_GATEWAY_SECRET}
-      PAYMENT_GATEWAY_BASE_URL: ${PAYMENT_GATEWAY_BASE_URL:-http://mock-gateway:5001/mock-gateway} # For external mock gateway
-      MOCK_PAYMENT_SUCCESS_RATE: ${MOCK_PAYMENT_SUCCESS_RATE:-0.9}
-      MOCK_PAYMENT_PROCESSING_TIME_MS: ${MOCK_PAYMENT_PROCESSING_TIME_MS:-1000}
+      DB_NAME: ${DB_NAME:-vizflow}
+      DB_USER: ${DB_USER:-vizflow_user}
+      DB_PASSWORD: ${DB_PASSWORD:-vizflow_password}
+      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_that_should_be_long_and_random} # IMPORTANT: Change this for production!
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000} # 24 hours
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-10}
+      SPRING_PROFILES_ACTIVE: prod # Could be 'dev' or 'prod'
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - .:/usr/src/app # Mount source code for live-reloading in dev
-      - /usr/src/app/node_modules # Avoid overwriting node_modules with host's
-    command: npm run dev # Use nodemon for development
+    networks:
+      - vizflow_network
 
-  # Optional: Frontend service
-  # frontend:
-  #   build: ./frontend # Assuming a frontend Dockerfile in ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NODE_ENV: development
-  #     REACT_APP_API_URL: http://localhost:5000/api # Adjust based on your setup
-  #   depends_on:
-  #     - backend
-  #   volumes:
-  #     - ./frontend:/app
-  #     - /app/node_modules
-
-  # Optional: Mock Payment Gateway Server (if running as a separate service for local dev)
-  # mock-gateway:
-  #   build:
-  #     context: ./mock-gateway # Assuming a mock gateway project in a separate folder
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - "5001:5001"
-  #   environment:
-  #     PORT: 5001
-  #   restart: on-failure
+  frontend: # Placeholder for frontend service
+    build:
+      context: ./vizflow-frontend
+      dockerfile: Dockerfile
+    container_name: vizflow_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:8080/api # Points to backend
+    depends_on:
+      - backend
+    networks:
+      - vizflow_network
 
 volumes:
-  db_data:
-  redis_data:
+  vizflow_pg_data:
+
+networks:
+  vizflow_network:
+    driver: bridge
 ```
-**`docker-entrypoint-initdb.d/init-uuid.sh`** (To enable UUID extension in PostgreSQL)
-```bash

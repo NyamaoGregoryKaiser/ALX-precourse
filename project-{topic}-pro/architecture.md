@@ -1,169 +1,134 @@
-# ALX CMS Architecture Documentation
+```markdown
+# VizFlow: Architecture Documentation
 
-This document provides a high-level overview of the ALX CMS project's architecture, key components, and their interactions.
+This document describes the high-level architecture, key components, and data flow of the VizFlow Data Visualization System.
 
 ## 1. High-Level Overview
 
-The ALX CMS follows a typical multi-layered architecture:
+VizFlow adopts a microservice-lite, layered architecture designed for scalability, maintainability, and security. It consists of a decoupled frontend, a robust Spring Boot backend, and a PostgreSQL database.
 
-*   **Frontend:** A client-side web application (HTML, CSS, JavaScript) that interacts with the backend API.
-*   **Backend:** A C++ RESTful API server responsible for business logic, data processing, authentication, and communication with the database.
-*   **Database:** A PostgreSQL database serving as the persistent data store.
-
-The components are containerized using Docker, allowing for easy deployment and scalability. Nginx acts as a reverse proxy for the frontend, also capable of routing API requests to the backend.
-
-```
-+----------------+       +----------------+       +----------------+
-|                |       |                |       |                |
-|  User/Browser  | <---> |    Frontend    | <---> |     Nginx      |
-|                |       | (HTML/CSS/JS)  |       | (Reverse Proxy)|
-+----------------+       +----------------+       +----------------+
-                                   | HTTP(S)           /|\
-                                   |                    |
-                                   | REST API Requests  | (Proxy `/api/`)
-                                   |                    |
-                                   \|/                  |
-+-------------------------------------------------------------------+
-|                            C++ Backend Application                |
-|                                (Docker Container)                 |
-|   +---------------+   +------------------+   +----------------+ |
-|   | Controllers   |-->|     Services     |-->|   Repositories   |--> Database
-|   | (API Endpoints)|   | (Business Logic) |   | (Data Access)    |    (PostgreSQL)
-|   +---------------+   +------------------+   +----------------+ |
-|        /|\ |                     /|\ |                          |
-|         |  +---------------------+   +--------------------------+
-|         |                            |
-|      Middleware                      |
-| (Auth, Logging, Error, Cache, Rate Limit)                      |
-|                                                                  |
-+-------------------------------------------------------------------+
+```mermaid
+graph TD
+    User(Web Browser/Client) -- HTTP/HTTPS --> Frontend(React Frontend)
+    Frontend -- HTTP/HTTPS (REST API) --> Backend(Spring Boot Backend)
+    Backend -- JDBC --> Database(PostgreSQL Database)
+    Backend -- Messaging (Optional) --> DataSources(External Data Sources e.g. CSV, other DBs, APIs)
 ```
 
 ## 2. Component Breakdown
 
-### 2.1. Frontend (HTML/CSS/JS + Nginx)
+### 2.1. Frontend (React Application)
 
-*   **Purpose:** Provides the user interface for interacting with the CMS.
-*   **Technologies:** HTML, CSS, Vanilla JavaScript (or a modern framework like React/Vue/Angular for a more complex UI).
-*   **Interaction:** Communicates with the C++ Backend via RESTful API calls.
-*   **Deployment:** Served by Nginx as static files. Nginx also handles routing API requests to the backend service.
-*   **Scaling:** Stateless, can be scaled horizontally by adding more Nginx/frontend containers.
+*   **Role**: Provides the interactive user interface for creating, managing, and viewing visualizations and dashboards.
+*   **Key Responsibilities**:
+    *   User authentication and session management (stores JWT).
+    *   Displaying lists of data sources, datasets, visualizations, and dashboards.
+    *   Forms for creating and editing entities.
+    *   Rendering interactive charts using libraries like ECharts.
+    *   Routing and navigation.
+*   **Technologies**: React, React Router, Axios, ECharts.
 
-### 2.2. C++ Backend Application
+### 2.2. Backend (Spring Boot Application)
 
-The backend is built with C++17 and follows a layered architecture to ensure separation of concerns, testability, and maintainability.
-
-#### a. API Server (Pistache)
-*   **Role:** The entry point for all HTTP requests. It uses `Pistache` to define routes and handle HTTP methods.
-*   **Functionality:**
-    *   Parses incoming requests (headers, body, query parameters).
-    *   Routes requests to appropriate controllers.
-    *   Sends HTTP responses.
-
-#### b. Middleware
-*   **Role:** A chain of functions that process requests before they reach the main handler and/or after the handler completes.
-*   **Components:**
-    *   **Request Logging:** Logs details of incoming requests (`spdlog`).
-    *   **Rate Limiting:** Protects against abuse by limiting requests per IP address over a time window.
-    *   **Error Handling:** Catches exceptions thrown by controllers/services/repositories and formats appropriate HTTP error responses.
-    *   **Authentication (`AuthMiddleware`):** Verifies JWT tokens and extracts user information. Determines if a user is authenticated.
-    *   **Authorization:** (Implicitly handled by services/controllers after authentication) Checks user roles and permissions against requested actions/resources.
-    *   **Caching:** (Conceptual) Intercepts requests for cached content, serves from cache if available, or caches responses.
-
-#### c. Controllers
-*   **Role:** Handle specific API endpoints. They receive requests, delegate tasks to services, and format responses.
-*   **Responsibilities:**
-    *   Parsing request body and query parameters (e.g., using `nlohmann::json`).
-    *   Input validation (basic).
-    *   Calling appropriate service methods.
-    *   Serializing service responses into JSON.
-    *   Setting HTTP status codes.
-*   **Examples:** `AuthController`, `UserController`, `ContentController`.
-
-#### d. Services
-*   **Role:** Encapsulate the core business logic of the application. They orchestrate operations involving multiple repositories or complex validations.
-*   **Responsibilities:**
-    *   Applying business rules and validations.
-    *   Performing complex data manipulations.
-    *   Interacting with one or more repositories.
-    *   Handling transactional integrity (though not explicitly shown in current snippets, a `UnitOfWork` pattern could be implemented here).
-    *   **Authorization Logic:** Implement granular permission checks based on user roles and resource ownership (e.g., only an admin can delete any user, a user can only edit their own profile).
-*   **Examples:** `UserService`, `ContentService`.
-
-#### e. Repositories
-*   **Role:** Provide an abstraction layer over the data persistence (database). They map between C++ objects (models) and database records.
-*   **Responsibilities:**
-    *   Executing CRUD (Create, Read, Update, Delete) operations.
-    *   Handling database-specific logic (SQL queries, connection management with `libpqxx`).
-    *   Mapping `pqxx::result` rows to C++ model structs.
-    *   Connection Pooling (could be an enhancement).
-*   **Examples:** `UserRepository`, `ContentRepository`.
-
-#### f. Models / DTOs
-*   **Role:** Represent the data structures used throughout the application.
-    *   **Models:** C++ structs representing database entities (e.g., `User`, `Content`).
-    *   **DTOs (Data Transfer Objects):** C++ structs for specific API request/response payloads (e.g., `UserCreateDTO`, `UserResponseDTO`). This helps decouple internal data structures from external API contracts.
-
-#### g. Utilities
-*   **Role:** Provide common, reusable functionalities not tied to specific business logic.
-*   **Examples:** `JWTManager` (for token creation/validation), `Config` (environment variable loading), `PasswordHasher` (for secure password handling).
+*   **Role**: The brain of the application, handling all business logic, data processing, security, and persistence.
+*   **Key Modules/Layers**:
+    *   **Controllers (`com.alx.vizflow.controller`)**:
+        *   Exposes RESTful API endpoints (e.g., `/api/auth`, `/api/datasets`, `/api/dashboards`).
+        *   Handles HTTP requests, request validation, and marshaling DTOs.
+        *   Routes requests to appropriate services.
+        *   Integrated with Springdoc-OpenAPI for automatic API documentation (Swagger UI).
+    *   **Services (`com.alx.vizflow.service`)**:
+        *   Contains the core business logic (e.g., `UserService` for user management, `DatasetService` for data fetching and transformation).
+        *   Orchestrates operations across multiple repositories.
+        *   Applies domain rules and performs complex data manipulations (e.g., `DatasetService.applyTransformations` involves filtering, aggregation, renaming logic).
+        *   Implements caching (`@Cacheable`, `@CacheEvict`) for performance.
+        *   Handles authorization checks via `@PreAuthorize`.
+    *   **Repositories (`com.alx.vizflow.repository`)**:
+        *   Spring Data JPA interfaces for data access operations (CRUD) on specific entities.
+        *   Abstracts database interactions.
+    *   **Models (`com.alx.vizflow.model`)**:
+        *   JPA Entities representing the database schema (e.g., `User`, `DataSource`, `Dataset`, `Visualization`, `Dashboard`, `Role`).
+        *   Includes relationships and lifecycle callbacks (`@PrePersist`, `@PreUpdate`).
+    *   **DTOs (`com.alx.vizflow.dto`)**:
+        *   Data Transfer Objects used for request/response payloads to decouple API contracts from internal entity structures.
+    *   **Security (`com.alx.vizflow.config.SecurityConfig`, `com.alx.vizflow.filter.JwtAuthFilter`, `com.alx.vizflow.service.JwtService`, `com.alx.vizflow.service.UserDetailsServiceImpl`)**:
+        *   Implements JWT-based authentication for stateless API security.
+        *   Uses `BCryptPasswordEncoder` for secure password storage.
+        *   Defines security filters and authorization rules.
+    *   **Error Handling (`com.alx.vizflow.exception.GlobalExceptionHandler`)**:
+        *   Centralized exception handling using `@ControllerAdvice` to provide consistent and informative error responses.
+    *   **Rate Limiting (`com.alx.vizflow.filter.RateLimitingFilter`)**:
+        *   A custom `OncePerRequestFilter` to limit incoming requests based on IP address, preventing abuse.
+    *   **Configuration (`com.alx.vizflow.config`)**:
+        *   Configures Spring Security, caching, OpenAPI documentation, etc.
+*   **Technologies**: Java 17, Spring Boot, Spring Data JPA, Spring Security, Lombok, Guava RateLimiter, Caffeine, Springdoc-OpenAPI, Maven.
 
 ### 2.3. Database (PostgreSQL)
 
-*   **Role:** Stores all persistent application data.
-*   **Schema:** Defined using SQL DDL scripts (`001_initial_schema.sql`).
-*   **Migrations:** Handled via versioned SQL scripts, applied on container startup (or by a dedicated migration tool).
-*   **Indexing:** Utilized for query optimization to improve read performance.
+*   **Role**: Stores all persistent application data.
+*   **Key Data**:
+    *   User accounts and roles.
+    *   Configurations for external data sources.
+    *   Dataset definitions (query, schema, transformation logic).
+    *   Visualization configurations (chart type, display options).
+    *   Dashboard layouts and associated visualizations.
+*   **Schema Management**:
+    *   **Flyway**: Used for managing database migrations, ensuring controlled and versioned schema evolution. `V1__initial_schema.sql` creates the core tables, `V2__add_sample_data.sql` populates initial roles and an admin user.
+*   **Query Optimization**:
+    *   Indexes are defined on frequently queried columns (e.g., `users.username`, `users.email`, foreign keys) to improve read performance.
+    *   Careful design of SQL queries (or ORM usage) in the service layer to prevent N+1 issues and inefficient joins.
+*   **Technologies**: PostgreSQL 15, Flyway.
 
-## 3. Data Flow Example: User Registration
+## 3. Data Flow Example: Fetching Dashboard Data
 
-1.  **Frontend:** User submits registration form, `POST` request to `/auth/register` with username, email, password.
-2.  **Nginx:** Receives request, proxies it to the `backend` service.
-3.  **C++ Backend - Middleware:**
-    *   `RequestLoggerMiddleware`: Logs the incoming request.
-    *   `RateLimitingMiddleware`: Checks if the IP has exceeded request limits.
-    *   `ErrorHandlingMiddleware`: Wraps the execution to catch exceptions.
-    *   `AuthMiddleware`: Skips as `/auth/register` is a public route.
-4.  **C++ Backend - `AuthController::handle_register`:**
-    *   Parses the JSON request body into a `UserCreateDTO`.
-    *   Calls `UserService::register_user(create_dto)`.
-5.  **C++ Backend - `UserService::register_user`:**
-    *   Performs business logic: checks if email already exists (`UserRepository::find_by_email`).
-    *   Validates password strength.
-    *   Hashes the password (`PasswordHasher::hash_password`).
-    *   Creates a `User` model object.
-    *   Calls `UserRepository::create(user)`.
-6.  **C++ Backend - `UserRepository::create`:**
-    *   Establishes a connection to PostgreSQL (`libpqxx`).
-    *   Executes an `INSERT` SQL query to create a new user record.
-    *   Retrieves the auto-generated user `id`.
-    *   Maps the database response back to the `User` model.
-7.  **C++ Backend - `UserService::register_user` (returns):**
-    *   Receives the created `User` model.
-    *   Converts it to a `UserResponseDTO`.
-    *   Returns the DTO.
-8.  **C++ Backend - `AuthController::handle_register` (returns):**
-    *   Formats the `UserResponseDTO` into a JSON response.
-    *   Sets HTTP status `201 Created`.
-    *   Sends the response.
-9.  **Nginx:** Receives backend response and forwards it to the frontend.
-10. **Frontend:** Receives response, updates UI (e.g., shows success message, redirects to login).
+1.  **Frontend Request**: User navigates to a dashboard. Frontend sends an `HTTP GET` request to `/api/dashboards/{dashboardId}`.
+2.  **Backend Controller**: `DashboardController` receives the request.
+    *   Authenticates the user via JWT filter.
+    *   Authorizes access using `@PreAuthorize`.
+    *   Calls `DashboardService.getDashboardById()`.
+3.  **Dashboard Service**: `DashboardService` fetches the `Dashboard` entity from `DashboardRepository`.
+    *   It also fetches associated `Visualization` entities and their linked `Dataset` entities.
+4.  **Backend Controller (Processing Visualizations)**: For each `Visualization` in the dashboard:
+    *   The `DashboardController` (or a helper service) iterates and makes internal calls to `VisualizationService`.
+    *   `VisualizationService` then calls `DatasetService.getDatasetData(datasetId)`.
+5.  **Dataset Service (Core Logic - ALX Focus)**:
+    *   `getDatasetData(datasetId)`:
+        *   **`fetchRawData(datasetId)`**: Retrieves the `Dataset` and its associated `DataSource`. Based on `DataSource.type` (e.g., "POSTGRES", "CSV", "API"), it dynamically connects to the external data source (e.g., using JDBC, HTTP client) and executes `Dataset.queryOrTable`. Returns raw data (e.g., `List<Map<String, Object>>`).
+        *   **`applyTransformations(datasetId, rawData)`**: Uses `Dataset.transformationLogic` (a JSON string) to apply transformations.
+            *   **Parsing**: Parses the `transformationLogic` JSON into a structured object (e.g., `{"filters": [...], "aggregations": [...]}`).
+            *   **Filtering (Algorithm Design)**: Iterates through the `filters` (e.g., `{"column": "sales", "operator": ">", "value": 1000}`). For each row in `rawData`, it applies the filter condition (e.g., `row.get("sales") > 1000`). This involves type-safe comparisons and potentially string operations.
+            *   **Aggregation (Algorithm Design)**: If `aggregations` are present (e.g., `{"column": "revenue", "type": "SUM", "groupBy": ["month"]}`), it groups `rawData` by the specified `groupBy` columns and applies the aggregation function (SUM, AVG, COUNT, etc.) to the `column`. This requires iterative processing or stream-based reduction logic.
+            *   **Renaming**: Applies column renames if specified.
+        *   Returns the transformed data.
+6.  **Backend Response**: The `DashboardController` aggregates the processed data for all visualizations and the dashboard layout, sending it back to the frontend as a comprehensive JSON response.
+7.  **Frontend Rendering**: The React frontend receives the JSON, parses the `layoutConfig` to arrange visualizations, and then uses the processed data for each visualization to render interactive charts using ECharts.
 
-## 4. Scalability Considerations
+## 4. Security Considerations
 
-*   **Stateless Backend:** The C++ backend is designed to be stateless (session state handled by JWTs). This allows horizontal scaling by running multiple instances.
-*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding, though the latter is more complex).
-*   **Caching:** Implementing an external caching layer (e.g., Redis) can significantly reduce database load for frequently accessed data.
-*   **Asynchronous Processing:** For long-running tasks (e.g., image processing, email sending), integrating with a message queue (RabbitMQ, Kafka) and separate worker services would improve responsiveness.
+*   **Authentication**: JWT for stateless API authentication. Tokens are signed with a strong secret.
+*   **Authorization**: Spring Security's `@PreAuthorize` annotations are used for method-level access control based on user roles (`ROLE_ADMIN`, `ROLE_EDITOR`, `ROLE_USER`).
+*   **Password Hashing**: BCrypt algorithm is used for storing user passwords securely.
+*   **Input Validation**: `jakarta.validation` annotations are used on DTOs to prevent malformed requests and injection attacks.
+*   **CORS**: Configured to allow requests only from trusted frontend origins.
+*   **Rate Limiting**: IP-based rate limiting to mitigate brute-force attacks and resource exhaustion.
+*   **Secrets Management**: Environment variables (`.env`, Docker secrets) for sensitive information like JWT secret and database credentials.
 
-## 5. Security Considerations
+## 5. Scalability and Performance
 
-*   **HTTPS:** Nginx should be configured with SSL/TLS certificates for production to encrypt all traffic.
-*   **JWT Security:** Strong, frequently rotated `JWT_SECRET` is crucial. Tokens should have reasonable expiration times.
-*   **Password Hashing:** Use strong, industry-standard hashing algorithms (bcrypt, Argon2) with appropriate salt and cost factor.
-*   **Input Validation:** Sanitize and validate all user inputs to prevent SQL injection, XSS, and other vulnerabilities.
-*   **Role-Based Access Control (RBAC):** Implemented in services to ensure users can only perform authorized actions.
-*   **Rate Limiting:** Protects against brute-force attacks and DoS.
-*   **Least Privilege:** Database user should only have necessary permissions.
+*   **Stateless Backend**: JWT authentication allows the backend to be stateless, making it easy to scale horizontally by running multiple instances.
+*   **Database Indexing**: Strategic use of database indexes to speed up common queries.
+*   **Caching**: Spring Cache with Caffeine is used to cache frequently accessed data (e.g., user details, dataset definitions) reducing database load.
+*   **Efficient Data Processing**: The `DatasetService` is designed to process data efficiently using Java Stream API for transformations, crucial for handling larger datasets.
+*   **Docker Containerization**: Facilitates easy deployment and scaling in container orchestration platforms (Kubernetes).
 
-This architecture provides a solid foundation for a production-ready CMS, enabling future expansion and maintenance.
+## 6. Future Enhancements
+
+*   **Support for more Data Sources**: Integration with S3 (CSV/Parquet), MongoDB, Google BigQuery, Snowflake, etc.
+*   **Advanced Data Transformations**: More complex UDFs (User-Defined Functions), window functions, time-series analysis.
+*   **Real-time Data**: Integration with Kafka or other streaming platforms for real-time dashboards.
+*   **Query Optimization Techniques**: More sophisticated query builders for SQL sources, caching of query results.
+*   **Multi-tenancy**: Support for multiple organizations with isolated data.
+*   **Alerting**: Define thresholds and send notifications based on data changes.
+*   **Advanced Security**: Row-level security for data access, audit logging.
+*   **Frontend**: More chart types, drag-and-drop dashboard builder, advanced filtering on dashboards.
+```

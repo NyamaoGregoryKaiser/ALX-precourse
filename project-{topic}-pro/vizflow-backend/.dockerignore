@@ -1,0 +1,18 @@
+```
+### Maven ###
+target/
+!**/src/**/.apt_generated/
+!**/src/**/.factorypath/
+
+### IDEs ###
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.log
+npm-debug.log*
+
+### OS ###
+.project
+.settings
+```
