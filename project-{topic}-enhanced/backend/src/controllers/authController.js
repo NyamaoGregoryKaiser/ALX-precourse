@@ -2,40 +2,39 @@
 const authService = require('../services/authService');
 const catchAsync = require('../utils/catchAsync');
 const logger = require('../utils/logger');
-const config = require('../config');
 
-// Helper to send JWT token in cookie and response
-const sendTokenResponse = (user, statusCode, res, token) => {
+const sendTokenResponse = (user, token, statusCode, res) => {
+  // Options for cookie (optional, can just send token in body)
   const cookieOptions = {
-    expires: new Date(Date.now() + config.jwt.expiration.slice(0, -1) * 24 * 60 * 60 * 1000), // Convert '1h' to actual milliseconds for cookie expiry
-    httpOnly: true, // Prevent client-side JS from accessing the cookie
-    secure: config.env === 'production', // Only send over HTTPS in production
-    sameSite: 'Lax', // Protect against CSRF, 'None' for cross-site with secure:true
+    expires: new Date(Date.now() + require('../config').jwt.expirationTime.match(/\d+/)[0] * 24 * 60 * 60 * 1000), // Convert '1d' to ms
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    sameSite: 'strict',
   };
 
   res.cookie('jwt', token, cookieOptions);
 
+  // Remove password from output
+  user.password = undefined;
+
   res.status(statusCode).json({
     status: 'success',
     token,
-    user,
+    data: {
+      user,
+    },
   });
 };
 
 const register = catchAsync(async (req, res, next) => {
-  const { name, email, password, role } = req.body;
-  const newUser = await authService.register(name, email, password, role);
-
-  const { token, user } = await authService.login(email, password); // Log in the user immediately after registration
-
-  sendTokenResponse(user, 201, res, token);
+  const { user, token } = await authService.registerUser(req.body);
+  sendTokenResponse(user, token, 201, res);
 });
 
 const login = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
-  const { token, user } = await authService.login(email, password);
-
-  sendTokenResponse(user, 200, res, token);
+  const { user, token } = await authService.loginUser(email, password);
+  sendTokenResponse(user, token, 200, res);
 });
 
 const logout = (req, res) => {
@@ -43,7 +42,6 @@ const logout = (req, res) => {
     expires: new Date(Date.now() + 10 * 1000), // Expire in 10 seconds
     httpOnly: true,
   });
-  logger.info('User logged out');
   res.status(200).json({ status: 'success', message: 'Logged out successfully' });
 };
 

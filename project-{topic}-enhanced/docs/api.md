@@ -1,497 +1,697 @@
-# Task Management System API Documentation (OpenAPI / Swagger Style)
+```yaml
+openapi: 3.0.0
+info:
+  title: Payment Processing System API
+  description: Comprehensive API for managing users, merchants, payment methods, and transactions.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local Development Server
+  - url: https://api.yourdomain.com/api/v1
+    description: Production Server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        type:
+          type: string
+          enum: [user, merchant, admin]
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+        merchant_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - type
+        - status
+    Merchant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        webhook_url:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - name
+        - status
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [card, bank_account]
+        card_holder_name:
+          type: string
+          description: Encrypted card holder name, or tokenized data.
+        card_last_four:
+          type: string
+          description: Last four digits of the card (display only).
+        card_brand:
+          type: string
+        is_default:
+          type: boolean
+        status:
+          type: string
+          enum: [active, inactive, expired]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - type
+        - status
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        merchant_id:
+          type: string
+          format: uuid
+        payment_method_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [charge, refund]
+        status:
+          type: string
+          enum: [pending, completed, failed, refunded, voided]
+        gateway_transaction_id:
+          type: string
+          nullable: true
+        parent_transaction_id:
+          type: string
+          format: uuid
+          nullable: true
+        gateway_response:
+          type: object
+          nullable: true
+          description: Full JSON response from the payment gateway.
+        card_last_four:
+          type: string
+          nullable: true
+        card_brand:
+          type: string
+          nullable: true
+        card_holder_name:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - merchant_id
+        - amount
+        - currency
+        - type
+        - status
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        code:
+          type: string
+          example: GENERIC_ERROR
+        message:
+          type: string
+          example: Something went wrong.
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid/expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "error", code: "UNAUTHENTICATED", message: "You are not logged in! Please log in to get access." }
+    ForbiddenError:
+      description: Insufficient permissions to perform the action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "error", code: "UNAUTHORIZED_ACTION", message: "You do not have permission to perform this action." }
+    NotFoundError:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "error", code: "NOT_FOUND", message: "Resource not found." }
+    BadRequestError:
+      description: Invalid request parameters or body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            example: { status: "error", code: "VALIDATION_FAILED", message: "Invalid input data." }
+
+tags:
+  - name: Authentication
+    description: User registration and login
+  - name: Users
+    description: User profile management
+  - name: Merchants
+    description: Merchant account management
+  - name: Payment Methods
+    description: User's saved payment methods
+  - name: Transactions
+    description: Core payment processing operations
+  - name: Webhooks
+    description: Receiving and managing webhook notifications
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user or merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                type:
+                  type: string
+                  enum: [user, merchant]
+                  default: user
+              required:
+                - name
+                - email
+                - password
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  token:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          description: User with email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "DUPLICATE_EMAIL", message: "User with that email already exists." }
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in an existing user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+              required:
+                - email
+                - password
+      responses:
+        '200':
+          description: User logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  token:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /auth/logout:
+    get:
+      tags:
+        - Authentication
+      summary: Log out the current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Logged out successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /transactions:
+    get:
+      tags:
+        - Transactions
+      summary: Get all transactions (with filters)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, completed, failed, refunded, voided]
+          description: Filter by transaction status
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [charge, refund]
+          description: Filter by transaction type
+        - in: query
+          name: merchantId
+          schema:
+            type: string
+            format: uuid
+          description: Filter by merchant ID (Admin/Merchant only)
+        - in: query
+          name: userId
+          schema:
+            type: string
+            format: uuid
+          description: Filter by user ID (Admin only)
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+          description: Number of items per page
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            default: created_at
+          description: Field to sort by
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort order
+      responses:
+        '200':
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  results:
+                    type: integer
+                  data:
+                    type: object
+                    properties:
+                      transactions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+    post:
+      tags:
+        - Transactions
+      summary: Create a new payment transaction
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  minimum: 0.01
+                currency:
+                  type: string
+                  pattern: '^[A-Z]{3}$'
+                  description: ISO 4217 currency code (e.g., USD, EUR)
+                description:
+                  type: string
+                  nullable: true
+                merchantId:
+                  type: string
+                  format: uuid
+                  description: ID of the merchant to pay.
+                paymentMethodId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional. ID of a saved payment method. If provided, card details are not needed.
+                cardHolderName:
+                  type: string
+                  description: Required if paymentMethodId is not provided.
+                cardNumber:
+                  type: string
+                  pattern: '^\d{13,19}$' # Basic card number pattern
+                  description: Required if paymentMethodId is not provided.
+                expiryMonth:
+                  type: integer
+                  minimum: 1
+                  maximum: 12
+                  description: Required if paymentMethodId is not provided.
+                expiryYear:
+                  type: integer
+                  description: Required if paymentMethodId is not provided.
+                cvv:
+                  type: string
+                  pattern: '^\d{3,4}$' # Basic CVV pattern
+                  description: Required for all card payments (not stored on server).
+              required:
+                - amount
+                - currency
+                - merchantId
+              oneOf: # Either paymentMethodId OR card details must be present
+                - required: [paymentMethodId]
+                - required: [cardHolderName, cardNumber, expiryMonth, expiryYear, cvv]
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      transaction:
+                        $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Merchant or Payment Method not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "MERCHANT_NOT_FOUND", message: "Merchant not found." }
+        '500':
+          description: Internal server error or payment gateway error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "GATEWAY_DECLINED", message: "Payment declined by gateway." }
+
+  /transactions/{transactionId}:
+    get:
+      tags:
+        - Transactions
+      summary: Get a single transaction by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: transactionId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the transaction to retrieve.
+      responses:
+        '200':
+          description: Transaction retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      transaction:
+                        $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /transactions/{transactionId}/refund:
+    post:
+      tags:
+        - Transactions
+      summary: Refund a completed transaction
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: transactionId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the original transaction to refund.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  minimum: 0.01
+                  nullable: true
+                  description: Optional. Amount to refund. If not provided, defaults to full remaining amount.
+                reason:
+                  type: string
+                  nullable: true
+                  description: Reason for the refund.
+              required: []
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      refund:
+                        $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Original transaction not found or not eligible for refund.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "TRANSACTION_NOT_FOUND", message: "Completed transaction not found or not eligible for refund." }
+        '500':
+          description: Internal server error or payment gateway error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "GATEWAY_REFUND_FAILED", message: "Refund failed by gateway." }
+
+  /webhooks/incoming/{source}:
+    post:
+      tags:
+        - Webhooks
+      summary: Receive incoming webhooks from external services
+      description: This endpoint is for external payment gateways or services to send notifications. It requires signature verification for security.
+      parameters:
+        - in: path
+          name: source
+          schema:
+            type: string
+          required: true
+          description: Identifier for the webhook source (e.g., 'stripe', 'mock-gateway').
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Generic webhook payload from the external service. Structure varies by source.
+      responses:
+        '200':
+          description: Webhook received and processed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Webhook processed.
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '403':
+          description: Invalid webhook signature.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                example: { status: "error", code: "INVALID_WEBHOOK_SIGNATURE", message: "Webhook signature verification failed." }
+        '500':
+          description: Internal server error during webhook processing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
-This document outlines the RESTful API endpoints for the Task Management System.
-
-**Base URL**: `/v1`
-
----
-
-## 1. Authentication
-
-### `POST /v1/auth/register`
-
-Register a new user.
-
-*   **Description**: Creates a new user account with the provided details and returns authentication tokens.
-*   **Authentication**: None (public endpoint)
-*   **Request Body**:
-    *   `firstName` (string, required): User's first name.
-    *   `lastName` (string, required): User's last name.
-    *   `email` (string, required): Unique email address.
-    *   `password` (string, required): User's password (min 8 chars, at least 1 letter & 1 number).
-    *   `role` (string, optional): User's role (`member`, `projectOwner`, `admin`). Default is `member`.
-*   **Responses**:
-    *   `201 Created`:
-        ```json
-        {
-          "user": {
-            "id": "uuid",
-            "firstName": "John",
-            "lastName": "Doe",
-            "email": "john.doe@example.com",
-            "role": "member",
-            "isEmailVerified": false,
-            "createdAt": "timestamp",
-            "updatedAt": "timestamp"
-          },
-          "tokens": {
-            "access": {
-              "token": "jwt_access_token",
-              "expires": "iso_date_string"
-            },
-            "refresh": {
-              "token": "jwt_refresh_token",
-              "expires": "iso_date_string"
-            }
-          }
-        }
-        ```
-    *   `400 Bad Request`: If validation fails (e.g., invalid email, password too weak, email already taken).
-        ```json
-        {
-          "code": 400,
-          "message": "Email already taken"
-        }
-        ```
-
-### `POST /v1/auth/login`
-
-Authenticate user and receive tokens.
-
-*   **Description**: Logs in a user with their email and password, returning access and refresh tokens.
-*   **Authentication**: None (public endpoint)
-*   **Request Body**:
-    *   `email` (string, required): User's email address.
-    *   `password` (string, required): User's password.
-*   **Responses**:
-    *   `200 OK`:
-        ```json
-        {
-          "user": {
-            "id": "uuid",
-            "email": "john.doe@example.com",
-            "role": "member",
-            "firstName": "John",
-            "lastName": "Doe"
-          },
-          "tokens": {
-            "access": {
-              "token": "jwt_access_token",
-              "expires": "iso_date_string"
-            },
-            "refresh": {
-              "token": "jwt_refresh_token",
-              "expires": "iso_date_string"
-            }
-          }
-        }
-        ```
-    *   `401 Unauthorized`: If email or password is incorrect.
-        ```json
-        {
-          "code": 401,
-          "message": "Incorrect email or password"
-        }
-        ```
-
-### `POST /v1/auth/logout`
-
-Log out an authenticated user.
-
-*   **Description**: Invalidates the provided refresh token, effectively logging out the user. Requires an active access token to prevent CSRF.
-*   **Authentication**: JWT Access Token (in `Authorization` header)
-*   **Request Body**:
-    *   `refreshToken` (string, required): The refresh token to invalidate.
-*   **Responses**:
-    *   `204 No Content`: Successful logout.
-    *   `401 Unauthorized`: If access token is missing or invalid.
-    *   `404 Not Found`: If the provided refresh token is not found.
-
-### `POST /v1/auth/refresh-tokens`
-
-Generate new access and refresh tokens.
-
-*   **Description**: Uses a valid refresh token to obtain a new pair of access and refresh tokens. The old refresh token is invalidated.
-*   **Authentication**: None (public endpoint, as it's for refreshing tokens)
-*   **Request Body**:
-    *   `refreshToken` (string, required): A valid refresh token.
-*   **Responses**:
-    *   `200 OK`:
-        ```json
-        {
-          "access": {
-            "token": "new_jwt_access_token",
-            "expires": "iso_date_string"
-          },
-          "refresh": {
-            "token": "new_jwt_refresh_token",
-            "expires": "iso_date_string"
-          }
-        }
-        ```
-    *   `401 Unauthorized`: If the refresh token is missing, invalid, or expired.
-
----
-
-## 2. Users
-
-### `POST /v1/users`
-
-Create a new user.
-
-*   **Description**: Creates a new user account. Only `admin` role can perform this.
-*   **Authentication**: JWT Access Token (`Authorization: Bearer <token>`)
-*   **Required Rights**: `manageUsers`
-*   **Request Body**: Same as `POST /v1/auth/register`
-*   **Responses**:
-    *   `201 Created`: Returns the created user object (without password).
-    *   `400 Bad Request`: If validation fails or email taken.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user does not have `manageUsers` rights.
-
-### `GET /v1/users`
-
-Retrieve a list of users.
-
-*   **Description**: Fetches a paginated list of users.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getUsers`
-*   **Query Parameters**:
-    *   `firstName` (string, optional): Filter by first name.
-    *   `lastName` (string, optional): Filter by last name.
-    *   `email` (string, optional): Filter by email.
-    *   `role` (string, optional): Filter by role (`member`, `projectOwner`, `admin`).
-    *   `sortBy` (string, optional): Sort order (e.g., `createdAt:desc`, `email:asc`).
-    *   `limit` (number, optional): Maximum number of results per page (default: 10).
-    *   `page` (number, optional): Current page number (default: 1).
-*   **Responses**:
-    *   `200 OK`: Returns a paginated list of user objects.
-        ```json
-        {
-          "results": [
-            { "id": "uuid", "firstName": "...", "email": "...", "role": "..." }
-          ],
-          "page": 1,
-          "limit": 10,
-          "totalPages": 5,
-          "totalResults": 42
-        }
-        ```
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user does not have `getUsers` rights.
-
-### `GET /v1/users/:userId`
-
-Retrieve a single user by ID.
-
-*   **Description**: Fetches a single user's details.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getUsers` (or self-access)
-*   **Path Parameters**:
-    *   `userId` (string, required): The UUID of the user.
-*   **Responses**:
-    *   `200 OK`: Returns the user object (without password).
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user does not have `getUsers` rights and is not accessing their own profile.
-    *   `404 Not Found`: If user not found.
-
-### `PATCH /v1/users/:userId`
-
-Update a user by ID.
-
-*   **Description**: Updates specific fields of a user. Only `admin` role can update any user. Users can update their own profile fields (except role).
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageUsers` (or self-access for allowed fields)
-*   **Path Parameters**:
-    *   `userId` (string, required): The UUID of the user.
-*   **Request Body**:
-    *   `firstName` (string, optional)
-    *   `lastName` (string, optional)
-    *   `email` (string, optional)
-    *   `password` (string, optional)
-    *   `role` (string, optional): Can only be updated by `admin`.
-*   **Responses**:
-    *   `200 OK`: Returns the updated user object.
-    *   `400 Bad Request`: If validation fails or email already taken.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If user not found.
-
-### `DELETE /v1/users/:userId`
-
-Delete a user by ID.
-
-*   **Description**: Deletes a user account. Only `admin` role can perform this.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageUsers`
-*   **Path Parameters**:
-    *   `userId` (string, required): The UUID of the user.
-*   **Responses**:
-    *   `204 No Content`: Successful deletion.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If user not found.
-
----
-
-## 3. Projects
-
-### `POST /v1/projects`
-
-Create a new project.
-
-*   **Description**: Creates a new project. The `ownerId` is automatically set to the authenticated user's ID.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageProjects`
-*   **Request Body**:
-    *   `title` (string, required): Project title.
-    *   `description` (string, optional): Project description.
-    *   `status` (string, optional): Project status (`planning`, `in_progress`, `completed`, `cancelled`). Default: `planning`.
-*   **Responses**:
-    *   `201 Created`: Returns the created project object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `manageProjects` rights.
-
-### `GET /v1/projects`
-
-Retrieve a list of projects.
-
-*   **Description**: Fetches a paginated list of projects.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getProjects`
-*   **Query Parameters**:
-    *   `title` (string, optional): Filter by project title.
-    *   `status` (string, optional): Filter by project status.
-    *   `ownerId` (string, optional): Filter by project owner UUID.
-    *   `sortBy`, `limit`, `page`: Standard pagination options.
-*   **Responses**:
-    *   `200 OK`: Returns a paginated list of project objects.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `getProjects` rights.
-
-### `GET /v1/projects/:projectId`
-
-Retrieve a single project by ID.
-
-*   **Description**: Fetches a single project's details.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getProjects` (or `projectOwner` if owner of project)
-*   **Path Parameters**:
-    *   `projectId` (string, required): The UUID of the project.
-*   **Responses**:
-    *   `200 OK`: Returns the project object.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights and is not the project owner.
-    *   `404 Not Found`: If project not found.
-
-### `PATCH /v1/projects/:projectId`
-
-Update a project by ID.
-
-*   **Description**: Updates specific fields of a project. Only project owners or administrators can update projects.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageProjects` (or `projectOwner` if owner of project)
-*   **Path Parameters**:
-    *   `projectId` (string, required): The UUID of the project.
-*   **Request Body**:
-    *   `title` (string, optional)
-    *   `description` (string, optional)
-    *   `status` (string, optional)
-*   **Responses**:
-    *   `200 OK`: Returns the updated project object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights or is not the project owner.
-    *   `404 Not Found`: If project not found.
-
-### `DELETE /v1/projects/:projectId`
-
-Delete a project by ID.
-
-*   **Description**: Deletes a project. Only project owners or administrators can delete projects.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageProjects` (or `projectOwner` if owner of project)
-*   **Path Parameters**:
-    *   `projectId` (string, required): The UUID of the project.
-*   **Responses**:
-    *   `204 No Content`: Successful deletion.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights or is not the project owner.
-    *   `404 Not Found`: If project not found.
-
----
-
-## 4. Tasks
-
-### `POST /v1/tasks`
-
-Create a new task.
-
-*   **Description**: Creates a new task within a specified project.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageTasks`
-*   **Request Body**:
-    *   `title` (string, required)
-    *   `description` (string, optional)
-    *   `status` (string, optional): `to_do`, `in_progress`, `done`. Default: `to_do`.
-    *   `priority` (string, optional): `low`, `medium`, `high`. Default: `medium`.
-    *   `dueDate` (date, optional): ISO 8601 format.
-    *   `projectId` (string, required): UUID of the parent project.
-    *   `assignedTo` (string, optional): UUID of the user assigned to this task.
-*   **Responses**:
-    *   `201 Created`: Returns the created task object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `manageTasks` rights or permission for the project.
-
-### `GET /v1/tasks`
-
-Retrieve a list of tasks.
-
-*   **Description**: Fetches a paginated list of tasks.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getTasks`
-*   **Query Parameters**:
-    *   `title`, `status`, `priority`, `projectId`, `assignedTo`: Filters.
-    *   `sortBy`, `limit`, `page`: Standard pagination options.
-*   **Responses**:
-    *   `200 OK`: Returns a paginated list of task objects.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `getTasks` rights.
-
-### `GET /v1/tasks/:taskId`
-
-Retrieve a single task by ID.
-
-*   **Description**: Fetches a single task's details.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getTasks`
-*   **Path Parameters**:
-    *   `taskId` (string, required): The UUID of the task.
-*   **Responses**:
-    *   `200 OK`: Returns the task object.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If task not found.
-
-### `PATCH /v1/tasks/:taskId`
-
-Update a task by ID.
-
-*   **Description**: Updates specific fields of a task.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageTasks`
-*   **Path Parameters**:
-    *   `taskId` (string, required): The UUID of the task.
-*   **Request Body**:
-    *   `title`, `description`, `status`, `priority`, `dueDate`, `projectId`, `assignedTo` (all optional)
-*   **Responses**:
-    *   `200 OK`: Returns the updated task object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If task not found.
-
-### `DELETE /v1/tasks/:taskId`
-
-Delete a task by ID.
-
-*   **Description**: Deletes a task.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageTasks`
-*   **Path Parameters**:
-    *   `taskId` (string, required): The UUID of the task.
-*   **Responses**:
-    *   `204 No Content`: Successful deletion.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If task not found.
-
----
-
-## 5. Comments
-
-### `POST /v1/comments`
-
-Create a new comment.
-
-*   **Description**: Adds a new comment to a specified task. The `userId` is automatically set to the authenticated user's ID.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageComments`
-*   **Request Body**:
-    *   `content` (string, required): The comment text.
-    *   `taskId` (string, required): UUID of the parent task.
-*   **Responses**:
-    *   `201 Created`: Returns the created comment object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `manageComments` rights.
-
-### `GET /v1/comments`
-
-Retrieve a list of comments.
-
-*   **Description**: Fetches a paginated list of comments.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getComments`
-*   **Query Parameters**:
-    *   `taskId` (string, optional): Filter by parent task UUID.
-    *   `userId` (string, optional): Filter by user UUID who made the comment.
-    *   `sortBy`, `limit`, `page`: Standard pagination options.
-*   **Responses**:
-    *   `200 OK`: Returns a paginated list of comment objects.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks `getComments` rights.
-
-### `GET /v1/comments/:commentId`
-
-Retrieve a single comment by ID.
-
-*   **Description**: Fetches a single comment's details.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `getComments`
-*   **Path Parameters**:
-    *   `commentId` (string, required): The UUID of the comment.
-*   **Responses**:
-    *   `200 OK`: Returns the comment object.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights.
-    *   `404 Not Found`: If comment not found.
-
-### `PATCH /v1/comments/:commentId`
-
-Update a comment by ID.
-
-*   **Description**: Updates the content of a comment. Only the comment's creator or an administrator can update it.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageComments`
-*   **Path Parameters**:
-    *   `commentId` (string, required): The UUID of the comment.
-*   **Request Body**:
-    *   `content` (string, optional): The updated comment text.
-*   **Responses**:
-    *   `200 OK`: Returns the updated comment object.
-    *   `400 Bad Request`: If validation fails.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights or is not the comment owner.
-    *   `404 Not Found`: If comment not found.
-
-### `DELETE /v1/comments/:commentId`
-
-Delete a comment by ID.
-
-*   **Description**: Deletes a comment. Only the comment's creator, project owner, or an administrator can delete it.
-*   **Authentication**: JWT Access Token
-*   **Required Rights**: `manageComments`
-*   **Path Parameters**:
-    *   `commentId` (string, required): The UUID of the comment.
-*   **Responses**:
-    *   `204 No Content`: Successful deletion.
-    *   `401 Unauthorized`: If no token provided or invalid.
-    *   `403 Forbidden`: If authenticated user lacks rights or is not authorized to delete the comment.
-    *   `404 Not Found`: If comment not found.
 ```
-
-**`docs/architecture.md`**
-```markdown

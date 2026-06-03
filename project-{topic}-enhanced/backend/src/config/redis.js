@@ -1,27 +1,25 @@
 ```javascript
-const { createClient } = require('redis');
+const redis = require('redis');
 const config = require('./index');
 const logger = require('../utils/logger');
 
-const redisClient = createClient({
-  url: config.redisUrl,
+const redisClient = redis.createClient({
+  socket: {
+    host: config.redis.host,
+    port: config.redis.port,
+  },
+  password: config.redis.password,
+  legacyMode: true, // For compatibility with some older client methods
 });
 
-redisClient.on('connect', () => logger.info('Redis client connected'));
-redisClient.on('ready', () => logger.info('Redis client ready to use'));
-redisClient.on('error', (err) => logger.error('Redis Client Error', err));
-redisClient.on('end', () => logger.info('Redis client disconnected'));
-
-// Connect to Redis when the module is imported
 (async () => {
-  try {
-    await redisClient.connect();
-  } catch (error) {
-    logger.error('Failed to connect to Redis:', error);
-    // Exit process if Redis is critical for application, or handle gracefully
-  }
-})();
+  redisClient.on('connect', () => logger.info('Redis client connected'));
+  redisClient.on('ready', () => logger.info('Redis client ready to use'));
+  redisClient.on('error', (err) => logger.error('Redis client error:', err.message));
+  redisClient.on('end', () => logger.warn('Redis client disconnected'));
 
+  await redisClient.connect();
+})();
 
 module.exports = redisClient;
 ```

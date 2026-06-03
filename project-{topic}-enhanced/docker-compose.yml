@@ -2,89 +2,112 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
-    container_name: cms-db
-    restart: always
+    container_name: payment-processor-db
     environment:
-      POSTGRES_DB: ${DB_NAME:-cms_db}
-      POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      # For test environment
+      POSTGRES_MULTIPLE_DATABASES: ${DB_NAME},${TEST_DB_NAME} # Requires custom image or initial script to create multiple DBs
     volumes:
-      - cms_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+      # - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh # Optional: script to create multiple databases
     ports:
-      - "5432:5432" # Expose for local development/tools
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-cms_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: cms-redis
-    restart: always
+    container_name: payment-processor-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} # Enable persistence and password
+    volumes:
+      - redis_data:/data
     ports:
-      - "6379:6379" # Expose for local development/tools
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "INFO"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # Backend Application
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-      args:
-        # Build arguments if needed
-    container_name: cms-backend
-    restart: always
+    container_name: payment-processor-backend
+    ports:
+      - "5000:5000"
     environment:
-      NODE_ENV: production
-      APP_PORT: 3000
-      APP_NAME: "ALX CMS Backend"
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:80} # Frontend URL or Nginx URL
+      NODE_ENV: development
+      PORT: 5000
+      DB_CLIENT: pg
       DB_HOST: db
       DB_PORT: 5432
-      DB_USERNAME: ${DB_USERNAME:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_NAME: ${DB_NAME:-cms_db}
-      DB_SYNCHRONIZE: false # IMPORTANT: Never true in production
-      DB_LOGGING: false
-      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-please-change-me-to-a-long-random-string}
-      JWT_EXPIRATION_TIME: 1h
-      THROTTLE_TTL: 60
-      THROTTLE_LIMIT: 100
-      REDIS_URL: redis://redis:6379
-      CACHE_TTL: 300000
-    ports:
-      - "3000:3000" # Expose for direct access/debugging
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      TEST_DB_NAME: ${TEST_DB_NAME} # For running tests in container
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_TIME: ${JWT_EXPIRATION_TIME}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MOCK_GATEWAY_API_KEY: ${MOCK_GATEWAY_API_KEY}
+      MOCK_GATEWAY_URL: http://mock-gateway:5001/mock-gateway # Link to mock gateway service
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY} # For sensitive data encryption if implemented
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    volumes:
+      - ./backend:/app # Mount current directory to allow hot-reloading (for dev)
+      - /app/node_modules # Prevent host node_modules from overwriting container's
+    command: sh -c "npm install && npm run migrate:latest && npm run seed:run && npm run dev" # Run migrations/seeds then start dev server
 
-  # Frontend Application (served by Nginx)
-  frontend:
+  mock-gateway: # A simple mock for the external payment gateway
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: cms-frontend
-    restart: always
-    environment:
-      # Pass frontend environment variables at runtime for Nginx to inject (or build time for React)
-      # For React, these are typically baked into the build. We need to pass them during the build stage.
-      # If using an Nginx setup, we can inject them into a JS file or config template for runtime.
-      # For simplicity here, assume REACT_APP_API_BASE_URL is hardcoded or set during build.
-      # Or, if Nginx handles proxying, frontend just talks to /api.
-      REACT_APP_API_BASE_URL: http://localhost:3000 # Direct backend URL if not using Nginx proxy for API
+      context: ./backend/mock-gateway # Assume a simple Express app for mock gateway
+      dockerfile: Dockerfile
+    container_name: mock-payment-gateway
     ports:
-      - "80:80" # Standard HTTP port
-    depends_on:
-      backend:
-        condition: service_started
+      - "5001:5001"
+    environment:
+      PORT: 5001
+      MOCK_GATEWAY_API_KEY: ${MOCK_GATEWAY_API_KEY} # Must match backend's config
+    # No depends_on, it's independent
+    volumes:
+      - ./backend/mock-gateway:/app
+      - /app/node_modules
+    command: npm start
+
+
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: payment-processor-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: development
+  #     REACT_APP_API_URL: http://localhost:5000/api/v1 # Or http://backend:5000/api/v1 if frontend also in docker
+  #   depends_on:
+  #     - backend
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   command: npm start
 
 volumes:
-  cms_data: # Persistent volume for PostgreSQL data
+  db_data:
+  redis_data:
 
 ```

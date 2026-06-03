@@ -1,103 +1,199 @@
 ```javascript
-const authService = require('../../services/authService');
-const User = require('../../models/user');
-const ApiError = require('../../utils/ApiError');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const authService = require('../../src/services/authService');
+const db = require('../../src/config/db');
+const { hashPassword, comparePassword } = require('../../src/utils/crypt');
+const { signToken, verifyToken } = require('../../src/utils/jwt');
+const AppError = require('../../src/utils/appError');
+const { v4: uuidv4 } = require('uuid');
 
-// Mock User model interactions
-jest.mock('../../models/user');
-jest.mock('jsonwebtoken');
-jest.mock('bcryptjs');
+// Mock external dependencies
+jest.mock('../../src/config/db', () => ({
+  where: jest.fn().mockReturnThis(),
+  first: jest.fn(),
+  insert: jest.fn(),
+  update: jest.fn().mockReturnThis(),
+  transaction: jest.fn((callback) => callback({
+    insert: jest.fn(),
+    where: jest.fn().mockReturnThis(),
+    update: jest.fn(),
+  })), // Mock transaction
+}));
+jest.mock('../../src/utils/crypt');
+jest.mock('../../src/utils/jwt');
+jest.mock('uuid', () => ({ v4: jest.fn() }));
 
-describe('authService', () => {
-  afterEach(() => {
+describe('Auth Service Unit Tests', () => {
+  beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  // Test for registerUser
+  // --- Register User Tests ---
   describe('registerUser', () => {
-    it('should register a user successfully', async () => {
+    it('should successfully register a new user and return token', async () => {
+      uuidv4.mockReturnValue('test-user-id');
+      db.where.mockReturnThis(); // chainable
+      db.first.mockResolvedValue(null); // No existing user
+      hashPassword.mockResolvedValue('hashedpassword');
+      db.insert.mockResolvedValue([1]); // Successful insert
+      signToken.mockReturnValue('mock-jwt-token');
+
       const userData = {
-        username: 'testuser',
+        name: 'Test User',
         email: 'test@example.com',
         password: 'password123',
-        role: 'subscriber'
+        type: 'user',
       };
-      User.findOne.mockResolvedValue(null); // User does not exist
-      User.create.mockResolvedValue({ ...userData, id: 'some-uuid' });
-      bcrypt.hash.mockResolvedValue('hashedpassword'); // Mock password hashing
 
-      const user = await authService.registerUser(userData);
+      const result = await authService.registerUser(userData);
 
-      expect(User.findOne).toHaveBeenCalledWith({ where: { email: userData.email } });
-      expect(bcrypt.hash).toHaveBeenCalledWith(userData.password, 10);
-      expect(User.create).toHaveBeenCalledWith({ ...userData, password: 'hashedpassword' });
-      expect(user).toHaveProperty('id');
-      expect(user.username).toBe(userData.username);
+      expect(db.where).toHaveBeenCalledWith({ email: userData.email });
+      expect(db.first).toHaveBeenCalled();
+      expect(hashPassword).toHaveBeenCalledWith(userData.password);
+      expect(db.insert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'test-user-id',
+        name: userData.name,
+        email: userData.email,
+        password: 'hashedpassword',
+        type: 'user',
+      }));
+      expect(signToken).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'test-user-id',
+        type: 'user',
+      }));
+      expect(result).toHaveProperty('user');
+      expect(result).toHaveProperty('token', 'mock-jwt-token');
+      expect(result.user).not.toHaveProperty('password');
     });
 
-    it('should throw ApiError if user already exists', async () => {
-      const userData = { username: 'testuser', email: 'test@example.com', password: 'password123' };
-      User.findOne.mockResolvedValue(true); // User already exists
+    it('should throw AppError if user with email already exists', async () => {
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue({ id: 'existing-id', email: 'test@example.com' }); // User exists
 
-      await expect(authService.registerUser(userData)).rejects.toThrow(ApiError);
-      await expect(authService.registerUser(userData)).rejects.toHaveProperty('statusCode', 400);
-      await expect(authService.registerUser(userData)).rejects.toHaveProperty('message', 'User with that email already exists');
+      const userData = {
+        name: 'Test User',
+        email: 'test@example.com',
+        password: 'password123',
+      };
+
+      await expect(authService.registerUser(userData)).rejects.toThrow(AppError);
+      await expect(authService.registerUser(userData)).rejects.toHaveProperty('statusCode', 409);
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(signToken).not.toHaveBeenCalled();
     });
 
-    it('should throw ApiError if required fields are missing', async () => {
-      const userData = { username: 'testuser', email: 'test@example.com' }; // Missing password
-      await expect(authService.registerUser(userData)).rejects.toThrow(ApiError);
-      await expect(authService.registerUser(userData)).rejects.toHaveProperty('statusCode', 400);
+    it('should create a merchant entry if user type is "merchant"', async () => {
+      uuidv4.mockImplementationOnce(() => 'merchant-user-id').mockImplementationOnce(() => 'merchant-id');
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue(null);
+      hashPassword.mockResolvedValue('hashedpassword');
+      db.insert.mockResolvedValue([1]); // user insert
+      signToken.mockReturnValue('mock-jwt-token');
+
+      const userData = {
+        name: 'Test Merchant',
+        email: 'merchant@example.com',
+        password: 'password123',
+        type: 'merchant',
+      };
+
+      const result = await authService.registerUser(userData);
+
+      // Check user insert
+      expect(db.insert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'merchant-user-id',
+        type: 'merchant',
+      }));
+      // Check merchant insert (second call to db.insert)
+      expect(db.insert).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'merchant-id',
+        user_id: 'merchant-user-id',
+        name: "Test Merchant's Merchant Account",
+      }));
+      // Check user update to link merchant_id
+      expect(db.where).toHaveBeenCalledWith({ id: 'merchant-user-id' });
+      expect(db.update).toHaveBeenCalledWith({ merchant_id: 'merchant-id' });
+      expect(result).toHaveProperty('user');
+      expect(result.user.type).toBe('merchant');
     });
   });
 
-  // Test for loginUser
+  // --- Login User Tests ---
   describe('loginUser', () => {
-    it('should login a user and return token', async () => {
-      const mockUser = {
-        id: 'user-id',
-        username: 'testuser',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        isActive: true,
-        role: 'subscriber',
-        comparePassword: jest.fn().mockResolvedValue(true), // Mock comparePassword
-      };
-      User.findOne.mockResolvedValue(mockUser);
-      jwt.sign.mockReturnValue('mocked-jwt-token');
-
-      const { user, token } = await authService.loginUser('test@example.com', 'password123');
-
-      expect(User.findOne).toHaveBeenCalledWith({ where: { email: 'test@example.com' } });
-      expect(mockUser.comparePassword).toHaveBeenCalledWith('password123');
-      expect(jwt.sign).toHaveBeenCalledWith(
-        { id: mockUser.id, role: mockUser.role },
-        expect.any(String), // JWT secret
-        expect.any(Object)   // ExpiresIn option
-      );
-      expect(user).toBe(mockUser);
-      expect(token).toBe('mocked-jwt-token');
-    });
-
-    it('should throw ApiError for invalid credentials (user not found)', async () => {
-      User.findOne.mockResolvedValue(null);
-      await expect(authService.loginUser('nonexistent@example.com', 'password123')).rejects.toThrow(ApiError);
-      await expect(authService.loginUser('nonexistent@example.com', 'password123')).rejects.toHaveProperty('statusCode', 401);
-    });
-
-    it('should throw ApiError for invalid credentials (password mismatch)', async () => {
-      const mockUser = {
+    it('should successfully log in an existing user and return token', async () => {
+      const user = {
         id: 'user-id',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
-        comparePassword: jest.fn().mockResolvedValue(false),
+        type: 'user',
+        status: 'active',
       };
-      User.findOne.mockResolvedValue(mockUser);
-      await expect(authService.loginUser('test@example.com', 'wrongpassword')).rejects.toThrow(ApiError);
-      await expect(authService.loginUser('test@example.com', 'wrongpassword')).rejects.toHaveProperty('statusCode', 401);
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+      signToken.mockReturnValue('mock-jwt-token');
+
+      const result = await authService.loginUser(user.email, 'password123');
+
+      expect(db.where).toHaveBeenCalledWith({ email: user.email });
+      expect(comparePassword).toHaveBeenCalledWith('password123', user.password);
+      expect(signToken).toHaveBeenCalledWith(expect.objectContaining({
+        id: user.id,
+        type: user.type,
+      }));
+      expect(result).toHaveProperty('user');
+      expect(result).toHaveProperty('token', 'mock-jwt-token');
+      expect(result.user).not.toHaveProperty('password');
+    });
+
+    it('should throw AppError for invalid credentials (user not found)', async () => {
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue(null); // User not found
+
+      await expect(authService.loginUser('nonexistent@example.com', 'password123'))
+        .rejects.toThrow(AppError);
+      await expect(authService.loginUser('nonexistent@example.com', 'password123'))
+        .rejects.toHaveProperty('statusCode', 401);
+      expect(comparePassword).not.toHaveBeenCalled();
+      expect(signToken).not.toHaveBeenCalled();
+    });
+
+    it('should throw AppError for invalid credentials (incorrect password)', async () => {
+      const user = {
+        id: 'user-id',
+        email: 'test@example.com',
+        password: 'hashedpassword',
+        type: 'user',
+        status: 'active',
+      };
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(false); // Incorrect password
+
+      await expect(authService.loginUser(user.email, 'wrongpassword'))
+        .rejects.toThrow(AppError);
+      await expect(authService.loginUser(user.email, 'wrongpassword'))
+        .rejects.toHaveProperty('statusCode', 401);
+      expect(comparePassword).toHaveBeenCalledWith('wrongpassword', user.password);
+      expect(signToken).not.toHaveBeenCalled();
+    });
+
+    it('should throw AppError if user account is inactive', async () => {
+      const user = {
+        id: 'user-id',
+        email: 'test@example.com',
+        password: 'hashedpassword',
+        type: 'user',
+        status: 'inactive', // Inactive account
+      };
+      db.where.mockReturnThis();
+      db.first.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      await expect(authService.loginUser(user.email, 'password123'))
+        .rejects.toThrow(AppError);
+      await expect(authService.loginUser(user.email, 'password123'))
+        .rejects.toHaveProperty('statusCode', 401);
+      expect(signToken).not.toHaveBeenCalled();
     });
   });
 });

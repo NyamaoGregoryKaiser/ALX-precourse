@@ -1,118 +1,75 @@
 ```javascript
-import express from 'express';
-import helmet from 'helmet';
-import cors from 'cors';
-import httpStatus from 'http-status';
-import { Server as SocketIOServer } from 'socket.io'; // Import for type hinting
-import config from './config/index.js';
-import { authRateLimiter, apiRateLimiter } from './middleware/rateLimiter.js';
-import { errorConverter, errorHandler } from './middleware/error.js';
-import ApiError from './utils/ApiError.js';
-import authRoutes from './routes/auth.js';
-import userRoutes from './routes/users.js';
-import channelRoutes from './routes/channels.js';
-import messageRoutes from './routes/messages.js';
-import logger from './config/logger.js';
-import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
-import registerSocketHandlers from './websocket/handlers.js';
+const express = require('express');
+const morgan = require('morgan');
+const helmet = require('helmet');
+const cors = require('cors');
+const hpp = require('hpp');
+const compression = require('compression');
+const cookieParser = require('cookie-parser');
+const AppError = require('./utils/appError');
+const globalErrorHandler = require('./middleware/errorHandler');
+const { apiLimiter } = require('./middleware/rateLimiter');
+const config = require('./config');
+
+// Routes
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes'); // Assume these exist
+const merchantRoutes = require('./routes/merchantRoutes'); // Assume these exist
+const paymentMethodRoutes = require('./routes/paymentMethodRoutes'); // Assume these exist
+const transactionRoutes = require('./routes/transactionRoutes');
+const webhookRoutes = require('./routes/webhookRoutes'); // For incoming webhooks from external services
 
 const app = express();
-const prisma = new PrismaClient();
 
-// set security HTTP headers
+// 1. GLOBAL MIDDLEWARES
+// Set security HTTP headers
 app.use(helmet());
 
-// enable cors
-app.use(cors({
-  origin: config.clientOrigin,
-  credentials: true,
+// Development logging
+if (config.env === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Limit requests from same API
+app.use('/api', apiLimiter);
+
+// Body parser, reading data from body into req.body
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser());
+
+// Data sanitization against NoSQL query injection
+// Not directly relevant for SQL, but good practice for any JSON input.
+
+// Prevent parameter pollution
+app.use(hpp({
+  whitelist: [ // Parameters that are allowed to be duplicated in query string
+    'amount', 'currency', 'status', 'type', 'created_at'
+  ]
 }));
-app.options('*', cors()); // Enable pre-flight for all routes
 
-// parse json request body
-app.use(express.json());
+// Enable CORS for all origins (adjust in production)
+app.use(cors());
+app.options('*', cors()); // For pre-flight requests
 
-// parse urlencoded request body
-app.use(express.urlencoded({ extended: true }));
+// Compress all responses
+app.use(compression());
 
-// apply rate limiting for API routes
-app.use('/api', apiRateLimiter);
+// 2. ROUTES
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/merchants', merchantRoutes);
+app.use('/api/v1/payment-methods', paymentMethodRoutes);
+app.use('/api/v1/transactions', transactionRoutes);
+app.use('/api/v1/webhooks', webhookRoutes); // For receiving webhooks (e.g., from mock gateway)
 
-// specific rate limiting for auth routes
-app.use('/api/auth', authRateLimiter);
-
-// v1 api routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/channels', channelRoutes);
-app.use('/api/messages', messageRoutes);
-
-
-// send back a 404 error for any unknown api request
-app.use((req, res, next) => {
-  next(new ApiError(httpStatus.NOT_FOUND, 'Not found'));
+// Unhandled Routes
+app.all('*', (req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404, 'NOT_FOUND'));
 });
 
-// convert error to ApiError, if needed
-app.use(errorConverter);
+// Global Error Handling Middleware
+app.use(globalErrorHandler);
 
-// handle error
-app.use(errorHandler);
-
-/**
- * Attaches Socket.IO to the HTTP server and registers handlers.
- * @param {import('http').Server} httpServer
- * @returns {import('socket.io').Server} The Socket.IO server instance.
- */
-export const setupSocketIO = (httpServer) => {
-  const io = new SocketIOServer(httpServer, {
-    cors: {
-      origin: config.clientOrigin,
-      methods: ['GET', 'POST'],
-      credentials: true,
-    },
-    // Allows for larger payload sizes (e.g., if we were sending images)
-    maxHttpBufferSize: 1e8, // 100 MB
-  });
-
-  // WebSocket Authentication Middleware
-  io.use(async (socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      return next(new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required for WebSocket'));
-    }
-    try {
-      const payload = jwt.verify(token, config.jwt.secret);
-      const user = await prisma.user.findUnique({
-        where: { id: payload.sub },
-        select: { id: true, username: true, email: true },
-      });
-
-      if (!user) {
-        return next(new ApiError(httpStatus.UNAUTHORIZED, 'User not found or token invalid'));
-      }
-      // Attach user object to the socket for use in handlers
-      socket.user = user;
-      next();
-    } catch (error) {
-      logger.error('WebSocket authentication failed:', error.message);
-      if (error instanceof jwt.TokenExpiredError) {
-        return next(new ApiError(httpStatus.UNAUTHORIZED, 'Token expired'));
-      } else if (error instanceof jwt.JsonWebTokenError) {
-        return next(new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token'));
-      }
-      next(new ApiError(httpStatus.UNAUTHORIZED, 'WebSocket authentication failed'));
-    }
-  });
-
-  // Register all event handlers
-  io.on('connection', (socket) => {
-    registerSocketHandlers(io, socket, socket.user);
-  });
-
-  return io;
-};
-
-export default app;
+module.exports = app;
 ```

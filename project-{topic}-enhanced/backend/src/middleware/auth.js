@@ -1,60 +1,52 @@
 ```javascript
-import jwt from 'jsonwebtoken';
-import httpStatus from 'http-status';
-import config from '../config/index.js';
-import { PrismaClient } from '@prisma/client';
-import ApiError from '../utils/ApiError.js';
-import logger from '../config/logger.js';
+const { verifyToken } = require('../utils/jwt');
+const AppError = require('../utils/appError');
+const logger = require('../utils/logger');
+const db = require('../config/db');
 
-const prisma = new PrismaClient();
+const protect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.jwt) { // Example for cookie-based auth
+    token = req.cookies.jwt;
+  }
 
-/**
- * Express middleware for authenticating JWT tokens.
- *
- * @param {import('express').Request} req - The Express request object.
- * @param {import('express').Response} res - The Express response object.
- * @param {import('express').NextFunction} next - The Express next middleware function.
- */
-const auth = async (req, res, next) => {
+  if (!token) {
+    return next(new AppError('You are not logged in! Please log in to get access.', 401, 'UNAUTHENTICATED'));
+  }
+
   try {
-    const token = req.headers.authorization?.split(' ')[1]; // Expecting "Bearer TOKEN"
+    const decoded = verifyToken(token); // decoded will contain { id, type, iat, exp }
 
-    if (!token) {
-      throw new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required');
+    // Check if user still exists
+    const user = await db('users').where({ id: decoded.id }).first();
+    if (!user) {
+      return next(new AppError('The user belonging to this token no longer exists.', 401, 'USER_NOT_FOUND'));
     }
 
-    const payload = jwt.verify(token, config.jwt.secret);
-
-    // Attach user to request
-    req.user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    if (!req.user) {
-      throw new ApiError(httpStatus.UNAUTHORIZED, 'User not found or token invalid');
-    }
-
+    // Grant access to protected route
+    req.user = user;
     next();
-  } catch (error) {
-    logger.error('Authentication error:', error.message);
-    if (error instanceof jwt.TokenExpiredError) {
-      next(new ApiError(httpStatus.UNAUTHORIZED, 'Token expired'));
-    } else if (error instanceof jwt.JsonWebTokenError) {
-      next(new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token'));
-    } else if (error instanceof ApiError) {
-      next(error);
-    } else {
-      next(new ApiError(httpStatus.UNAUTHORIZED, 'Authentication failed'));
-    }
+  } catch (err) {
+    logger.warn('Authentication failed:', err.message);
+    return next(err); // Pass the specific AppError from verifyToken (e.g., TOKEN_EXPIRED, INVALID_TOKEN)
   }
 };
 
-export default auth;
+const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.type)) {
+      return next(
+        new AppError('You do not have permission to perform this action.', 403, 'UNAUTHORIZED_ACTION')
+      );
+    }
+    next();
+  };
+};
+
+module.exports = {
+  protect,
+  restrictTo,
+};
 ```

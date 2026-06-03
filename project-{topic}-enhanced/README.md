@@ -1,372 +1,214 @@
 ```markdown
-# ALX Content Management System (CMS)
+# Comprehensive Payment Processing System
 
-A comprehensive, production-ready full-stack Content Management System built with TypeScript.
+This project is a blueprint and partial implementation of a full-scale, production-ready payment processing system, developed with a focus on ALX Software Engineering principles. It includes a Node.js/Express backend, a PostgreSQL database, a conceptual React frontend, and robust infrastructure components.
 
 ## Table of Contents
 
-1.  [Project Overview](#project-overview)
-2.  [Features](#features)
-3.  [Technology Stack](#technology-stack)
-4.  [Project Structure](#project-structure)
-5.  [Setup Instructions](#setup-instructions)
+1.  [Introduction](#1-introduction)
+2.  [Features](#2-features)
+3.  [Architecture](#3-architecture)
+4.  [Technologies Used](#4-technologies-used)
+5.  [Setup and Installation](#5-setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
-    *   [Manual Setup (Backend)](#manual-setup-backend)
-    *   [Manual Setup (Frontend)](#manual-setup-frontend)
-6.  [Database Management](#database-management)
-    *   [Migrations](#migrations)
-    *   [Seeding](#seeding)
-7.  [Running Tests](#running-tests)
-8.  [API Documentation](#api-documentation)
-9.  [Architecture](#architecture)
-10. [CI/CD](#cicd)
-11. [Additional Features](#additional-features)
-12. [Contributing](#contributing)
-13. [License](#license)
+    *   [Local Development Setup (Docker Compose)](#local-development-setup-docker-compose)
+    *   [Database Migrations and Seeding](#database-migrations-and-seeding)
+    *   [Running the Application](#running-the-application)
+6.  [API Documentation](#6-api-documentation)
+7.  [Testing](#7-testing)
+8.  [Deployment Guide](#8-deployment-guide)
+9.  [CI/CD](#9-cicd)
+10. [Future Enhancements](#10-future-enhancements)
+11. [Contributing](#11-contributing)
+12. [License](#12-license)
 
-## 1. Project Overview
+---
 
-This project implements a full-scale Content Management System designed to be robust, scalable, and maintainable. It supports multiple user roles (Admin, Editor, Author, Reader) with appropriate authentication and authorization. The system allows managing users, categories, and articles (posts) with rich CRUD operations.
+### 1. Introduction
 
-## 2. Features
+This project aims to demonstrate the development of an enterprise-grade payment processing system. It handles user and merchant management, payment method registration, transaction processing (charge and refund), webhook notifications, and includes essential production features like authentication, error handling, logging, caching, and rate limiting.
 
-*   **User Management:** Create, Read, Update, Delete users with different roles.
-*   **Authentication & Authorization:** JWT-based authentication, role-based access control.
-*   **Category Management:** Organize posts into categories.
-*   **Post Management:** Create, Read, Update, Delete articles/posts. Support for drafts, pending review, and published states.
-*   **RESTful API:** Clean and well-defined API endpoints.
-*   **Error Handling:** Global exception handling middleware for consistent error responses.
-*   **Logging & Monitoring:** Centralized logging with Winston, request logging middleware.
-*   **Caching:** Redis-backed caching for frequently accessed data (e.g., public posts, categories).
-*   **Rate Limiting:** Protects API endpoints from abuse.
-*   **Database Management:** PostgreSQL with TypeORM for robust data persistence, migrations, and seeding.
-*   **Containerization:** Docker and Docker Compose for easy setup and deployment.
-*   **CI/CD:** Basic GitHub Actions workflow for automated testing and deployment.
-*   **API Documentation:** Swagger UI for interactive API exploration.
-*   **Frontend UI:** Responsive React application for content consumption and administration.
+### 2. Features
 
-## 3. Technology Stack
+*   **User & Merchant Management**: CRUD operations, distinct roles (`user`, `merchant`, `admin`).
+*   **Authentication & Authorization**: JWT-based security with role-based access control.
+*   **Payment Method Management**: Add, view, update, and delete (soft) payment methods (e.g., credit cards - *with secure tokenization principles*).
+*   **Transaction Processing**:
+    *   Initiate charges from users to merchants.
+    *   Process refunds (full/partial).
+    *   Integrates with a **mock external payment gateway**.
+    *   Comprehensive transaction status tracking (`pending`, `completed`, `failed`, `refunded`).
+*   **Webhooks**: Asynchronous notifications to merchants about transaction events.
+*   **Robust Error Handling**: Centralized error middleware with custom `AppError` for operational errors.
+*   **Logging & Monitoring**: Structured logging with Winston.
+*   **Caching Layer**: Redis integration for frequently accessed data and session management.
+*   **Rate Limiting**: Protects APIs from abuse.
+*   **Data Validation**: Joi-based schema validation for all incoming requests.
+*   **Database**: PostgreSQL with Knex.js for migrations and query building.
+*   **Security**: Helmet, CORS, HPP, bcrypt for password hashing, JWT for sessions, HTTPS-only for production.
+*   **Testing**: Unit, Integration, and API tests using Jest/Supertest. Performance testing with K6 (conceptual).
+*   **Dockerization**: Containerized services for easy setup and deployment.
+*   **CI/CD**: Basic GitHub Actions workflow (conceptual).
 
-**Backend:**
-*   **Framework:** NestJS (Node.js, TypeScript)
-*   **Database:** PostgreSQL
-*   **ORM:** TypeORM
-*   **Authentication:** Passport.js (JWT Strategy)
-*   **Validation:** Class-validator
-*   **Caching:** Redis (`cache-manager`, `cache-manager-redis-yet`)
-*   **Logging:** Winston, Nest-Winston
-*   **API Docs:** Swagger (OpenAPI)
-*   **Rate Limiting:** `@nestjs/throttler`
-*   **Security:** Helmet, CORS
+### 3. Architecture
 
-**Frontend:**
-*   **Framework:** React (TypeScript)
-*   **Routing:** React Router DOM
-*   **State Management:** React Context API (for Auth)
-*   **Styling:** Tailwind CSS
-*   **API Client:** Axios
+The system follows a microservices-inspired layered architecture:
 
-**Infrastructure & DevOps:**
-*   **Containerization:** Docker, Docker Compose
-*   **CI/CD:** GitHub Actions
-*   **Reverse Proxy/Web Server:** Nginx (for frontend in production setup)
+*   **Client Layer (Frontend)**: A conceptual React application for users and merchants to interact with the system.
+*   **API Gateway (Implicit)**: Handled by Express, routing requests to appropriate controllers.
+*   **Backend Services (Node.js/Express)**:
+    *   **Controllers**: Handle incoming HTTP requests, validate input, call services.
+    *   **Services**: Encapsulate business logic, interact with the database and external APIs (payment gateways, webhooks).
+    *   **Middleware**: Handle cross-cutting concerns (authentication, error handling, logging, rate limiting, caching).
+    *   **Utils**: Helper functions (logger, JWT, validator, crytography).
+*   **Database Layer (PostgreSQL)**: Stores all persistent data.
+*   **Caching Layer (Redis)**: Improves performance by storing frequently accessed data and rate limit counters.
+*   **External Payment Gateway (Mocked)**: Simulates interaction with third-party payment processors.
 
-## 4. Project Structure
+[See `docs/architecture.md` for a more detailed architecture diagram and explanation.]
 
-```
-/cms-project
-├── /backend                         # NestJS Backend Application
-│   ├── src                          # Source code
-│   │   ├── main.ts                  # Entry point
-│   │   ├── app.module.ts            # Root module
-│   │   ├── auth/                    # Auth module (login, register, JWT)
-│   │   ├── users/                   # User management
-│   │   ├── categories/              # Category management
-│   │   ├── posts/                   # Post/Article management
-│   │   ├── config/                  # Environment config
-│   │   ├── database/                # TypeORM config, migrations, seeds
-│   │   └── shared/                  # Global filters, interceptors, middleware
-│   ├── test/                        # E2E & Unit tests
-│   ├── .env.example                 # Example environment variables
-│   ├── ormconfig.ts                 # TypeORM CLI configuration
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile                   # Backend Dockerfile
-├── /frontend                        # React + TypeScript Frontend Application
-│   ├── public/
-│   ├── src
-│   │   ├── App.tsx                  # Main App component
-│   │   ├── index.tsx                # Entry point
-│   │   ├── components/              # Reusable UI components
-│   │   ├── pages/                   # Application pages (Home, Login, Dashboard, etc.)
-│   │   ├── services/                # API interaction layer
-│   │   ├── context/                 # React Contexts (e.g., AuthContext)
-│   │   └── types/                   # TypeScript interfaces/types
-│   ├── .env.example                 # Example environment variables
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile                   # Frontend Dockerfile
-├── .dockerignore
-├── docker-compose.yml               # Docker orchestration file
-├── nginx.conf                       # Nginx configuration for frontend
-├── .github/workflows/               # CI/CD (GitHub Actions)
-│   └── main.yml
-├── README.md                        # This file
-├── API.md                           # Detailed API documentation
-└── ARCHITECTURE.md                  # High-level system architecture
-```
+### 4. Technologies Used
 
-## 5. Setup Instructions
+*   **Backend**: Node.js, Express.js
+*   **Database**: PostgreSQL
+*   **ORM/Query Builder**: Knex.js
+*   **Caching/Rate Limiting**: Redis
+*   **Authentication**: JSON Web Tokens (JWT), bcrypt.js
+*   **Validation**: Joi
+*   **Logging**: Winston
+*   **HTTP Client**: Axios
+*   **Testing**: Jest, Supertest, K6 (conceptual)
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions (conceptual)
 
-### Prerequisites
+### 5. Setup and Installation
 
-*   **Node.js (v18 or higher)** and **npm**
-*   **Docker** and **Docker Compose** (recommended for local development)
-*   **Git**
+#### Prerequisites
 
-### Local Development with Docker Compose (Recommended)
+*   Docker & Docker Compose (recommended)
+*   Node.js (v18+) & npm (if not using Docker for dev)
+*   Git
+
+#### Local Development Setup (Docker Compose)
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/cms-project.git
-    cd cms-project
+    git clone https://github.com/your-username/payment-processing-system.git
+    cd payment-processing-system
     ```
 
-2.  **Create `.env` files:**
-    Copy the example environment files for both backend and frontend.
-
+2.  **Create `.env` file:**
+    Copy `backend/.env.example` to `backend/.env` and fill in the values.
+    Also copy `backend/.env.example` to the root folder as `.env` for `docker-compose` to pick up.
     ```bash
     cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    cp backend/.env.example ./.env
+    # Edit the .env files, especially for secrets like JWT_SECRET and ENCRYPTION_KEY
     ```
-    Review and adjust variables in both `.env` files, especially `DB_PASSWORD`, `JWT_SECRET`, and `CORS_ORIGIN`.
+    **IMPORTANT:** Ensure `ENCRYPTION_KEY` in your `.env` is a strong, random 64-character hexadecimal string for production (32 bytes). For development, `crypto.randomBytes(32).toString('hex')` can generate one.
 
-3.  **Build and run services with Docker Compose:**
+3.  **Build and run Docker containers:**
+    This will spin up PostgreSQL, Redis, the backend API, and a mock payment gateway.
     ```bash
     docker-compose up --build -d
     ```
-    This command will:
-    *   Build Docker images for backend and frontend.
-    *   Start PostgreSQL database (`db`).
-    *   Start Redis cache (`redis`).
-    *   Start the backend application (`backend`).
-    *   Start Nginx to serve the frontend (`frontend`).
+    Wait for all services to become healthy. You can check their status with `docker-compose ps`.
 
-4.  **Wait for services to start:**
-    It might take a minute for the database and backend to be ready. You can check logs:
-    ```bash
-    docker-compose logs -f
-    ```
+#### Database Migrations and Seeding
 
-5.  **Run database migrations:**
-    Once the `backend` service is up and connected to `db`:
-    ```bash
-    docker-compose exec backend npm run migrate:run
-    ```
+The `docker-compose.yml` is configured to run `npm run migrate:latest` and `npm run seed:run` automatically on `backend` service startup (for development). If you need to run them manually or for specific environments:
 
-6.  **Seed initial data:**
-    ```bash
-    docker-compose exec backend npm run seed:run
-    ```
-    This will create an `admin@example.com` (password: `password123`) user, an `editor@example.com` (password: `password123`) user, and a few `author` users along with categories and posts.
+```bash
+# Exec into the backend container
+docker-compose exec backend sh
 
-7.  **Access the applications:**
-    *   **Frontend:** `http://localhost:80` (or just `http://localhost`)
-    *   **Backend API:** `http://localhost:3000` (for direct access, proxied through `/api/v1` by Nginx)
-    *   **Swagger API Docs:** `http://localhost:3000/api-docs` (direct)
+# Inside the container:
+npm run migrate:latest   # Apply all pending migrations
+npm run seed:run         # Populate database with initial data
+# Exit the container
+exit
+```
 
-### Manual Setup (Backend)
+#### Running the Application (without Docker - not recommended for full stack)
+
+If you wish to run only the backend locally (assuming you have PostgreSQL and Redis running elsewhere):
 
 1.  **Navigate to the backend directory:**
     ```bash
     cd backend
     ```
-
 2.  **Install dependencies:**
     ```bash
     npm install
     ```
-
-3.  **Create `.env` file:**
+3.  **Start the development server:**
     ```bash
-    cp .env.example .env
+    npm run dev
     ```
-    Adjust `DB_HOST` to your local PostgreSQL instance (e.g., `localhost`), and ensure `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` are set correctly.
+    The backend should be running on `http://localhost:5000`.
 
-4.  **Start PostgreSQL and Redis:**
-    Ensure you have a local PostgreSQL database and Redis instance running and configured as per your `.env` file.
+### 6. API Documentation
 
-5.  **Run migrations and seeds:**
+Detailed API endpoints, request/response schemas, and authentication requirements are available in:
+*   [`docs/api.md`](./docs/api.md) (conceptual OpenAPI/Swagger specification)
+
+### 7. Testing
+
+To run the test suite:
+
+1.  Ensure your `docker-compose.yml` is configured for a test database (e.g., `payment_test_db`).
+2.  Run tests inside the backend container:
     ```bash
-    npm run migrate:run
-    npm run seed:run
+    docker-compose exec backend npm test
     ```
+    This will execute unit, integration, and API tests with Jest.
+    Aims for 80%+ test coverage.
 
-6.  **Start the backend application:**
+#### Performance Tests (K6 - Conceptual)
+
+To run the K6 load test (requires K6 installed locally or in a separate container):
+
+1.  Make sure the `backend` service is running.
+2.  Run the K6 script:
     ```bash
-    npm run start:dev
+    k6 run backend/tests/performance/k6_load_test.js
     ```
-    The backend will run on `http://localhost:3000`.
+    **Note:** Adjust `BASE_URL`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in the K6 script to match your running environment and seed data.
 
-### Manual Setup (Frontend)
+### 8. Deployment Guide
 
-1.  **Navigate to the frontend directory:**
-    ```bash
-    cd frontend
-    ```
+A detailed deployment guide for production environments can be found in:
+*   [`docs/deployment.md`](./docs/deployment.md) (covers container orchestration, environment variables, scaling, monitoring).
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+### 9. CI/CD
 
-3.  **Create `.env` file:**
-    ```bash
-    cp .env.example .env
-    ```
-    Ensure `REACT_APP_API_BASE_URL` points to your backend API. If running backend with `npm run start:dev`, it would be `http://localhost:3000`. If using Docker Compose with Nginx, it might be `/api/v1` (if Nginx proxies it) or `http://localhost:3000` (if Nginx isn't proxying it).
+A conceptual GitHub Actions workflow for continuous integration and deployment is provided in:
+*   `.github/workflows/main.yml`
 
-4.  **Start the frontend application:**
-    ```bash
-    npm start
-    ```
-    The frontend will typically run on `http://localhost:3001`.
+This workflow typically includes:
+*   Linting and code style checks
+*   Running unit and integration tests
+*   Building Docker images
+*   Pushing images to a container registry
+*   (Optional) Deploying to a staging/production environment
 
-## 6. Database Management
+### 10. Future Enhancements
 
-### Migrations
+*   **Real Payment Gateway Integration**: Replace mock gateway with actual SDKs (Stripe, PayPal, etc.).
+*   **Advanced Webhook Retries**: Implement a robust queue-based retry mechanism (e.g., with RabbitMQ/SQS).
+*   **PCI Compliance**: Implement full PCI DSS compliance measures (e.g., tokenization, secure network config).
+*   **Dashboard & Analytics**: Frontend dashboards for users and merchants to view transactions, reports.
+*   **Admin Panel**: Dedicated admin interface for system management.
+*   **Two-Factor Authentication (2FA)**: Enhance security for sensitive actions.
+*   **GraphQL API**: Offer a flexible API alternative.
+*   **Background Jobs**: Use a task queue (e.g., BullMQ) for long-running or asynchronous tasks.
+*   **Security Audits**: Regular security scans and penetration testing.
 
-Migrations manage database schema changes.
+### 11. Contributing
 
-*   **Generate a new migration:**
-    ```bash
-    docker-compose exec backend npm run migrate:make --name=YourMigrationName
-    # OR (for manual setup):
-    npm run typeorm migration:create ./src/database/migrations/YourMigrationName
-    ```
-    Then, edit the generated TypeScript file in `backend/src/database/migrations/`.
+Contributions are welcome! Please refer to `CONTRIBUTING.md` (if available) for guidelines.
 
-*   **Run pending migrations:**
-    ```bash
-    docker-compose exec backend npm run migrate:run
-    # OR:
-    npm run migrate:run
-    ```
+### 12. License
 
-*   **Revert the last migration:**
-    ```bash
-    docker-compose exec backend npm run migrate:revert
-    # OR:
-    npm run migrate:revert
-    ```
-
-### Seeding
-
-Seed data populates the database with initial records (e.g., admin user, default categories).
-
-*   **Run seeders:**
-    ```bash
-    docker-compose exec backend npm run seed:run
-    # OR:
-    npm run seed:run
-    ```
-
-## 7. Running Tests
-
-### Backend Tests
-
-From the `backend` directory:
-
-*   **Unit tests:**
-    ```bash
-    npm test
-    ```
-*   **Unit tests with coverage:**
-    ```bash
-    npm run test:cov
-    ```
-*   **End-to-End (E2E) tests:**
-    ```bash
-    npm run test:e2e
-    ```
-    (Ensure the database is running and potentially clean before running E2E tests).
-
-### Frontend Tests
-
-From the `frontend` directory:
-
-*   **Unit tests (React Testing Library):**
-    ```bash
-    npm test
-    ```
-    (Currently, no specific test files are provided, but this is the command for future tests.)
-
-## 8. API Documentation
-
-The backend API documentation is generated using Swagger (OpenAPI) and is accessible when the backend server is running.
-
-*   **Swagger UI:** `http://localhost:3000/api-docs` (if backend is running directly or exposed via Docker)
-
-For a more structured overview, refer to the `API.md` file.
-
-## 9. Architecture
-
-Refer to the `ARCHITECTURE.md` file for a high-level overview of the system design, key components, and their interactions.
-
-## 10. CI/CD
-
-The project includes a basic GitHub Actions workflow (`.github/workflows/main.yml`) that performs the following steps on `main` and `develop` branches, and on pull requests:
-
-*   **Backend CI:**
-    *   Checks out code.
-    *   Sets up Node.js.
-    *   Installs dependencies.
-    *   Runs linting.
-    *   Runs unit tests with coverage.
-    *   (Optional: uploads coverage to Codecov)
-*   **Frontend CI:**
-    *   Checks out code.
-    *   Sets up Node.js.
-    *   Installs dependencies.
-    *   Runs linting.
-    *   Runs unit tests.
-    *   Builds the React application.
-*   **Deployment (on `main` branch pushes):**
-    *   Logs in to Docker Hub.
-    *   Builds and pushes Docker images for both backend and frontend.
-    *   Deploys to a remote server via SSH (requires `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` secrets, and `DOCKER_USERNAME`, `DOCKER_PASSWORD` for Docker Hub). This typically involves pulling new images and restarting Docker Compose services.
-
-**To enable the deployment step:**
-1.  Set up Docker Hub account.
-2.  Add repository secrets in GitHub:
-    *   `DOCKER_USERNAME`
-    *   `DOCKER_PASSWORD`
-    *   `SSH_HOST` (e.g., your server's IP address)
-    *   `SSH_USERNAME`
-    *   `SSH_KEY` (private SSH key for connecting to your server)
-
-## 11. Additional Features
-
-*   **Authentication/Authorization:** Implemented using JWT and Passport.js with role-based access control.
-*   **Logging and Monitoring:** Winston for structured logging, integrated with NestJS. Request logging middleware captures basic request info.
-*   **Error Handling Middleware:** Global exception filter ensures consistent JSON error responses and proper logging for all unhandled exceptions.
-*   **Caching Layer:** Redis integrated with NestJS `CacheModule` and `CacheInterceptor` for improved performance on read-heavy endpoints.
-*   **Rate Limiting:** `ThrottlerModule` implemented to prevent brute-force attacks and abuse of API endpoints.
-
-## 12. Contributing
-
-Contributions are welcome! Please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Write tests for your changes.
-5.  Ensure all tests pass and linting checks are green.
-6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
-7.  Push to the branch (`git push origin feature/your-feature-name`).
-8.  Create a Pull Request.
-
-## 13. License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 ```

@@ -1,23 +1,27 @@
 ```javascript
 const express = require('express');
 const userController = require('../controllers/userController');
-const { protect, authorize } = require('../middlewares/auth');
-const { validate, userSchemas } = require('../middlewares/validation');
+const { protect, restrictTo } = require('../middleware/auth');
+const { validate, Schemas } = require('../utils/validator');
 
 const router = express.Router();
 
-// All user routes require authentication
-router.use(protect);
+router.use(protect); // All user routes require authentication
 
-// Admin-only routes for managing all users
+// Get authenticated user's profile
+router.get('/me', userController.getMe);
+router.patch('/me', validate(Schemas.updateUser), userController.updateMe);
+router.delete('/me', userController.deleteMe);
+
+// Admin-only routes for user management
+router.use(restrictTo('admin'));
 router.route('/')
-  .get(authorize(['ADMIN']), userController.getAllUsers); // Only admin can get all users
+  .get(userController.getAllUsers);
 
-// Specific user routes
 router.route('/:id')
-  .get(validate(userSchemas.updateUser), authorize(['ADMIN', 'MANAGER', 'MEMBER']), userController.getUser) // User can get their own profile, admin/manager can get others
-  .patch(validate(userSchemas.updateUser), authorize(['ADMIN', 'MANAGER', 'MEMBER']), userController.updateUser) // User can update self, admin can update anyone. Manager can update members.
-  .delete(validate(userSchemas.updateUser), authorize(['ADMIN']), userController.deleteUser); // Only admin can delete users
+  .get(userController.getUserById)
+  .patch(validate(Schemas.updateUser), userController.updateUser)
+  .delete(userController.deleteUser);
 
 module.exports = router;
 ```

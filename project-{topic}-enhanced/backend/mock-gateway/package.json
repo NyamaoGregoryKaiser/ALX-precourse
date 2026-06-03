@@ -1,0 +1,20 @@
+```json
+{
+  "name": "mock-payment-gateway",
+  "version": "1.0.0",
+  "description": "A simple mock external payment gateway",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "body-parser": "^1.20.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
+```

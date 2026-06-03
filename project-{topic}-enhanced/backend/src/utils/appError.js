@@ -1,14 +1,11 @@
 ```javascript
 class AppError extends Error {
-  constructor(statusCode, message, isOperational = true, stack = '') {
+  constructor(message, statusCode, code = 'GENERIC_ERROR') {
     super(message);
     this.statusCode = statusCode;
-    this.isOperational = isOperational;
-    if (stack) {
-      this.stack = stack;
-    } else {
-      Error.captureStackTrace(this, this.constructor);
-    }
+    this.code = code;
+    this.isOperational = true; // Mark as operational for graceful error handling
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 

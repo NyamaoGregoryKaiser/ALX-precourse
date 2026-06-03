@@ -1,28 +1,30 @@
 ```dockerfile
-# Stage 1: Build the TypeScript application
-FROM node:20-alpine AS builder
+# Stage 1: Build dependencies
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm ci --only=production
 
-COPY . .
-RUN npm run build
-
-# Stage 2: Run the application
-FROM node:20-alpine
+# Stage 2: Production image
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN npm install --only=production
+# Copy production dependencies
+COPY --from=builder /app/node_modules ./node_modules
+# Copy application source code
+COPY . .
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/database/migrations ./src/database/migrations # Copy migrations for runtime
-COPY --from=builder /app/.env.example ./.env.example # For reference if needed, but .env is bind-mounted
-
+# Expose the application port
 EXPOSE 5000
 
-CMD ["sh", "-c", "npm run migration:run && npm start"] # Run migrations then start the app
+# Run database migrations and seeds (one-time on first run or build)
+# In production, these should be handled by CI/CD or separate migration service
+# RUN npm run migrate:latest
+# RUN npm run seed:run
+
+# Set default command to run the application
+CMD ["node", "src/server.js"]
 ```
