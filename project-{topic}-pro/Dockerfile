@@ -1,28 +1,33 @@
-# Use a Node.js 18 LTS image
-FROM node:18-alpine
+```dockerfile
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim-buster
 
 # Set the working directory in the container
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock)
-# to install dependencies first. This step is cached if dependencies don't change.
-COPY package*.json ./
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
 
-# Install app dependencies
-RUN npm install
+# Install system dependencies for psycopg2 and others
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application code
+# Copy the requirements file into the working directory
+COPY requirements.txt .
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
+
+# Copy the rest of the application code into the working directory
 COPY . .
 
-# Expose the port your app runs on
+# Expose port 5000 for the Flask application
 EXPOSE 5000
 
-# Run database migrations and seeds (optional, can also be done via CI/CD or separate migration service)
-# It's generally better to run migrations as a separate step in CI/CD or startup script
-# RATHER than directly in the Dockerfile if you want to apply migrations to an *existing* DB.
-# For simplicity in initial setup, showing it here.
-RUN npm run migrate:latest
-# RUN npm run seed:run # Only run seeds in dev/test, not production
-
-# Command to run the application
-CMD [ "npm", "start" ]
+# Run Flask application using Gunicorn
+# Adjust workers based on CPU cores (2 * NUM_CORES + 1 is a common formula)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "wsgi:app"]
+```

@@ -2,67 +2,63 @@
 version: '3.8'
 
 services:
+  app:
+    build: .
+    command: gunicorn --bind 0.0.0.0:5000 --workers 4 wsgi:app
+    volumes:
+      - .:/app
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+      - redis
+    # Recommended for production: restart policies
+    restart: unless-stopped
+    networks:
+      - cms_network
+
   db:
     image: postgres:15-alpine
-    container_name: vizflow_db
+    restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
-      POSTGRES_DB: ${DB_NAME:-vizflow}
-      POSTGRES_USER: ${DB_USER:-vizflow_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-vizflow_password}
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-cms_db}
     volumes:
-      - vizflow_pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data/
     networks:
-      - vizflow_network
+      - cms_network
 
-  backend:
-    build:
-      context: ./vizflow-backend
-      dockerfile: Dockerfile
-    container_name: vizflow_backend
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - cms_network
+
+  # Optional: Nginx for reverse proxy, load balancing, SSL termination in production
+  nginx:
+    image: nginx:alpine
     ports:
-      - "8080:8080"
-    environment:
-      DB_HOST: db # Service name in docker-compose is the hostname
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-vizflow}
-      DB_USER: ${DB_USER:-vizflow_user}
-      DB_PASSWORD: ${DB_PASSWORD:-vizflow_password}
-      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_that_should_be_long_and_random} # IMPORTANT: Change this for production!
-      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000} # 24 hours
-      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
-      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-10}
-      SPRING_PROFILES_ACTIVE: prod # Could be 'dev' or 'prod'
+      - "80:80"
+      - "443:443" # For HTTPS
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./certbot/conf:/etc/letsencrypt # For SSL certificates
+      # - ./certbot/www:/var/www/certbot # For SSL challenges
     depends_on:
-      db:
-        condition: service_healthy
+      - app
     networks:
-      - vizflow_network
-
-  frontend: # Placeholder for frontend service
-    build:
-      context: ./vizflow-frontend
-      dockerfile: Dockerfile
-    container_name: vizflow_frontend
-    ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:8080/api # Points to backend
-    depends_on:
-      - backend
-    networks:
-      - vizflow_network
-
-volumes:
-  vizflow_pg_data:
+      - cms_network
+    # command: "/bin/sh -c 'while :; do sleep 6h & wait $!; nginx -s reload; done & nginx -g \"daemon off;\"'" # For automated cert renewal
 
 networks:
-  vizflow_network:
+  cms_network:
     driver: bridge
+
+volumes:
+  postgres_data:
 ```
