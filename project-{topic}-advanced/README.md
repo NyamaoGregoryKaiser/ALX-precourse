@@ -1,350 +1,247 @@
-```markdown
-# Mobile Task Manager Backend
+# Data Visualization Platform
 
-This is a comprehensive, production-ready backend system for a mobile task management application. It's built with Node.js, Express, TypeScript, and Prisma (for PostgreSQL), incorporating enterprise-grade features and best practices for scalability, security, and maintainability.
-
----
+A comprehensive, production-ready data visualization tools system built with a full-stack TypeScript (Node.js/Express, React) application, PostgreSQL database, and enterprise-grade features.
 
 ## Table of Contents
 
 1.  [Features](#features)
-2.  [Project Structure](#project-structure)
-3.  [Technologies Used](#technologies-used)
-4.  [Getting Started](#getting-started)
+2.  [Technology Stack](#technology-stack)
+3.  [Project Structure](#project-structure)
+4.  [Setup and Installation](#setup-and-installation)
     *   [Prerequisites](#prerequisites)
-    *   [Local Development Setup](#local-development-setup)
-    *   [Running with Docker Compose](#running-with-docker-compose)
-    *   [Running Migrations & Seeding](#running-migrations--seeding)
-    *   [Running Tests](#running-tests)
-5.  [API Endpoints](#api-endpoints)
-6.  [Architecture](#architecture)
-7.  [Deployment](#deployment)
-8.  [CI/CD](#cicd)
-9.  [Testing Strategy](#testing-strategy)
-10. [Additional Features](#additional-features)
+    *   [Environment Variables](#environment-variables)
+    *   [Local Development with Docker Compose](#local-development-with-docker-compose)
+    *   [Manual Setup (Backend)](#manual-setup-backend)
+    *   [Manual Setup (Frontend)](#manual-setup-frontend)
+5.  [Running Migrations and Seeding Data](#running-migrations-and-seeding-data)
+6.  [Running Tests](#running-tests)
+7.  [API Documentation](#api-documentation)
+8.  [Architecture](#architecture)
+9.  [Deployment](#deployment)
+10. [Future Enhancements](#future-enhancements)
 11. [Contributing](#contributing)
 12. [License](#license)
 
----
-
 ## 1. Features
 
-*   **User Management:**
-    *   User Registration & Login (JWT-based authentication)
-    *   User Profile Management (view, update, delete own account)
-*   **Task Management:**
-    *   Create, Read (single, all, filtered), Update, Delete tasks
-    *   Tasks can have a title, description, due date, status, and category.
-    *   Filtering, sorting, and pagination for tasks.
-*   **Category Management:**
-    *   Create, Read (single, all), Update, Delete categories.
-    *   Categories are user-specific.
-*   **Authentication & Authorization:** JWT-based access tokens with refresh token concept (cookie-based). Role-based authorization (basic "user" role).
-*   **Database:** PostgreSQL with Prisma ORM for type-safe database interactions and migrations.
-*   **Caching:** Redis integration for frequently accessed data (e.g., user profiles, categories).
-*   **Logging:** Structured logging with Winston.
-*   **Error Handling:** Centralized, robust error handling with custom error classes.
-*   **Validation:** Request payload validation using Zod.
-*   **Security:** Helmet for common security headers, `express-rate-limit` for API rate limiting.
-*   **Containerization:** Docker support for easy setup and deployment.
-*   **Testing:** Comprehensive unit, integration, and end-to-end tests with Jest (aiming for 80%+ coverage).
-*   **CI/CD:** GitHub Actions workflow for automated testing and building.
-*   **Documentation:** Extensive README, API docs, Architecture docs, Deployment guide.
+*   **User Management**: Register, login, and manage users with role-based access control (Admin, Editor, Viewer).
+*   **Data Source Management**: Connect to various data sources (PostgreSQL, MySQL (planned), CSV Upload) securely.
+*   **Interactive Chart Editor**: Create and configure different chart types (Bar, Line, Pie, Table) using ECharts.
+*   **Dynamic Dashboards**: Build customizable dashboards by arranging and resizing charts using a drag-and-drop interface.
+*   **Authentication & Authorization**: JWT-based authentication with protected routes.
+*   **Data Processing**: Backend logic for executing queries against data sources and returning results.
+*   **Caching**: Redis-based caching for frequently accessed data to improve performance.
+*   **Error Handling**: Centralized error handling middleware.
+*   **Logging & Monitoring**: Winston-based logging for application activity and errors.
+*   **Rate Limiting**: Protects API from abuse.
+*   **Comprehensive Testing**: Unit, Integration, and API tests.
+*   **Deployment Ready**: Docker setup and CI/CD pipeline configuration.
 
-## 2. Project Structure
+## 2. Technology Stack
 
-```
-.
-├── src/                      # Source code
-│   ├── config/               # Environment variables, constants
-│   ├── database/             # Prisma client setup
-│   ├── middleware/           # Auth, error handling, logging, rate limiting, validation
-│   ├── modules/              # Feature modules (auth, categories, tasks, users)
-│   │   ├── auth/             # Authentication logic (register, login)
-│   │   ├── categories/       # Task categories management
-│   │   ├── tasks/            # Task management
-│   │   └── users/            # User management
-│   ├── utils/                # Helper functions (e.g., jwt, bcrypt, redis, custom errors, logger)
-│   ├── app.ts                # Express app setup, middleware, global error handler
-│   └── server.ts             # Server startup, database connection
-├── tests/                    # Test files (unit, integration, e2e)
-│   ├── unit/                 # Unit tests for services, utils
-│   ├── integration/          # Integration tests for repositories
-│   └── e2e/                  # End-to-End tests for API endpoints
-├── prisma/                   # Prisma schema, migrations, seed script
-├── .env.example              # Example environment variables
-├── Dockerfile                # Docker image for the backend
-├── docker-compose.yml        # Docker setup for backend, PostgreSQL, Redis
-├── docker-compose.test.yml   # Separate Docker setup for testing database
-├── jest.config.ts            # Jest test configuration
-├── tsconfig.json             # TypeScript configuration
-├── package.json              # Project dependencies and scripts
-├── README.md                 # This file
-├── .github/                  # GitHub Actions CI/CD workflows
-├── docs/                     # Additional documentation (API, Architecture, Deployment)
-└── load-test.js              # Conceptual K6 performance test script
-```
+*   **Backend**: Node.js, Express.js, TypeScript
+*   **Database**: PostgreSQL
+*   **ORM**: TypeORM
+*   **Caching**: Redis (via `ioredis`)
+*   **Authentication**: JWT (JSON Web Tokens), `bcryptjs` for password hashing
+*   **Frontend**: React, TypeScript, Tailwind CSS (for styling)
+*   **Charting Library**: ECharts
+*   **Layout**: `react-grid-layout`, `react-resizable`
+*   **HTTP Client**: Axios
+*   **Testing**: Jest, Supertest, React Testing Library
+*   **Containerization**: Docker, Docker Compose
+*   **CI/CD**: GitHub Actions
+*   **Logging**: Winston
+*   **API Documentation**: Swagger/OpenAPI
 
-## 3. Technologies Used
+## 3. Project Structure
 
-*   **Backend:** Node.js, Express.js
-*   **Language:** TypeScript
-*   **Database:** PostgreSQL
-*   **ORM:** Prisma
-*   **Authentication:** JWT (JSON Web Tokens), Bcrypt.js
-*   **Caching:** Redis
-*   **Logging:** Winston
-*   **Validation:** Zod
-*   **Testing:** Jest, Supertest
-*   **Containerization:** Docker
-*   **CI/CD:** GitHub Actions
-*   **Other:** ESLint, Prettier, Dotenv, Helmet, CORS, Morgan, Express-rate-limit
+(Refer to the detailed project structure at the beginning of the document)
 
-## 4. Getting Started
+## 4. Setup and Installation
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+*   Node.js (v18 or higher)
+*   npm (v8 or higher)
+*   Docker and Docker Compose (recommended)
+*   PostgreSQL (if not using Docker)
+*   Redis (if not using Docker)
 
-*   **Node.js** (v18.x or higher) & **npm** (v8.x or higher)
-*   **Docker** & **Docker Compose** (recommended for easy environment setup)
-*   **PostgreSQL** (if not using Docker)
-*   **Redis** (if not using Docker)
+### Environment Variables
 
-### Local Development Setup
+Create a `.env` file in the project root directory based on `.env.example`.
 
-1.  **Clone the repository:**
+```dotenv
+# .env (example content, replace with your actual values)
+NODE_ENV=development
+PORT=5000
+CLIENT_URL=http://localhost:3000
+ENCRYPTION_KEY=THIS_IS_A_VERY_STRONG_32_CHAR_SECRET_KEY # IMPORTANT: Must be exactly 32 random characters
+JWT_SECRET=supersecretjwtkeythatshouldbeverylongandrandom
+JWT_EXPIRES_IN=1h
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=password
+DB_NAME=dataviz_db
+REDIS_URL=redis://localhost:6379
+LOG_LEVEL=info
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+**Important Security Note**: The `ENCRYPTION_KEY` and `JWT_SECRET` should be strong, randomly generated strings, and *never* committed to version control. Use a secure method for managing secrets in production environments (e.g., environment variables, secret management services).
+
+### Local Development with Docker Compose (Recommended)
+
+1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/task-manager-backend.git
-    cd task-manager-backend
+    git clone https://github.com/your-username/data-viz-platform.git
+    cd data-viz-platform
     ```
+2.  **Create `.env` file**: Copy `.env.example` to `.env` and fill in your values. For Docker Compose, `DB_HOST` will be `db` and `REDIS_URL` will be `redis://redis:6379` within the Docker network, but for client-side API calls, `DB_HOST` and `REDIS_URL` would refer to the exposed ports.
+    *   For the server's `.env`, when running *inside* docker-compose, `DB_HOST=db` and `REDIS_URL=redis://redis:6379`.
+    *   The `docker-compose.yml` file handles passing these environment variables to the server container.
+3.  **Build and run Docker containers**:
+    ```bash
+    docker-compose up --build
+    ```
+    This will:
+    *   Build the `server` and `client` Docker images.
+    *   Start PostgreSQL and Redis containers.
+    *   Run database migrations and seed data on the `server` container (check `docker-compose.yml` `command`).
+    *   Start the backend on `http://localhost:5000`.
+    *   Start the frontend on `http://localhost:3000`.
 
-2.  **Install dependencies:**
+### Manual Setup (Backend)
+
+1.  **Navigate to the server directory**:
+    ```bash
+    cd data-viz-platform/server
+    ```
+2.  **Install dependencies**:
     ```bash
     npm install
     ```
-
-3.  **Configure environment variables:**
-    *   Copy the `.env.example` file to `.env`:
-        ```bash
-        cp .env.example .env
-        ```
-    *   Open `.env` and fill in the values.
-        *   `DATABASE_URL`: Ensure this points to your PostgreSQL database.
-            *   For local (non-Docker) PostgreSQL: `postgresql://user:password@localhost:5432/taskdb?schema=public`
-            *   For Docker Compose: `postgresql://user:password@db:5432/taskdb?schema=public`
-        *   `JWT_SECRET` and `REFRESH_TOKEN_SECRET`: Generate strong, random strings for these.
-        *   `REDIS_URL`: `redis://localhost:6379` (or `redis://redis:6379` for Docker)
-
-### Running with Docker Compose (Recommended)
-
-This sets up PostgreSQL, Redis, and the Node.js application in isolated containers.
-
-1.  **Build and run the services:**
+3.  **Set up PostgreSQL and Redis**:
+    *   Ensure PostgreSQL is running on `DB_PORT` (default 5432) and Redis on `6379`.
+    *   Create the database specified in `DB_NAME` (e.g., `dataviz_db`).
+4.  **Run migrations**:
     ```bash
-    docker-compose up --build -d
+    npm run migration:run
     ```
-    This command will:
-    *   Build the Docker image for the backend.
-    *   Start PostgreSQL and Redis containers.
-    *   Start the backend application container.
-    *   The `-d` flag runs them in detached mode.
-
-2.  **Run migrations and seed data (inside the app container):**
+5.  **Seed initial data (optional but recommended)**:
     ```bash
-    docker-compose exec app npm run prisma:migrate-dev
-    docker-compose exec app npm run prisma:seed
+    npm run seed
     ```
-    (Note: `npm run dev` in `docker-compose.yml` automatically rebuilds on code changes if `volumes` are configured, but migrations/seeding needs to be run explicitly).
-
-3.  **Access the application:**
-    The API will be running on `http://localhost:5000`.
-
-4.  **Stop services:**
-    ```bash
-    docker-compose down
-    ```
-
-### Running Migrations & Seeding (outside Docker, if applicable)
-
-After setting up your `.env` and ensuring your PostgreSQL database is running:
-
-1.  **Generate Prisma Client and apply migrations:**
-    ```bash
-    npx prisma migrate dev --name init
-    # If you get errors about database not existing, create it manually first:
-    # `createdb taskdb` for default local postgres
-    ```
-    This command creates the database schema based on `prisma/schema.prisma`.
-
-2.  **Seed the database with initial data:**
-    ```bash
-    npm run prisma:seed
-    ```
-
-### Running the Application
-
-1.  **Build the TypeScript code:**
-    ```bash
-    npm run build
-    ```
-
-2.  **Start the server:**
-    ```bash
-    npm start
-    ```
-    The API will be running on `http://localhost:5000`.
-
-3.  **For development with hot-reloading:**
+6.  **Start the server in development mode**:
     ```bash
     npm run dev
     ```
+    The backend API will be available at `http://localhost:5000`.
 
-### Running Tests
+### Manual Setup (Frontend)
 
-Ensure you have a test database configured in `.env` (or `docker-compose.test.yml` for CI/CD).
-The `tests/setup.ts` script handles database resets and seeding for tests.
-
-1.  **Run all tests (unit, integration, e2e) with coverage:**
+1.  **Navigate to the client directory**:
     ```bash
-    npm test
+    cd data-viz-platform/client
     ```
-
-2.  **Run specific test types:**
-    *   **Unit tests:** `jest tests/unit`
-    *   **Integration tests:** `jest tests/integration`
-    *   **End-to-end (API) tests:** `npm run test:e2e`
-
-3.  **Watch mode:**
+2.  **Install dependencies**:
     ```bash
-    npm run test:watch
+    npm install
     ```
+3.  **Start the React development server**:
+    ```bash
+    npm start
+    ```
+    The frontend application will be available at `http://localhost:3000`.
 
-## 5. API Endpoints
+## 5. Running Migrations and Seeding Data
 
-The API base URL is `/api/v1`.
+From the `server` directory:
 
-### Authentication (`/api/v1/auth`)
+*   **Run migrations**: `npm run migration:run`
+*   **Revert last migration**: `npm run migration:revert`
+*   **Create a new migration**: `npm run migration:create --name=YourMigrationName`
+*   **Seed data**: `npm run seed`
 
-*   `POST /register`: Register a new user.
-    *   **Body:** `{ name, email, password }`
-    *   **Response:** `201 CREATED` with user data and access token.
-*   `POST /login`: Log in an existing user.
-    *   **Body:** `{ email, password }`
-    *   **Response:** `200 OK` with user data and access token (refresh token in HttpOnly cookie).
-*   `POST /logout`: Log out the current user.
-    *   **Response:** `200 OK` (clears refresh token cookie).
+## 6. Running Tests
 
-### User Profile (`/api/v1/users`)
+### Backend Tests
 
-*   `GET /me`: Get current authenticated user's profile.
-    *   **Auth:** Required (Bearer Token)
-    *   **Response:** `200 OK` with user data.
-*   `PATCH /me`: Update current authenticated user's profile.
-    *   **Auth:** Required
-    *   **Body:** `{ name?, email?, password? }` (partial update)
-    *   **Response:** `200 OK` with updated user data.
-*   `DELETE /me`: Delete current authenticated user's account.
-    *   **Auth:** Required
-    *   **Response:** `204 NO CONTENT`.
+From the `server` directory:
 
-### Categories (`/api/v1/categories`)
+*   **Unit & Integration Tests**: `npm test`
+*   **With Coverage Report**: `npm run test:coverage`
 
-*   `POST /`: Create a new category for the authenticated user.
-    *   **Auth:** Required
-    *   **Body:** `{ name }`
-    *   **Response:** `201 CREATED` with new category data.
-*   `GET /`: Get all categories for the authenticated user.
-    *   **Auth:** Required
-    *   **Response:** `200 OK` with a list of categories.
-*   `GET /:id`: Get a specific category by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Response:** `200 OK` with category data.
-*   `PATCH /:id`: Update a specific category by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Body:** `{ name }`
-    *   **Response:** `200 OK` with updated category data.
-*   `DELETE /:id`: Delete a specific category by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Response:** `204 NO CONTENT`.
+**Note**: Backend tests require a separate PostgreSQL database configured via environment variables (`TEST_DB_HOST`, `TEST_DB_PORT`, etc.) to ensure a clean state for each test run. The `server/tests/setup.ts` handles dropping and syncing the schema for this test database. Ensure your local PostgreSQL can accept connections on the configured test port.
 
-### Tasks (`/api/v1/tasks`)
+### Frontend Tests
 
-*   `POST /`: Create a new task for the authenticated user.
-    *   **Auth:** Required
-    *   **Body:** `{ title, description?, dueDate?, categoryId?, status? }`
-    *   **Response:** `201 CREATED` with new task data.
-*   `GET /`: Get all tasks for the authenticated user.
-    *   **Auth:** Required
-    *   **Query Params:** `status`, `categoryId`, `search`, `sortBy`, `sortOrder`, `page`, `limit`
-    *   **Response:** `200 OK` with a list of tasks.
-*   `GET /:id`: Get a specific task by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Response:** `200 OK` with task data.
-*   `PATCH /:id`: Update a specific task by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Body:** `{ title?, description?, dueDate?, categoryId?, status? }` (partial update)
-    *   **Response:** `200 OK` with updated task data.
-*   `DELETE /:id`: Delete a specific task by ID for the authenticated user.
-    *   **Auth:** Required
-    *   **Response:** `204 NO CONTENT`.
+From the `client` directory:
 
-For detailed API documentation, including request/response examples and error codes, refer to the [API Documentation](#api-documentation) section.
+*   **Unit Tests (React Components)**: `npm test`
 
-## 6. Architecture
+### Performance Tests
 
-Refer to the [Architecture Documentation](#architecture-documentation) for a detailed overview.
+Performance tests are typically run using tools like [Artillery](https://www.artillery.io/).
 
-## 7. Deployment
+1.  **Install Artillery**: `npm install -g artillery`
+2.  **Configure `.env`**: Ensure your server is running (e.g., via Docker Compose) and accessible.
+3.  **Run a sample load test**: (Example in `server/docs/artillery_dashboard_load.yml` - conceptual, create this file yourself)
+    ```bash
+    artillery run server/docs/artillery_dashboard_load.yml
+    ```
+    *This requires a `dashboard_id_from_seed` and `chart_id_from_seed` that exist in your test environment, populate them in the Artillery config manually after seeding data.*
 
-Refer to the [Deployment Guide](#deployment-guide) for instructions on deploying to various cloud providers.
+## 7. API Documentation
 
-## 8. CI/CD
+The backend API is documented using Swagger (OpenAPI).
 
-The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that automatically:
+1.  **Generate Swagger JSON**:
+    Navigate to `server` directory and run:
+    ```bash
+    npm run swagger-autogen
+    ```
+    This will generate `server/docs/api.json`.
+2.  **Access Swagger UI**:
+    Once the backend server is running (either manually or via Docker), navigate to:
+    `http://localhost:5000/api-docs`
+    You can explore all available endpoints, their request/response schemas, and even test them directly from the UI.
 
-1.  **Lints** the TypeScript code.
-2.  **Builds** the TypeScript project.
-3.  **Runs all tests** (unit, integration, E2E) against a dedicated test database (PostgreSQL and Redis services spun up by GitHub Actions).
-4.  Reports **code coverage**.
+## 8. Architecture
 
-Upon successful completion on the `main` branch, it can be extended to include deployment steps to your chosen cloud provider.
+(Refer to `docs/ARCHITECTURE.md` for a detailed architecture overview)
 
-## 9. Testing Strategy
+## 9. Deployment
 
-*   **Unit Tests:** Focus on individual functions or methods (e.g., utility functions, service methods mocking repository calls). Mocks are heavily used to isolate the unit under test.
-*   **Integration Tests:** Verify the interaction between different components (e.g., service interacting with a real repository, or repository interacting with the actual database). A dedicated test database (`docker-compose.test.yml`) is used to ensure isolation and a clean state for each test run.
-*   **End-to-End (E2E) / API Tests:** Use `supertest` to make HTTP requests to the running Express application, testing full request-response cycles, including middleware, routing, controllers, services, and database interactions. These tests validate the API contract.
-*   **Performance Tests:** Conceptual load testing with `k6` to identify performance bottlenecks and ensure the API can handle anticipated traffic.
+(Refer to `docs/DEPLOYMENT.md` for a detailed deployment guide)
 
-**Coverage:** The goal is to achieve 80%+ code coverage for critical business logic.
+## 10. Future Enhancements
 
-## 10. Additional Features
-
-*   **Authentication/Authorization:** Implemented with JWT for stateless authentication. Refresh tokens are used for prolonged sessions. Middleware for role-based access control is provided.
-*   **Logging and Monitoring:** Structured logging with Winston. HTTP request logging via Morgan, and custom detailed request logging for all incoming requests, including user ID and response time.
-*   **Error Handling Middleware:** A global error handling middleware catches all `AppError` instances and other unexpected errors, providing consistent and informative error responses without leaking sensitive details in production.
-*   **Caching Layer:** Redis integration for caching frequently accessed data (e.g., category lists, user profiles, specific tasks) to reduce database load and improve response times. Cache invalidation strategies are implemented on create/update/delete operations.
-*   **Rate Limiting:** `express-rate-limit` middleware is used to protect against brute-force attacks and resource exhaustion by limiting the number of requests from a single IP address within a specified time window. Separate rate limits for general API and authentication endpoints.
+*   **More Data Source Types**: MySQL, SQL Server, MongoDB, Google Sheets, S3 (for CSV/Parquet).
+*   **Advanced Charting Options**: More granular control over chart configurations, custom chart types.
+*   **Real-time Dashboards**: WebSockets for live data updates.
+*   **Data Transformation**: ETL capabilities within the platform.
+*   **User Collaboration**: Sharing dashboards with specific users/groups, commenting.
+*   **Alerting**: Set up alerts based on data thresholds.
+*   **Query Builder UI**: Visual query builder for non-SQL users.
+*   **Version Control for Dashboards/Charts**: History and rollback.
+*   **Theming**: Customizable dashboard themes.
 
 ## 11. Contributing
 
 Contributions are welcome! Please follow these steps:
 
 1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature`).
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
 3.  Make your changes.
 4.  Write tests for your changes.
-5.  Ensure all tests pass (`npm test`).
-6.  Ensure code style is consistent (`npm run lint:fix`).
-7.  Commit your changes (`git commit -m 'feat: Add new feature'`).
-8.  Push to the branch (`git push origin feature/your-feature`).
-9.  Open a Pull Request.
+5.  Ensure all tests pass (`npm test` in both client and server).
+6.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Open a Pull Request.
 
 ## 12. License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-```
-
-**API Documentation (OpenAPI/Swagger Style - Markdown)**
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

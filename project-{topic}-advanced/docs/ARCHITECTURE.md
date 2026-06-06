@@ -1,127 +1,119 @@
-# Architecture Documentation
-
-This document provides a high-level overview of the architecture for the Enterprise-Grade Authentication System.
+# Data Visualization Platform - Architecture Documentation
 
 ## 1. System Overview
 
-The authentication system is built as a RESTful API service using Flask, designed to be stateless and scalable. It provides all core functionalities required for user management, secure authentication, and role-based authorization. The system leverages Docker for containerization, PostgreSQL as the primary database, and Redis for caching and token blacklisting.
-
-## 2. Architectural Diagram
+The Data Visualization Platform is a full-stack web application designed to allow users to connect to various data sources, create interactive charts, and build customizable dashboards. It follows a client-server architecture, with a React frontend and a Node.js/Express backend, interacting with a PostgreSQL database and a Redis cache.
 
 ```mermaid
 graph TD
-    A[Client - Browser/Mobile App] -->|HTTPS Requests| B(Load Balancer / Reverse Proxy - Nginx/Caddy)
-    B --> C[Auth System API - Flask/Gunicorn]
-    C -->|Reads/Writes| D[PostgreSQL Database]
-    C -->|Reads/Writes/Cache| E[Redis Cache/Blacklist]
-    C -->|Sends Emails| F[Email Service - e.g., Mailtrap/SendGrid/SES]
+    A[User Browser/Client] ---|HTTP/HTTPS| B(Load Balancer/CDN)
+    B --- C[Nginx/Web Server]
+    C ---|Static Files| D[React Frontend]
+    C ---|API Requests| E[Node.js Express Backend]
 
-    subgraph Core Components
-        C --- C1(Flask App Factory)
-        C --- C2(Configuration)
-        C --- C3(Extensions - JWT, Bcrypt, Mail, Limiter, Cache)
-        C --- C4(Models - User, TokenBlacklist)
-        C --- C5(Services - Auth, User, Email)
-        C --- C6(Routes - Auth, User, Admin)
-        C --- C7(Utilities - Decorators, JWT Handler, Helpers)
-        C --- C8(Error Handling)
-        C --- C9(CLI Commands)
+    E ---|SQL/TypeORM| F(PostgreSQL Database)
+    E ---|Cache Reads/Writes| G(Redis Cache)
+
+    subgraph Backend Services
+        E -- Auth --> H(Auth Module)
+        E -- Data Source --> I(Data Source Module)
+        E -- Chart --> J(Chart Module)
+        E -- Dashboard --> K(Dashboard Module)
+        E -- Middleware --> L(Security, Logging, Error Handling, Rate Limiting)
     end
 
-    subgraph External Integrations
-        F --> G[SMTP Server / Email API]
+    subgraph Database Layer
+        F -- Entities --> M(TypeORM Entities)
+        F -- Migrations --> N(TypeORM Migrations)
+        F -- Data --> O(Data Storage)
     end
 
-    subgraph Infrastructure
-        D --- D1(Persistent Volume)
-        E --- E1(Persistent Volume)
+    subgraph External Tools
+        P[Docker/Docker Compose]
+        Q[GitHub Actions]
+        R[Swagger UI]
+        S[ECharts/Chart.js]
     end
 
-    subgraph CI/CD
-        H[Code Repository - GitHub] --> I[CI/CD Pipeline - GitHub Actions]
-        I --> J[Docker Registry - Docker Hub]
-        I --> K[Deployment Target - Server/Cloud]
-        K --> B
-    end
+    P -- Containerization --> E
+    P -- Containerization --> F
+    P -- Containerization --> G
+    Q -- CI/CD --> E
+    Q -- CI/CD --> D
+    R -- API Docs --> E
+    D -- Renders Charts --> S
 ```
 
-## 3. Key Architectural Decisions
+## 2. Key Architectural Decisions
 
-*   **Microservice vs. Monolith**: Started as a monolithic Flask application for simplicity and rapid development of core authentication features. This allows for easier management of shared resources (DB, Redis) and a single deployment unit. However, the modular structure (blueprints, services) facilitates a future transition to a microservices architecture if specific functionalities (e.g., email service, notification service) need to scale independently.
-*   **RESTful API**: Uses a standard RESTful approach for API design, ensuring statelessness and predictable resource-oriented URLs. JSON is used for request and response bodies.
-*   **JWT for Authentication**:
-    *   **Statelessness**: JWTs enable stateless authentication, reducing server load by removing the need for session storage on the server-side.
-    *   **Access & Refresh Tokens**: Separating access (short-lived) and refresh (long-lived) tokens enhances security. Access tokens are used for API calls, while refresh tokens are used to obtain new access tokens.
-    *   **Token Blacklisting**: Implemented using Redis to immediately invalidate tokens upon logout or revocation, mitigating the risk of stolen tokens.
-*   **Role-Based Access Control (RBAC)**: Simplistic RBAC with `user` and `admin` roles, enforced through custom Flask decorators (`@roles_required`). This allows for clear separation of permissions.
-*   **Database Choice (PostgreSQL)**: Selected for its robustness, reliability, ACID compliance, and extensive feature set, suitable for production environments.
-*   **ORM (SQLAlchemy)**: Provides an object-relational mapping layer, abstracting raw SQL queries and promoting a Pythonic way of interacting with the database, while also preventing SQL injection vulnerabilities.
-*   **Database Migrations (Alembic/Flask-Migrate)**: Essential for managing schema changes in a controlled and versioned manner, crucial for team development and production deployments.
-*   **Caching (Redis)**: Used for high-speed lookups for JWT blacklisting and general caching needs. Redis is an in-memory data store, providing low-latency access.
-*   **Rate Limiting (Flask-Limiter)**: Implemented to protect against various forms of abuse (e.g., brute-force attacks, excessive API calls), enhancing system stability and security.
-*   **Containerization (Docker & Docker Compose)**:
-    *   **Portability**: Ensures the application runs consistently across different environments (development, testing, production).
-    *   **Isolation**: Each service (app, db, redis) runs in its own isolated container.
-    *   **Ease of Setup**: Docker Compose simplifies local development by orchestrating multiple services.
-*   **Structured Logging**: Utilizes Python's `logging` module with JSON formatting in production, making logs easily consumable by log aggregation systems (e.g., ELK stack).
-*   **Centralized Error Handling**: Custom error handlers ensure consistent, informative JSON error responses across the API.
-*   **Modularity**: Code is organized into blueprints, services, and utilities to improve maintainability, testability, and separation of concerns.
+### 2.1. Technology Stack Choices
 
-## 4. Components Breakdown
+*   **TypeScript**: Chosen for both frontend and backend for type safety, improved code quality, and better maintainability, especially in larger enterprise-grade projects.
+*   **Node.js (Express)**: Provides a fast, scalable, and non-blocking I/O server environment for the backend. Express offers a minimalist web framework.
+*   **React**: A popular, component-based library for building interactive user interfaces, known for its strong ecosystem and performance.
+*   **PostgreSQL**: A robust, reliable, and feature-rich open-source relational database. Ideal for structured data, complex queries, and data integrity.
+*   **TypeORM**: An ORM (Object-Relational Mapper) for TypeScript and JavaScript that supports PostgreSQL. It simplifies database interactions by mapping database entities to TypeScript classes and provides strong typing for queries and migrations.
+*   **Redis**: Used as an in-memory data store for caching frequently accessed query results and dashboard layouts, significantly improving response times and reducing database load.
+*   **ECharts**: A powerful and flexible charting library for building a wide variety of interactive data visualizations. Its JSON-based option system integrates well with dynamic configuration.
+*   **Docker/Docker Compose**: For containerization, ensuring consistent development, testing, and production environments. Simplifies setup and deployment.
 
-### 4.1. `app` Directory
-*   **`__init__.py`**: The application factory, responsible for creating the Flask app, loading configurations, initializing extensions, registering blueprints, and setting up error handlers.
-*   **`config.py`**: Defines environment-specific configuration classes (Development, Testing, Production) inherited from a base `Config` class.
-*   **`extensions.py`**: Centralizes the initialization and configuration of Flask extensions (SQLAlchemy, JWTManager, Bcrypt, Mail, Limiter, Cache). Also contains JWT callbacks for token blacklisting.
-*   **`models.py`**: Defines the SQLAlchemy ORM models, including `User` (with password hashing and role management) and `TokenBlacklist` (for JWT revocation).
-*   **`routes/`**: Contains Flask Blueprints, grouping API endpoints by resource type:
-    *   `auth.py`: User registration, login, logout, refresh token, password reset, email verification.
-    *   `user.py`: Authenticated user profile management (view, update).
-    *   `admin.py`: Admin-specific user management (view all, view by ID, update, delete).
-*   **`services/`**: Implements the business logic for each domain, decoupling it from the route handlers:
-    *   `auth_service.py`: Handles user authentication workflows, token generation, password resets.
-    *   `user_service.py`: Manages user profile operations.
-    *   `email_service.py`: Abstraction for sending emails (verification, password reset).
-*   **`utils/`**: Helper modules:
-    *   `decorators.py`: Custom decorators for JWT authentication (`@jwt_required`) and role-based authorization (`@roles_required`).
-    *   `jwt_handler.py`: Functions for managing JWT (blacklisting, decoding).
-    *   `helpers.py`: General utility functions (e.g., UUID generation).
-*   **`errors.py`**: Defines custom exception classes and registers error handlers to provide consistent JSON error responses.
-*   **`cli.py`**: Registers custom Flask CLI commands for database seeding and creating admin users.
+### 2.2. Security
 
-### 4.2. Database Layer
-*   **PostgreSQL**: The relational database used for persistent storage of user data, token blacklist entries, etc.
-*   **Redis**: An in-memory data store used for fast lookups of blacklisted JWTs and for rate limiting storage.
-*   **Flask-Migrate**: Integrates Alembic with Flask to manage database migrations, allowing for schema evolution.
+*   **Authentication**: JWT (JSON Web Tokens) are used for stateless authentication. Tokens are stored client-side (e.g., in `localStorage` or `sessionStorage` with appropriate security considerations like `httpOnly` cookies for XSS protection, though for simplicity in this example, it's `localStorage`).
+*   **Authorization**: Role-Based Access Control (RBAC) is implemented, with roles like `ADMIN`, `EDITOR`, and `VIEWER`. Middleware (`authorizeRole`) enforces permissions on API routes.
+*   **Data Encryption**: Sensitive connection details for data sources are encrypted at rest in the database using AES-256-CBC symmetric encryption, ensuring that credentials are not stored in plaintext. An `ENCRYPTION_KEY` is required.
+*   **Input Validation & Sanitization**: Basic validation is performed on user inputs (e.g., required fields). For SQL queries, a critical part of a data viz tool, basic checks prevent DDL/DML operations, but a full SQL parser or parameterized queries are recommended for true robustness against SQL injection.
+*   **HTTPS**: Assumed for production environments via a Load Balancer/CDN to encrypt data in transit.
+*   **Helmet**: Express middleware to set various HTTP headers for security (e.g., XSS protection, MIME-type sniffing prevention).
+*   **CORS**: Configured to allow requests only from the frontend domain.
 
-### 4.3. Testing
-*   **Pytest**: The chosen testing framework.
-*   **`tests/conftest.py`**: Defines pytest fixtures for setting up the Flask app, test client, and a clean database session for each test.
-*   **`tests/unit/`**: Contains tests for individual functions and models in isolation.
-*   **`tests/integration/`**: Tests the interaction between multiple components (e.g., a full user journey).
-*   **`tests/api/`**: Tests the API endpoints end-to-end, simulating HTTP requests.
+### 2.3. Performance & Scalability
 
-### 4.4. CI/CD
-*   **GitHub Actions**: Configured to automate the build, test, and deployment process.
-*   **`main.yml`**: Defines workflows for running tests on push/pull request and deploying to production from the `main` branch.
-*   **Docker Registry**: Docker Hub (or a private registry) used to store built Docker images.
+*   **Caching with Redis**: Reduces database load for repeated queries and frequently accessed data (e.g., dashboard layouts, chart data).
+*   **Compression (Gzip)**: `compression` middleware reduces the size of HTTP response bodies, speeding up data transfer.
+*   **Rate Limiting**: `express-rate-limit` protects API endpoints from brute-force attacks and abuse, ensuring fair resource usage.
+*   **Efficient Database Queries**: TypeORM's `createQueryBuilder` and `find` methods are used with `relations` to optimize data retrieval and avoid N+1 query problems. Database indexes are crucial.
+*   **Stateless Backend**: JWTs enable a stateless backend, making it easier to scale horizontally by adding more server instances behind a load balancer.
 
-## 5. Scalability Considerations
+### 2.4. Maintainability & Extensibility
 
-*   **Stateless API**: JWTs facilitate horizontal scaling of the Flask application instances, as no session data needs to be shared between them.
-*   **Database Scaling**: PostgreSQL can be scaled vertically (more powerful server) or horizontally (read replicas, sharding for very large datasets).
-*   **Redis Scaling**: Redis can be clustered for high availability and sharded for larger datasets.
-*   **Load Balancing**: A load balancer (Nginx, AWS ELB, etc.) is essential in production to distribute requests across multiple Flask application instances.
-*   **Asynchronous Tasks**: For long-running operations (e.g., sending emails), an asynchronous task queue (e.g., Celery with RabbitMQ/Redis backend) would be integrated to offload work from the main web server, improving responsiveness.
+*   **Modular Design**: The backend is organized into modules (Auth, Users, Data Sources, Charts, Dashboards), each with its own routes, controllers, and services. This promotes separation of concerns.
+*   **Service Layer**: Business logic resides in services, keeping controllers thin and focused on request/response handling.
+*   **TypeORM Migrations**: Managed database schema changes ensure consistency across environments.
+*   **Clear Folder Structure**: A well-defined folder structure for both client and server improves navigability and onboarding for new developers.
+*   **Frontend Componentization**: React's component-based architecture allows for reusable UI elements.
+*   **Context API**: Used for global state management (Auth, Data), simplifying state sharing across components without prop drilling.
 
-## 6. Security Considerations (Architectural)
+### 2.5. Error Handling & Logging
 
-*   **HTTPS Everywhere**: All communication between clients and the API (and ideally between internal services) should be encrypted using HTTPS.
-*   **Environment Variables for Secrets**: Sensitive information (API keys, database credentials, JWT secrets) is never hardcoded but injected via environment variables.
-*   **Input Validation**: Strict validation of all incoming API request data prevents common vulnerabilities like injection attacks and malformed data.
-*   **Rate Limiting**: Protects against brute-force attacks and resource exhaustion.
-*   **Cross-Origin Resource Sharing (CORS)**: If the frontend is hosted on a different domain, explicit CORS configuration will be necessary to control which origins can access the API.
-*   **Principle of Least Privilege**: Services and users are granted only the minimum necessary permissions to perform their functions.
-*   **Auditing and Logging**: Comprehensive logging provides an audit trail for security investigations.
+*   **Centralized Error Handling**: A dedicated Express middleware (`errorHandler`) catches all errors, standardizes their format (`AppError`), and sends appropriate HTTP responses, preventing sensitive information leakage.
+*   **Structured Logging**: `Winston` is used for logging, providing different log levels (info, error, debug, etc.) and allowing for easy integration with external monitoring systems. Request logging provides insights into API usage.
 
-This architecture provides a solid, secure, and maintainable foundation for building modern web applications requiring robust authentication and authorization.
+## 3. Data Flow
+
+1.  **User Interaction (Client)**: User logs in, navigates to a dashboard, creates a data source, or configures a chart.
+2.  **API Request (Client -> Backend)**: The React frontend uses Axios to send authenticated API requests to the Node.js/Express backend.
+3.  **Middleware Processing (Backend)**: Requests pass through middleware for:
+    *   Rate limiting
+    *   CORS checks
+    *   Security headers (Helmet)
+    *   Request logging
+    *   JWT authentication (`authenticateToken`)
+    *   Authorization (`authorizeRole`)
+4.  **Controller Handoff (Backend)**: If authorized, the request is routed to the appropriate controller method.
+5.  **Service Layer (Backend)**: The controller calls a service method, which encapsulates the core business logic.
+    *   Services interact with the TypeORM repositories to perform CRUD operations on entities (Users, Data Sources, Charts, Dashboards).
+    *   For data source queries, the `DataSourceService` decrypts connection details, connects to the external database (e.g., PostgreSQL), executes the query, and returns raw data. It also leverages Redis for caching.
+6.  **Database/Cache Interaction**:
+    *   TypeORM translates service calls into SQL queries executed against PostgreSQL.
+    *   Redis is checked for cached query results before hitting the database. If data is not in cache, it's fetched from DB and stored in Redis.
+7.  **Response Generation (Backend -> Client)**: The service returns data to the controller, which formats the HTTP response (JSON) and sends it back to the client.
+8.  **Data Visualization (Client)**: The frontend receives the data, updates its state, and uses ECharts to render interactive visualizations within the dashboard layout.
+
+## 4. Environment and Deployment
+
+*   **Development**: Uses Docker Compose for easy local setup, providing isolated environments for the database, cache, backend, and frontend. Hot-reloading is configured for efficient development.
+*   **Testing**: Dedicated test database setup (within `jest-setup`) ensures isolated and repeatable tests for backend. Frontend tests use React Testing Library. GitHub Actions automate CI/CD, running tests on every push/PR.
+*   **Production**: Docker images are built and pushed to a registry. Deployment to cloud platforms (like Render, AWS ECS, Google Cloud Run) would involve orchestrating these Docker containers, managing environment variables securely, and setting up HTTPS and domain mapping.
+
+This architecture aims for a balance between simplicity for rapid development and the robustness required for an enterprise-grade application.

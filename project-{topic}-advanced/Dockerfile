@@ -1,49 +1,24 @@
-```dockerfile
-# Stage 1: Build the application
-FROM node:20-alpine AS build
+# Use a Node.js 18 image as base
+FROM node:18-alpine
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# Copy package.json and package-lock.json (if any)
+# to install dependencies
+COPY server/package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy the rest of the application source code
+COPY server/ ./
 
-# Generate Prisma client and build TypeScript code
-RUN npx prisma generate
+# Build the TypeScript application
 RUN npm run build
 
-# Stage 2: Run the application
-FROM node:20-alpine AS production
-
-WORKDIR /app
-
-# Install only production dependencies
-COPY package*.json ./
-RUN npm install --only=production
-
-# Copy built application from the build stage
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/.env.example ./
-
-# Expose port (ensure this matches your app's listen port)
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Set environment variables (for production, these should be managed by orchestration)
-# ENV NODE_ENV=production
-# ENV DATABASE_URL="..."
-# ENV JWT_SECRET="..."
-# ENV REFRESH_TOKEN_SECRET="..."
-# ENV REDIS_URL="..."
-# ENV PORT=5000
-
 # Command to run the application
-CMD ["node", "dist/server.js"]
-```
+CMD ["npm", "run", "serve"]

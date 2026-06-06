@@ -1,0 +1,316 @@
+{
+  "info": {
+    "_postman_id": "YOUR_COLLECTION_ID",
+    "name": "Data Visualization Platform API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Data Sources",
+      "item": [
+        {
+          "name": "Create Data Source (PostgreSQL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"My Postgres Source\",\n    \"type\": \"POSTGRESQL\",\n    \"connectionDetails\": {\n        \"host\": \"localhost\",\n        \"port\": 5432,\n        \"user\": \"postgres\",\n        \"password\": \"password\",\n        \"database\": \"your_db_name\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/data-sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["data-sources"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Data Sources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/data-sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["data-sources"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Execute Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"query\": \"SELECT * FROM users LIMIT 10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/data-sources/{{dataSourceId}}/execute-query",
+              "host": ["{{baseUrl}}"],
+              "path": ["data-sources", "{{dataSourceId}}", "execute-query"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Charts",
+      "item": [
+        {
+          "name": "Create Chart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Sales by Month\",\n    \"type\": \"BAR\",\n    \"dataSourceId\": \"{{dataSourceId}}\",\n    \"query\": \"SELECT month, sales FROM sales_data ORDER BY month\",\n    \"configuration\": \"{\\\"title\\\":{\\\"text\\\":\\\"Monthly Sales\\\"},\\\"tooltip\\\":{},\\\"legend\\\":{\\\"data\\\":[\\\"Sales\\\"]}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/charts",
+              "host": ["{{baseUrl}}"],
+              "path": ["charts"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Charts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/charts",
+              "host": ["{{baseUrl}}"],
+              "path": ["charts"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboards",
+      "item": [
+        {
+          "name": "Create Dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"My First Dashboard\",\n    \"description\": \"A dashboard with key metrics.\",\n    \"chartIds\": [\"{{chartId1}}\", \"{{chartId2}}\"],\n    \"layout\": [\n        {\"i\": \"{{chartId1}}\", \"x\": 0, \"y\": 0, \"w\": 6, \"h\": 8},\n        {\"i\": \"{{chartId2}}\", \"x\": 6, \"y\": 0, \"w\": 6, \"h\": 8}\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dashboards",
+              "host": ["{{baseUrl}}"],
+              "path": ["dashboards"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Dashboards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboards",
+              "host": ["{{baseUrl}}"],
+              "path": ["dashboards"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Example Pre-request Script: Set base URL from environment",
+          "pm.environment.set(\"baseUrl\", \"http://localhost:5000/api/v1\");",
+          "",
+          "// Example: Automatically extract JWT from login response",
+          "if (pm.request.url.includes('/auth/login') && pm.response && pm.response.headers.has('x-auth-token')) {",
+          "    pm.environment.set(\"authToken\", pm.response.headers.get('x-auth-token'));",
+          "    console.log('JWT Token set:', pm.environment.get('authToken'));",
+          "}",
+          "",
+          "// Example: Capture IDs for chaining requests (requires running requests in order)",
+          "if (pm.request.url.includes('/auth/register') && pm.response && pm.response.json().userId) {",
+          "    pm.environment.set(\"registeredUserId\", pm.response.json().userId);",
+          "}",
+          "if (pm.request.url.includes('/data-sources') && pm.request.method === 'POST' && pm.response && pm.response.json().id) {",
+          "    pm.environment.set(\"dataSourceId\", pm.response.json().id);",
+          "}",
+          "if (pm.request.url.includes('/charts') && pm.request.method === 'POST' && pm.response && pm.response.json().id) {",
+          "    pm.environment.set(\"chartId1\", pm.response.json().id); // If you create multiple, you need to set more env vars",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1"
+    },
+    {
+      "key": "authToken",
+      "value": ""
+    },
+    {
+      "key": "dataSourceId",
+      "value": ""
+    },
+    {
+      "key": "chartId1",
+      "value": ""
+    },
+    {
+      "key": "chartId2",
+      "value": ""
+    },
+    {
+      "key": "dashboardId",
+      "value": ""
+    }
+  ]
+}

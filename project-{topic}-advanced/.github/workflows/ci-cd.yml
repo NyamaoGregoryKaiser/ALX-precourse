@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for PMApi
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,175 +11,97 @@ on:
       - develop
 
 jobs:
-  build-and-test-backend:
+  build-and-test-server:
+    name: Build & Test Server
     runs-on: ubuntu-latest
-    env:
-      DB_USER: ciuser
-      DB_PASSWORD: cipassword
-      DB_NAME: cidb
-      DB_TEST_NAME: cidb_test
-      JWT_SECRET: ci_test_secret
-      JWT_ACCESS_EXPIRATION_MINUTES: 1
-      JWT_REFRESH_EXPIRATION_DAYS: 1
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      LOG_LEVEL: error # Reduce log noise in CI
-      RATE_LIMIT_WINDOW_MINUTES: 1
-      RATE_LIMIT_MAX_REQUESTS: 10
-    services:
-      postgres:
-        image: postgres:15-alpine
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+
+      - name: Install dependencies (server)
+        run: npm install
+        working-directory: ./server
+
+      - name: Build server
+        run: npm run build
+        working-directory: ./server
+
+      - name: Setup PostgreSQL for tests
+        uses: huafu/docker-action-postgresql@v1
+        with:
+          postgresql version: '14'
+          username: testuser
+          password: testpassword
+          database: testdb
+          port: 5433 # Use a different port to avoid conflicts if needed
+
+      - name: Run server tests
+        run: |
+          npm test
+        working-directory: ./server
         env:
-          POSTGRES_USER: ${DB_USER}
-          POSTGRES_PASSWORD: ${DB_PASSWORD}
-          POSTGRES_DB: ${DB_TEST_NAME} # Use test database for CI
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_USER: testuser
+          DB_PASSWORD: testpassword
+          DB_NAME: testdb
+          JWT_SECRET: test_jwt_secret_key
+          ENCRYPTION_KEY: thisisatestencryptionkey32chars
+          REDIS_URL: redis://localhost:6379 # Not actually used by tests in this setup, but good to define
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Install Backend Dependencies
-      run: npm install
-      working-directory: ./backend
-
-    - name: Run ESLint
-      run: npm run lint
-      working-directory: ./backend
-
-    - name: Wait for PostgreSQL to be ready
-      run: sleep 10 # Give postgres a bit more time to fully initialize
-
-    - name: Run Database Migrations for Test
-      run: npx sequelize db:migrate --env test
-      working-directory: ./backend
-
-    - name: Run Database Seeders for Test
-      run: npx sequelize db:seed:all --env test
-      working-directory: ./backend
-
-    - name: Run Backend Tests
-      run: npm test
-      working-directory: ./backend
-      env:
-        DB_HOST: localhost # In CI, directly access postgres service
-    
-    - name: Archive Code Coverage Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: backend-coverage-report
-        path: backend/coverage/lcov-report/
-
-  build-frontend:
+  build-and-test-client:
+    name: Build & Test Client
     runs-on: ubuntu-latest
-    needs: build-and-test-backend # Ensure backend tests pass before building frontend
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
 
-    - name: Install Frontend Dependencies
-      run: npm install
-      working-directory: ./frontend
+      - name: Install dependencies (client)
+        run: npm install
+        working-directory: ./client
 
-    - name: Build Frontend Application
-      run: npm run build
-      working-directory: ./frontend
+      - name: Run client tests
+        run: npm test -- --watchAll=false
+        working-directory: ./client
 
-    - name: Archive Frontend Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-build
-        path: frontend/build/
-
-  docker-build-and-push:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Only push to main branch on push event
-    runs-on: ubuntu-latest
-    needs: [build-and-test-backend, build-frontend] # Depends on both backend and frontend builds
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
-    - name: Get commit SHA for tagging
-      id: vars
-      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-    - name: Build and Push Backend Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./backend
-        file: ./backend/Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/pmapi-backend:latest
-          ${{ secrets.DOCKER_USERNAME }}/pmapi-backend:${{ steps.vars.outputs.sha_short }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Build and Push Frontend Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./frontend
-        file: ./frontend/Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/pmapi-frontend:latest
-          ${{ secrets.DOCKER_USERNAME }}/pmapi-frontend:${{ steps.vars.outputs.sha_short }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build client
+        run: npm run build
+        working-directory: ./client
 
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Only deploy main branch on push event
+    name: Deploy to Render (or other platform)
+    needs: [build-and-test-server, build-and-test-client]
+    if: github.ref == 'refs/heads/main' # Only deploy on push to main
     runs-on: ubuntu-latest
-    needs: docker-build-and-push
-    environment: Production # Reference a GitHub Environment for secrets/approvals
     steps:
-    - name: Deploy to Server (Placeholder)
-      run: |
-        echo "Simulating deployment to production server..."
-        echo "Fetch latest Docker images and restart services."
-        # This step would typically involve SSHing into your server and running deployment commands,
-        # e.g., using `ssh` or a deployment tool like Ansible, Capistrano, etc.
-        # Example (DO NOT USE IN PRODUCTION WITHOUT SECURE CONFIGURATION):
-        # ssh -i ~/.ssh/your_ssh_key -o StrictHostKeyChecking=no user@your-server-ip "
-        #   docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} &&
-        #   cd /path/to/your/app &&
-        #   docker-compose pull &&
-        #   docker-compose up -d --remove-orphans
-        # "
-        echo "Deployment complete."
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Deploy to Render
+        # This is a conceptual step. Actual deployment would involve:
+        # 1. Building and pushing Docker images to a registry (e.g., Docker Hub, AWS ECR).
+        # 2. Updating Render services to pull the new images.
+        # Render has native integration for GitHub repos, so this step might be simpler
+        # or even automated by Render itself watching the main branch.
+        # For a truly manual trigger, you might use 'curl' to trigger a webhook.
+        run: echo "Deployment triggered for main branch. Configure actual deployment steps here."
+        # Example for a simple webhook trigger (replace with actual Render API/webhook URL)
+        # run: |
+        #   curl -X POST ${{ secrets.RENDER_DEPLOY_WEBHOOK }}
+        env:
+          RENDER_DEPLOY_WEBHOOK: ${{ secrets.RENDER_DEPLOY_WEBHOOK }}

@@ -1,233 +1,181 @@
-# Deployment Guide
+# Data Visualization Platform - Deployment Guide
 
-This document outlines the steps for deploying the Enterprise-Grade Authentication System to a production environment. The recommended approach involves using Docker and a reverse proxy.
+This document outlines the steps to deploy the Data Visualization Platform to a production environment. The recommended approach is using Docker containers for consistency and scalability.
 
-## 1. Production Environment Setup
+## Table of Contents
 
-### 1.1. Server Requirements
-*   **Operating System**: Linux distribution (e.g., Ubuntu Server, CentOS).
-*   **Resources**: Adequate CPU, RAM, and disk space for the application, PostgreSQL, and Redis.
-*   **Docker & Docker Compose**: Installed and running on your server.
-*   **SSH Access**: Secure Shell access to your server.
-*   **Domain Name**: A registered domain name pointing to your server's IP address.
-*   **SSL/TLS Certificate**: Recommended (e.g., Let's Encrypt) for HTTPS.
+1.  [Prerequisites](#prerequisites)
+2.  [Production Environment Variables](#production-environment-variables)
+3.  [Building Docker Images](#building-docker-images)
+4.  [Deployment Options](#deployment-options)
+    *   [Option A: Deploying with Docker Compose (Single Host)](#option-a-deploying-with-docker-compose-single-host)
+    *   [Option B: Cloud Deployment (e.g., Render, AWS ECS, Google Cloud Run)](#option-b-cloud-deployment-e.g.-render-aws-ecs-google-cloud-run)
+        *   [Render Specific Steps](#render-specific-steps)
+5.  [Post-Deployment Steps](#post-deployment-steps)
+    *   [Running Migrations in Production](#running-migrations-in-production)
+    *   [Seeding Production Data (Optional)](#seeding-production-data-optional)
+    *   [Monitoring & Logging](#monitoring--logging)
+    *   [Backup Strategy](#backup-strategy)
+6.  [CI/CD Configuration](#cicd-configuration)
 
-### 1.2. Environment Variables
-Create a production `.env` file on your server. This file *must not* be committed to version control.
+---
 
-```bash
-# Example production .env
-FLASK_APP=wsgi.py
-FLASK_ENV=production
+## 1. Prerequisites
 
-# Strong, unique secrets (DO NOT USE DEFAULTS FROM .env.example)
-SECRET_KEY="YOUR_VERY_STRONG_FLASK_SECRET_KEY_HERE"
-JWT_SECRET_KEY="YOUR_VERY_STRONG_JWT_SECRET_KEY_HERE"
+*   **Docker & Docker Compose**: Installed on your deployment server(s).
+*   **Cloud Provider Account**: (e.g., AWS, GCP, Azure, Render) if deploying to the cloud.
+*   **Domain Name**: For custom URL and HTTPS.
+*   **SSL/TLS Certificates**: (e.g., Let's Encrypt) or use cloud provider's managed SSL.
+*   **Git**: To clone the repository.
 
-# PostgreSQL Database (e.g., a managed cloud database or secure Docker setup)
-DATABASE_URL="postgresql://prod_user:prod_password@your_db_host:5432/prod_auth_db"
-# If running DB in Docker, use the service name 'db' if on the same network
-# DATABASE_URL="postgresql://prod_user:prod_password@db:5432/prod_auth_db"
+## 2. Production Environment Variables
 
-# Redis Cache & Rate Limiting
-REDIS_HOST="your_redis_host" # If running Redis in Docker, use 'redis'
-REDIS_PORT=6379
-REDIS_DB=0
-RATELIMIT_STORAGE_URL="redis://your_redis_host:6379/1"
+Ensure your `.env` file for production contains secure and appropriate values. **Never hardcode secrets in your code or commit `.env` files with production secrets to your repository.** Use a secret management service provided by your cloud provider or inject them directly into your Docker containers.
 
-# Mail Server for Production (e.g., SendGrid, Mailgun, AWS SES)
-MAIL_SERVER=smtp.sendgrid.net
-MAIL_PORT=587
-MAIL_USE_TLS=true
-MAIL_USERNAME=apikey
-MAIL_PASSWORD=YOUR_SENDGRID_API_KEY
-MAIL_DEFAULT_SENDER=noreply@yourdomain.com
-
-# Application Base URL (for email links)
-APP_BASE_URL=https://auth.yourdomain.com
+```dotenv
+# .env (for production)
+NODE_ENV=production
+PORT=5000
+CLIENT_URL=https://your-frontend-domain.com # IMPORTANT: Match your actual frontend domain
+ENCRYPTION_KEY=YOUR_VERY_STRONG_32_CHAR_PRODUCTION_SECRET_KEY # Generate a new, unique key
+JWT_SECRET=YOUR_VERY_LONG_AND_RANDOM_PRODUCTION_JWT_SECRET
+JWT_EXPIRES_IN=1d # Or appropriate duration
+DB_HOST=your_production_db_host # e.g., PostgreSQL managed service endpoint
+DB_PORT=5432
+DB_USER=your_production_db_user
+DB_PASSWORD=your_production_db_password
+DB_NAME=your_production_db_name
+REDIS_URL=redis://your_production_redis_host:6379 # e.g., Redis managed service endpoint
+LOG_LEVEL=info # Or higher for critical logs
+RATE_LIMIT_WINDOW_MS=60000 # 1 minute
+RATE_LIMIT_MAX_REQUESTS=60 # Example: 60 requests per minute
 ```
 
-## 2. Deployment Steps
+**Key considerations for production:**
+*   `ENCRYPTION_KEY` and `JWT_SECRET`: Must be truly random and kept secret.
+*   `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Connect to a dedicated production PostgreSQL instance (preferably a managed service like AWS RDS, Azure Database for PostgreSQL, Google Cloud SQL).
+*   `REDIS_URL`: Connect to a dedicated production Redis instance (e.g., AWS ElastiCache, Azure Cache for Redis, Google Cloud Memorystore).
+*   `CLIENT_URL`: Set this to your actual frontend domain for CORS.
+*   `LOG_LEVEL`: Adjust as needed. `info` is good for general operations, `error` for critical issues.
 
-### 2.1. Initial Server Setup (One-time)
+## 3. Building Docker Images
 
-1.  **SSH into your server:**
+Before deploying, you'll need to build the production-ready Docker images.
+
+1.  **Clone the repository**:
     ```bash
-    ssh username@your_server_ip
+    git clone https://github.com/your-username/data-viz-platform.git
+    cd data-viz-platform
     ```
-2.  **Install Docker and Docker Compose:**
-    Follow the official Docker documentation for your specific Linux distribution.
-3.  **Create a deployment directory:**
+2.  **Build Server Image**:
     ```bash
-    sudo mkdir -p /var/www/auth-system
-    sudo chown -R username:username /var/www/auth-system
-    cd /var/www/auth-system
+    docker build -t your-registry/dataviz-server:latest -f Dockerfile .
     ```
-4.  **Create your production `.env` file** (as described in 1.2).
-5.  **Create `docker-compose.prod.yml`:** This file will be similar to `docker-compose.yml` but without `db_test` and potentially with specific production configurations (e.g., volumes, restart policies).
-    ```yaml
-    # docker-compose.prod.yml
-    version: '3.8'
-
-    services:
-      app:
-        image: yourdockerhubusername/auth-system:latest # Ensure you push this image
-        container_name: auth-app
-        restart: always
-        env_file:
-          - .env
-        depends_on:
-          - db
-          - redis
-        # Ports are not exposed directly to host if using Nginx/Caddy reverse proxy
-        # If no reverse proxy, expose: - "5000:5000"
-        networks:
-          - auth_network
-        logging: # Configure logging driver for production
-          driver: "json-file"
-          options:
-            max-size: "10m"
-            max-file: "5"
-
-      db:
-        image: postgres:13-alpine
-        container_name: auth-db
-        restart: always
-        env_file:
-          - .env
-        environment:
-          POSTGRES_USER: ${POSTGRES_USER}
-          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-          POSTGRES_DB: ${POSTGRES_DB}
-        volumes:
-          - auth_db_data:/var/lib/postgresql/data # Persistent volume for data
-        networks:
-          - auth_network
-        healthcheck: # Health check for database
-          test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-          interval: 5s
-          timeout: 5s
-          retries: 5
-
-      redis:
-        image: redis:6-alpine
-        container_name: auth-redis
-        restart: always
-        command: redis-server --appendonly yes # Enable persistence
-        volumes:
-          - auth_redis_data:/data
-        networks:
-          - auth_network
-
-    volumes:
-      auth_db_data:
-      auth_redis_data:
-
-    networks:
-      auth_network:
-        driver: bridge
-    ```
-6.  **Setup Reverse Proxy (Nginx/Caddy):**
-    Install Nginx or Caddy. This will proxy requests from your domain (e.g., `auth.yourdomain.com`) to your Dockerized Flask application, and handle SSL termination.
-
-    **Example Nginx Configuration (`/etc/nginx/sites-available/auth-system.conf`):**
-    ```nginx
-    server {
-        listen 80;
-        server_name auth.yourdomain.com;
-        return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
-    }
-
-    server {
-        listen 443 ssl;
-        server_name auth.yourdomain.com;
-
-        ssl_certificate /etc/letsencrypt/live/auth.yourdomain.com/fullchain.pem; # Path to your cert
-        ssl_certificate_key /etc/letsencrypt/live/auth.yourdomain.com/privkey.pem; # Path to your key
-
-        location / {
-            proxy_pass http://localhost:5000; # Or http://auth-app:5000 if Nginx is in Docker on same network
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_read_timeout 90;
-        }
-    }
-    ```
-    *   **Install Certbot**: `sudo apt install certbot python3-certbot-nginx`
-    *   **Obtain SSL Certificate**: `sudo certbot --nginx -d auth.yourdomain.com`
-    *   **Enable Nginx config**: `sudo ln -s /etc/nginx/sites-available/auth-system.conf /etc/nginx/sites-enabled/`
-    *   **Test Nginx config**: `sudo nginx -t`
-    *   **Restart Nginx**: `sudo systemctl restart nginx`
-
-### 2.2. Deployment (After initial setup)
-
-The CI/CD pipeline (e.g., GitHub Actions as defined in `.github/workflows/main.yml`) should automate these steps. If deploying manually:
-
-1.  **Stop existing containers (if any):**
+3.  **Build Client Image**:
     ```bash
-    cd /var/www/auth-system
-    docker-compose -f docker-compose.prod.yml down
+    docker build -t your-registry/dataviz-client:latest -f client/Dockerfile.client client
     ```
-2.  **Pull the latest Docker image:**
+4.  **Push to Container Registry (e.g., Docker Hub, AWS ECR)**:
     ```bash
-    docker pull yourdockerhubusername/auth-system:latest
+    docker push your-registry/dataviz-server:latest
+    docker push your-registry/dataviz-client:latest
     ```
-3.  **Start the services:**
+    (Replace `your-registry` with your actual registry path, e.g., `myusername/` or `123456789012.dkr.ecr.us-east-1.amazonaws.com/`)
+
+## 4. Deployment Options
+
+### Option A: Deploying with Docker Compose (Single Host)
+
+This is suitable for smaller deployments or proofs-of-concept on a single server.
+
+1.  **Prepare your server**:
+    *   Install Docker and Docker Compose.
+    *   Open necessary firewall ports (e.g., 80, 443 for web, 5000 if directly exposing backend).
+2.  **Copy `.env` and `docker-compose.prod.yml` (create this file) to your server**:
+    *   Create a `docker-compose.prod.yml` from `docker-compose.yml`, but adjust services to use pre-built images and production configurations.
+    *   **Crucially, remove the `volumes` mounts for `/app` in `server` and `client` services to use the built image content, not local dev files.**
+    *   Update `server` service `command` to `npm run serve`.
+    *   Update `client` service `command` to `nginx -g 'daemon off;'`.
+3.  **Pull images and deploy**:
     ```bash
-    docker-compose -f docker-compose.prod.yml up -d --force-recreate
+    # On your production server
+    cd /path/to/your/app
+    # Ensure your .env is correctly configured for production
+    docker-compose -f docker-compose.prod.yml pull
+    docker-compose -f docker-compose.prod.yml up -d
     ```
-    `--force-recreate` ensures new images are used.
+4.  **Set up Nginx/Caddy for Reverse Proxy and SSL**:
+    It's highly recommended to place Nginx or Caddy in front of your Docker Compose setup to handle SSL termination, serve static files, and reverse proxy requests to the backend.
 
-4.  **Run Database Migrations:**
-    It's crucial to run migrations *after* the new application container is up and connected to the database.
-    ```bash
-    docker exec auth-app flask db upgrade
-    ```
-    (Ensure `auth-app` is the name of your application container from `docker-compose.prod.yml`)
+### Option B: Cloud Deployment (e.g., Render, AWS ECS, Google Cloud Run)
 
-5.  **Verify Deployment:**
-    *   Check container logs: `docker-compose -f docker-compose.prod.yml logs -f`
-    *   Access your application URL (`https://auth.yourdomain.com`) in a browser.
-    *   Run health checks or simple API calls to ensure functionality.
+This is the recommended approach for scalable and highly available production environments. The specifics vary by provider, but the general steps are:
 
-## 3. CI/CD Pipeline (GitHub Actions)
+1.  **Container Registry**: Push your Docker images to the cloud provider's container registry (e.g., AWS ECR, Google Container Registry).
+2.  **Managed Database**: Provision a managed PostgreSQL instance (e.g., AWS RDS, GCP Cloud SQL).
+3.  **Managed Cache**: Provision a managed Redis instance (e.g., AWS ElastiCache, GCP Memorystore).
+4.  **Compute Service**:
+    *   **Backend**: Deploy the backend image to a service like Render Web Services, AWS ECS/Fargate, Google Cloud Run, or Azure App Service. Configure environment variables.
+    *   **Frontend**: Deploy the built client static files (from `client/build`) to a static hosting service (e.g., Render Static Sites, AWS S3 + CloudFront, Google Firebase Hosting) or serve it via a separate web server container (e.g., Nginx).
+5.  **Load Balancer/CDN**: Set up a load balancer (e.g., AWS ALB, GCP Load Balancer) and optionally a CDN (e.g., CloudFront, Cloudflare) for performance, scalability, and SSL termination.
 
-The `.github/workflows/main.yml` file provides a blueprint for a CI/CD pipeline.
+#### Render Specific Steps (Example)
 
-**Workflow Stages:**
-1.  **`build_and_test`**:
-    *   Checks out code.
-    *   Sets up Python.
-    *   Installs dependencies.
-    *   Starts `db`, `db_test`, and `redis` services using `docker-compose`.
-    *   Waits for services to be healthy.
-    *   Runs `flask db upgrade` on the main database (for `main`/`develop` branches).
-    *   Runs `pytest` with coverage.
-    *   Uploads coverage reports.
-2.  **`deploy`**:
-    *   **Triggered**: Only after `build_and_test` passes and on `main` branch pushes.
-    *   Logs into Docker Hub.
-    *   Builds the Docker image for the application.
-    *   Pushes the image to Docker Hub.
-    *   (Conceptual) Connects to the production server via SSH and pulls the latest image, restarts containers, and runs migrations. This step needs to be customized for your specific deployment target and security practices (e.g., using SSH keys, bastion hosts, cloud-native deployment tools).
+Render offers easy deployment directly from GitHub repositories.
 
-**GitHub Secrets Required for CI/CD:**
-*   `DOCKER_USERNAME`
-*   `DOCKER_PASSWORD`
-*   `SSH_USERNAME`
-*   `SSH_PASSWORD` (use SSH keys/agent forwarding instead of password for production)
-*   `SSH_HOST`
-*   `PROD_DATABASE_URL` (for running migrations on prod DB during deploy)
-*   Any other production secrets used by your application (e.g., Mail API keys).
+1.  **Create Render Services**:
+    *   **PostgreSQL**: Create a new Render PostgreSQL database. Note down the Internal Database URL, Host, User, Password, Database Name.
+    *   **Redis**: Create a new Render Redis instance. Note down the Internal Redis URL.
+    *   **Backend (Web Service)**:
+        *   Connect your GitHub repository.
+        *   Select `server` as the root directory.
+        *   Choose `Docker` as the runtime.
+        *   Set build command to `npm run build && npm run migration:run && npm run seed` (or separate migration/seed as a pre-deploy hook).
+        *   Set start command to `npm run serve`.
+        *   Add all production environment variables from your `.env` to Render's environment variables. Ensure `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` and `REDIS_URL` match your Render-provisioned database/Redis.
+    *   **Frontend (Static Site)**:
+        *   Connect your GitHub repository.
+        *   Select `client` as the root directory.
+        *   Set build command to `npm install && npm run build`.
+        *   Set publish directory to `build`.
+        *   Configure environment variables (e.g., `REACT_APP_API_BASE_URL` pointing to your deployed backend URL).
 
-## 4. Post-Deployment Checks & Maintenance
+2.  **DNS Configuration**: Point your custom domain(s) to the Render service URLs. Render automatically handles SSL.
 
-*   **Monitoring**: Continuously monitor application logs, performance metrics (CPU, RAM, network), and error rates.
-*   **Backups**: Set up regular backups for your PostgreSQL database.
-*   **Security Audits**: Periodically review security configurations and scan for vulnerabilities.
-*   **Updates**: Keep Docker images, Python dependencies, and system packages updated.
-*   **Rollbacks**: Have a strategy for rolling back to a previous stable version in case of issues.
+## 5. Post-Deployment Steps
 
-By following this guide, you can establish a robust and automated deployment process for your authentication system.
+### Running Migrations in Production
+
+*   **Initial Deploy**: Include `npm run migration:run` in your server's startup command (as shown in `docker-compose.yml` `command` section).
+*   **Subsequent Deploys**: For updates, the migration command `npm run migration:run` should be run *before* the new application code starts, or as part of a pre-deploy hook in your CI/CD pipeline. This ensures your database schema is always up-to-date with your application.
+
+### Seeding Production Data (Optional)
+
+If your application requires initial data (e.g., default admin user, initial settings), run the seed script after migrations. This should typically be a one-time operation for initial setup.
+
+*   `docker-compose exec server npm run seed` (for Docker Compose)
+*   For cloud providers, this might be a one-off task/job.
+
+### Monitoring & Logging
+
+*   **Backend Logs**: Configure your `winston` logger to output to `stdout` (Docker default) or a file. Use a log aggregation service (e.g., ELK Stack, Splunk, Datadog, CloudWatch Logs) to collect and analyze logs from your containers.
+*   **Frontend Monitoring**: Use services like Sentry or LogRocket for error tracking and user session replay in the frontend.
+*   **Performance Monitoring**: Integrate APM tools (e.g., New Relic, Datadog, Prometheus) to monitor application performance, database health, and server metrics.
+
+### Backup Strategy
+
+*   **Database**: Implement a regular backup strategy for your PostgreSQL database. Managed services usually provide this (e.g., point-in-time recovery, automated backups).
+*   **Configuration**: Keep your `.env` files (or secret manager configurations) backed up securely.
+
+## 6. CI/CD Configuration
+
+The `.github/workflows/ci-cd.yml` file provides a GitHub Actions workflow:
+
+*   **`build-and-test-server`**: Builds the backend, sets up a temporary PostgreSQL, and runs unit/integration tests.
+*   **`build-and-test-client`**: Builds the frontend and runs its tests.
+*   **`deploy`**: (Conceptual) Triggers deployment to a cloud platform (e.g., Render) upon merges to the `main` branch. This typically involves sending webhooks or using provider-specific deployment actions.
+
+**To enable CI/CD**:
+1.  Push your code to a GitHub repository.
+2.  Ensure GitHub Actions is enabled for your repository.
+3.  Configure any necessary GitHub Secrets (e.g., `RENDER_DEPLOY_WEBHOOK`) in your repository settings `Settings -> Secrets -> Actions`.
