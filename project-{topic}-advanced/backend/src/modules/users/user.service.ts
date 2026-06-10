@@ -1,73 +1,97 @@
 ```typescript
-import { AppDataSource } from '../../config/database';
-import { User, UserRole } from '../../entities/User';
-import { CustomError } from '../../utils/error';
-import logger from '../../services/logger.service';
-import _ from 'lodash';
+import { AppDataSource } from '../../database/config/data-source';
+import { User, UserRole } from '../../database/entities/User';
+import { UpdateUserDto } from './user.dtos';
+import { CustomError } from '../../shared/errors/CustomError';
+import * as bcrypt from 'bcryptjs';
+import { logger } from '../../shared/utils/logger';
 
-/**
- * Retrieves all users from the database.
- * @returns {Promise<User[]>} An array of user objects.
- */
-export const getUsers = async (): Promise<User[]> => {
-  const userRepository = AppDataSource.getRepository(User);
-  return userRepository.find();
-};
+export class UserService {
+  private userRepository = AppDataSource.getRepository(User);
 
-/**
- * Retrieves a single user by their ID.
- * @param id The ID of the user.
- * @returns {Promise<User | null>} The user object or null if not found.
- */
-export const getUserById = async (id: string): Promise<User | null> => {
-  const userRepository = AppDataSource.getRepository(User);
-  return userRepository.findOneBy({ id });
-};
-
-/**
- * Updates an existing user's information.
- * @param id The ID of the user to update.
- * @param updateData An object containing the fields to update (e.g., email, role).
- * @returns {Promise<User>} The updated user object.
- * @throws {CustomError} If the user is not found or update fails.
- */
-export const updateUser = async (id: string, updateData: { email?: string; role?: UserRole }): Promise<User> => {
-  const userRepository = AppDataSource.getRepository(User);
-  let user = await userRepository.findOneBy({ id });
-
-  if (!user) {
-    logger.warn(`Attempted to update non-existent user with ID: ${id}`);
-    throw new CustomError('User not found.', 404);
+  /**
+   * Finds all users.
+   * Query optimization: In a large application, this would include pagination.
+   */
+  async findAll(): Promise<User[]> {
+    return this.userRepository.find({
+      select: ['id', 'username', 'email', 'role', 'createdAt', 'updatedAt'], // Select specific fields
+    });
   }
 
-  // Prevent direct password updates here, use a dedicated endpoint if needed
-  if (updateData.email) {
-    user.email = updateData.email;
-  }
-  if (updateData.role) {
-    user.role = updateData.role;
+  /**
+   * Finds a user by ID.
+   */
+  async findById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { id },
+      select: ['id', 'username', 'email', 'role', 'createdAt', 'updatedAt'],
+    });
   }
 
-  const updatedUser = await userRepository.save(user);
-  logger.info(`User updated: ID ${id}, Email: ${updatedUser.email}`);
-  return updatedUser;
-};
+  /**
+   * Updates a user's details.
+   */
+  async update(id: string, updateData: UpdateUserDto): Promise<User> {
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user) {
+      throw new CustomError('User not found', 404);
+    }
 
-/**
- * Deletes a user from the database.
- * @param id The ID of the user to delete.
- * @throws {CustomError} If the user is not found.
- */
-export const deleteUser = async (id: string): Promise<void> => {
-  const userRepository = AppDataSource.getRepository(User);
-  const result = await userRepository.delete(id);
+    // Check for unique constraints if username or email is updated
+    if (updateData.username && updateData.username !== user.username) {
+      const existingUser = await this.userRepository.findOneBy({ username: updateData.username });
+      if (existingUser && existingUser.id !== id) {
+        throw new CustomError('Username already taken', 409, { field: 'username' });
+      }
+    }
+    if (updateData.email && updateData.email !== user.email) {
+      const existingUser = await this.userRepository.findOneBy({ email: updateData.email });
+      if (existingUser && existingUser.id !== id) {
+        throw new CustomError('Email already taken', 409, { field: 'email' });
+      }
+    }
 
-  if (result.affected === 0) {
-    logger.warn(`Attempted to delete non-existent user with ID: ${id}`);
-    throw new CustomError('User not found.', 404);
+    // Hash new password if provided
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    // Ensure role can only be changed by an admin
+    if (updateData.role && user.role !== updateData.role) {
+      // In a real application, the caller's role would be checked here.
+      // For now, we assume the controller handles this authorization.
+      user.role = updateData.role;
+    }
+
+    Object.assign(user, updateData);
+    return this.userRepository.save(user);
   }
-  logger.info(`User deleted: ID ${id}`);
-};
+
+  /**
+   * Deletes a user.
+   */
+  async delete(id: string): Promise<void> {
+    const result = await this.userRepository.delete(id);
+    if (result.affected === 0) {
+      throw new CustomError('User not found', 404);
+    }
+    logger.info(`User ${id} deleted from database.`);
+  }
+
+  /**
+   * Assigns a role to a user. Only used internally or by admin.
+   * @param id User ID
+   * @param role New role
+   * @returns Updated User object
+   */
+  async assignRole(id: string, role: UserRole): Promise<User> {
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user) {
+      throw new CustomError('User not found', 404);
+    }
+    user.role = role;
+    return this.userRepository.save(user);
+  }
+}
 ```
-
-#### `backend/src/modules/databases/database.controller.ts`

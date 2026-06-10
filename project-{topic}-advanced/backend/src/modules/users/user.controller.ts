@@ -1,78 +1,115 @@
 ```typescript
 import { Request, Response, NextFunction } from 'express';
-import * as userService from './user.service';
-import { CustomError } from '../../utils/error';
-import { UserRole } from '../../entities/User';
+import { UserService } from './user.service';
+import { UpdateUserDto } from './user.dtos';
+import { validate } from '../../shared/validators/joi.validator';
+import { updateUserSchema } from './user.validation';
+import { logger } from '../../shared/utils/logger';
+import { CustomError } from '../../shared/errors/CustomError';
 
-/**
- * Get all users (Admin only).
- * @route GET /api/v1/users
- */
-export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const users = await userService.getUsers();
-    res.status(200).json({ success: true, data: users.map(user => ({ id: user.id, email: user.email, role: user.role, createdAt: user.createdAt })) });
-  } catch (error) {
-    next(error);
-  }
-};
+export class UserController {
+  constructor(private userService: UserService) {}
 
-/**
- * Get a single user by ID (Admin only).
- * @route GET /api/v1/users/:id
- */
-export const getUserById = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const user = await userService.getUserById(id);
-    if (!user) {
-      throw new CustomError('User not found.', 404);
+  /**
+   * Get all users (Admin only)
+   */
+  async getAllUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+      // Query optimization: only select necessary fields, use pagination in real apps
+      const users = await this.userService.findAll();
+      res.status(200).json(users.map(user => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      })));
+    } catch (error) {
+      next(error);
     }
-    res.status(200).json({ success: true, data: { id: user.id, email: user.email, role: user.role, createdAt: user.createdAt } });
-  } catch (error) {
-    next(error);
   }
-};
 
-/**
- * Update a user (Admin only, or user updating their own profile).
- * For simplicity, admin can update any user's role/email.
- * @route PUT /api/v1/users/:id
- */
-export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const { email, role } = req.body;
-
-    // A user can only update their own profile unless they are an admin
-    if (req.user?.id !== id && req.user?.role !== UserRole.ADMIN) {
-        throw new CustomError('Unauthorized to update this user.', 403);
+  /**
+   * Get user by ID
+   */
+  async getUserById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const user = await this.userService.findById(id);
+      if (!user) {
+        throw new CustomError('User not found', 404);
+      }
+      res.status(200).json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      });
+    } catch (error) {
+      next(error);
     }
-
-    const updatedUser = await userService.updateUser(id, { email, role });
-    res.status(200).json({ success: true, message: 'User updated successfully.', data: { id: updatedUser.id, email: updatedUser.email, role: updatedUser.role } });
-  } catch (error) {
-    next(error);
   }
-};
 
-/**
- * Delete a user (Admin only).
- * @route DELETE /api/v1/users/:id
- */
-export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    // Prevent admin from deleting themselves
-    if (req.user?.id === id) {
-        throw new CustomError('Cannot delete your own account.', 400);
+  /**
+   * Update user details (can be self or Admin for any user)
+   */
+  async updateUserDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const currentUser = req.user!; // Authenticated user
+      
+      // Authorization check: User can only update their own profile unless they are an ADMIN
+      if (currentUser.id !== id && currentUser.role !== 'ADMIN') {
+        throw new CustomError('Forbidden: You can only update your own profile', 403);
+      }
+
+      const { error, value } = validate(req.body, updateUserSchema);
+      if (error) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.details });
+      }
+      const updateData: UpdateUserDto = value;
+
+      const updatedUser = await this.userService.update(id, updateData);
+      logger.info(`User ${id} updated by ${currentUser.email}`);
+      res.status(200).json({
+        message: 'User updated successfully',
+        user: {
+          id: updatedUser.id,
+          username: updatedUser.username,
+          email: updatedUser.email,
+          role: updatedUser.role,
+        },
+      });
+    } catch (error) {
+      next(error);
     }
-    await userService.deleteUser(id);
-    res.status(200).json({ success: true, message: 'User deleted successfully.' });
-  } catch (error) {
-    next(error);
   }
-};
+
+  /**
+   * Delete user (Admin only)
+   */
+  async deleteUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const currentUser = req.user!; // Authenticated user
+
+      // Prevent admin from deleting themselves
+      if (currentUser.id === id) {
+        throw new CustomError('Forbidden: You cannot delete your own admin account', 403);
+      }
+
+      await this.userService.delete(id);
+      logger.info(`User ${id} deleted by admin ${currentUser.email}`);
+      res.status(204).send(); // No content
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+const userService = new UserService();
+export const userController = new UserController(userService);
 ```
-
-#### `backend/src/modules/users/user.service.ts`

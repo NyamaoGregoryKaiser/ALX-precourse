@@ -2,68 +2,63 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import compression from 'compression';
-import morgan from 'morgan';
-import swaggerUi from 'swagger-ui-express';
-import YAML from 'yamljs';
-import path from 'path';
+import rateLimit from 'express-rate-limit';
+import { env } from './config/env.config';
+import { httpLogger, errorLogger } from './middleware/logger.middleware';
+import { errorHandler } from './middleware/error.middleware';
+import { apiRateLimiter } from './middleware/rate-limit.middleware';
 
-import { apiErrorHandler } from './middlewares/errorHandler.middleware';
-import { requestLogger } from './middlewares/logger.middleware';
-import { rateLimiter } from './middlewares/rateLimiter.middleware';
-import config from './config/config';
-import { seedDatabase } from './data-source';
-import AppRoutes from './routes';
+// Import modules routes
+import authRoutes from './modules/auth/auth.routes';
+import userRoutes from './modules/users/user.routes';
+import projectRoutes from './modules/projects/project.routes';
+import taskRoutes from './modules/tasks/task.routes';
 
 const app = express();
 
-// Security Middlewares
+// Security Middleware
 app.use(helmet());
 app.use(cors({
-  origin: config.frontendUrl, // Allow requests from frontend origin
-  credentials: true,
+  origin: env.NODE_ENV === 'production' ? 'https://your-frontend-domain.com' : '*', // Adjust for production
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Performance Middlewares
-app.use(compression());
-app.use(rateLimiter); // Apply rate limiting to all requests
+// Request Body Parsers
+app.use(express.json()); // For JSON payloads
+app.use(express.urlencoded({ extended: true })); // For URL-encoded payloads
 
-// Request logging middleware
-app.use(requestLogger);
+// HTTP Request Logger
+app.use(httpLogger);
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Rate Limiting
+app.use(apiRateLimiter);
 
-// Morgan for HTTP request logging (tiny format for production)
-app.use(morgan('dev')); // Use 'combined' or 'tiny' for production
-
-// API Routes
-app.use('/api/v1', AppRoutes);
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+// Health Check Endpoint
+app.get('/api/v1/health', (req, res) => {
+  res.status(200).json({ status: 'UP', message: 'API is healthy!' });
 });
 
-// Swagger/OpenAPI Documentation
-const swaggerDocument = YAML.load(path.resolve(__dirname, '../swagger.yaml'));
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// API Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/projects', projectRoutes);
+app.use('/api/v1/tasks', taskRoutes);
 
-// Seed database endpoint (for development/testing)
-if (config.nodeEnv !== 'production') {
-  app.get('/api/v1/seed', async (req, res, next) => {
-    try {
-      await seedDatabase();
-      res.status(200).send('Database seeded successfully!');
-    } catch (error) {
-      next(error); // Pass error to the error handling middleware
-    }
-  });
-}
+// Catch 404 and forward to error handler
+app.use((req, res, next) => {
+  const error = new Error(`Not Found - ${req.originalUrl}`);
+  res.status(404);
+  next(error);
+});
 
-// Error Handling Middleware (must be last)
-app.use(apiErrorHandler);
+// Error Logging Middleware
+app.use(errorLogger);
+
+// Global Error Handler Middleware
+app.use(errorHandler);
 
 export default app;
 ```
+
+#### Configuration

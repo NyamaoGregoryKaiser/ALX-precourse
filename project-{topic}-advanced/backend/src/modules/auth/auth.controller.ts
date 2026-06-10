@@ -1,101 +1,83 @@
 ```typescript
 import { Request, Response, NextFunction } from 'express';
-import * as authService from './auth.service';
-import { generateAccessToken, generateRefreshToken } from '../../utils/jwt';
-import { CustomError } from '../../utils/error';
-import { User } from '../../entities/User';
+import { AuthService } from './auth.service';
+import { LoginDto, RegisterDto } from './auth.dtos';
+import { validate } from '../../shared/validators/joi.validator';
+import { loginSchema, registerSchema, refreshTokenSchema } from './auth.validation';
+import { logger } from '../../shared/utils/logger';
 
-/**
- * Handles user registration.
- * @route POST /api/v1/auth/register
- */
-export const register = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, password, role } = req.body;
-    const user = await authService.registerUser(email, password, role);
+export class AuthController {
+  constructor(private authService: AuthService) {}
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user); // In a real app, store this.
+  async register(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { error, value } = validate(req.body, registerSchema);
+      if (error) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.details });
+      }
+      const userData: RegisterDto = value;
+      const newUser = await this.authService.register(userData);
+      logger.info(`New user registered: ${newUser.email}`);
+      res.status(201).json({ message: 'User registered successfully', user: { id: newUser.id, email: newUser.email, username: newUser.username } });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user: { id: user.id, email: user.email, role: user.role },
+  async login(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { error, value } = validate(req.body, loginSchema);
+      if (error) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.details });
+      }
+      const credentials: LoginDto = value;
+      const { accessToken, refreshToken, user } = await this.authService.login(credentials);
+      logger.info(`User logged in: ${user.email}`);
+      res.status(200).json({
+        message: 'Login successful',
         accessToken,
         refreshToken,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Handles user login.
- * @route POST /api/v1/auth/login
- */
-export const login = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, password } = req.body;
-    const user = await authService.loginUser(email, password);
-
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user); // In a real app, store this.
-
-    res.status(200).json({
-      success: true,
-      message: 'Logged in successfully',
-      data: {
-        user: { id: user.id, email: user.email, role: user.role },
-        accessToken,
-        refreshToken,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Handles user logout.
- * (For a real application, this would involve invalidating the refresh token, e.g., in Redis or DB)
- * @route POST /api/v1/auth/logout
- */
-export const logout = async (req: Request, res: Response, next: NextFunction) => {
-  // In a real application, you would:
-  // 1. Invalidate the user's refresh token (e.g., delete from database or add to a blacklist in Redis)
-  // 2. Client-side should clear their access and refresh tokens.
-  try {
-    if (!req.user) {
-      throw new CustomError('No user to log out.', 400);
+        user: { id: user.id, username: user.username, email: user.email, role: user.role },
+      });
+    } catch (error) {
+      next(error);
     }
-    // Example of a token blacklist for immediate access token invalidation (optional)
-    // await cacheService.set(`blacklist:${req.headers.authorization?.split(' ')[1]}`, 'true', config.jwt.accessExpirationMinutes * 60);
-
-    res.status(200).json({ success: true, message: 'Logged out successfully.' });
-  } catch (error) {
-    next(error);
   }
-};
 
-/**
- * Get the currently authenticated user's profile.
- * @route GET /api/v1/auth/me
- */
-export const getMe = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    if (!req.user) {
-      throw new CustomError('User not authenticated.', 401);
+  async refreshToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { error, value } = validate(req.body, refreshTokenSchema);
+      if (error) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.details });
+      }
+      const { refreshToken } = value;
+      const { accessToken, newRefreshToken } = await this.authService.refreshAccessToken(refreshToken);
+      logger.info('Access token refreshed.');
+      res.status(200).json({ accessToken, refreshToken: newRefreshToken });
+    } catch (error) {
+      next(error);
     }
-    // Remove sensitive information like password hash
-    const user = { ...req.user };
-    delete user.password;
-    res.status(200).json({ success: true, data: user });
-  } catch (error) {
-    next(error);
   }
-};
+
+  async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      // Assuming `req.user` is set by `authenticateToken` middleware
+      // Or if logout needs to revoke a specific refresh token provided in body/cookie
+      const userId = req.user?.id;
+      if (userId) {
+        await this.authService.logout(userId);
+        logger.info(`User logged out: ${req.user?.email}`);
+      } else {
+        logger.warn('Logout attempt without authenticated user context.');
+      }
+      res.status(200).json({ message: 'Logged out successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+// Instantiate and export the controller
+const authService = new AuthService();
+export const authController = new AuthController(authService);
 ```
-
-#### `backend/src/modules/auth/auth.service.ts`

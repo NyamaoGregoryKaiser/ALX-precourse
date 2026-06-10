@@ -1,144 +1,201 @@
 ```typescript
-import { AuthService } from '../../src/services/auth.service';
-import { UserRepository } from '../../src/repositories/User.repository';
-import { User, UserRole } from '../../src/entities/User.entity';
-import { AppDataSource } from '../../src/database/data-source';
-import { hashPassword, comparePasswords } from '../../src/utils/password.utils';
-import { generateJwtToken, verifyJwtToken } from '../../src/auth/jwt.utils';
-import { ApiError } from '../../src/utils/api-error';
-import { StatusCodes } from 'http-status-codes';
+import { AppDataSource } from '../../src/database/config/data-source';
+import { User, UserRole } from '../../src/database/entities/User';
+import { AuthService } from '../../src/modules/auth/auth.service';
+import * as bcrypt from 'bcryptjs';
+import * as jwtUtils from '../../src/shared/utils/jwt.utils';
+import { CustomError } from '../../src/shared/errors/CustomError';
+import { Repository } from 'typeorm';
 
-// Mock the AppDataSource and UserRepository
-jest.mock('../../src/database/data-source', () => ({
+// Mock TypeORM DataSource and Repository
+jest.mock('../../src/database/config/data-source', () => ({
   AppDataSource: {
-    getRepository: jest.fn(() => ({})), // Mock getRepository call
+    getRepository: jest.fn(() => ({
+      findOne: jest.fn(),
+      findOneBy: jest.fn(),
+      createQueryBuilder: jest.fn(() => ({
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn(),
+      })),
+      create: jest.fn(),
+      save: jest.fn(),
+    })),
   },
 }));
 
-jest.mock('../../src/repositories/User.repository');
-jest.mock('../../src/utils/password.utils');
-jest.mock('../../src/auth/jwt.utils');
+// Mock bcrypt
+jest.mock('bcryptjs', () => ({
+  hash: jest.fn(),
+  compare: jest.fn(),
+}));
 
-describe('AuthService (Unit)', () => {
+// Mock jwtUtils
+jest.mock('../../src/shared/utils/jwt.utils', () => ({
+  generateTokens: jest.fn(),
+  verifyRefreshToken: jest.fn(),
+  storeRefreshToken: jest.fn(),
+  deleteRefreshToken: jest.fn(),
+}));
+
+describe('AuthService (Unit Tests)', () => {
   let authService: AuthService;
-  let mockUserRepository: jest.Mocked<UserRepository>;
+  let userRepository: Repository<User>;
 
   beforeEach(() => {
-    mockUserRepository = new UserRepository(AppDataSource.getRepository(User)) as jest.Mocked<UserRepository>;
-    authService = new AuthService(mockUserRepository);
-
-    // Reset mocks before each test
-    jest.clearAllMocks();
+    authService = new AuthService();
+    userRepository = AppDataSource.getRepository(User);
+    jest.clearAllMocks(); // Clear mocks before each test
   });
 
-  describe('registerUser', () => {
-    const mockUser = {
-      id: 'uuid-123',
+  describe('register', () => {
+    const registerDto = {
       username: 'testuser',
       email: 'test@example.com',
-      password: 'hashedpassword',
-      role: UserRole.USER,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      password: 'Password123!',
     };
 
     it('should register a new user successfully', async () => {
-      mockUserRepository.findByEmail.mockResolvedValue(null);
-      mockUserRepository.findByUsername.mockResolvedValue(null);
-      (hashPassword as jest.Mock).mockResolvedValue('hashedpassword');
-      mockUserRepository.create.mockReturnValue(mockUser as User); // Cast to User
-      mockUserRepository.save.mockResolvedValue(mockUser as User);
+      (userRepository.findOne as jest.Mock).mockResolvedValue(null); // No existing user
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashedPassword');
+      (userRepository.create as jest.Mock).mockReturnValue({ id: '1', ...registerDto, role: UserRole.USER, password: 'hashedPassword' });
+      (userRepository.save as jest.Mock).mockResolvedValue({ id: '1', ...registerDto, role: UserRole.USER, password: 'hashedPassword' });
 
-      const result = await authService.registerUser('testuser', 'test@example.com', 'password123');
+      const result = await authService.register(registerDto);
 
-      expect(mockUserRepository.findByEmail).toHaveBeenCalledWith('test@example.com');
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('testuser');
-      expect(hashPassword).toHaveBeenCalledWith('password123');
-      expect(mockUserRepository.create).toHaveBeenCalledWith({
-        username: 'testuser',
-        email: 'test@example.com',
-        password: 'hashedpassword',
+      expect(userRepository.findOne).toHaveBeenCalledWith({ where: [{ username: registerDto.username }, { email: registerDto.email }] });
+      expect(bcrypt.hash).toHaveBeenCalledWith(registerDto.password, 10);
+      expect(userRepository.create).toHaveBeenCalledWith({
+        username: registerDto.username,
+        email: registerDto.email,
+        password: 'hashedPassword',
         role: UserRole.USER,
       });
-      expect(mockUserRepository.save).toHaveBeenCalledWith(mockUser);
-      expect(result).toEqual(mockUser);
+      expect(userRepository.save).toHaveBeenCalled();
+      expect(result).toHaveProperty('id', '1');
+      expect(result.email).toBe(registerDto.email);
     });
 
-    it('should throw ApiError if email already exists', async () => {
-      mockUserRepository.findByEmail.mockResolvedValue(mockUser as User);
+    it('should throw CustomError if username already exists', async () => {
+      (userRepository.findOne as jest.Mock).mockResolvedValue({ username: registerDto.username });
 
-      await expect(authService.registerUser('testuser', 'test@example.com', 'password123'))
-        .rejects.toThrow(new ApiError(StatusCodes.CONFLICT, 'User with this email already exists.'));
-      expect(mockUserRepository.findByEmail).toHaveBeenCalledWith('test@example.com');
-      expect(mockUserRepository.findByUsername).not.toHaveBeenCalled();
+      await expect(authService.register(registerDto)).rejects.toThrow(
+        new CustomError('User with this username already exists', 409, { field: 'username' })
+      );
     });
 
-    it('should throw ApiError if username already exists', async () => {
-      mockUserRepository.findByEmail.mockResolvedValue(null);
-      mockUserRepository.findByUsername.mockResolvedValue(mockUser as User);
+    it('should throw CustomError if email already exists', async () => {
+      (userRepository.findOne as jest.Mock).mockResolvedValue({ email: registerDto.email });
 
-      await expect(authService.registerUser('testuser', 'test@example.com', 'password123'))
-        .rejects.toThrow(new ApiError(StatusCodes.CONFLICT, 'User with this username already exists.'));
-      expect(mockUserRepository.findByEmail).toHaveBeenCalledWith('test@example.com');
-      expect(mockUserRepository.findByUsername).toHaveBeenCalledWith('testuser');
+      await expect(authService.register(registerDto)).rejects.toThrow(
+        new CustomError('User with this email already exists', 409, { field: 'email' })
+      );
     });
   });
 
-  describe('loginUser', () => {
-    const mockUserWithPassword = {
-      id: 'uuid-123',
+  describe('login', () => {
+    const loginDto = {
+      email: 'test@example.com',
+      password: 'Password123!',
+    };
+    const mockUser = {
+      id: '1',
       username: 'testuser',
       email: 'test@example.com',
-      password: 'hashedpassword', // Make sure this is present for login logic
+      password: 'hashedPassword',
       role: UserRole.USER,
-      createdAt: new Date(),
-      updatedAt: new Date(),
     };
+    const mockTokens = { accessToken: 'access', refreshToken: 'refresh' };
 
-    const mockUserWithoutPassword = { ...mockUserWithPassword };
-    delete mockUserWithoutPassword.password; // Expected return value
+    it('should log in a user successfully and return tokens', async () => {
+      (userRepository.createQueryBuilder().getOne as jest.Mock).mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (jwtUtils.generateTokens as jest.Mock).mockReturnValue(mockTokens);
+      (jwtUtils.storeRefreshToken as jest.Mock).mockResolvedValue(undefined);
 
-    it('should log in a user successfully and return token', async () => {
-      mockUserRepository.createQueryBuilder.mockReturnValue({
-        addSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockUserWithPassword as User),
-      } as any); // Cast to any to bypass type issues with chained methods
-      (comparePasswords as jest.Mock).mockResolvedValue(true);
-      (generateJwtToken as jest.Mock).mockReturnValue('mocked-jwt-token');
+      const result = await authService.login(loginDto);
 
-      const result = await authService.loginUser('test@example.com', 'password123');
-
-      expect(mockUserRepository.createQueryBuilder).toHaveBeenCalledWith('user');
-      expect(comparePasswords).toHaveBeenCalledWith('password123', 'hashedpassword');
-      expect(generateJwtToken).toHaveBeenCalledWith(mockUserWithPassword.id, mockUserWithPassword.role);
-      expect(result).toEqual({ user: mockUserWithoutPassword, token: 'mocked-jwt-token' });
+      expect(userRepository.createQueryBuilder().getOne).toHaveBeenCalled();
+      expect(bcrypt.compare).toHaveBeenCalledWith(loginDto.password, mockUser.password);
+      expect(jwtUtils.generateTokens).toHaveBeenCalledWith(mockUser);
+      expect(jwtUtils.storeRefreshToken).toHaveBeenCalledWith(mockUser.id, mockTokens.refreshToken, expect.any(String));
+      expect(result).toEqual({ accessToken: mockTokens.accessToken, refreshToken: mockTokens.refreshToken, user: mockUser });
     });
 
-    it('should throw ApiError if user not found', async () => {
-      mockUserRepository.createQueryBuilder.mockReturnValue({
-        addSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-      } as any);
+    it('should throw CustomError for invalid credentials (user not found)', async () => {
+      (userRepository.createQueryBuilder().getOne as jest.Mock).mockResolvedValue(null);
 
-      await expect(authService.loginUser('nonexistent@example.com', 'password123'))
-        .rejects.toThrow(new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.'));
-      expect(comparePasswords).not.toHaveBeenCalled();
+      await expect(authService.login(loginDto)).rejects.toThrow(
+        new CustomError('Invalid credentials', 401)
+      );
     });
 
-    it('should throw ApiError if password is incorrect', async () => {
-      mockUserRepository.createQueryBuilder.mockReturnValue({
-        addSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockUserWithPassword as User),
-      } as any);
-      (comparePasswords as jest.Mock).mockResolvedValue(false);
+    it('should throw CustomError for invalid credentials (incorrect password)', async () => {
+      (userRepository.createQueryBuilder().getOne as jest.Mock).mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
-      await expect(authService.loginUser('test@example.com', 'wrongpassword'))
-        .rejects.toThrow(new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid credentials.'));
-      expect(comparePasswords).toHaveBeenCalledWith('wrongpassword', 'hashedpassword');
-      expect(generateJwtToken).not.toHaveBeenCalled();
+      await expect(authService.login(loginDto)).rejects.toThrow(
+        new CustomError('Invalid credentials', 401)
+      );
+    });
+  });
+
+  describe('refreshAccessToken', () => {
+    const oldRefreshToken = 'old_refresh_token';
+    const decodedPayload = { userId: '1', email: 'test@example.com', role: UserRole.USER };
+    const mockUser = { id: '1', username: 'testuser', email: 'test@example.com', role: UserRole.USER };
+    const newTokens = { accessToken: 'new_access', refreshToken: 'new_refresh' };
+
+    it('should refresh access token successfully', async () => {
+      (jwtUtils.verifyRefreshToken as jest.Mock).mockReturnValue(decodedPayload);
+      (jwtUtils.deleteRefreshToken as jest.Mock).mockResolvedValue(oldRefreshToken); // Simulate deletion returning the token
+      (userRepository.findOneBy as jest.Mock).mockResolvedValue(mockUser);
+      (jwtUtils.generateTokens as jest.Mock).mockReturnValue(newTokens);
+      (jwtUtils.storeRefreshToken as jest.Mock).mockResolvedValue(undefined);
+
+      const result = await authService.refreshAccessToken(oldRefreshToken);
+
+      expect(jwtUtils.verifyRefreshToken).toHaveBeenCalledWith(oldRefreshToken);
+      expect(jwtUtils.deleteRefreshToken).toHaveBeenCalledWith(decodedPayload.userId);
+      expect(userRepository.findOneBy).toHaveBeenCalledWith({ id: decodedPayload.userId });
+      expect(jwtUtils.generateTokens).toHaveBeenCalledWith(mockUser);
+      expect(jwtUtils.storeRefreshToken).toHaveBeenCalledWith(decodedPayload.userId, newTokens.refreshToken, expect.any(String));
+      expect(result).toEqual({ accessToken: newTokens.accessToken, newRefreshToken: newTokens.refreshToken });
+    });
+
+    it('should throw CustomError for invalid or expired refresh token (verification failed)', async () => {
+      (jwtUtils.verifyRefreshToken as jest.Mock).mockReturnValue(null);
+
+      await expect(authService.refreshAccessToken(oldRefreshToken)).rejects.toThrow(
+        new CustomError('Invalid or expired refresh token', 403)
+      );
+    });
+
+    it('should throw CustomError if refresh token not found in store or mismatch', async () => {
+      (jwtUtils.verifyRefreshToken as jest.Mock).mockReturnValue(decodedPayload);
+      (jwtUtils.deleteRefreshToken as jest.Mock).mockResolvedValue(null); // Simulate token not found
+
+      await expect(authService.refreshAccessToken(oldRefreshToken)).rejects.toThrow(
+        new CustomError('Invalid or revoked refresh token', 403)
+      );
+    });
+
+    it('should throw CustomError if user not found', async () => {
+      (jwtUtils.verifyRefreshToken as jest.Mock).mockReturnValue(decodedPayload);
+      (jwtUtils.deleteRefreshToken as jest.Mock).mockResolvedValue(oldRefreshToken);
+      (userRepository.findOneBy as jest.Mock).mockResolvedValue(null); // User not found
+
+      await expect(authService.refreshAccessToken(oldRefreshToken)).rejects.toThrow(
+        new CustomError('User not found', 404)
+      );
+    });
+  });
+
+  describe('logout', () => {
+    it('should delete refresh token for the user', async () => {
+      const userId = 'user123';
+      await authService.logout(userId);
+      expect(jwtUtils.deleteRefreshToken).toHaveBeenCalledWith(userId);
     });
   });
 });

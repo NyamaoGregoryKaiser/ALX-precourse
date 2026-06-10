@@ -1,54 +1,33 @@
 ```typescript
-import 'reflect-metadata'; // Required for TypeORM
+import 'reflect-metadata'; // Required for TypeORM and other decorators
 import app from './app';
-import { AppDataSource } from './data-source';
-import config from './config/config';
-import logger from './utils/logger';
+import { AppDataSource } from './database/config/data-source';
+import { logger } from './shared/utils/logger';
+import { setupRedis } from './config/redis.config';
+import { env } from './config/env.config';
 
-const PORT = config.port;
+const PORT = env.PORT || 5000;
 
-AppDataSource.initialize()
-  .then(() => {
-    logger.info('Database connection established successfully.');
+async function startServer() {
+  try {
+    // Initialize Database Connection
+    await AppDataSource.initialize();
+    logger.info('Database connected successfully!');
+
+    // Initialize Redis Connection
+    await setupRedis();
+    logger.info('Redis connected successfully!');
+
+    // Start the Express server
     app.listen(PORT, () => {
-      logger.info(`Server is running on port ${PORT}`);
-      logger.info(`Access frontend at http://localhost:${config.frontendPort}`);
-      logger.info(`API documentation at http://localhost:${PORT}/api-docs`);
+      logger.info(`Server running on port ${PORT} in ${env.NODE_ENV} mode.`);
+      logger.info(`Access API at http://localhost:${PORT}/api/v1`);
     });
-  })
-  .catch((error) => {
-    logger.error('Error connecting to the database:', error);
-    process.exit(1); // Exit process if DB connection fails
-  });
+  } catch (error) {
+    logger.error('Failed to connect to database or start server:', error);
+    process.exit(1); // Exit with a failure code
+  }
+}
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason: Error, promise: Promise<any>) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason.message, reason.stack);
-  // Application specific logging, throwing an error, or other logic here
-  // For production, you might want to gracefully shut down after logging
-  process.exit(1);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error: Error) => {
-  logger.error('Uncaught Exception:', error.message, error.stack);
-  // Application specific logging, throwing an error, or other logic here
-  // For production, you might want to gracefully shut down after logging
-  process.exit(1);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received. Shutting down gracefully.');
-  // Ideally, close the server to stop accepting new requests,
-  // then wait for active connections to drain.
-  // For simplicity here, we proceed with DB shutdown directly.
-  AppDataSource.destroy().then(() => {
-    logger.info('Database connection closed.');
-    process.exit(0);
-  }).catch(err => {
-    logger.error('Error closing database connection during shutdown:', err);
-    process.exit(1);
-  });
-});
+startServer();
 ```

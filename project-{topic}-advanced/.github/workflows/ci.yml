@@ -1,149 +1,137 @@
 ```yaml
-name: CI/CD Pipeline
+name: Backend CI Pipeline
 
 on:
   push:
     branches:
       - main
       - develop
+    paths:
+      - 'backend/**'
   pull_request:
     branches:
       - main
       - develop
+    paths:
+      - 'backend/**'
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  build-and-test:
     runs-on: ubuntu-latest
-    services:
-      # PostgreSQL database for integration tests
-      test_db:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: taskdb_test
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      # Redis for caching tests
-      test_redis:
-        image: redis:7-alpine
-        ports:
-          - 6380:6379
+    defaults:
+      run:
+        working-directory: ./backend
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './backend/package-lock.json'
 
-      - name: Cache Node.js modules
-        id: cache-npm
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+    - name: Install dependencies
+      run: npm ci
 
-      - name: Install dependencies
-        if: steps.cache-npm.outputs.cache-hit != 'true'
-        run: npm install
+    - name: Lint code
+      run: npm run lint
 
-      - name: Setup .env for tests
-        run: |
-          echo "NODE_ENV=test" >> .env
-          echo "PORT=5001" >> .env # Use a different port if needed for test environment
-          echo "DATABASE_URL=${{ secrets.DATABASE_URL_TEST }}" >> .env
-          echo "JWT_SECRET=${{ secrets.JWT_SECRET_TEST }}" >> .env
-          echo "JWT_EXPIRATION_TIME=1h" >> .env
-          echo "REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET_TEST }}" >> .env
-          echo "REFRESH_TOKEN_EXPIRATION_TIME=7d" >> .env
-          echo "REDIS_URL=redis://localhost:6380" >> .env # Point to test_redis service
-          echo "LOG_LEVEL=warn" >> .env
+    - name: Setup Database (PostgreSQL) for tests
+      uses: Harmonize-Inc/setup-postgres@v2.0.0
+      with:
+        postgres-version: '14'
+        db-name: 'task_management_test'
+        user: 'testuser'
+        password: 'testpassword'
 
-      - name: Wait for PostgreSQL and Redis to be ready
-        run: |
-          npm install -g wait-on
-          wait-on tcp:5433 -t 30000 # Wait for PostgreSQL on port 5433
-          wait-on tcp:6380 -t 30000 # Wait for Redis on port 6380
-        env:
-          DATABASE_URL_TEST: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public
+    - name: Setup Redis for tests
+      uses: supercharge/redis-github-action@1.8.0
+      with:
+        redis-version: '6'
+        redis-password: 'testpassword'
 
-      - name: Generate Prisma client & Run migrations
-        run: |
-          npx prisma generate --schema=./prisma/schema.prisma
-          npx prisma migrate deploy --schema=./prisma/schema.prisma
-        env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public # Use test DB URL here
+    - name: Generate .env for tests
+      run: |
+        echo "NODE_ENV=test" >> .env
+        echo "PORT=5000" >> .env
+        echo "DB_HOST=localhost" >> .env
+        echo "DB_PORT=5432" >> .env
+        echo "DB_USERNAME=testuser" >> .env
+        echo "DB_PASSWORD=testpassword" >> .env
+        echo "DB_DATABASE=task_management_test" >> .env
+        echo "JWT_SECRET=testsecret" >> .env
+        echo "REDIS_HOST=localhost" >> .env
+        echo "REDIS_PORT=6379" >> .env
+        echo "REDIS_PASSWORD=testpassword" >> .env
+        echo "RATE_LIMIT_WINDOW_MS=1000" >> .env
+        echo "RATE_LIMIT_MAX_REQUESTS=100" >> .env
+        echo "ADMIN_USERNAME=testadmin" >> .env
+        echo "ADMIN_EMAIL=testadmin@example.com" >> .env
+        echo "ADMIN_PASSWORD=testpassword" >> .env
 
-      - name: Seed test database
-        run: npx ts-node prisma/seed.ts
-        env:
-          DATABASE_URL: postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public # Use test DB URL here
+    - name: Run TypeORM migrations and seeders for tests
+      run: |
+        npm run db:migrate
+        npm run db:seed
 
-      - name: Run ESLint
-        run: npm run lint
+    - name: Run tests with coverage
+      run: npm test
 
-      - name: Run tests with coverage
-        run: npm test
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }} # If using Codecov.io
+        directory: ./backend/coverage
 
-      - name: Build TypeScript
-        run: npm run build
+    - name: Build TypeScript
+      run: npm run build
 
-      # You can add steps for pushing Docker images to a registry (e.g., Docker Hub, AWS ECR)
-      # or deploying to a cloud provider (e.g., AWS ECS, Heroku, Vercel) here.
+    - name: Store backend build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-dist
+        path: ./backend/dist
 
-  # Example Deployment Job (simplified - often involves more complex steps)
-  # deploy:
-  #   name: Deploy to Production
-  #   needs: build_and_test
-  #   if: github.ref == 'refs/heads/main' # Deploy only from main branch
-  #   runs-on: ubuntu-latest
-  #   environment: production # Use GitHub Environments for production
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #     - name: Install dependencies
-  #       run: npm install --only=production
-  #     - name: Build
-  #       run: npm run build
-  #     - name: Deploy to Cloud Provider (e.g., Heroku, AWS ECS, Google Cloud Run)
-  #       run: |
-  #         echo "Simulating deployment to production..."
-  #         # Add actual deployment commands here, e.g.,
-  #         # heroku container:push web -a my-app
-  #         # heroku container:release web -a my-app
-  #         # aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment
-  #       env:
-  #         # Pass necessary secrets
-  #         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-  #         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
-  #         JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
+  # Frontend CI Job (similar structure)
+  frontend-build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: './frontend/package-lock.json'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Lint code
+      run: npm run lint
+
+    - name: Run tests
+      run: npm test
+
+    - name: Build Frontend
+      run: npm run build
+
+    - name: Store frontend build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-dist
+        path: ./frontend/dist
 ```
-**GitHub Secrets for CI/CD:**
-You'll need to configure the following secrets in your GitHub repository:
-*   `DATABASE_URL_TEST`: `postgresql://test_user:test_password@localhost:5433/taskdb_test?schema=public` (This will be overridden by the service URL, but good practice to have it defined)
-*   `JWT_SECRET_TEST`: A strong, random string for testing JWTs.
-*   `REFRESH_TOKEN_SECRET_TEST`: A strong, random string for testing refresh tokens.
-*   (Optional, for deployment) `PROD_DATABASE_URL`, `PROD_JWT_SECRET`, `HEROKU_API_KEY`, etc.
-
----
 
 ### 4. Testing & Quality
 
-**Jest Configuration**
+#### Backend Tests (Jest, Supertest)

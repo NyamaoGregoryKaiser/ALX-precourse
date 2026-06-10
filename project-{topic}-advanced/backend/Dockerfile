@@ -1,24 +1,37 @@
-# Use a Node.js image with Playwright dependencies pre-installed for better stability
-FROM mcr.microsoft.com/playwright/node:20-alpine
+```dockerfile
+# Stage 1: Build the TypeScript application
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-
-# Install dependencies, including Playwright browsers
-# The base image comes with browsers already. We just need Node dependencies.
+# Copy package.json and install dependencies
+COPY package*.json ./
 RUN npm install
 
+# Copy source code
 COPY . .
 
-# Generate Prisma client and run migrations.
-# This ensures that the Prisma client is generated in the Docker build context
-# and that migrations are applied when the container starts.
-RUN npx prisma generate
+# Generate TypeORM config and build TypeScript
+RUN npm run build
+
+# Stage 2: Run the application
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install production dependencies only
+COPY --from=builder /app/package*.json ./
+RUN npm install --only=production
+
+# Copy built application files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/.env.example ./.env.example
 
 # Expose the port the app runs on
 EXPOSE 5000
 
-# Command to run the application (overridden by docker-compose)
-# Using `npm start` which will run `node src/server.js`
-CMD [ "npm", "start" ]
+# Command to run the application
+CMD ["node", "dist/server.js"]
+```
+
+#### Core Application Files
