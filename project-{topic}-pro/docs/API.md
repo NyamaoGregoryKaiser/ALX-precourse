@@ -1,275 +1,265 @@
 ```markdown
-# E-commerce API Documentation
+# Aurora Metrics API Documentation
 
-This document outlines the RESTful API endpoints for the E-commerce Solution System.
-The API follows a standard REST convention for resource manipulation and is protected with JWT authentication.
+This document describes the RESTful API endpoints for the Aurora Metrics system.
 
-**Base URL:** `http://localhost:5000/api/v1` (or `http://localhost/api/v1` if using Nginx)
+## Base URL
+
+`http://localhost:8080/api/v1` (or your deployed domain)
 
 ## Authentication
 
-Authentication is performed using JSON Web Tokens (JWT).
-Upon successful login or registration, the API returns `accessToken` and `refreshToken`.
-The `accessToken` should be included in the `Authorization` header of subsequent requests as a Bearer token.
+All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token.
 
-**Header Example:**
-`Authorization: Bearer <accessToken>`
+`Authorization: Bearer <your_jwt_token>`
 
-### Endpoints
+## Error Handling
 
----
+API errors are returned in a JSON format:
 
-### 1. Auth
+```json
+{
+  "status": "error",
+  "message": "A human-readable error message.",
+  "code": 400
+}
+```
 
-*   **`POST /auth/register`**
-    *   **Description**: Register a new user.
-    *   **Access**: Public
-    *   **Request Body**:
-        ```json
-        {
-          "firstName": "John",
-          "lastName": "Doe",
-          "email": "john.doe@example.com",
-          "password": "Password123!"
-        }
-        ```
-    *   **Response**:
-        ```json
-        {
-          "user": {
-            "id": "uuid",
-            "firstName": "John",
-            "lastName": "Doe",
-            "email": "john.doe@example.com",
-            "role": "user",
-            "isEmailVerified": false,
-            "createdAt": "timestamp",
-            "updatedAt": "timestamp"
-          },
-          "tokens": {
-            "access": {
-              "token": "jwt_token",
-              "expires": "timestamp"
-            },
-            "refresh": {
-              "token": "jwt_token",
-              "expires": "timestamp"
-            }
-          }
-        }
-        ```
-    *   **Error Codes**: `400 Bad Request` (e.g., email already taken, invalid input)
+Standard HTTP status codes are used to indicate the type of error (e.g., `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `500 Internal Server Error`).
 
-*   **`POST /auth/login`**
-    *   **Description**: Authenticate user and get access and refresh tokens.
-    *   **Access**: Public
-    *   **Request Body**:
-        ```json
-        {
-          "email": "john.doe@example.com",
-          "password": "Password123!"
-        }
-        ```
-    *   **Response**: Same as register response, but without `isEmailVerified` initially.
-    *   **Error Codes**: `401 Unauthorized` (incorrect email/password)
-
-*   **`POST /auth/logout`**
-    *   **Description**: Invalidate the current access token. (Note: Refresh token remains valid until expiry or explicit invalidation).
-    *   **Access**: Authenticated User
-    *   **Response**: `204 No Content`
-
-*   **`POST /auth/refresh-tokens`**
-    *   **Description**: Generate new access and refresh tokens using a valid refresh token.
-    *   **Access**: Public (requires a valid refresh token in the request body or Authorization header)
-    *   **Request Body**:
-        ```json
-        {
-          "refreshToken": "your_refresh_token_here"
-        }
-        ```
-    *   **Response**:
-        ```json
-        {
-          "user": { /* user details */ },
-          "tokens": {
-            "access": {
-              "token": "new_access_token",
-              "expires": "timestamp"
-            },
-            "refresh": {
-              "token": "new_refresh_token",
-              "expires": "timestamp"
-            }
-          }
-        }
-        ```
-    *   **Error Codes**: `401 Unauthorized` (invalid or expired refresh token)
+## Endpoints
 
 ---
 
-### 2. Users
+### 1. Authentication
 
-*   **`GET /users`**
-    *   **Description**: Get a list of all users. Can be filtered and paginated.
-    *   **Access**: Admin
-    *   **Query Parameters**: `firstName`, `lastName`, `email`, `role`, `sortBy`, `limit`, `page`.
-    *   **Response**: Paginated user list.
-        ```json
-        {
-          "results": [{ ...user_object }, ...],
-          "totalResults": 100,
-          "page": 1,
-          "limit": 10,
-          "totalPages": 10
-        }
-        ```
+#### `POST /auth/register`
 
-*   **`GET /users/:userId`**
-    *   **Description**: Get user details by ID.
-    *   **Access**: Admin or Owner of the user ID.
-    *   **Response**: `200 OK` with user object. `404 Not Found` if user doesn't exist.
+Register a new user account.
 
-*   **`PATCH /users/:userId`**
-    *   **Description**: Update user details by ID.
-    *   **Access**: Admin or Owner of the user ID (limited fields). Admin can update more fields including role.
-    *   **Request Body**: `{ "firstName": "NewName", "email": "new@example.com", ... }`
-    *   **Response**: `200 OK` with updated user object.
-    *   **Error Codes**: `403 Forbidden` (non-admin trying to change role), `400 Bad Request` (email already taken).
+*   **Request:**
+    ```json
+    {
+      "username": "newuser",
+      "password": "strongpassword",
+      "email": "newuser@example.com" (optional)
+    }
+    ```
+*   **Response (201 Created):**
+    ```json
+    {
+      "message": "User registered successfully."
+    }
+    ```
+*   **Error (400 Bad Request):** If username already exists or password is too weak.
 
-*   **`DELETE /users/:userId`**
-    *   **Description**: Delete a user by ID.
-    *   **Access**: Admin
-    *   **Response**: `204 No Content`
+#### `POST /auth/login`
 
----
+Authenticate a user and obtain a JWT token.
 
-### 3. Products
-
-*   **`POST /products`**
-    *   **Description**: Create a new product.
-    *   **Access**: Admin
-    *   **Request Body**:
-        ```json
-        {
-          "name": "New Gadget",
-          "description": "A cool new gadget.",
-          "price": 49.99,
-          "stockQuantity": 100,
-          "imageUrl": "https://example.com/gadget.jpg",
-          "categoryId": "uuid_of_category"
-        }
-        ```
-    *   **Response**: `201 Created` with product object.
-
-*   **`GET /products`**
-    *   **Description**: Get a list of all products. Supports filtering, pagination, sorting, and population of related `category`.
-    *   **Access**: Public (cached)
-    *   **Query Parameters**: `name`, `categoryId`, `minPrice`, `maxPrice`, `availability`, `sortBy`, `limit`, `page`, `populate=category`.
-    *   **Response**: Paginated product list.
-
-*   **`GET /products/:productId`**
-    *   **Description**: Get product details by ID.
-    *   **Access**: Public (cached)
-    *   **Response**: `200 OK` with product object.
-
-*   **`PATCH /products/:productId`**
-    *   **Description**: Update product details by ID.
-    *   **Access**: Admin
-    *   **Request Body**: `{ "price": 55.00, "stockQuantity": 90, ... }`
-    *   **Response**: `200 OK` with updated product object.
-
-*   **`DELETE /products/:productId`**
-    *   **Description**: Delete a product by ID.
-    *   **Access**: Admin
-    *   **Response**: `204 No Content`
+*   **Request:**
+    ```json
+    {
+      "username": "existinguser",
+      "password": "userpassword"
+    }
+    ```
+*   **Response (200 OK):**
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1NiI...",
+      "expires_in": 3600
+    }
+    ```
+*   **Error (401 Unauthorized):** Invalid username or password.
 
 ---
 
-### 4. Categories
+### 2. Users (Protected)
 
-*   **`POST /products/categories`**
-    *   **Description**: Create a new product category.
-    *   **Access**: Admin
-    *   **Request Body**: `{ "name": "Electronics", "description": "Electronic gadgets and devices" }`
-    *   **Response**: `201 Created` with category object.
+Requires JWT authentication.
 
-*   **`GET /products/categories`**
-    *   **Description**: Get a list of all categories.
-    *   **Access**: Public (cached)
-    *   **Response**: Array of category objects.
+#### `GET /users`
 
-*   **`GET /products/categories/:categoryId`**
-    *   **Description**: Get category details by ID.
-    *   **Access**: Public (cached)
-    *   **Response**: `200 OK` with category object.
+Retrieve a list of all users.
 
-*   **`PATCH /products/categories/:categoryId`**
-    *   **Description**: Update category details by ID.
-    *   **Access**: Admin
-    *   **Request Body**: `{ "name": "Consumer Electronics" }`
-    *   **Response**: `200 OK` with updated category object.
+*   **Request:** `GET /users`
+*   **Response (200 OK):**
+    ```json
+    [
+      {
+        "id": "uuid-of-user-1",
+        "username": "admin",
+        "email": "admin@example.com",
+        "created_at": "2023-10-27T10:00:00Z"
+      },
+      {
+        "id": "uuid-of-user-2",
+        "username": "api_test_user",
+        "email": "api_test_user@example.com",
+        "created_at": "2023-10-27T10:05:00Z"
+      }
+    ]
+    ```
 
-*   **`DELETE /products/categories/:categoryId`**
-    *   **Description**: Delete a category by ID. Products associated with this category will have their `categoryId` set to `NULL`.
-    *   **Access**: Admin
-    *   **Response**: `204 No Content`
+#### `GET /users/<username>`
+
+Retrieve details of a specific user by username.
+
+*   **Request:** `GET /users/admin`
+*   **Response (200 OK):**
+    ```json
+    {
+      "id": "uuid-of-admin",
+      "username": "admin",
+      "email": "admin@example.com",
+      "created_at": "2023-10-27T10:00:00Z"
+    }
+    ```
+*   **Error (404 Not Found):** If user does not exist.
+
+#### `GET /users/me`
+
+Retrieve details of the authenticated user.
+
+*   **Request:** `GET /users/me`
+*   **Response (200 OK):** Returns the current authenticated user's details, same format as `GET /users/<username>`.
+
+#### `PUT /users/<username>`
+
+Update user details.
+
+*   **Request:** `PUT /users/api_test_user`
+    ```json
+    {
+      "email": "updated_email@example.com"
+      // Password update logic would be more complex and usually a separate endpoint
+    }
+    ```
+*   **Response (200 OK):**
+    ```json
+    {
+      "message": "User updated successfully."
+    }
+    ```
+*   **Error (400 Bad Request, 403 Forbidden, 404 Not Found):** E.g., trying to update another user without sufficient permissions, or user not found.
+
+#### `DELETE /users/<username>`
+
+Delete a user.
+
+*   **Request:** `DELETE /users/api_test_user`
+*   **Response (200 OK):**
+    ```json
+    {
+      "message": "User deleted successfully."
+    }
+    ```
+*   **Error (403 Forbidden, 404 Not Found):** E.g., insufficient permissions or user not found.
 
 ---
 
-### 5. Orders
+### 3. Metrics (Protected)
 
-*   **`POST /orders`**
-    *   **Description**: Create a new order. Deducts stock quantities.
-    *   **Access**: Authenticated User
-    *   **Request Body**:
-        ```json
-        {
-          "items": [
-            { "productId": "uuid1", "quantity": 1 },
-            { "productId": "uuid2", "quantity": 2 }
-          ],
-          "shippingAddress": {
-            "street": "123 Main St",
-            "city": "Anytown",
-            "state": "Anystate",
-            "zipCode": "12345",
-            "country": "USA"
-          },
-          "paymentMethod": "credit_card"
-        }
-        ```
-    *   **Response**: `201 Created` with order object.
-    *   **Error Codes**: `400 Bad Request` (insufficient stock, invalid items), `404 Not Found` (product not found).
+Requires JWT authentication.
 
-*   **`GET /orders`**
-    *   **Description**: Get a list of orders. Users can view their own orders. Admins can view all orders and filter by `userId`.
-    *   **Access**: Authenticated User or Admin
-    *   **Query Parameters**: `userId` (Admin only), `status`, `paymentStatus`, `sortBy`, `limit`, `page`, `populate=user,orderItems,orderItems.product`.
-    *   **Response**: Paginated order list.
+#### `POST /metrics`
 
-*   **`GET /orders/:orderId`**
-    *   **Description**: Get order details by ID.
-    *   **Access**: Owner of the order or Admin.
-    *   **Response**: `200 OK` with order object including `user` and `orderItems`.
+Ingest one or more performance metrics.
 
-*   **`PATCH /orders/:orderId/status`**
-    *   **Description**: Update the status of an order (e.g., `processing`, `shipped`, `delivered`).
-    *   **Access**: Admin
-    *   **Request Body**: `{ "status": "shipped" }`
-    *   **Response**: `200 OK` with updated order object.
-    *   **Error Codes**: `400 Bad Request` (invalid status, invalid state transition), `404 Not Found`.
+*   **Request:**
+    ```json
+    [
+      {
+        "metric_name": "system.cpu.usage",
+        "value": 55.7,
+        "timestamp": 1678886400000
+      },
+      {
+        "metric_name": "app.request.latency",
+        "value": 125.3,
+        "timestamp": 1678886401500
+      }
+    ]
+    ```
+    *   `timestamp` should be a Unix timestamp in milliseconds.
+*   **Response (200 OK):**
+    ```json
+    {
+      "message": "Metrics ingested successfully."
+    }
+    ```
+*   **Error (400 Bad Request):** Invalid JSON or missing required fields.
 
-*   **`PATCH /orders/:orderId/payment-status`**
-    *   **Description**: Update the payment status of an order (e.g., `paid`, `refunded`).
-    *   **Access**: Admin (or triggered by payment gateway webhooks).
-    *   **Request Body**: `{ "paymentStatus": "paid" }`
-    *   **Response**: `200 OK` with updated order object.
+#### `GET /metrics/<metric_name>`
 
-*   **`PATCH /orders/:orderId/cancel`**
-    *   **Description**: Cancel an order and restore product stock.
-    *   **Access**: Owner of the order or Admin.
-    *   **Response**: `200 OK` with updated order object (status set to `cancelled`).
-    *   **Error Codes**: `400 Bad Request` (cannot cancel delivered orders).
+Retrieve raw data points for a specific metric.
+
+*   **Path Parameters:**
+    *   `metric_name`: The name of the metric (e.g., `system.cpu.usage`).
+*   **Query Parameters:**
+    *   `start` (optional): Start Unix timestamp (milliseconds). Default: 1 hour ago.
+    *   `end` (optional): End Unix timestamp (milliseconds). Default: current time.
+    *   `limit` (optional): Maximum number of data points to return. Default: 100.
+*   **Request:** `GET /metrics/system.cpu.usage?start=1678885000000&end=1678887000000&limit=50`
+*   **Response (200 OK):**
+    ```json
+    [
+      {
+        "metric_name": "system.cpu.usage",
+        "value": 50.1,
+        "timestamp": 1678886400000
+      },
+      {
+        "metric_name": "system.cpu.usage",
+        "value": 52.3,
+        "timestamp": 1678886410000
+      }
+    ]
+    ```
+*   **Error (500 Internal Server Error):** Database or internal service error.
+
+#### `GET /metrics/aggregate/<metric_name>`
+
+Retrieve aggregated data points for a specific metric over a time range.
+
+*   **Path Parameters:**
+    *   `metric_name`: The name of the metric.
+*   **Query Parameters:**
+    *   `start` (optional): Start Unix timestamp (milliseconds). Default: 24 hours ago.
+    *   `end` (optional): End Unix timestamp (milliseconds). Default: current time.
+    *   `interval` (optional): Aggregation interval (e.g., `1m`, `5m`, `1h`, `1d`). Default: `1m`.
+    *   `type` (optional): Aggregation type (`avg`, `min`, `max`, `sum`, `count`). Default: `avg`.
+*   **Request:** `GET /metrics/aggregate/system.cpu.usage?start=1678800000000&end=1678886400000&interval=1h&type=avg`
+*   **Response (200 OK):**
+    ```json
+    [
+      {
+        "timestamp": 1678800000000,
+        "value": 45.2
+      },
+      {
+        "timestamp": 1678803600000,
+        "value": 51.8
+      }
+    ]
+    ```
+    *   `timestamp` represents the start of the aggregation interval.
+*   **Error (400 Bad Request):** Invalid `interval` or `type` parameter.
+
+#### `GET /metrics/available`
+
+Retrieve a list of all unique metric names that have been ingested.
+
+*   **Request:** `GET /metrics/available`
+*   **Response (200 OK):**
+    ```json
+    [
+      "system.cpu.usage",
+      "system.memory.used_gb",
+      "app.request.latency"
+    ]
+    ```
 
 ---
 ```

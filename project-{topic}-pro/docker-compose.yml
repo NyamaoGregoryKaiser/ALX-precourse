@@ -2,81 +2,50 @@
 version: '3.8'
 
 services:
-  ml-db:
-    image: postgres:15-alpine
-    restart: always
+  pgdb:
+    image: postgres:14-alpine
+    container_name: aurora_pgdb
+    restart: unless-stopped
+    env_file:
+      - ./config/.env
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    volumes:
-      - ml_db_data:/var/lib/postgresql/data
+      POSTGRES_USER: aurora_user
+      POSTGRES_PASSWORD: aurora_password
+      POSTGRES_DB: aurora_metrics_db
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./db/seed:/docker-entrypoint-initdb.d/seed
+      # Custom Dockerfile for DB initialization including migration/seeding on startup
+      # For a production setup, a separate migration tool (Flyway/Sqitch) would run externally.
+      # For demo, using docker-entrypoint-initdb.d is common.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U aurora_user -d aurora_metrics_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  ml-redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - ml_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "PING"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  ml-backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    restart: always
-    environment:
-      PORT: 5000
-      DB_HOST: ml-db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      REDIS_URL: redis://ml-redis:6379
-      UPLOAD_DIR: /app/uploads
-      FRONTEND_URL: http://localhost:3000 # For CORS on local machine, use http://localhost for dockerized frontend
+    container_name: aurora_app
+    restart: unless-stopped
+    env_file:
+      - ./config/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      pgdb:
+        condition: service_healthy # Ensure DB is ready before starting app
     volumes:
-      - ml_uploads:/app/uploads # Persist uploaded files
-    ports:
-      - "5000:5000"
-    depends_on:
-      ml-db:
-        condition: service_healthy
-      ml-redis:
-        condition: service_healthy
-    # Initialize database after services are healthy
-    command: ["sh", "-c", "npm install && npm run migrate && npm run seed && npm start"]
-
-  ml-frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        REACT_APP_API_BASE_URL: http://localhost:5000/api # Connects to backend on host machine
-    restart: always
-    ports:
-      - "3000:80" # Map container port 80 to host port 3000
-    depends_on:
-      - ml-backend
+      - ./logs:/app/logs # Persist application logs
 
 volumes:
-  ml_db_data:
-  ml_redis_data:
-  ml_uploads:
+  pgdata:
 ```
+*   **Note on DB initialization:** The `docker-compose.yml` uses `docker-entrypoint-initdb.d` to run SQL scripts on `pgdb` startup. For a robust production environment, a dedicated database migration tool (e.g., Flyway, Sqitch, or even custom scripts) would be run as a separate step in the CI/CD pipeline, independent of the database container's initial startup.
 
-#### CI/CD Pipeline Configuration (GitHub Actions)
+#### 3.4 CI/CD Pipeline Configuration (GitHub Actions)

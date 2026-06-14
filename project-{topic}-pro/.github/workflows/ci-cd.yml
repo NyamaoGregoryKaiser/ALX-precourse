@@ -1,145 +1,95 @@
 ```yaml
-name: CI/CD Pipeline
+name: Aurora Metrics CI/CD
 
 on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
-  build_and_test_backend:
-    name: Build & Test Backend
+  build-and-test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+    - name: Install C++ dependencies (vcpkg example - recommended)
+      # For a real project, use vcpkg or Conan.
+      # For this blueprint, we'll use system libs and assume some are found.
+      # This step would typically install vcpkg, then install necessary libraries.
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake libpq-dev libssl-dev # Basic build tools + libpq for postgres
+        # Example for vcpkg setup:
+        # git clone https://github.com/Microsoft/vcpkg.git /usr/local/vcpkg
+        # /usr/local/vcpkg/bootstrap-vcpkg.sh
+        # /usr/local/vcpkg/vcpkg integrate install
+        # /usr/local/vcpkg/vcpkg install crow spdlog libpqxx jwt-cpp nlohmann-json googletest --recurse
 
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release # Add -DCMAKE_TOOLCHAIN_FILE=/usr/local/vcpkg/scripts/buildsystems/vcpkg.cmake if using vcpkg
 
-      - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install
+    - name: Build C++ application
+      run: cmake --build build --config Release
 
-      - name: Lint Backend
-        working-directory: ./backend
-        run: npm run lint # Assuming you have a lint script (e.g., eslint)
+    - name: Run Unit and Integration Tests
+      # Assuming your tests/CMakeLists.txt correctly adds test executables
+      run: |
+        cd build
+        ./tests/unit_tests
+        ./tests/integration_tests
+      env:
+        # Set environment variables for tests, especially DB connection for integration tests
+        DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/test_aurora_metrics_db"
+        JWT_SECRET: "test_jwt_secret_for_ci"
 
-      - name: Build Backend
-        working-directory: ./backend
-        run: npm run build
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Set up Test Database (PostgreSQL)
-        run: |
-          docker run --name test-db -e POSTGRES_DB=test_db -e POSTGRES_USER=test_user -e POSTGRES_PASSWORD=test_password -p 5433:5432 -d postgres:14-alpine
-          docker run --name test-redis -e REDIS_PASSWORD=test_redis_password -p 6380:6379 -d redis:7-alpine redis-server --requirepass "test_redis_password"
-          sleep 10 # Give containers time to start
+    - name: Log in to Docker Hub
+      if: github.ref == 'refs/heads/main' # Only log in for main branch pushes
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Run Backend Tests
-        working-directory: ./backend
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5433
-          DB_USERNAME: test_user
-          DB_PASSWORD: test_password
-          DB_DATABASE: test_db
-          REDIS_HOST: localhost
-          REDIS_PORT: 6380
-          REDIS_PASSWORD: test_redis_password
-          SECRET_KEY: test_secret
-          REFRESH_SECRET_KEY: test_refresh_secret
-        run: npm test
+    - name: Build and push Docker image
+      if: github.ref == 'refs/heads/main'
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/aurora-metrics:latest
+          ${{ secrets.DOCKER_USERNAME }}/aurora-metrics:${{ github.sha }}
 
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage-report
-          path: backend/coverage/lcov.info # Or other formats
-
-      - name: Stop Test Containers
-        if: always() # Run even if tests fail
-        run: |
-          docker stop test-db test-redis
-          docker rm test-db test-redis
-
-  build_and_test_frontend:
-    name: Build & Test Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install
-
-      - name: Lint Frontend
-        working-directory: ./frontend
-        run: npm run lint # Assuming you have a lint script (e.g., eslint)
-
-      - name: Run Frontend Tests
-        working-directory: ./frontend
-        run: npm test -- --coverage
-
-      - name: Build Frontend
-        working-directory: ./frontend
-        run: npm run build
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage-report
-          path: frontend/coverage/lcov.info
-
-  # This job will only run if all previous jobs in the workflow are successful.
-  # For a real project, this would deploy to a cloud provider (AWS, GCP, Azure, Heroku, etc.)
-  # This example is a placeholder for a simulated deployment.
   deploy:
-    name: Deploy to Staging/Production
     runs-on: ubuntu-latest
-    needs: [build_and_test_backend, build_and_test_frontend] # Ensure tests pass before deployment
-    if: github.ref == 'refs/heads/main' # Only deploy main branch to production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' # Deploy only from main branch
 
-      - name: Simulate Deployment
-        run: |
-          echo "Deploying backend and frontend Docker images to a hypothetical server..."
-          echo "  - Build Docker images (if not already built by previous stages)"
-          docker-compose build
-          echo "  - Push images to Docker Registry (e.g., Docker Hub, ECR)"
-          # Example: docker push myrepo/backend:latest
-          # Example: docker push myrepo/frontend:latest
-          echo "  - Pull images and restart services on the target server (e.g., using SSH and docker-compose)"
-          echo "Deployment simulated successfully! In a real scenario, this would involve cloud-specific deployment steps."
+    steps:
+    - name: Deploy to Server (SSH)
+      # This is a conceptual deployment step. In a real scenario, you'd pull the latest Docker image
+      # on your server and restart the Docker Compose stack.
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /path/to/your/aurora-metrics-deployment
+          docker-compose pull app # Pull the latest image
+          docker-compose down
+          docker-compose up -d
+          echo "Deployment complete for Aurora Metrics!"
 ```
+---
+
+### 4. Testing & Quality
+
+Using `Google Test` for C++ tests.
