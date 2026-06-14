@@ -1,0 +1,88 @@
+#include "MessageService.h"
+
+MessageService::MessageService(std::shared_ptr<DbManager> db_manager)
+    : db_manager_(std::move(db_manager)) {}
+
+std::optional<Message> MessageService::createMessage(int room_id, int user_id, const std::string& username, const std::string& content) {
+    try {
+        if (content.empty()) {
+            LOG_WARN("Attempted to create empty message by user " + std::to_string(user_id) + " in room " + std::to_string(room_id));
+            return std::nullopt;
+        }
+
+        std::string sql = "INSERT INTO Messages (room_id, user_id, content) VALUES (?, ?, ?);";
+        db_manager_->execute(sql, {std::to_string(room_id), std::to_string(user_id), content});
+
+        // Retrieve the created message by finding the last inserted ID.
+        // SQLite's last_insert_rowid() is per connection, so safe in single-threaded context or with explicit locking/transactions.
+        // For production-grade, consider returning id from INSERT statement if possible or a more robust retrieval.
+        std::string get_last_id_sql = "SELECT last_insert_rowid();";
+        std::optional<std::string> last_id_str = db_manager_->query_single_value(get_last_id_sql);
+
+        if (last_id_str) {
+            int new_msg_id = std::stoi(*last_id_str);
+            // Construct and return the message object
+            Message new_msg;
+            new_msg.id = new_msg_id;
+            new_msg.room_id = room_id;
+            new_msg.user_id = user_id;
+            new_msg.username = username;
+            new_msg.content = content;
+            new_msg.created_at = std::chrono::system_clock::now(); // Approximate
+            return new_msg;
+        }
+    } catch (const DbError& e) {
+        LOG_ERROR("Database error creating message: " + std::string(e.what()));
+    } catch (const std::exception& e) {
+        LOG_ERROR("Unexpected error creating message: " + std::string(e.what()));
+    }
+    return std::nullopt;
+}
+
+std::optional<Message> MessageService::getMessageById(int id) {
+    std::string sql = R"(
+        SELECT M.id, M.room_id, M.user_id, U.username, M.content, M.created_at
+        FROM Messages M
+        JOIN Users U ON M.user_id = U.id
+        WHERE M.id = ?;
+    )";
+    std::optional<Message> message_opt;
+
+    db_manager_->query(sql, {std::to_string(id)}, [&](std::map<std::string, std::string>& row) {
+        message_opt = message_from_db_row(row);
+    });
+    return message_opt;
+}
+
+std::vector<Message> MessageService::getMessagesInRoom(int room_id, int limit, int offset) {
+    std::vector<Message> messages;
+    std::string sql = R"(
+        SELECT M.id, M.room_id, M.user_id, U.username, M.content, M.created_at
+        FROM Messages M
+        JOIN Users U ON M.user_id = U.id
+        WHERE M.room_id = ?
+        ORDER BY M.created_at DESC
+        LIMIT ? OFFSET ?;
+    )";
+
+    db_manager_->query(sql, {std::to_string(room_id), std::to_string(limit), std::to_string(offset)},
+                       [&](std::map<std::string, std::string>& row) {
+        messages.push_back(message_from_db_row(row));
+    });
+    // Optional: reverse to get chronological order if DESC was for fetching newest first
+    std::reverse(messages.begin(), messages.end());
+    return messages;
+}
+
+bool MessageService::deleteMessage(int id) {
+    try {
+        std::string sql = "DELETE FROM Messages WHERE id = ?;";
+        int rows_affected = db_manager_->execute(sql, {std::to_string(id)});
+        return rows_affected > 0;
+    } catch (const DbError& e) {
+        LOG_ERROR("Database error deleting message: " + std::string(e.what()));
+    } catch (const std::exception& e) {
+        LOG_ERROR("Unexpected error deleting message: " + std::string(e.what()));
+    }
+    return false;
+}

@@ -1,0 +1,47 @@
+#include "ErrorHandler.h"
+
+http::response<http::string_body> ErrorHandler::handle_internal_server_error(int version, const std::string& error_details) {
+    http::response<http::string_body> res;
+    res.version(version);
+    res.result(http::status::internal_server_error);
+    res.set(http::field::content_type, "application/json");
+    
+    boost::json::object body;
+    body["error"] = "Internal Server Error";
+    body["details"] = error_details;
+    res.body() = boost::json::serialize(body);
+    res.prepare_payload();
+    LOG_ERROR("Internal Server Error: " + error_details);
+    return res;
+}
+
+http::response<http::string_body> ErrorHandler::handle_http_exception(int version, const HttpException& ex) {
+    http::response<http::string_body> res;
+    res.version(version);
+    res.result(ex.get_status());
+    res.set(http::field::content_type, "application/json");
+
+    boost::json::object body;
+    body["error"] = ex.what();
+    if (!ex.get_debug_message().empty()) {
+        body["details"] = ex.get_debug_message();
+    }
+    res.body() = boost::json::serialize(body);
+    res.prepare_payload();
+    return res;
+}
+
+http::response<http::string_body> ErrorHandler::handle_json_parse_error(int version, const boost::json::system_error& ex) {
+    http::response<http::string_body> res;
+    res.version(version);
+    res.result(http::status::bad_request);
+    res.set(http::field::content_type, "application/json");
+
+    boost::json::object body;
+    body["error"] = "Invalid JSON payload.";
+    body["details"] = ex.what();
+    res.body() = boost::json::serialize(body);
+    res.prepare_payload();
+    LOG_WARN("JSON Parse Error: " + std::string(ex.what()));
+    return res;
+}

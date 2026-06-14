@@ -1,0 +1,129 @@
+#include <iostream>
+#include <memory>
+#include <string>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/signal_set.hpp>
+#include <boost/bind/bind.hpp>
+
+#include "config/config.h"
+#include "utils/Logger.h"
+#include "database/DbManager.h"
+#include "network/HttpServer.h"
+#include "network/WebSocketServer.h"
+#include "services/UserService.h"
+#include "services/RoomService.h"
+#include "services/MessageService.h"
+#include "auth/JwtManager.h"
+#include "auth/AuthMiddleware.h"
+#include "utils/Cache.h"
+#include "utils/RateLimiter.h"
+
+int main(int argc, char* argv[]) {
+    // 1. Initialize Logger
+    Logger::init();
+    LOG_INFO("Chat server starting...");
+
+    // 2. Load Configuration
+    if (!Config::load("config.json")) {
+        LOG_CRITICAL("Failed to load configuration. Exiting.");
+        return 1;
+    }
+    LOG_INFO("Configuration loaded successfully.");
+
+    // 3. Initialize Database Manager
+    std::shared_ptr<DbManager> db_manager = std::make_shared<DbManager>(Config::get<std::string>("database.path"));
+    if (!db_manager->open()) {
+        LOG_CRITICAL("Failed to open database connection. Exiting.");
+        return 1;
+    }
+    LOG_INFO("Database connection opened successfully.");
+
+    // 4. Initialize Services
+    std::shared_ptr<JwtManager> jwt_manager = std::make_shared<JwtManager>(
+        Config::get<std::string>("jwt.secret"),
+        Config::get<std::string>("jwt.issuer"),
+        Config::get<int>("jwt.expiry_minutes")
+    );
+    std::shared_ptr<UserService> user_service = std::make_shared<UserService>(db_manager);
+    std::shared_ptr<RoomService> room_service = std::make_shared<RoomService>(db_manager);
+    std::shared_ptr<MessageService> message_service = std::make_shared<MessageService>(db_manager);
+    
+    // 5. Initialize Caching and Rate Limiting
+    std::shared_ptr<Cache<std::string, User>> user_cache = std::make_shared<Cache<std::string, User>>(
+        Config::get<int>("cache.user_ttl_seconds")
+    );
+    std::shared_ptr<RateLimiter> auth_rate_limiter = std::make_shared<RateLimiter>(
+        Config::get<int>("ratelimiting.auth_limit"),
+        Config::get<int>("ratelimiting.auth_window_seconds")
+    );
+    std::shared_ptr<RateLimiter> message_rate_limiter = std::make_shared<RateLimiter>(
+        Config::get<int>("ratelimiting.message_limit"),
+        Config::get<int>("ratelimiting.message_window_seconds")
+    );
+
+
+    // 6. Setup Boost.Asio io_context
+    boost::asio::io_context ioc{Config::get<int>("server.threads")};
+
+    // 7. Start HTTP Server
+    unsigned short http_port = Config::get<unsigned short>("server.http_port");
+    std::shared_ptr<HttpServer> http_server = std::make_shared<HttpServer>(
+        ioc,
+        boost::asio::ip::make_address("0.0.0.0"), // Listen on all interfaces
+        http_port,
+        Config::get<std::string>("server.doc_root"),
+        user_service,
+        room_service,
+        message_service,
+        jwt_manager,
+        user_cache,
+        auth_rate_limiter
+    );
+    http_server->run();
+    LOG_INFO("HTTP Server started on port " + std::to_string(http_port));
+
+    // 8. Start WebSocket Server
+    unsigned short ws_port = Config::get<unsigned short>("server.ws_port");
+    std::shared_ptr<WebSocketServer> ws_server = std::make_shared<WebSocketServer>(
+        ioc,
+        boost::asio::ip::make_address("0.0.0.0"), // Listen on all interfaces
+        ws_port,
+        jwt_manager,
+        user_service,
+        message_service,
+        message_rate_limiter
+    );
+    ws_server->run();
+    LOG_INFO("WebSocket Server started on port " + std::to_string(ws_port));
+
+    // 9. Handle termination signals
+    boost::asio::signal_set signals(ioc, SIGINT, SIGTERM);
+    signals.async_wait([&](boost::system::error_code const&, int) {
+        LOG_INFO("Termination signal received. Shutting down servers...");
+        http_server->stop();
+        ws_server->stop();
+        ioc.stop(); // Stop the io_context
+    });
+
+    // 10. Run io_context in multiple threads
+    std::vector<std::thread> threads;
+    threads.reserve(Config::get<int>("server.threads") - 1);
+    for (int i = 0; i < Config::get<int>("server.threads") - 1; ++i) {
+        threads.emplace_back([&ioc] { ioc.run(); });
+    }
+    // Run the main thread too
+    ioc.run();
+
+    // Join all worker threads
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    db_manager->close();
+    LOG_INFO("Database connection closed.");
+    LOG_INFO("Chat server stopped.");
+
+    return 0;
+}
