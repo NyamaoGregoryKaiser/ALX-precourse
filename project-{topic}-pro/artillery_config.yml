@@ -1,0 +1,72 @@
+```yaml
+config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 60
+      arrivalRate: 10 # 10 new VUs per second for 60 seconds
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 20
+      rampTo: 50 # ramp up to 50 VUs per second over 120 seconds
+      name: "Load test"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  plugins:
+    metrics-by-endpoint: {}
+    expect: {} # For assertions
+  # JWT authentication will require a custom function to get a token
+  # and set it in headers.
+  # Before scenarios, you might want to log in a user and store the token.
+  before:
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "admin@mltoolbox.com"
+            password: "adminpassword"
+          capture:
+            json: "$.token"
+            as: "authToken"
+
+scenarios:
+  - name: "Get All Datasets"
+    flow:
+      - get:
+          url: "/api/datasets"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - think: 1 # Simulate user thinking time
+  
+  - name: "Create & Delete Dataset"
+    flow:
+      - post:
+          url: "/api/datasets"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          formData:
+            name: "Test Dataset {{ $randomNumber() }}"
+            description: "A dataset for performance testing"
+            file:
+              value: "dummy,data\n1,2\n3,4" # Minimal CSV data
+              options:
+                filename: "dummy.csv"
+                contentType: "text/csv"
+          capture:
+            json: "$.dataset.id"
+            as: "newDatasetId"
+      - get:
+          url: "/api/datasets/{{ newDatasetId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - delete:
+          url: "/api/datasets/{{ newDatasetId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+```
+
+---
+
+### 5. Documentation
+
+#### `README.md` (Top-level)

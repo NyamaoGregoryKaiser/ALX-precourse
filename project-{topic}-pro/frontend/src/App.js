@@ -1,82 +1,113 @@
-import React, { useState, useEffect } from 'react';
+```javascript
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './components/Auth/Login';
-import Register from './components/Auth/Register';
-import Dashboard from './components/Dashboard/Dashboard';
-import CreateAccount from './components/Accounts/CreateAccount';
-import AccountDetail from './components/Accounts/AccountDetail';
-import InitiateTransaction from './components/Transactions/InitiateTransaction';
-import Navbar from './components/Layout/Navbar';
+import { useAuth } from './context/AuthContext';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
+import DatasetsPage from './pages/DatasetsPage';
+import DatasetDetailsPage from './pages/DatasetDetailsPage';
+import ModelsPage from './pages/ModelsPage';
+import ModelDetailsPage from './pages/ModelDetailsPage';
+import UtilityPlaygroundPage from './pages/UtilityPlaygroundPage';
+import Header from './components/Layout/Header';
+import Sidebar from './components/Layout/Sidebar';
+import './App.css';
+
+// Protected Route Component
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div>Loading...</div>; // Or a spinner component
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/dashboard" replace />; // Or a 403 Forbidden page
+  }
+
+  return children;
+};
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('jwtToken'));
-  const [user, setUser] = useState(null);
-
-  const handleLogin = (jwtToken, userData) => {
-    localStorage.setItem('jwtToken', jwtToken);
-    setToken(jwtToken);
-    setUser(userData);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('jwtToken');
-    setToken(null);
-    setUser(null);
-  };
-
-  // Fetch user profile on app load if token exists
-  useEffect(() => {
-    const fetchProfile = async () => {
-      if (token) {
-        try {
-          const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/profile`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            setUser(data.user);
-          } else {
-            handleLogout(); // Token might be expired or invalid
-          }
-        } catch (error) {
-          console.error('Failed to fetch user profile:', error);
-          handleLogout();
-        }
-      }
-    };
-    fetchProfile();
-  }, [token]);
+  const { isAuthenticated } = useAuth();
 
   return (
     <Router>
-      <Navbar user={user} onLogout={handleLogout} />
-      <div className="container mx-auto p-4">
-        <Routes>
-          <Route path="/login" element={token ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={token ? <Navigate to="/dashboard" /> : <Register onRegister={handleLogin} />} />
-          <Route
-            path="/dashboard"
-            element={token ? <Dashboard user={user} token={token} /> : <Navigate to="/login" />}
-          />
-          <Route
-            path="/accounts/create"
-            element={token ? <CreateAccount token={token} /> : <Navigate to="/login" />}
-          />
-          <Route
-            path="/accounts/:accountId"
-            element={token ? <AccountDetail token={token} /> : <Navigate to="/login" />}
-          />
-          <Route
-            path="/transactions/initiate/:accountId?"
-            element={token ? <InitiateTransaction token={token} /> : <Navigate to="/login" />}
-          />
-          <Route path="/" element={<Navigate to={token ? "/dashboard" : "/login"} />} />
-        </Routes>
+      <div className="app-container">
+        {isAuthenticated && <Header />}
+        <div className="content-area">
+          {isAuthenticated && <Sidebar />}
+          <main className="main-content">
+            <Routes>
+              <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" /> : <HomePage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/datasets"
+                element={
+                  <ProtectedRoute>
+                    <DatasetsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/datasets/:id"
+                element={
+                  <ProtectedRoute>
+                    <DatasetDetailsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/models"
+                element={
+                  <ProtectedRoute>
+                    <ModelsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/models/:id"
+                element={
+                  <ProtectedRoute>
+                    <ModelDetailsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/utilities"
+                element={
+                  <ProtectedRoute>
+                    <UtilityPlaygroundPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<div>404 Not Found</div>} />
+            </Routes>
+          </main>
+        </div>
       </div>
     </Router>
   );
 }
 
 export default App;
+```
+
+---
+
+### 2. Database Layer (PostgreSQL with Sequelize)

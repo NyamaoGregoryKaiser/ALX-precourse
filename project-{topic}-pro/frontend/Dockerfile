@@ -1,31 +1,28 @@
 ```dockerfile
-# Use an official Node.js runtime as a parent image
-FROM node:18-alpine
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock)
-COPY package*.json ./
-
-# Install app dependencies
+COPY package.json package-lock.json ./
 RUN npm install
 
-# Copy the rest of the application code
 COPY . .
 
-# Build the React app for production
-# This command is typically run for a production build.
-# For development, we'll use `npm start` (or `yarn start`)
-# RUN npm run build
+ARG REACT_APP_API_BASE_URL
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
 
-# Expose port 3000 for the React app
-EXPOSE 3000
+RUN npm run build
 
-# Command to run the application
-# For production, you'd typically serve the 'build' directory with a static server like Nginx or serve it from backend.
-# For development, we use `npm start`.
-CMD ["npm", "start"]
+# Stage 2: Serve the application with Nginx
+FROM nginx:alpine
+
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
 ```
-
-**CI/CD Pipeline Configuration (GitHub Actions)**:
