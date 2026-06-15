@@ -2,112 +2,63 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: payment-processor-db
+  task_management_db:
+    image: postgres:13
+    restart: always
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-      # For test environment
-      POSTGRES_MULTIPLE_DATABASES: ${DB_NAME},${TEST_DB_NAME} # Requires custom image or initial script to create multiple DBs
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      # - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh # Optional: script to create multiple databases
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${DATABASE_NAME:-task_management_db}
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-postgres} -d ${DATABASE_NAME:-task_management_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: payment-processor-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} # Enable persistence and password
-    volumes:
-      - redis_data:/data
+  task_management_redis:
+    image: redis:6-alpine
+    restart: always
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "INFO"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
-  backend:
+  task-management-backend-app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    container_name: payment-processor-backend
-    ports:
-      - "5000:5000"
+    restart: always
+    env_file:
+      - .env
     environment:
-      NODE_ENV: development
-      PORT: 5000
-      DB_CLIENT: pg
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      TEST_DB_NAME: ${TEST_DB_NAME} # For running tests in container
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION_TIME: ${JWT_EXPIRATION_TIME}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      MOCK_GATEWAY_API_KEY: ${MOCK_GATEWAY_API_KEY}
-      MOCK_GATEWAY_URL: http://mock-gateway:5001/mock-gateway # Link to mock gateway service
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY} # For sensitive data encryption if implemented
+      # Override DATABASE_HOST and REDIS_HOST to use service names within Docker network
+      DATABASE_HOST: task_management_db
+      REDIS_HOST: task_management_redis
+    ports:
+      - "${PORT:-3000}:3000"
     depends_on:
-      db:
+      task_management_db:
         condition: service_healthy
-      redis:
+      task_management_redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app # Mount current directory to allow hot-reloading (for dev)
-      - /app/node_modules # Prevent host node_modules from overwriting container's
-    command: sh -c "npm install && npm run migrate:latest && npm run seed:run && npm run dev" # Run migrations/seeds then start dev server
-
-  mock-gateway: # A simple mock for the external payment gateway
-    build:
-      context: ./backend/mock-gateway # Assume a simple Express app for mock gateway
-      dockerfile: Dockerfile
-    container_name: mock-payment-gateway
-    ports:
-      - "5001:5001"
-    environment:
-      PORT: 5001
-      MOCK_GATEWAY_API_KEY: ${MOCK_GATEWAY_API_KEY} # Must match backend's config
-    # No depends_on, it's independent
-    volumes:
-      - ./backend/mock-gateway:/app
-      - /app/node_modules
-    command: npm start
-
-
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   container_name: payment-processor-frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NODE_ENV: development
-  #     REACT_APP_API_URL: http://localhost:5000/api/v1 # Or http://backend:5000/api/v1 if frontend also in docker
-  #   depends_on:
-  #     - backend
-  #   volumes:
-  #     - ./frontend:/app
-  #     - /app/node_modules
-  #   command: npm start
+      - .:/app # Mount current directory into container for live reload in dev
+      - /app/node_modules # Exclude node_modules from host mount to prevent issues
+    # Uncomment the following lines for live-reloading development within Docker
+    # command: ["npm", "run", "start:dev"] # Use this for local development with live reload
+    # environment:
+    #   NODE_ENV: development
 
 volumes:
-  db_data:
+  postgres_data:
   redis_data:
-
 ```
