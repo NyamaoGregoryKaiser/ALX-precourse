@@ -1,158 +1,186 @@
-```markdown
-# ALX CMS Architecture Documentation
+# Task Management System - Architecture Documentation
 
-This document outlines the high-level architecture of the Content Management System.
+## 1. Introduction
 
-## 1. System Overview
+This document outlines the architectural design of the Task Management System, covering its high-level structure, key components, data flow, and design principles. The system follows a layered, modular, and service-oriented approach to ensure scalability, maintainability, and extensibility.
 
-The ALX CMS is a full-stack web application designed for managing and publishing content. It follows a decoupled, service-oriented architecture, separating the backend API from the frontend user interface. The system is built for scalability, security, and maintainability.
+## 2. High-Level Architecture
 
-**Key Principles:**
-*   **Microservices-ish (Modular Monolith):** The backend is a NestJS application structured into logical modules (Users, Posts, Categories) which behave like self-contained services, promoting separation of concerns.
-*   **Decoupled Frontend/Backend:** The frontend (React) communicates with the backend (NestJS API) via RESTful API calls.
-*   **Stateless Backend:** Enables horizontal scaling of backend instances.
-*   **Security First:** Authentication, Authorization, Rate Limiting, and secure configuration.
-*   **Observability:** Comprehensive logging and error handling.
-*   **Containerization:** Facilitates consistent development, testing, and deployment environments.
-
-## 2. High-Level Diagram
+The system is designed as a **Monorepo** containing a separate Backend API and a Frontend Single-Page Application (SPA). It leverages a microservices-like philosophy in its backend modularity, though it's deployed as a single Express application for simplicity and development efficiency.
 
 ```
-+------------------+     +------------------+     +-------------------+
-|      Client      |     |     Frontend     |     |      Backend      |
-| (Web Browser)    |     |    (React.js)    |     |   (NestJS API)    |
-+------------------+     +------------------+     +-------------------+
-        | HTTP/S                ^ AJAX/HTTP/S        | RESTful API
-        |                       |                    |
-        |                       |                    v
-        |                  +----------------+   +-------------------+
-        |                  |     Nginx      |   |    PostgreSQL     |
-        |                  | (Reverse Proxy)|<->|     (Database)    |
-        |                  +----------------+   +-------------------+
-        |                                        | SQL, TypeORM
-        |                                        |
-        |                                        v
-        |                                   +----------+
-        |                                   |   Redis  |
-        |                                   | (Caching)|
-        |                                   +----------+
-        |
-        +-------------------------------------------------------------+
-                                     | Logging
-                                     v
-                                +-------------------+
-                                | Centralized Log   |
-                                |  (e.g., ELK Stack)|
-                                +-------------------+
++---------------------+           +---------------------+           +---------------------+
+|                     |           |                     |           |                     |
+|     User (Browser)  | <----->   |     Frontend SPA    | <----->   |    Backend API      |
+|                     |           |   (React, TS)       |           |   (Node.js, Express, TS) |
++---------------------+           +---------------------+           +---------------------+
+                                            |                                    |
+                                            | HTTP/REST                          | RESTful API
+                                            |                                    |
+                                            V                                    V
+                                    +---------------------+           +---------------------+
+                                    |                     | <----->   |     PostgreSQL      |
+                                    |     Redis Cache     |           |     Database        |
+                                    |                     |           |   (TypeORM)         |
+                                    +---------------------+           +---------------------+
 ```
 
-## 3. Component Breakdown
+### Key Architectural Characteristics:
 
-### 3.1. Frontend (React.js)
+*   **Client-Server:** Standard web architecture with a decoupled frontend and backend.
+*   **Layered Backend:** Organized into distinct layers (Routes, Controllers, Services, Entities) for clear separation of concerns.
+*   **Modular Design:** Backend modules for Auth, Users, Projects, and Tasks, each with its own routes, controllers, and services.
+*   **Microservice-ready (Conceptual):** The service layer abstraction allows for easier refactoring into actual microservices if the application scales significantly.
+*   **Stateless API:** The API is stateless, relying on JWT for authentication, which aids scalability.
+*   **Event-Driven (Potential):** While not explicitly implemented, the logging and error handling provide hooks for future integration with event-driven monitoring systems.
+*   **Containerized:** Utilizes Docker for consistent development and deployment environments.
 
-*   **Technology:** React, TypeScript, React Router DOM, Tailwind CSS, Axios.
-*   **Purpose:** Provides the user interface for consuming and managing content.
-*   **Key Responsibilities:**
-    *   **User Interface:** Renders dynamic pages and components.
-    *   **Routing:** Manages client-side navigation.
-    *   **State Management:** Local component state, global state for authentication using React Context.
-    *   **API Interaction:** Communicates with the Backend API using Axios.
-    *   **Form Handling:** Captures user input for creating/updating content.
-    *   **User Experience:** Responsive design and interactive elements.
-*   **Structure:**
-    *   `src/pages`: Top-level application views (HomePage, LoginPage, DashboardPage, etc.)
-    *   `src/components`: Reusable UI elements (Navbar, PostCard, ProtectedRoute).
-    *   `src/services`: Abstraction layer for API calls.
-    *   `src/context`: Global state management (e.g., `AuthContext`).
-    *   `src/types`: TypeScript interfaces for data structures.
+## 3. Backend Architecture (Node.js/Express/TypeScript)
 
-### 3.2. Backend (NestJS API)
+The backend is structured into several layers:
 
-*   **Technology:** NestJS, TypeScript, TypeORM, PostgreSQL, Passport.js (JWT), Redis, Winston.
-*   **Purpose:** Serves as the brain of the application, handling all business logic, data persistence, and API exposure.
-*   **Key Responsibilities:**
-    *   **API Endpoints:** Exposes RESTful API for Users, Categories, Posts.
-    *   **Authentication & Authorization:** Verifies user identity and roles, controls access to resources.
-    *   **Business Logic:** Implements CRUD operations, data validation, and content workflow.
-    *   **Data Persistence:** Interacts with PostgreSQL database via TypeORM.
-    *   **Caching:** Stores frequently accessed data in Redis to reduce database load.
-    *   **Error Handling:** Catches and standardizes error responses.
-    *   **Logging:** Records application events and errors.
-    *   **Security:** Rate limiting, Helmet middleware for HTTP headers.
-*   **Structure (Modular):**
-    *   **`AuthModule`:** Handles user authentication (login, registration) and JWT management.
-    *   **`UsersModule`:** Manages user entities, roles, and CRUD operations.
-    *   **`CategoriesModule`:** Manages content categories and their associated operations.
-    *   **`PostsModule`:** Manages articles/posts, including content, status, and author/category relationships.
-    *   **`ConfigModule`:** Loads and validates environment variables.
-    *   **`Database`:** TypeORM configuration, migrations, and seeding scripts.
-    *   **`Shared`:** Global concerns like exception filters, interceptors (caching), and middleware (logging).
+```
++-----------------------------------------------------------------------------------+
+|                          Request Flow                                             |
+|                                                                                   |
+|  +-------------------+  +-------------------+                                     |
+|  |     Client        |->|   Load Balancer   | (e.g., Nginx, AWS ALB)              |
+|  |    (Frontend)     |  |    (Optional)     |                                     |
+|  +-------------------+  +-------------------+                                     |
+|                                     |                                             |
+|  +-----------------------------------------------------------------------------+  |
+|  |                          Express Application (app.ts)                       |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                             Middleware Layer                          |  |  |
+|  |  |  - CORS                                                             |  |  |
+|  |  |  - Helmet (Security Headers)                                        |  |  |
+|  |  |  - Request Logger (Winston)                                         |  |  |
+|  |  |  - Rate Limiter (express-rate-limit)                                |  |  |
+|  |  |  - Body Parsers (JSON, URL-encoded)                                 |  |  |
+|  |  |  - Authentication (JWT verification - authMiddleware.ts)            |  |  |
+|  |  |  - Authorization (Role/Ownership checks - authMiddleware.ts)        |  |  |
+|  |  |  - Error Handler (errorHandler.ts - LAST middleware)                |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |                                     |                                     |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                             Routes Layer (routes/*.ts)                |  |  |
+|  |  |  - Defines API endpoints (e.g., /api/auth, /api/projects)             |  |  |
+|  |  |  - Maps endpoints to Controller methods                               |  |  |
+|  |  |  - Applies validation schemas (Joi)                                   |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |                                     |                                     |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                          Controllers Layer (controllers/*.ts)         |  |  |
+|  |  |  - Handles HTTP requests and responses                                |  |  |
+|  |  |  - Performs request validation (using Joi schemas from routes)        |  |  |
+|  |  |  - Delegates business logic to Service Layer                          |  |  |
+|  |  |  - Catches errors and passes them to the Error Handler                |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |                                     |                                     |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                           Services Layer (services/*.ts)              |  |  |
+|  |  |  - Contains core business logic and data processing                   |  |  |
+|  |  |  - Orchestrates interactions with data sources (ORM, Cache)           |  |  |
+|  |  |  - Implements complex algorithms and transactional logic              |  |  |
+|  |  |  - Interacts with CacheService for caching operations                 |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |                                     |                                     |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                           Data Access Layer                           |  |  |
+|  |  |  - TypeORM Repositories (ORM for PostgreSQL)                          |  |  |
+|  |  |  - Redis Client (for CacheService)                                    |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |                                     |                                     |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  |  |                             Database (PostgreSQL)                     |  |  |
+|  |  |                             Cache (Redis)                             |  |  |
+|  |  +-----------------------------------------------------------------------+  |  |
+|  +-----------------------------------------------------------------------------+  |
++-----------------------------------------------------------------------------------+
+```
 
-### 3.3. Database (PostgreSQL)
+### Key Components:
 
-*   **Technology:** PostgreSQL.
-*   **Purpose:** Stores all persistent application data.
-*   **Key Responsibilities:**
-    *   **Data Storage:** Reliable storage for users, posts, categories, etc.
-    *   **Data Integrity:** Enforces relationships and constraints (e.g., foreign keys).
-    *   **Transactional Operations:** Ensures atomicity of complex data operations.
-*   **Schema:** Defined by TypeORM entities (User, Category, Post) with UUID primary keys.
+*   **`src/backend/app.ts` / `src/backend/server.ts`**: Entry points for the Express application. `app.ts` sets up middleware and routes, `server.ts` handles database connection and server startup.
+*   **`src/backend/config/`**: Centralized environment-specific configurations, loaded from `.env` files.
+*   **`src/backend/database/`**: TypeORM data source configuration, migration scripts.
+*   **`src/backend/entities/`**: TypeORM entities (`User`, `Project`, `Task`) defining the database schema and relationships.
+*   **`src/backend/middleware/`**:
+    *   `authMiddleware.ts`: Handles JWT token verification and user extraction. Includes authorization checks (e.g., `isOwner`).
+    *   `errorHandler.ts`: Global error handling, catching exceptions and returning consistent API error responses.
+    *   `loggingMiddleware.ts`: Logs incoming requests and basic response information using Winston.
+    *   `rateLimiter.ts`: Applies rate limiting to prevent abuse.
+*   **`src/backend/controllers/`**: Contain the request handling logic. They receive validated input, call appropriate services, and send HTTP responses. (e.g., `AuthController`, `ProjectController`).
+*   **`src/backend/services/`**: Encapsulate the business logic. They interact with TypeORM repositories and the `CacheService` to perform CRUD operations, apply business rules, and handle complex data manipulations. (e.g., `UserService`, `ProjectService`, `CacheService`).
+*   **`src/backend/routes/`**: Define the API endpoints, map them to controller methods, and apply middleware (authentication, authorization, validation).
+*   **`src/backend/utils/`**: Helper functions for common tasks:
+    *   `hash.ts`: Password hashing using `bcryptjs`.
+    *   `jwt.ts`: JWT token generation and verification.
+    *   `logger.ts`: Winston logger instance.
+    *   `validation.ts`: Joi schemas for input validation.
 
-### 3.4. Caching (Redis)
+## 4. Frontend Architecture (React/TypeScript)
 
-*   **Technology:** Redis.
-*   **Purpose:** In-memory data store used for caching API responses to reduce database load and improve response times for read-heavy operations.
-*   **Integration:** NestJS `CacheModule` with `cache-manager-redis-yet` adapter. `CacheInterceptor` automatically caches GET requests.
+The frontend is a simple React SPA, designed to interact with the backend API.
 
-### 3.5. Reverse Proxy (Nginx - Optional but Recommended for Production)
+*   **`src/frontend/src/App.tsx`**: Main application component, handles routing.
+*   **`src/frontend/src/pages/`**: Top-level components for different views (e.g., `HomePage`, `ProjectPage`).
+*   **`src/frontend/src/components/`**: Reusable UI components (e.g., `LoginForm`, `ProjectCard`).
+*   **`src/frontend/src/api.ts`**: Centralized Axios instance for API calls, including request/response interceptors for JWT handling and error responses.
 
-*   **Technology:** Nginx.
-*   **Purpose:** Sits in front of the frontend application and can also proxy API requests to the backend.
-*   **Key Responsibilities:**
-    *   **Static File Serving:** Serves the built React application.
-    *   **API Gateway:** Routes API requests from the frontend (e.g., `/api/v1/*`) to the backend service.
-    *   **Load Balancing:** Can distribute traffic across multiple backend instances (for high availability/scalability).
-    *   **SSL Termination:** Handles HTTPS encryption/decryption (not shown in basic diagram but crucial for production).
-    *   **Security:** Provides an additional layer of defense.
+## 5. Data Flow Example: Creating a Project
 
-## 4. Data Flow (Example: Create Post)
-
-1.  **Frontend (React):** User navigates to `/posts/new`, fills out a form, and clicks "Create Post".
-2.  **Frontend (Auth Context/Service):** Retrieves the user's JWT from local storage.
-3.  **Frontend (Post Service):** Makes an `HTTP POST` request to `/api/v1/posts` with the post data and the JWT in the `Authorization` header.
-4.  **Nginx (if used):** Receives the request, identifies it as an API call, and forwards it to the `backend:3000` service.
-5.  **Backend (NestJS - `LoggerMiddleware`):** Logs the incoming request.
-6.  **Backend (NestJS - `JwtAuthGuard`):** Extracts JWT from the header, validates it, and authenticates the user. If valid, attaches user payload to `req.user`.
-7.  **Backend (NestJS - `RolesGuard`):** Checks if `req.user`'s role (e.g., `AUTHOR`, `EDITOR`, `ADMIN`) is allowed to create posts. If not, throws `ForbiddenException`.
-8.  **Backend (NestJS - `ValidationPipe`):** Validates the request body against `CreatePostDto`. If invalid, throws `BadRequestException`.
-9.  **Backend (NestJS - `PostsController`):** Receives the validated `CreatePostDto` and `req.user.userId`.
-10. **Backend (NestJS - `PostsService`):**
-    *   Fetches the `User` and `Category` entities from `UserRepository` and `CategoryRepository` based on IDs.
-    *   Creates a new `Post` entity.
-    *   Saves the `Post` entity to the PostgreSQL database via TypeORM.
-11. **Backend (NestJS):** Returns the created `Post` object in the HTTP response.
-12. **Nginx (if used):** Forwards the response back to the client.
-13. **Frontend (Post Service):** Receives the response.
-14. **Frontend (React):** Navigates the user to the new post's detail page (`/posts/:id`) or the dashboard, and displays a success message.
-
-## 5. Scalability Considerations
-
-*   **Stateless Backend:** The NestJS backend is designed to be stateless, meaning any instance can handle any request. This allows for easy horizontal scaling by running multiple backend containers behind a load balancer.
-*   **Database Scaling:** PostgreSQL can be scaled vertically (more powerful server) or horizontally using replication (read replicas).
-*   **Caching with Redis:** Reduces load on the database, allowing the system to handle more read requests without degrading performance.
-*   **Docker & Docker Compose:** Provides a consistent and isolated environment, simplifying deployment and scaling.
-*   **CI/CD:** Automates the build, test, and deployment process, enabling faster iterations and consistent deployments.
+1.  **Frontend:** User fills out a "Create Project" form and clicks submit.
+2.  **`src/frontend/src/api.ts`:** Axios client sends a `POST` request to `/api/projects` with project data and the JWT token in the `Authorization` header.
+3.  **Backend Middleware (`app.ts`):**
+    *   `cors`, `helmet`: Request goes through security checks.
+    *   `requestLogger`: Request is logged.
+    *   `apiRateLimiter`: Rate limit check.
+    *   `express.json()`: Request body is parsed.
+    *   `authenticate (authMiddleware)`: JWT token is verified, and `req.user` is populated with user details.
+4.  **Backend Routes (`projectRoutes.ts`):** The `POST /api/projects` route is matched. Joi validation schema is applied.
+5.  **Backend Controller (`ProjectController.ts`):** `createProject` method is invoked. It extracts validated data from `req.body` and the `ownerId` from `req.user`.
+6.  **Backend Service (`ProjectService.ts`):** `createProject` method is called.
+    *   It uses `AppDataSource.getRepository(Project)` to interact with the database.
+    *   It creates a new `Project` entity instance.
+    *   It saves the new project to the PostgreSQL database.
+7.  **Database (PostgreSQL):** The new project record is inserted.
+8.  **Backend Service:** Returns the created project object.
+9.  **Backend Controller:** Receives the created project, sends a `201 Created` HTTP response with the project data.
+10. **Frontend:** Receives the response, updates the UI (e.g., adds the new project to a list).
 
 ## 6. Security Considerations
 
-*   **Authentication (JWT):** Secure token-based authentication.
-*   **Authorization (RBAC):** Role-Based Access Control ensures users only access resources and actions they are permitted to.
-*   **Password Hashing:** Passwords are never stored in plain text, using `bcrypt`.
-*   **Input Validation:** `class-validator` prevents common injection attacks and ensures data integrity.
-*   **Rate Limiting:** Protects against brute-force attacks and DoS.
-*   **Helmet:** Sets various HTTP headers for enhanced security.
-*   **CORS:** Configured to allow only trusted origins.
-*   **Environment Variables:** Sensitive information is kept out of source code and managed via environment variables.
+*   **Authentication:** JWT for stateless, secure user authentication.
+*   **Authorization:** Middleware checks user roles and resource ownership for access control.
+*   **Input Validation:** Joi schemas prevent common injection attacks (e.g., SQL injection, XSS) by ensuring data integrity.
+*   **Rate Limiting:** Protects against brute-force attacks and DDoS.
+*   **Security Headers (Helmet):** Mitigates common web vulnerabilities like XSS, clickjacking, etc.
+*   **Password Hashing:** `bcryptjs` is used to securely store user passwords.
+*   **Environment Variables:** Sensitive information (database credentials, JWT secret) is stored in environment variables, not hardcoded.
 
-This architecture provides a solid foundation for building and evolving a production-grade CMS.
-```
+## 7. Scalability & Performance
+
+*   **Stateless API:** Enables easy horizontal scaling of the backend application instances.
+*   **Database Indexing:** Migrations include indexes on frequently queried columns for performance.
+*   **Caching (Redis):** Reduces database load for frequently accessed, less-changing data (e.g., `GET /api/projects` for a user's projects).
+*   **Modular Design:** Allows for future extraction of services into separate microservices if specific parts become bottlenecks.
+*   **Load Balancing:** The architecture can easily integrate with load balancers (e.g., Nginx, cloud load balancers) to distribute traffic across multiple backend instances.
+*   **Connection Pooling:** TypeORM handles database connection pooling automatically.
+
+## 8. Observability
+
+*   **Logging (Winston):** Structured logs provide insights into application behavior, errors, and request flows.
+*   **Error Handling:** Consistent error responses and detailed server-side error logging facilitate debugging.
+*   **Health Checks:** Docker Compose includes health checks for DB and Redis, and the backend has a simple `/` endpoint for health checks.
+*   **Monitoring (Future):** The logging infrastructure lays the groundwork for integration with external monitoring tools (e.g., ELK Stack, Prometheus/Grafana).
+
+## 9. Future Enhancements
+
+*   **WebSockets:** For real-time task updates.
+*   **Full-Text Search:** For projects and tasks.
+*   **Notifications:** Email/in-app notifications for task assignments, due dates.
+*   **Admin Panel:** A dedicated interface for administrative users to manage all users, projects, and tasks.
+*   **More Granular Permissions:** Beyond basic owner/assignee roles.
+*   **Swagger/OpenAPI:** For automated API documentation generation.
+*   **Advanced CI/CD:** Automated deployment to cloud providers (AWS, Azure, GCP).

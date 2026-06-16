@@ -1,40 +1,31 @@
-```dockerfile
-# Stage 1: Build the NestJS application
-FROM node:18-alpine AS builder
+# Stage 1: Build the TypeScript application
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package*.json ./
+COPY package.json package-lock.json ./
 RUN npm install
 
-# Copy source code and build the application
-COPY . .
+COPY tsconfig.json ./
+COPY src/backend ./src/backend
 RUN npm run build
 
-# Stage 2: Run the production application
-FROM node:18-alpine
+
+# Stage 2: Run the application
+FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Copy package.json for production dependencies
-COPY package*.json ./
-RUN npm ci --only=production
+# Install production dependencies
+COPY package.json package-lock.json ./
+RUN npm install --only=production
 
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy built application from the build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/src/backend/database/migrations ./src/backend/database/migrations
+COPY --from=build /app/src/backend/scripts ./src/backend/scripts
+COPY .env.example .env # Copy .env for production (filled by CI/CD or secrets)
 
-# Copy .env.example for structure, but production should use real env vars
-COPY .env.example ./.env.example
+EXPOSE 5000
 
-# Expose the port the app runs on
-EXPOSE 3000
-
-# Set environment variables for production (can be overridden at runtime)
-ENV NODE_ENV production
-ENV DATABASE_HOST=task_management_db
-ENV REDIS_HOST=task_management_redis
-
-# Command to run the application
-CMD ["node", "dist/main"]
-```
+CMD ["node", "dist/server.js"]

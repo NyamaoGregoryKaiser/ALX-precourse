@@ -1,18 +1,46 @@
-```markdown
-# ALX CMS API Documentation
+# Task Management System API Documentation
 
-This document provides a high-level overview of the RESTful API endpoints for the ALX Content Management System. For interactive documentation and testing, please refer to the Swagger UI at `/api-docs` when the backend is running.
+This document provides a detailed overview of the RESTful API endpoints for the Task Management System.
 
-**Base URL:** `http://localhost:3000/api/v1` (or your deployed backend URL)
+**Base URL:** `http://localhost:5000/api` (or your configured backend URL)
 
 ## Authentication
 
-All protected endpoints require a JSON Web Token (JWT) provided in the `Authorization` header as a Bearer token: `Authorization: Bearer <your_jwt_token>`.
+All protected endpoints require a JSON Web Token (JWT) sent in the `Authorization` header as a Bearer token:
 
-### 1. `POST /auth/login`
+`Authorization: Bearer <YOUR_JWT_TOKEN>`
 
-Authenticate a user to obtain a JWT.
+### 1. User Authentication
 
+#### 1.1 Register User
+*   **Endpoint:** `POST /api/auth/register`
+*   **Description:** Creates a new user account.
+*   **Request Body:**
+    ```json
+    {
+      "username": "string",
+      "email": "string (valid email format)",
+      "password": "string (min 6 characters)"
+    }
+    ```
+*   **Success Response (201 Created):**
+    ```json
+    {
+      "token": "string (JWT)",
+      "user": {
+        "id": "uuid",
+        "username": "string",
+        "email": "string",
+        "role": "user"
+      }
+    }
+    ```
+*   **Error Responses:**
+    *   `400 Bad Request`: Invalid input (e.g., missing fields, invalid email, password too short), or email/username already exists.
+
+#### 1.2 Login User
+*   **Endpoint:** `POST /api/auth/login`
+*   **Description:** Authenticates a user and returns a JWT.
 *   **Request Body:**
     ```json
     {
@@ -23,161 +51,345 @@ Authenticate a user to obtain a JWT.
 *   **Success Response (200 OK):**
     ```json
     {
-      "access_token": "string",
+      "token": "string (JWT)",
       "user": {
         "id": "uuid",
         "username": "string",
         "email": "string",
-        "role": "admin | editor | author | reader"
+        "role": "user"
       }
     }
     ```
-*   **Error Responses:** 401 Unauthorized
+*   **Error Responses:**
+    *   `400 Bad Request`: Invalid credentials (email not found, incorrect password).
 
-### 2. `POST /auth/register`
+### 2. User Endpoints
 
-Register a new user. Default role is typically `author`.
+#### 2.1 Get User Profile
+*   **Endpoint:** `GET /api/users/profile`
+*   **Description:** Retrieves the profile of the authenticated user.
+*   **Authentication:** Required
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "username": "string",
+      "email": "string",
+      "role": "string",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `404 Not Found`: User not found (should not happen with valid token).
 
+#### 2.2 Update User Profile
+*   **Endpoint:** `PUT /api/users/profile`
+*   **Description:** Updates the profile of the authenticated user.
+*   **Authentication:** Required
+*   **Request Body:** (Partial update, any of the following fields)
+    ```json
+    {
+      "username": "string (optional)",
+      "email": "string (optional, valid email)",
+      "password": "string (optional, min 6 characters)"
+    }
+    ```
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "username": "string",
+      "email": "string",
+      "role": "string",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `400 Bad Request`: Invalid input or email/username already taken.
+
+### 3. Project Endpoints
+
+#### 3.1 Create New Project
+*   **Endpoint:** `POST /api/projects`
+*   **Description:** Creates a new project owned by the authenticated user.
+*   **Authentication:** Required
 *   **Request Body:**
     ```json
     {
-      "username": "string",
-      "email": "string",
-      "password": "string",
-      "role": "author | reader"  # Admin/Editor roles typically not allowed for self-registration
+      "name": "string (required)",
+      "description": "string (optional)"
     }
     ```
-*   **Success Response (201 Created):** Same as login success response.
-*   **Error Responses:** 400 Bad Request (validation, email/username exists), 401 Unauthorized (if attempting to register with disallowed role).
+*   **Success Response (201 Created):**
+    ```json
+    {
+      "id": "uuid",
+      "name": "string",
+      "description": "string",
+      "ownerId": "uuid",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `400 Bad Request`: Invalid input (e.g., missing project name).
 
----
+#### 3.2 Get All Projects
+*   **Endpoint:** `GET /api/projects`
+*   **Description:** Retrieves all projects owned by the authenticated user.
+*   **Authentication:** Required
+*   **Success Response (200 OK):**
+    ```json
+    [
+      {
+        "id": "uuid",
+        "name": "string",
+        "description": "string",
+        "ownerId": "uuid",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      ...
+    ]
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
 
-## Users Module
+#### 3.3 Get Project by ID
+*   **Endpoint:** `GET /api/projects/:id`
+*   **Description:** Retrieves a single project by its ID. Only accessible if the authenticated user is the owner.
+*   **Authentication:** Required
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "name": "string",
+      "description": "string",
+      "ownerId": "uuid",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp",
+      "owner": {
+        "id": "uuid",
+        "username": "string",
+        "email": "string"
+      }
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not the owner of the project.
+    *   `404 Not Found`: Project with the given ID does not exist.
 
-### `GET /users`
+#### 3.4 Update Project
+*   **Endpoint:** `PUT /api/projects/:id`
+*   **Description:** Updates an existing project. Only accessible if the authenticated user is the owner.
+*   **Authentication:** Required
+*   **Request Body:** (Partial update, any of the following fields)
+    ```json
+    {
+      "name": "string (optional)",
+      "description": "string (optional)"
+    }
+    ```
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "name": "string",
+      "description": "string",
+      "ownerId": "uuid",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not the owner of the project.
+    *   `404 Not Found`: Project with the given ID does not exist.
+    *   `400 Bad Request`: Invalid input.
 
-Retrieve a list of all users.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Success Response (200 OK):** `User[]` array. Password is excluded.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden
+#### 3.5 Delete Project
+*   **Endpoint:** `DELETE /api/projects/:id`
+*   **Description:** Deletes a project. Only accessible if the authenticated user is the owner.
+*   **Authentication:** Required
+*   **Success Response (204 No Content):** (No body returned)
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not the owner of the project.
+    *   `404 Not Found`: Project with the given ID does not exist.
 
-### `GET /users/:id`
+### 4. Task Endpoints
 
-Retrieve a single user by ID.
-*   **Authentication:** Required (`ADMIN`, `EDITOR`, `AUTHOR` roles)
-*   **Success Response (200 OK):** `User` object.
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found
+#### 4.1 Create New Task (within a project)
+*   **Endpoint:** `POST /api/projects/:projectId/tasks`
+*   **Description:** Creates a new task for a specific project. The authenticated user must be the project owner.
+*   **Authentication:** Required
+*   **Request Body:**
+    ```json
+    {
+      "title": "string (required)",
+      "description": "string (optional)",
+      "status": "enum (optional, default: 'open') - 'open', 'in_progress', 'completed', 'closed'",
+      "priority": "enum (optional, default: 'medium') - 'low', 'medium', 'high'",
+      "dueDate": "string (optional, ISO 8601 date string, e.g., '2024-12-31T23:59:59Z')",
+      "assigneeId": "uuid (optional, ID of a user to assign the task)"
+    }
+    ```
+*   **Success Response (201 Created):**
+    ```json
+    {
+      "id": "uuid",
+      "title": "string",
+      "description": "string",
+      "status": "string",
+      "priority": "string",
+      "dueDate": "timestamp | null",
+      "projectId": "uuid",
+      "assigneeId": "uuid | null",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not the owner of the project.
+    *   `404 Not Found`: Project or Assignee user does not exist.
+    *   `400 Bad Request`: Invalid input.
 
-### `POST /users`
+#### 4.2 Get All Tasks for a Project
+*   **Endpoint:** `GET /api/projects/:projectId/tasks`
+*   **Description:** Retrieves all tasks belonging to a specific project. The authenticated user must be the project owner or an assigned user (for assigned tasks).
+*   **Authentication:** Required
+*   **Success Response (200 OK):**
+    ```json
+    [
+      {
+        "id": "uuid",
+        "title": "string",
+        "description": "string",
+        "status": "string",
+        "priority": "string",
+        "dueDate": "timestamp | null",
+        "projectId": "uuid",
+        "assigneeId": "uuid | null",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp",
+        "assignee": { "id": "uuid", "username": "string" } // if assigned
+      },
+      ...
+    ]
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not authorized to view tasks for this project.
+    *   `404 Not Found`: Project does not exist.
 
-Create a new user.
-*   **Authentication:** Required (`ADMIN` role)
-*   **Request Body:** `CreateUserDto` (see backend DTO)
-*   **Success Response (201 Created):** `User` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden
+#### 4.3 Get Task by ID (within a project)
+*   **Endpoint:** `GET /api/projects/:projectId/tasks/:taskId`
+*   **Description:** Retrieves a single task by its ID within a specific project. The authenticated user must be the project owner or the assignee of the task.
+*   **Authentication:** Required
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "title": "string",
+      "description": "string",
+      "status": "string",
+      "priority": "string",
+      "dueDate": "timestamp | null",
+      "projectId": "uuid",
+      "assigneeId": "uuid | null",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp",
+      "project": { "id": "uuid", "name": "string" },
+      "assignee": { "id": "uuid", "username": "string" } // if assigned
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not authorized to view this task.
+    *   `404 Not Found`: Project or Task does not exist.
 
-### `PATCH /users/:id`
+#### 4.4 Update Task
+*   **Endpoint:** `PUT /api/projects/:projectId/tasks/:taskId`
+*   **Description:** Updates an existing task. The authenticated user must be the project owner or the assignee of the task.
+*   **Authentication:** Required
+*   **Request Body:** (Partial update, any of the following fields)
+    ```json
+    {
+      "title": "string (optional)",
+      "description": "string (optional)",
+      "status": "enum (optional) - 'open', 'in_progress', 'completed', 'closed'",
+      "priority": "enum (optional) - 'low', 'medium', 'high'",
+      "dueDate": "string (optional, ISO 8601 date string)",
+      "assigneeId": "uuid | null (optional, ID of a user, or null to unassign)"
+    }
+    ```
+*   **Success Response (200 OK):**
+    ```json
+    {
+      "id": "uuid",
+      "title": "string",
+      "description": "string",
+      "status": "string",
+      "priority": "string",
+      "dueDate": "timestamp | null",
+      "projectId": "uuid",
+      "assigneeId": "uuid | null",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not authorized to update this task.
+    *   `404 Not Found`: Project or Task does not exist, or new assignee does not exist.
+    *   `400 Bad Request`: Invalid input.
 
-Update an existing user.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Request Body:** `UpdateUserDto` (partial `CreateUserDto`, see backend DTO)
-*   **Success Response (200 OK):** `User` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found
+#### 4.5 Delete Task
+*   **Endpoint:** `DELETE /api/projects/:projectId/tasks/:taskId`
+*   **Description:** Deletes a task. The authenticated user must be the project owner.
+*   **Authentication:** Required
+*   **Success Response (204 No Content):** (No body returned)
+*   **Error Responses:**
+    *   `401 Unauthorized`: No token or invalid token.
+    *   `403 Forbidden`: User is not the owner of the project.
+    *   `404 Not Found`: Project or Task does not exist.
 
-### `DELETE /users/:id`
+### Common Error Responses
 
-Delete a user.
-*   **Authentication:** Required (`ADMIN` role)
-*   **Success Response (204 No Content)**
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found
-
----
-
-## Categories Module
-
-### `GET /categories`
-
-Retrieve a list of all content categories.
-*   **Authentication:** Optional (Publicly accessible)
-*   **Caching:** Applied (responds from cache if available)
-*   **Success Response (200 OK):** `Category[]` array.
-*   **Error Responses:** None specific, standard HTTP errors.
-
-### `GET /categories/:id`
-
-Retrieve a single category by ID.
-*   **Authentication:** Optional (Publicly accessible)
-*   **Caching:** Applied
-*   **Success Response (200 OK):** `Category` object.
-*   **Error Responses:** 404 Not Found
-
-### `POST /categories`
-
-Create a new category.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Request Body:** `CreateCategoryDto` (see backend DTO)
-*   **Success Response (201 Created):** `Category` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden
-
-### `PATCH /categories/:id`
-
-Update an existing category.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Request Body:** `UpdateCategoryDto` (partial `CreateCategoryDto`, see backend DTO)
-*   **Success Response (200 OK):** `Category` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found
-
-### `DELETE /categories/:id`
-
-Delete a category.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Success Response (204 No Content)**
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found
-
----
-
-## Posts Module
-
-### `GET /posts`
-
-Retrieve a list of posts. Can be filtered by `status`.
-*   **Authentication:** Optional (Publicly accessible)
-*   **Query Parameters:**
-    *   `status`: (Optional) `published | draft | pending_review | archived` - Filters posts by their status.
-*   **Caching:** Applied
-*   **Success Response (200 OK):** `Post[]` array, including `author` and `category` details (eager loaded).
-*   **Error Responses:** None specific.
-
-### `GET /posts/:id`
-
-Retrieve a single post by ID.
-*   **Authentication:** Optional (Publicly accessible)
-*   **Caching:** Applied
-*   **Success Response (200 OK):** `Post` object, including `author` and `category` details.
-*   **Error Responses:** 404 Not Found
-
-### `POST /posts`
-
-Create a new post. The `authorId` is derived from the authenticated user's token.
-*   **Authentication:** Required (`ADMIN`, `EDITOR`, `AUTHOR` roles)
-*   **Request Body:** `CreatePostDto` (see backend DTO)
-*   **Success Response (201 Created):** `Post` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found (if `categoryId` is invalid)
-
-### `PATCH /posts/:id`
-
-Update an existing post.
-*   **Authentication:** Required (`ADMIN`, `EDITOR`, `AUTHOR` roles). Authors can only update their own posts.
-*   **Request Body:** `UpdatePostDto` (partial `CreatePostDto`, see backend DTO)
-*   **Success Response (200 OK):** `Post` object.
-*   **Error Responses:** 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found
-
-### `DELETE /posts/:id`
-
-Delete a post.
-*   **Authentication:** Required (`ADMIN`, `EDITOR` roles)
-*   **Success Response (204 No Content)**
-*   **Error Responses:** 401 Unauthorized, 403 Forbidden, 404 Not Found
-
----
-```
+*   **`401 Unauthorized`**: Authentication token is missing, invalid, or expired.
+    ```json
+    {
+      "message": "Unauthorized: Invalid or missing token"
+    }
+    ```
+*   **`403 Forbidden`**: User does not have the necessary permissions to access the resource.
+    ```json
+    {
+      "message": "Forbidden: You do not have permission to access this resource"
+    }
+    ```
+*   **`404 Not Found`**: The requested resource does not exist.
+    ```json
+    {
+      "message": "Resource not found"
+    }
+    ```
+*   **`429 Too Many Requests`**: Rate limit exceeded.
+    ```json
+    {
+      "message": "Too many requests, please try again later."
+    }
+    ```
+*   **`500 Internal Server Error`**: An unexpected error occurred on the server.
+    ```json
+    {
+      "message": "Internal Server Error"
+    }
+    ```
